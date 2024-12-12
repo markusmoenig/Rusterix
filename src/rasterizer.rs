@@ -44,7 +44,7 @@ impl Rasterizer {
             .map(|tile| {
                 // Local tile buffer
                 let mut buffer = vec![0; tile.width * tile.height * 4];
-                let mut z_buffer = vec![1.0_f32; tile.width * tile.height * 4];
+                let mut z_buffer = vec![1.0_f32; tile.width * tile.height];
 
                 for batch in batches_3d.iter() {
                     if let Some(bbox) = batch.bounding_box {
@@ -111,31 +111,34 @@ impl Rasterizer {
                                             let z1 = 1.0 / v1.z;
                                             let z2 = 1.0 / v2.z;
 
-                                            let idx =
-                                                ((ty - tile.y) * tile.width + (tx - tile.x)) * 4;
-
                                             // Interpolate reciprocal depth
-                                            let one_over_z = v0.z * w.x + v1.z * w.y + v2.z * w.z;
-                                            let z = one_over_z;
+                                            let one_over_z = z0 * w.x + z1 * w.y + z2 * w.z;
+                                            // let one_over_z =
+                                            // (w.x / v0.z) + (w.y / v1.z) + (w.z / v2.z);
 
-                                            if z < z_buffer[idx] {
-                                                z_buffer[idx] = z;
+                                            let z = 1.0 - (1.0 / one_over_z);
+
+                                            // println!("z {}", z);
+                                            let zidx = (ty - tile.y) * tile.width + (tx - tile.x);
+
+                                            if z < z_buffer[zidx] {
+                                                z_buffer[zidx] = z;
 
                                                 // Perspective-correct interpolation of UVs
-                                                // let u_over_z = uv0.x * z0 * w.x
-                                                //     + uv1.x * z1 * w.y
-                                                //     + uv2.x * z2 * w.z;
-                                                // let v_over_z = uv0.y * z0 * w.x
-                                                //     + uv1.y * z1 * w.y
-                                                //     + uv2.y * z2 * w.z;
+                                                let u_over_z = uv0.x * z0 * w.x
+                                                    + uv1.x * z1 * w.y
+                                                    + uv2.x * z2 * w.z;
+                                                let v_over_z = uv0.y * z0 * w.x
+                                                    + uv1.y * z1 * w.y
+                                                    + uv2.y * z2 * w.z;
 
-                                                // let u = u_over_z / one_over_z;
-                                                // let v = 1.0 - v_over_z / one_over_z;
+                                                let u = u_over_z / one_over_z;
+                                                let v = v_over_z / one_over_z;
 
                                                 // Interpolate UV coordinates
-                                                let u = uv0.x * w.x + uv1.x * w.y + uv2.x * w.z;
-                                                let v =
-                                                    1.0 - (uv0.y * w.x + uv1.y * w.y + uv2.y * w.z);
+                                                // let u = uv0.x * w.x + uv1.x * w.y + uv2.x * w.z;
+                                                // let v =
+                                                //     1.0 - (uv0.y * w.x + uv1.y * w.y + uv2.y * w.z);
                                                 // u = u.clamp(0.0, 1.0);
                                                 // v = v.clamp(0.0, 1.0);
 
@@ -145,7 +148,9 @@ impl Rasterizer {
                                                     [(u * 255.0) as u8, (v * 255.0) as u8, 0, 255];
 
                                                 // Write to framebuffer
-
+                                                let idx = ((ty - tile.y) * tile.width
+                                                    + (tx - tile.x))
+                                                    * 4;
                                                 buffer[idx..idx + 4].copy_from_slice(&texel);
                                             }
                                         }

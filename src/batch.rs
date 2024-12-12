@@ -153,24 +153,24 @@ impl Batch<Vec3<f32>> {
         ];
 
         let indices = vec![
-            // Front face
+            // Front face (+Z)
             (0, 1, 2),
             (0, 2, 3),
-            // Back face
-            (4, 5, 6),
-            (4, 6, 7),
-            // Left face
+            // Back face (-Z)
+            (4, 6, 5),
+            (4, 7, 6),
+            // Left face (-X)
             (8, 9, 10),
             (8, 10, 11),
-            // Right face
-            (12, 13, 14),
-            (12, 14, 15),
-            // Top face
+            // Right face (+X)
+            (12, 14, 13),
+            (12, 15, 14),
+            // Top face (+Y) - Fixed
             (16, 17, 18),
             (16, 18, 19),
-            // Bottom face
-            (20, 21, 22),
-            (20, 22, 23),
+            // Bottom face (-Y) - Fixed
+            (20, 23, 22),
+            (20, 22, 21),
         ];
 
         let uvs = vec![
@@ -206,14 +206,20 @@ impl Batch<Vec3<f32>> {
             Vec2::new(0.0, 1.0),
         ];
 
-        fn is_ccw(v0: Vec3<f32>, v1: Vec3<f32>, v2: Vec3<f32>) -> bool {
-            let edge1 = v1 - v0;
-            let edge2 = v2 - v0;
-            let normal = edge1.cross(edge2);
-            normal.z > 0.0
-        }
+        // fn is_ccw(v0: Vec3<f32>, v1: Vec3<f32>, v2: Vec3<f32>) -> bool {
+        //     let edge1 = v1 - v0;
+        //     let edge2 = v2 - v0;
+        //     let normal = edge1.cross(edge2);
+        //     normal.z > 0.0
+        // }
 
-        // println!("is_ccw {}", is_ccw(vertices[8], vertices[9], vertices[10]));
+        // for (index, (a, b, c)) in indices.iter().enumerate() {
+        //     println!(
+        //         "is_ccw {}: {}",
+        //         index,
+        //         is_ccw(vertices[*a], vertices[*b], vertices[*c])
+        //     );
+        // }
 
         Batch::new_3d(vertices, indices, uvs)
     }
@@ -224,15 +230,13 @@ impl Batch<Vec3<f32>> {
             .vertices
             .iter()
             .map(|&v| {
-                // Extend Vec3 to Vec4 manually (homogeneous coordinates)
                 let extended = Vec4::new(v.x, v.y, v.z, 1.0);
                 let result = matrix * extended;
-                let w = result.w; // Perspective division
-
+                let w = result.w;
                 let mut vec = Vec3::new(result.x / w, result.y / w, result.z / w);
 
                 vec.x = (result.x * 0.5 + 0.5) * viewport_width;
-                vec.y = (result.y * 0.5 + 0.5) * viewport_height;
+                vec.y = (1.0 - (result.y * 0.5 + 0.5)) * viewport_height;
 
                 vec
             })

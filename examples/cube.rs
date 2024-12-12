@@ -39,7 +39,7 @@ impl TheTrait for Cube {
                 * Mat4::rotation_x((self.i as f32 * 0.0002).sin() * 8.0)
                 * Mat4::rotation_y((self.i as f32 * 0.0004).cos() * 4.0)
                 * Mat4::rotation_z((self.i as f32 * 0.0008).sin() * 2.0);
-        // * Mat4::scaling_3d(Vec3::new(1.0, -1.0, 1.0));
+        // * Mat4::scaling_3d(Vec3::new(1.0, 1.0, -1.0));
 
         self.i += 10;
 
