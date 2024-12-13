@@ -12,7 +12,7 @@ fn main() {
 // This example uses raw draw calls into rusterix, bypassing the engine API.
 
 pub struct Cube {
-    texture: Texture,
+    textures: Vec<Texture>,
     batches_2d: Vec<Batch<Vec3<f32>>>,
     batches_3d: Vec<Batch<Vec4<f32>>>,
     i: i32,
@@ -28,7 +28,7 @@ impl TheTrait for Cube {
             vec![Batch::from_box(-0.5, -0.5, -0.5, 1.0, 1.0, 1.0).sample_mode(SampleMode::Nearest)];
 
         Self {
-            texture: Texture::from_image_path("images/logo.png"),
+            textures: vec![Texture::from_image_path("images/logo.png")],
             batches_2d,
             batches_3d,
             i: 0,
@@ -58,10 +58,10 @@ impl TheTrait for Cube {
             pixels,
             ctx.width,
             ctx.height,
-            128,
+            80,
             projection_matrix_2d,
             projection_matrix_3d,
-            &self.texture,
+            &self.textures,
         );
 
         let _stop = get_time();

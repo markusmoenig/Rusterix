@@ -1,4 +1,4 @@
-use crate::{Edge, Pixel, Rect, SampleMode, WHITE};
+use crate::{Edge, Pixel, Rect, RepeatMode, SampleMode, WHITE};
 use vek::{Mat3, Mat4, Vec2, Vec3, Vec4};
 
 /// The primitive mode. The rasterizer can draw triangles and lines.
@@ -15,6 +15,7 @@ pub enum PrimitiveMode {
 }
 
 use PrimitiveMode::*;
+use RepeatMode::*;
 use SampleMode::*;
 
 pub struct Batch<T> {
@@ -42,8 +43,14 @@ pub struct Batch<T> {
     /// Color, used for lines.
     pub color: Pixel,
 
-    /// SampleMode
+    /// SampleMode, default is Nearest.
     pub sample_mode: SampleMode,
+
+    /// RepeatMode, default is ClampXY.
+    pub repeat_mode: RepeatMode,
+
+    /// Texture index. Specifies the texture index into the texture array during rasterization for this batch. Default is 0.
+    pub texture_index: usize,
 }
 
 /// A batch of 3D vertices, indices and their UVs which make up a 2D polygons.
@@ -64,6 +71,8 @@ impl Batch<Vec3<f32>> {
             edges: vec![],
             color: WHITE,
             sample_mode: Nearest,
+            repeat_mode: ClampXY,
+            texture_index: 0,
         }
     }
 
@@ -90,8 +99,6 @@ impl Batch<Vec3<f32>> {
         //     cross_product > 0.0
         // }
 
-        // println!("is_ccw {}", is_ccw(vertices[3], vertices[2], vertices[0]));
-
         Batch::new_2d(vertices, indices, uvs)
     }
 
@@ -108,9 +115,25 @@ impl Batch<Vec3<f32>> {
         }
     }
 
+    /// Sets the repeat mode for the batch using the builder pattern.
+    pub fn repeat_mode(self, repeat_mode: RepeatMode) -> Self {
+        Self {
+            repeat_mode,
+            ..self
+        }
+    }
+
     /// Set the color for the batch using the builder pattern. Colors are only used for line drawing.
     pub fn color(self, color: Pixel) -> Self {
         Self { color, ..self }
+    }
+
+    /// Set the texture index into the texture array for the batch using the builder pattern.
+    pub fn texture_index(self, texture_index: usize) -> Self {
+        Self {
+            texture_index,
+            ..self
+        }
     }
 
     /// Project 2D vertices using a optional Mat3 transformation matrix
@@ -181,6 +204,8 @@ impl Batch<Vec4<f32>> {
             edges: vec![],
             color: WHITE,
             sample_mode: Nearest,
+            repeat_mode: ClampXY,
+            texture_index: 0,
         }
     }
 
@@ -304,9 +329,25 @@ impl Batch<Vec4<f32>> {
         }
     }
 
+    /// Sets the repeat mode for the batch using the builder pattern.
+    pub fn repeat_mode(self, repeat_mode: RepeatMode) -> Self {
+        Self {
+            repeat_mode,
+            ..self
+        }
+    }
+
     /// Set the color for the batch using the builder pattern. Colors are only used for line drawing.
     pub fn color(self, color: Pixel) -> Self {
         Self { color, ..self }
+    }
+
+    /// Set the texture index into the texture array for the batch using the builder pattern.
+    pub fn texture_index(self, texture_index: usize) -> Self {
+        Self {
+            texture_index,
+            ..self
+        }
     }
 
     /// Project 3D vertices using a Mat4 transformation matrix

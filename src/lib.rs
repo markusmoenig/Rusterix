@@ -17,7 +17,7 @@ pub use crate::{
     map::{linedef::Linedef, sector::Sector, vertex::Vertex, Map},
     rasterizer::Rasterizer,
     rect::Rect,
-    texture::{SampleMode, Texture},
+    texture::{RepeatMode, SampleMode, Texture},
 };
 
 // Prelude
@@ -27,5 +27,5 @@ pub mod prelude {
     pub use crate::Rect;
     pub use crate::{Batch, PrimitiveMode};
     pub use crate::{Linedef, Map, Sector, Vertex};
-    pub use crate::{SampleMode, Texture};
+    pub use crate::{RepeatMode, SampleMode, Texture};
 }

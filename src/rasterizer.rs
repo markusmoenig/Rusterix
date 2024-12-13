@@ -15,7 +15,7 @@ impl Rasterizer {
         tile_size: usize,
         projection_matrix_2d: Option<Mat3<f32>>,
         projection_matrix_3d: Mat4<f32>,
-        atlas: &Texture,
+        textures: &[Texture],
     ) {
         batches_2d.par_iter_mut().for_each(|batch| {
             batch.project(projection_matrix_2d);
@@ -127,7 +127,6 @@ impl Rasterizer {
 
                                                     let z = 1.0 - (1.0 / one_over_z);
 
-                                                    // println!("z {}", z);
                                                     let zidx =
                                                         (ty - tile.y) * tile.width + (tx - tile.x);
 
@@ -145,15 +144,14 @@ impl Rasterizer {
                                                         let u = u_over_z / one_over_z;
                                                         let v = v_over_z / one_over_z;
 
-                                                        // Interpolate UV coordinates
-                                                        // let u = uv0.x * w.x + uv1.x * w.y + uv2.x * w.z;
-                                                        // let v =
-                                                        //     1.0 - (uv0.y * w.x + uv1.y * w.y + uv2.y * w.z);
-                                                        // u = u.clamp(0.0, 1.0);
-                                                        // v = v.clamp(0.0, 1.0);
-
                                                         // Sample the texture
-                                                        let texel = atlas.sample_linear(u, v);
+                                                        let texel = textures[batch.texture_index]
+                                                            .sample(
+                                                                u,
+                                                                v,
+                                                                batch.sample_mode,
+                                                                batch.repeat_mode,
+                                                            );
                                                         // let texel = [
                                                         //     (u * 255.0) as u8,
                                                         //     (v * 255.0) as u8,
@@ -257,11 +255,14 @@ impl Rasterizer {
                                                             // v = v.clamp(0.0, 1.0);
 
                                                             // Sample the texture
-                                                            let texel = atlas.sample(
-                                                                u,
-                                                                v,
-                                                                batch.sample_mode,
-                                                            );
+                                                            let texel = textures
+                                                                [batch.texture_index]
+                                                                .sample(
+                                                                    u,
+                                                                    v,
+                                                                    batch.sample_mode,
+                                                                    batch.repeat_mode,
+                                                                );
                                                             // let texel = [(u * 255.0) as u8, (v * 255.0) as u8, 0, 255];
 
                                                             // Write to framebuffer

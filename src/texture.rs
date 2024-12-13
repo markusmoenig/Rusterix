@@ -1,10 +1,23 @@
-/// Sample mode for textures.
+/// Sample mode for texture sampling.
 #[derive(Debug, Clone, Copy)]
 pub enum SampleMode {
     /// Nearest-neighbor sampling
     Nearest,
     /// Linear interpolation sampling
     Linear,
+}
+
+/// The repeat mode for texture sampling.
+#[derive(Debug, Clone, Copy)]
+pub enum RepeatMode {
+    /// Clamps UVs to [0, 1] (the default)
+    ClampXY,
+    /// Repeats texture in both X and Y
+    RepeatXY,
+    /// Repeats texture only in X
+    RepeatX,
+    /// Repeats texture only in Y
+    RepeatY,
 }
 
 pub struct Texture {
@@ -73,9 +86,33 @@ impl Texture {
         }
     }
 
-    /// Samples the texture using the specified sampling mode
-    pub fn sample(&self, u: f32, v: f32, mode: SampleMode) -> [u8; 4] {
-        match mode {
+    /// Samples the texture using the specified sampling and repeat mode
+    pub fn sample(
+        &self,
+        mut u: f32,
+        mut v: f32,
+        sample_mode: SampleMode,
+        repeat_mode: RepeatMode,
+    ) -> [u8; 4] {
+        match repeat_mode {
+            RepeatMode::ClampXY => {
+                u = u.clamp(0.0, 1.0);
+                v = v.clamp(0.0, 1.0);
+            }
+            RepeatMode::RepeatXY => {
+                u = u - u.floor(); // Wraps in both X and Y
+                v = v - v.floor();
+            }
+            RepeatMode::RepeatX => {
+                u = u - u.floor(); // Wraps only in X
+                v = v.clamp(0.0, 1.0);
+            }
+            RepeatMode::RepeatY => {
+                u = u.clamp(0.0, 1.0);
+                v = v - v.floor(); // Wraps only in Y
+            }
+        }
+        match sample_mode {
             SampleMode::Nearest => self.sample_nearest(u, v),
             SampleMode::Linear => self.sample_linear(u, v),
         }
