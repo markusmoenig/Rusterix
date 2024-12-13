@@ -1,4 +1,4 @@
-use crate::{Batch, PrimitiveMode, Texture};
+use crate::{Batch, Pixel, PrimitiveMode, Texture};
 use rayon::prelude::*;
 use vek::{Mat3, Mat4, Vec2, Vec3, Vec4};
 pub struct Rasterizer;
@@ -63,6 +63,11 @@ impl Rasterizer {
                                 let uv0 = batch.uvs[i0];
                                 let uv1 = batch.uvs[i1];
                                 let uv2 = batch.uvs[i2];
+
+                                // Check if all three vertices are behind the near clipping plane
+                                if v0.z < 0.0 && v1.z < 0.0 && v2.z < 0.0 {
+                                    continue;
+                                }
 
                                 // Compute bounding box of the triangle
                                 let min_x = [v0.x, v1.x, v2.x]
@@ -148,13 +153,13 @@ impl Rasterizer {
                                                         // v = v.clamp(0.0, 1.0);
 
                                                         // Sample the texture
-                                                        // let texel = atlas.sample(u, v);
-                                                        let texel = [
-                                                            (u * 255.0) as u8,
-                                                            (v * 255.0) as u8,
-                                                            0,
-                                                            255,
-                                                        ];
+                                                        let texel = atlas.sample_linear(u, v);
+                                                        // let texel = [
+                                                        //     (u * 255.0) as u8,
+                                                        //     (v * 255.0) as u8,
+                                                        //     0,
+                                                        //     255,
+                                                        // ];
 
                                                         // Write to framebuffer
                                                         let idx = ((ty - tile.y) * tile.width
@@ -252,7 +257,11 @@ impl Rasterizer {
                                                             // v = v.clamp(0.0, 1.0);
 
                                                             // Sample the texture
-                                                            let texel = atlas.sample(u, v);
+                                                            let texel = atlas.sample(
+                                                                u,
+                                                                v,
+                                                                batch.sample_mode,
+                                                            );
                                                             // let texel = [(u * 255.0) as u8, (v * 255.0) as u8, 0, 255];
 
                                                             // Write to framebuffer
@@ -272,17 +281,13 @@ impl Rasterizer {
                                     for &(i0, i1, _) in batch.indices.iter() {
                                         let p0 = batch.projected_vertices[i0];
                                         let p1 = batch.projected_vertices[i1];
-                                        let uv0 = batch.uvs[i0];
-                                        let uv1 = batch.uvs[i1];
 
                                         self.rasterize_line_bresenham(
                                             Vec2::new(p0.x, p0.y),
                                             Vec2::new(p1.x, p1.y),
-                                            uv0,
-                                            uv1,
-                                            atlas,
                                             &mut buffer[..],
                                             tile,
+                                            &batch.color,
                                         );
                                     }
                                 }
@@ -290,17 +295,13 @@ impl Rasterizer {
                                     for i in 0..(batch.projected_vertices.len() - 1) {
                                         let p0 = batch.projected_vertices[i];
                                         let p1 = batch.projected_vertices[i + 1];
-                                        let uv0 = batch.uvs[i];
-                                        let uv1 = batch.uvs[i + 1];
 
                                         self.rasterize_line_bresenham(
                                             Vec2::new(p0.x, p0.y),
                                             Vec2::new(p1.x, p1.y),
-                                            uv0,
-                                            uv1,
-                                            atlas,
                                             &mut buffer[..],
                                             tile,
+                                            &batch.color,
                                         );
                                     }
                                 }
@@ -310,17 +311,13 @@ impl Rasterizer {
                                         let p0 = batch.projected_vertices[i];
                                         let p1 = batch.projected_vertices
                                             [(i + 1) % batch.projected_vertices.len()];
-                                        let uv0 = batch.uvs[i];
-                                        let uv1 = batch.uvs[(i + 1) % batch.uvs.len()];
 
                                         self.rasterize_line_bresenham(
                                             Vec2::new(p0.x, p0.y),
                                             Vec2::new(p1.x, p1.y),
-                                            uv0,
-                                            uv1,
-                                            atlas,
                                             &mut buffer[..],
                                             tile,
+                                            &batch.color,
                                         );
                                     }
                                 }
@@ -401,11 +398,9 @@ impl Rasterizer {
         &self,
         p0: Vec2<f32>,
         p1: Vec2<f32>,
-        uv0: Vec2<f32>,
-        uv1: Vec2<f32>,
-        atlas: &Texture,
         buffer: &mut [u8],
         tile: &TileRect,
+        color: &Pixel,
     ) {
         let x0 = p0.x as isize;
         let y0 = p0.y as isize;
@@ -428,17 +423,9 @@ impl Rasterizer {
             let ty = (y - tile.y as isize) as usize;
 
             if tx < tile.width && ty < tile.height {
-                // Interpolate UVs along the line
-                let t = (((x - x0) as f32) / ((x1 - x0) as f32)).clamp(0.0, 1.0);
-                let u = uv0.x + t * (uv1.x - uv0.x);
-                let v = uv0.y + t * (uv1.y - uv0.y);
-
-                // Sample texture
-                let texel = atlas.sample(u, v);
-
                 // Write to framebuffer
                 let idx = (ty * tile.width + tx) * 4;
-                buffer[idx..idx + 4].copy_from_slice(&texel);
+                buffer[idx..idx + 4].copy_from_slice(color);
             }
 
             let e2 = err * 2;
@@ -458,11 +445,9 @@ impl Rasterizer {
         &self,
         p0: Vec2<f32>,
         p1: Vec2<f32>,
-        uv0: Vec2<f32>,
-        uv1: Vec2<f32>,
-        atlas: &Texture,
         buffer: &mut [u8],
         tile: &TileRect,
+        color: &Pixel,
         line_width: f32,
     ) {
         fn distance_to_line(p0: Vec2<f32>, p1: Vec2<f32>, p: Vec2<f32>) -> f32 {
@@ -483,18 +468,12 @@ impl Rasterizer {
                 let dist = distance_to_line(p0, p1, p);
 
                 if dist <= line_width / 2.0 {
-                    let t = ((p.x - p0.x) / (p1.x - p0.x)).clamp(0.0, 1.0);
-                    let u = uv0.x + t * (uv1.x - uv0.x);
-                    let v = uv0.y + t * (uv1.y - uv0.y);
-
-                    let texel = atlas.sample(u, v);
-
                     let tile_tx = tx - tile.x;
                     let tile_ty = ty - tile.y;
 
                     if tile_tx < tile.width && tile_ty < tile.height {
                         let idx = (tile_ty * tile.width + tile_tx) * 4;
-                        buffer[idx..idx + 4].copy_from_slice(&texel);
+                        buffer[idx..idx + 4].copy_from_slice(color);
                     }
                 }
             }

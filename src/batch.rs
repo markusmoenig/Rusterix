@@ -1,15 +1,21 @@
-use crate::{Edge, Rect};
+use crate::{Edge, Pixel, Rect, SampleMode, WHITE};
 use vek::{Mat3, Mat4, Vec2, Vec3, Vec4};
 
+/// The primitive mode. The rasterizer can draw triangles and lines.
 #[derive(Debug, Clone, Copy)]
 pub enum PrimitiveMode {
+    /// Draw as triangles.
     Triangles,
+    /// Draw connected vertices / points.
     Lines,
+    /// Draw a line strip around the triangles.
     LineStrip,
+    /// Draw a closed line strip around the triangles.
     LineLoop,
 }
 
 use PrimitiveMode::*;
+use SampleMode::*;
 
 pub struct Batch<T> {
     // Render mode: triangles or lines
@@ -32,8 +38,15 @@ pub struct Batch<T> {
 
     /// Precomputed edges
     pub edges: Vec<[Edge; 3]>,
+
+    /// Color, used for lines.
+    pub color: Pixel,
+
+    /// SampleMode
+    pub sample_mode: SampleMode,
 }
 
+/// A batch of 3D vertices, indices and their UVs which make up a 2D polygons.
 impl Batch<Vec3<f32>> {
     /// Constructor for 2D vertices
     pub fn new_2d(
@@ -49,6 +62,8 @@ impl Batch<Vec3<f32>> {
             projected_vertices: vec![],
             bounding_box: None,
             edges: vec![],
+            color: WHITE,
+            sample_mode: Nearest,
         }
     }
 
@@ -61,17 +76,13 @@ impl Batch<Vec3<f32>> {
             Vec3::new(x + width, y, 1.0),          // Bottom-right
         ];
 
-        let indices = vec![
-            (0, 1, 2), // First triangle
-            (0, 2, 3), // Second triangle
-        ];
+        let indices = vec![(0, 1, 2), (0, 2, 3)];
 
-        // UV coordinates for a rectangle
         let uvs = vec![
-            Vec2::new(0.0, 0.0), // Bottom-left
             Vec2::new(0.0, 1.0), // Top-left
-            Vec2::new(1.0, 1.0), // Top-right
+            Vec2::new(0.0, 0.0), // Bottom-left
             Vec2::new(1.0, 0.0), // Bottom-right
+            Vec2::new(1.0, 1.0), // Top-right
         ];
 
         // fn is_ccw(v0: Vec2<f32>, v1: Vec2<f32>, v2: Vec2<f32>) -> bool {
@@ -84,7 +95,25 @@ impl Batch<Vec3<f32>> {
         Batch::new_2d(vertices, indices, uvs)
     }
 
-    /// Project 2D vertices using a Mat3 transformation matrix
+    /// Sets the drawing mode for the batch using the builder pattern.
+    pub fn mode(self, mode: PrimitiveMode) -> Self {
+        Self { mode, ..self }
+    }
+
+    /// Sets the sample mode for the batch using the builder pattern.
+    pub fn sample_mode(self, sample_mode: SampleMode) -> Self {
+        Self {
+            sample_mode,
+            ..self
+        }
+    }
+
+    /// Set the color for the batch using the builder pattern. Colors are only used for line drawing.
+    pub fn color(self, color: Pixel) -> Self {
+        Self { color, ..self }
+    }
+
+    /// Project 2D vertices using a optional Mat3 transformation matrix
     pub fn project(&mut self, matrix: Option<Mat3<f32>>) {
         if let Some(matrix) = matrix {
             self.projected_vertices = self.vertices.iter().map(|&v| matrix * v).collect();
@@ -135,6 +164,7 @@ impl Batch<Vec3<f32>> {
     }
 }
 
+/// A batch of 4D vertices, indices and their UVs which make up a 3D mesh.
 impl Batch<Vec4<f32>> {
     pub fn new_3d(
         vertices: Vec<Vec4<f32>>,
@@ -149,6 +179,8 @@ impl Batch<Vec4<f32>> {
             projected_vertices: vec![],
             bounding_box: None,
             edges: vec![],
+            color: WHITE,
+            sample_mode: Nearest,
         }
     }
 
@@ -259,6 +291,24 @@ impl Batch<Vec4<f32>> {
         Batch::new_3d(vertices, indices, uvs)
     }
 
+    /// Sets the drawing mode for the batch using the builder pattern.
+    pub fn mode(self, mode: PrimitiveMode) -> Self {
+        Self { mode, ..self }
+    }
+
+    /// Sets the sample mode for the batch using the builder pattern.
+    pub fn sample_mode(self, sample_mode: SampleMode) -> Self {
+        Self {
+            sample_mode,
+            ..self
+        }
+    }
+
+    /// Set the color for the batch using the builder pattern. Colors are only used for line drawing.
+    pub fn color(self, color: Pixel) -> Self {
+        Self { color, ..self }
+    }
+
     /// Project 3D vertices using a Mat4 transformation matrix
     pub fn project(&mut self, matrix: Mat4<f32>, viewport_width: f32, viewport_height: f32) {
         self.projected_vertices = self
@@ -270,7 +320,7 @@ impl Batch<Vec4<f32>> {
                 let mut vec = Vec4::new(result.x / w, result.y / w, result.z / w, 1.0);
 
                 vec.x = (result.x * 0.5 + 0.5) * viewport_width;
-                vec.y = (1.0 - (result.y * 0.5 + 0.5)) * viewport_height;
+                vec.y = (result.y * 0.5 + 0.5) * viewport_height;
 
                 vec
             })
