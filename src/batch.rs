@@ -11,10 +11,10 @@ pub struct Batch<T> {
     pub bounding_box: Option<Rect>,
 }
 
-impl Batch<Vec2<f32>> {
+impl Batch<Vec3<f32>> {
     /// Constructor for 2D vertices
     pub fn new_2d(
-        vertices: Vec<Vec2<f32>>,
+        vertices: Vec<Vec3<f32>>,
         indices: Vec<(usize, usize, usize)>,
         uvs: Vec<Vec2<f32>>,
     ) -> Self {
@@ -30,10 +30,10 @@ impl Batch<Vec2<f32>> {
     /// Create a Batch for a rectangle in 2D
     pub fn from_rectangle(x: f32, y: f32, width: f32, height: f32) -> Self {
         let vertices = vec![
-            Vec2::new(x, y),                  // Bottom-left
-            Vec2::new(x, y + height),         // Top-left
-            Vec2::new(x + width, y + height), // Top-right
-            Vec2::new(x + width, y),          // Bottom-right
+            Vec3::new(x, y, 1.0),                  // Bottom-left
+            Vec3::new(x, y + height, 1.0),         // Top-left
+            Vec3::new(x + width, y + height, 1.0), // Top-right
+            Vec3::new(x + width, y, 1.0),          // Bottom-right
         ];
 
         let indices = vec![
@@ -66,10 +66,9 @@ impl Batch<Vec2<f32>> {
                 .vertices
                 .iter()
                 .map(|&v| {
-                    // Extend Vec2 to Vec3 manually (homogeneous coordinates)
-                    let extended = Vec3::new(v.x, v.y, 1.0);
-                    let result = matrix * extended;
-                    Vec2::new(result.x, result.y) // Discard the z component
+                    let result = matrix * v;
+                    //Vec2::new(result.x, result.y)
+                    result
                 })
                 .collect();
         } else {
@@ -101,10 +100,9 @@ impl Batch<Vec2<f32>> {
     }
 }
 
-impl Batch<Vec3<f32>> {
-    /// Constructor for 3D vertices
+impl Batch<Vec4<f32>> {
     pub fn new_3d(
-        vertices: Vec<Vec3<f32>>,
+        vertices: Vec<Vec4<f32>>,
         indices: Vec<(usize, usize, usize)>,
         uvs: Vec<Vec2<f32>>,
     ) -> Self {
@@ -121,35 +119,35 @@ impl Batch<Vec3<f32>> {
     pub fn from_box(x: f32, y: f32, z: f32, width: f32, height: f32, depth: f32) -> Self {
         let vertices = vec![
             // Front face
-            Vec3::new(x, y, z),                  // Bottom-left-front
-            Vec3::new(x + width, y, z),          // Bottom-right-front
-            Vec3::new(x + width, y + height, z), // Top-right-front
-            Vec3::new(x, y + height, z),         // Top-left-front
+            Vec4::new(x, y, z, 1.0),                  // Bottom-left-front
+            Vec4::new(x + width, y, z, 1.0),          // Bottom-right-front
+            Vec4::new(x + width, y + height, z, 1.0), // Top-right-front
+            Vec4::new(x, y + height, z, 1.0),         // Top-left-front
             // Back face
-            Vec3::new(x, y, z + depth),         // Bottom-left-back
-            Vec3::new(x + width, y, z + depth), // Bottom-right-back
-            Vec3::new(x + width, y + height, z + depth), // Top-right-back
-            Vec3::new(x, y + height, z + depth), // Top-left-back
+            Vec4::new(x, y, z + depth, 1.0), // Bottom-left-back
+            Vec4::new(x + width, y, z + depth, 1.0), // Bottom-right-back
+            Vec4::new(x + width, y + height, z + depth, 1.0), // Top-right-back
+            Vec4::new(x, y + height, z + depth, 1.0), // Top-left-back
             // Left face
-            Vec3::new(x, y, z),                  // Bottom-left-front
-            Vec3::new(x, y + height, z),         // Top-left-front
-            Vec3::new(x, y + height, z + depth), // Top-left-back
-            Vec3::new(x, y, z + depth),          // Bottom-left-back
+            Vec4::new(x, y, z, 1.0),                  // Bottom-left-front
+            Vec4::new(x, y + height, z, 1.0),         // Top-left-front
+            Vec4::new(x, y + height, z + depth, 1.0), // Top-left-back
+            Vec4::new(x, y, z + depth, 1.0),          // Bottom-left-back
             // Right face
-            Vec3::new(x + width, y, z),          // Bottom-right-front
-            Vec3::new(x + width, y + height, z), // Top-right-front
-            Vec3::new(x + width, y + height, z + depth), // Top-right-back
-            Vec3::new(x + width, y, z + depth),  // Bottom-right-back
+            Vec4::new(x + width, y, z, 1.0), // Bottom-right-front
+            Vec4::new(x + width, y + height, z, 1.0), // Top-right-front
+            Vec4::new(x + width, y + height, z + depth, 1.0), // Top-right-back
+            Vec4::new(x + width, y, z + depth, 1.0), // Bottom-right-back
             // Top face
-            Vec3::new(x, y + height, z),                 // Top-left-front
-            Vec3::new(x + width, y + height, z),         // Top-right-front
-            Vec3::new(x + width, y + height, z + depth), // Top-right-back
-            Vec3::new(x, y + height, z + depth),         // Top-left-back
+            Vec4::new(x, y + height, z, 1.0), // Top-left-front
+            Vec4::new(x + width, y + height, z, 1.0), // Top-right-front
+            Vec4::new(x + width, y + height, z + depth, 1.0), // Top-right-back
+            Vec4::new(x, y + height, z + depth, 1.0), // Top-left-back
             // Bottom face
-            Vec3::new(x, y, z),                 // Bottom-left-front
-            Vec3::new(x + width, y, z),         // Bottom-right-front
-            Vec3::new(x + width, y, z + depth), // Bottom-right-back
-            Vec3::new(x, y, z + depth),         // Bottom-left-back
+            Vec4::new(x, y, z, 1.0),                 // Bottom-left-front
+            Vec4::new(x + width, y, z, 1.0),         // Bottom-right-front
+            Vec4::new(x + width, y, z + depth, 1.0), // Bottom-right-back
+            Vec4::new(x, y, z + depth, 1.0),         // Bottom-left-back
         ];
 
         let indices = vec![
@@ -230,10 +228,9 @@ impl Batch<Vec3<f32>> {
             .vertices
             .iter()
             .map(|&v| {
-                let extended = Vec4::new(v.x, v.y, v.z, 1.0);
-                let result = matrix * extended;
+                let result = matrix * v;
                 let w = result.w;
-                let mut vec = Vec3::new(result.x / w, result.y / w, result.z / w);
+                let mut vec = Vec4::new(result.x / w, result.y / w, result.z / w, 1.0);
 
                 vec.x = (result.x * 0.5 + 0.5) * viewport_width;
                 vec.y = (1.0 - (result.y * 0.5 + 0.5)) * viewport_height;

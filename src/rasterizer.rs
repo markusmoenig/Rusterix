@@ -1,14 +1,14 @@
 use crate::{Batch, Texture};
 use rayon::prelude::*;
-use vek::{Mat3, Mat4, Vec2, Vec3};
+use vek::{Mat3, Mat4, Vec2, Vec3, Vec4};
 pub struct Rasterizer;
 
 impl Rasterizer {
     #[allow(clippy::too_many_arguments)]
     pub fn rasterize(
         &self,
-        batches_2d: &mut [Batch<Vec2<f32>>],
-        batches_3d: &mut [Batch<Vec3<f32>>],
+        batches_2d: &mut [Batch<Vec3<f32>>],
+        batches_3d: &mut [Batch<Vec4<f32>>],
         pixels: &mut [u8],
         width: usize,
         height: usize,
@@ -99,59 +99,69 @@ impl Rasterizer {
 
                                         // Edge function tests for triangle rasterization
                                         let edge0 = self.edge_function_3d(v0, v1, p);
-                                        let edge1 = self.edge_function_3d(v1, v2, p);
-                                        let edge2 = self.edge_function_3d(v2, v0, p);
+                                        if edge0 >= 0.0 {
+                                            let edge1 = self.edge_function_3d(v1, v2, p);
+                                            if edge1 >= 0.0 {
+                                                let edge2 = self.edge_function_3d(v2, v0, p);
+                                                if edge2 >= 0.0 {
+                                                    // Interpolate barycentric coordinates
+                                                    let w =
+                                                        self.barycentric_weights_3d(v0, v1, v2, p);
 
-                                        if edge0 >= 0.0 && edge1 >= 0.0 && edge2 >= 0.0 {
-                                            // Interpolate barycentric coordinates
-                                            let w = self.barycentric_weights_3d(v0, v1, v2, p);
+                                                    // Compute reciprocal depths (1 / z) for each vertex
+                                                    let z0 = 1.0 / v0.z;
+                                                    let z1 = 1.0 / v1.z;
+                                                    let z2 = 1.0 / v2.z;
 
-                                            // Compute reciprocal depths (1 / z) for each vertex
-                                            let z0 = 1.0 / v0.z;
-                                            let z1 = 1.0 / v1.z;
-                                            let z2 = 1.0 / v2.z;
+                                                    // Interpolate reciprocal depth
+                                                    let one_over_z = z0 * w.x + z1 * w.y + z2 * w.z;
+                                                    // let one_over_z =
+                                                    // (w.x / v0.z) + (w.y / v1.z) + (w.z / v2.z);
 
-                                            // Interpolate reciprocal depth
-                                            let one_over_z = z0 * w.x + z1 * w.y + z2 * w.z;
-                                            // let one_over_z =
-                                            // (w.x / v0.z) + (w.y / v1.z) + (w.z / v2.z);
+                                                    let z = 1.0 - (1.0 / one_over_z);
 
-                                            let z = 1.0 - (1.0 / one_over_z);
+                                                    // println!("z {}", z);
+                                                    let zidx =
+                                                        (ty - tile.y) * tile.width + (tx - tile.x);
 
-                                            // println!("z {}", z);
-                                            let zidx = (ty - tile.y) * tile.width + (tx - tile.x);
+                                                    if z < z_buffer[zidx] {
+                                                        z_buffer[zidx] = z;
 
-                                            if z < z_buffer[zidx] {
-                                                z_buffer[zidx] = z;
+                                                        // Perspective-correct interpolation of UVs
+                                                        let u_over_z = uv0.x * z0 * w.x
+                                                            + uv1.x * z1 * w.y
+                                                            + uv2.x * z2 * w.z;
+                                                        let v_over_z = uv0.y * z0 * w.x
+                                                            + uv1.y * z1 * w.y
+                                                            + uv2.y * z2 * w.z;
 
-                                                // Perspective-correct interpolation of UVs
-                                                let u_over_z = uv0.x * z0 * w.x
-                                                    + uv1.x * z1 * w.y
-                                                    + uv2.x * z2 * w.z;
-                                                let v_over_z = uv0.y * z0 * w.x
-                                                    + uv1.y * z1 * w.y
-                                                    + uv2.y * z2 * w.z;
+                                                        let u = u_over_z / one_over_z;
+                                                        let v = v_over_z / one_over_z;
 
-                                                let u = u_over_z / one_over_z;
-                                                let v = v_over_z / one_over_z;
+                                                        // Interpolate UV coordinates
+                                                        // let u = uv0.x * w.x + uv1.x * w.y + uv2.x * w.z;
+                                                        // let v =
+                                                        //     1.0 - (uv0.y * w.x + uv1.y * w.y + uv2.y * w.z);
+                                                        // u = u.clamp(0.0, 1.0);
+                                                        // v = v.clamp(0.0, 1.0);
 
-                                                // Interpolate UV coordinates
-                                                // let u = uv0.x * w.x + uv1.x * w.y + uv2.x * w.z;
-                                                // let v =
-                                                //     1.0 - (uv0.y * w.x + uv1.y * w.y + uv2.y * w.z);
-                                                // u = u.clamp(0.0, 1.0);
-                                                // v = v.clamp(0.0, 1.0);
+                                                        // Sample the texture
+                                                        // let texel = atlas.sample(u, v);
+                                                        let texel = [
+                                                            (u * 255.0) as u8,
+                                                            (v * 255.0) as u8,
+                                                            0,
+                                                            255,
+                                                        ];
 
-                                                // Sample the texture
-                                                // let texel = atlas.sample(u, v);
-                                                let texel =
-                                                    [(u * 255.0) as u8, (v * 255.0) as u8, 0, 255];
-
-                                                // Write to framebuffer
-                                                let idx = ((ty - tile.y) * tile.width
-                                                    + (tx - tile.x))
-                                                    * 4;
-                                                buffer[idx..idx + 4].copy_from_slice(&texel);
+                                                        // Write to framebuffer
+                                                        let idx = ((ty - tile.y) * tile.width
+                                                            + (tx - tile.x))
+                                                            * 4;
+                                                        buffer[idx..idx + 4]
+                                                            .copy_from_slice(&texel);
+                                                    }
+                                                }
                                             }
                                         }
                                     }
@@ -214,28 +224,34 @@ impl Rasterizer {
                                         let p = Vec2::new(tx as f32 + 0.5, ty as f32 + 0.5);
 
                                         // Edge function tests for triangle rasterization
-                                        let edge2 = self.edge_function_2d(v0, v1, p);
-                                        let edge1 = self.edge_function_2d(v1, v2, p);
-                                        let edge0 = self.edge_function_2d(v2, v0, p);
+                                        let edge0 = self.edge_function_2d(v0, v1, p);
+                                        if edge0 >= 0.0 {
+                                            let edge1 = self.edge_function_2d(v1, v2, p);
+                                            if edge1 >= 0.0 {
+                                                let edge2 = self.edge_function_2d(v2, v0, p);
+                                                if edge2 >= 0.0 {
+                                                    // Interpolate barycentric coordinates
+                                                    let w =
+                                                        self.barycentric_weights_2d(v0, v1, v2, p);
 
-                                        if edge0 >= 0.0 && edge1 >= 0.0 && edge2 >= 0.0 {
-                                            // Interpolate barycentric coordinates
-                                            let w = self.barycentric_weights_2d(v0, v1, v2, p);
+                                                    // Interpolate UV coordinates
+                                                    let u = uv0.x * w.x + uv1.x * w.y + uv2.x * w.z;
+                                                    let v = 1.0
+                                                        - (uv0.y * w.x + uv1.y * w.y + uv2.y * w.z);
+                                                    // u = u.clamp(0.0, 1.0);
+                                                    // v = v.clamp(0.0, 1.0);
 
-                                            // Interpolate UV coordinates
-                                            let u = uv0.x * w.x + uv1.x * w.y + uv2.x * w.z;
-                                            let v = 1.0 - (uv0.y * w.x + uv1.y * w.y + uv2.y * w.z);
-                                            // u = u.clamp(0.0, 1.0);
-                                            // v = v.clamp(0.0, 1.0);
+                                                    // Sample the texture
+                                                    let texel = atlas.sample(u, v);
+                                                    // let texel = [(u * 255.0) as u8, (v * 255.0) as u8, 0, 255];
 
-                                            // Sample the texture
-                                            let texel = atlas.sample(u, v);
-                                            // let texel = [(u * 255.0) as u8, (v * 255.0) as u8, 0, 255];
-
-                                            // Write to framebuffer
-                                            let idx =
-                                                ((ty - tile.y) * tile.width + (tx - tile.x)) * 4;
-                                            buffer[idx..idx + 4].copy_from_slice(&texel);
+                                                    // Write to framebuffer
+                                                    let idx = ((ty - tile.y) * tile.width
+                                                        + (tx - tile.x))
+                                                        * 4;
+                                                    buffer[idx..idx + 4].copy_from_slice(&texel);
+                                                }
+                                            }
                                         }
                                     }
                                 }
@@ -269,28 +285,6 @@ impl Rasterizer {
     /// Compute the barycentric weights for a Vec2
     fn barycentric_weights_2d(
         &self,
-        a: Vec2<f32>,
-        b: Vec2<f32>,
-        c: Vec2<f32>,
-        p: Vec2<f32>,
-    ) -> Vec3<f32> {
-        let ac = c - a;
-        let ab = b - a;
-        let ap = p - a;
-        let pc = c - p;
-        let pb = b - p;
-
-        let area = ac.x * ab.y - ac.y * ab.x;
-        let alpha = (pc.x * pb.y - pc.y * pb.x) / area;
-        let beta = (ac.x * ap.y - ac.y * ap.x) / area;
-        let gamma = 1.0 - alpha - beta;
-
-        Vec3::new(alpha, beta, gamma)
-    }
-
-    /// Compute the barycentric weights for a Vec2
-    fn barycentric_weights_3d(
-        &self,
         a: Vec3<f32>,
         b: Vec3<f32>,
         c: Vec3<f32>,
@@ -310,15 +304,37 @@ impl Rasterizer {
         Vec3::new(alpha, beta, gamma)
     }
 
+    /// Compute the barycentric weights for a Vec2
+    fn barycentric_weights_3d(
+        &self,
+        a: Vec4<f32>,
+        b: Vec4<f32>,
+        c: Vec4<f32>,
+        p: Vec2<f32>,
+    ) -> Vec3<f32> {
+        let ac = c - a;
+        let ab = b - a;
+        let ap = p - a;
+        let pc = c - p;
+        let pb = b - p;
+
+        let area = ac.x * ab.y - ac.y * ab.x;
+        let alpha = (pc.x * pb.y - pc.y * pb.x) / area;
+        let beta = (ac.x * ap.y - ac.y * ap.x) / area;
+        let gamma = 1.0 - alpha - beta;
+
+        Vec3::new(alpha, beta, gamma)
+    }
+
     /// Edge function for a triangle for a Vec2
-    fn edge_function_2d(&self, v0: Vec2<f32>, v1: Vec2<f32>, p: Vec2<f32>) -> f32 {
+    fn edge_function_2d(&self, v0: Vec3<f32>, v1: Vec3<f32>, p: Vec2<f32>) -> f32 {
         let edge = v1 - v0;
         let to_point = p - v0;
         edge.x * to_point.y - edge.y * to_point.x
     }
 
     /// Edge function for a triangle for a Vec3
-    fn edge_function_3d(&self, v0: Vec3<f32>, v1: Vec3<f32>, p: Vec2<f32>) -> f32 {
+    fn edge_function_3d(&self, v0: Vec4<f32>, v1: Vec4<f32>, p: Vec2<f32>) -> f32 {
         let edge = Vec2::new(v1.x - v0.x, v1.y - v0.y);
         let to_point = Vec2::new(p.x - v0.x, p.y - v0.y);
         edge.x * to_point.y - edge.y * to_point.x
