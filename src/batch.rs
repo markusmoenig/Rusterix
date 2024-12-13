@@ -1,14 +1,37 @@
-use crate::Rect;
+use crate::{Edge, Rect};
 use vek::{Mat3, Mat4, Vec2, Vec3, Vec4};
 
+#[derive(Debug, Clone, Copy)]
+pub enum PrimitiveMode {
+    Triangles,
+    Lines,
+    LineStrip,
+    LineLoop,
+}
+
+use PrimitiveMode::*;
+
 pub struct Batch<T> {
+    // Render mode: triangles or lines
+    pub mode: PrimitiveMode,
+
+    /// 2D or 3D input vertices which will get projected into 2D space. 2D and 3D vertices expect 3D and 4D vecs with the last component set to 1.0.
     vertices: Vec<T>,
 
+    /// The indices of the vertices of the batch.
     pub indices: Vec<(usize, usize, usize)>,
+
+    /// The UVs of the batch.
     pub uvs: Vec<Vec2<f32>>,
 
+    /// Projected vertices
     pub projected_vertices: Vec<T>,
+
+    /// 2D Bounding box of the projected vertices of the batch.
     pub bounding_box: Option<Rect>,
+
+    /// Precomputed edges
+    pub edges: Vec<[Edge; 3]>,
 }
 
 impl Batch<Vec3<f32>> {
@@ -19,11 +42,13 @@ impl Batch<Vec3<f32>> {
         uvs: Vec<Vec2<f32>>,
     ) -> Self {
         Batch {
+            mode: Triangles,
             vertices,
             indices,
             uvs,
             projected_vertices: vec![],
             bounding_box: None,
+            edges: vec![],
         }
     }
 
@@ -37,8 +62,8 @@ impl Batch<Vec3<f32>> {
         ];
 
         let indices = vec![
-            (2, 1, 0), // First triangle
-            (3, 2, 0), // Second triangle
+            (0, 1, 2), // First triangle
+            (0, 2, 3), // Second triangle
         ];
 
         // UV coordinates for a rectangle
@@ -62,19 +87,29 @@ impl Batch<Vec3<f32>> {
     /// Project 2D vertices using a Mat3 transformation matrix
     pub fn project(&mut self, matrix: Option<Mat3<f32>>) {
         if let Some(matrix) = matrix {
-            self.projected_vertices = self
-                .vertices
-                .iter()
-                .map(|&v| {
-                    let result = matrix * v;
-                    //Vec2::new(result.x, result.y)
-                    result
-                })
-                .collect();
+            self.projected_vertices = self.vertices.iter().map(|&v| matrix * v).collect();
         } else {
             self.projected_vertices = self.vertices.clone();
         }
+
+        // Precompute batch bounding box
         self.bounding_box = Some(self.calculate_bounding_box());
+
+        // Precompute edges for each triangle
+        self.edges = self
+            .indices
+            .iter()
+            .map(|&(i0, i1, i2)| {
+                let v0 = self.projected_vertices[i0];
+                let v1 = self.projected_vertices[i1];
+                let v2 = self.projected_vertices[i2];
+                [
+                    Edge::new(Vec2::new(v0.x, v0.y), Vec2::new(v1.x, v1.y)),
+                    Edge::new(Vec2::new(v1.x, v1.y), Vec2::new(v2.x, v2.y)),
+                    Edge::new(Vec2::new(v2.x, v2.y), Vec2::new(v0.x, v0.y)),
+                ]
+            })
+            .collect();
     }
 
     /// Calculate the bounding box for the projected vertices
@@ -107,11 +142,13 @@ impl Batch<Vec4<f32>> {
         uvs: Vec<Vec2<f32>>,
     ) -> Self {
         Batch {
+            mode: Triangles,
             vertices,
             indices,
             uvs,
             projected_vertices: vec![],
             bounding_box: None,
+            edges: vec![],
         }
     }
 
@@ -239,7 +276,24 @@ impl Batch<Vec4<f32>> {
             })
             .collect();
 
+        // Precompute batch bounding box
         self.bounding_box = Some(self.calculate_bounding_box());
+
+        // Precompute edges for each triangle
+        self.edges = self
+            .indices
+            .iter()
+            .map(|&(i0, i1, i2)| {
+                let v0 = self.projected_vertices[i0];
+                let v1 = self.projected_vertices[i1];
+                let v2 = self.projected_vertices[i2];
+                [
+                    Edge::new(Vec2::new(v0.x, v0.y), Vec2::new(v1.x, v1.y)),
+                    Edge::new(Vec2::new(v1.x, v1.y), Vec2::new(v2.x, v2.y)),
+                    Edge::new(Vec2::new(v2.x, v2.y), Vec2::new(v0.x, v0.y)),
+                ]
+            })
+            .collect();
     }
 
     /// Calculate the bounding box for the projected vertices
