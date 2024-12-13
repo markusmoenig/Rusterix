@@ -2,6 +2,10 @@
 name = "rusterix"
 version = "0.1.0"
 edition = "2021"
+description = "Rusterix is a fast software renderer for 2D and 3D triangles and lines"
+author = "Markus Moenig <markus@moenig.io>"
+license = "Apache-2.0 AND MIT"
+repository = "https://github.com/markusmoenig/Rusterix"
 
 [dependencies]
 theframework = { git = "https://github.com/markusmoenig/TheFramework" }
