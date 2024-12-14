@@ -23,6 +23,7 @@ pub enum RepeatMode {
     RepeatY,
 }
 
+/// Textures contain RGBA [u8;4] pixels.
 pub struct Texture {
     pub data: Vec<u8>,
     pub width: usize,

@@ -52,14 +52,14 @@ impl TheTrait for Cube {
 
         self.i += 10;
 
-        // Rasterize the batch
+        // Rasterize the batches
         Rasterizer {}.rasterize(
             &mut self.batches_2d,
             &mut self.batches_3d,
-            pixels,
-            ctx.width,
-            ctx.height,
-            80,
+            pixels,     // Destination buffer
+            ctx.width,  // Destination buffer width
+            ctx.height, // Destination buffer height
+            80,         // Tile size
             projection_matrix_2d,
             projection_matrix_3d,
             &self.textures,

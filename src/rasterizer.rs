@@ -3,6 +3,7 @@ use rayon::prelude::*;
 use vek::{Mat3, Mat4, Vec2, Vec3, Vec4};
 pub struct Rasterizer;
 
+/// Rasterizes batches of 2D and 3D meshes (and lines).
 impl Rasterizer {
     #[allow(clippy::too_many_arguments)]
     pub fn rasterize(
@@ -54,121 +55,173 @@ impl Rasterizer {
                             && bbox.y < (tile.y + tile.height) as f32
                             && (bbox.y + bbox.height) > tile.y as f32
                         {
-                            // Process each triangle in the batch
-                            for (triangle_index, edges) in batch.edges.iter().enumerate() {
-                                let (i0, i1, i2) = batch.indices[triangle_index];
-                                let v0 = batch.projected_vertices[i0];
-                                let v1 = batch.projected_vertices[i1];
-                                let v2 = batch.projected_vertices[i2];
-                                let uv0 = batch.uvs[i0];
-                                let uv1 = batch.uvs[i1];
-                                let uv2 = batch.uvs[i2];
+                            match batch.mode {
+                                PrimitiveMode::Triangles => {
+                                    // Process each triangle in the batch
+                                    for (triangle_index, edges) in batch.edges.iter().enumerate() {
+                                        let (i0, i1, i2) = batch.indices[triangle_index];
+                                        let v0 = batch.projected_vertices[i0];
+                                        let v1 = batch.projected_vertices[i1];
+                                        let v2 = batch.projected_vertices[i2];
+                                        let uv0 = batch.uvs[i0];
+                                        let uv1 = batch.uvs[i1];
+                                        let uv2 = batch.uvs[i2];
 
-                                // Check if all three vertices are behind the near clipping plane
-                                if v0.z < 0.0 && v1.z < 0.0 && v2.z < 0.0 {
-                                    continue;
-                                }
+                                        // Check if all three vertices are behind the near clipping plane
+                                        if v0.z < 0.0 && v1.z < 0.0 && v2.z < 0.0 {
+                                            continue;
+                                        }
 
-                                // Compute bounding box of the triangle
-                                let min_x = [v0.x, v1.x, v2.x]
-                                    .iter()
-                                    .cloned()
-                                    .fold(f32::INFINITY, f32::min)
-                                    .floor()
-                                    .max(tile.x as f32)
-                                    as usize;
-                                let max_x = [v0.x, v1.x, v2.x]
-                                    .iter()
-                                    .cloned()
-                                    .fold(f32::NEG_INFINITY, f32::max)
-                                    .ceil()
-                                    .min((tile.x + tile.width) as f32)
-                                    as usize;
-                                let min_y = [v0.y, v1.y, v2.y]
-                                    .iter()
-                                    .cloned()
-                                    .fold(f32::INFINITY, f32::min)
-                                    .floor()
-                                    .max(tile.y as f32)
-                                    as usize;
-                                let max_y = [v0.y, v1.y, v2.y]
-                                    .iter()
-                                    .cloned()
-                                    .fold(f32::NEG_INFINITY, f32::max)
-                                    .ceil()
-                                    .min((tile.y + tile.height) as f32)
-                                    as usize;
+                                        // Compute bounding box of the triangle
+                                        let min_x = [v0.x, v1.x, v2.x]
+                                            .iter()
+                                            .cloned()
+                                            .fold(f32::INFINITY, f32::min)
+                                            .floor()
+                                            .max(tile.x as f32)
+                                            as usize;
+                                        let max_x = [v0.x, v1.x, v2.x]
+                                            .iter()
+                                            .cloned()
+                                            .fold(f32::NEG_INFINITY, f32::max)
+                                            .ceil()
+                                            .min((tile.x + tile.width) as f32)
+                                            as usize;
+                                        let min_y = [v0.y, v1.y, v2.y]
+                                            .iter()
+                                            .cloned()
+                                            .fold(f32::INFINITY, f32::min)
+                                            .floor()
+                                            .max(tile.y as f32)
+                                            as usize;
+                                        let max_y = [v0.y, v1.y, v2.y]
+                                            .iter()
+                                            .cloned()
+                                            .fold(f32::NEG_INFINITY, f32::max)
+                                            .ceil()
+                                            .min((tile.y + tile.height) as f32)
+                                            as usize;
 
-                                // Rasterize the triangle within its bounding box
-                                for ty in min_y..max_y {
-                                    for tx in min_x..max_x {
-                                        let p = Vec2::new(tx as f32 + 0.5, ty as f32 + 0.5);
+                                        // Rasterize the triangle within its bounding box
+                                        for ty in min_y..max_y {
+                                            for tx in min_x..max_x {
+                                                let p = Vec2::new(tx as f32 + 0.5, ty as f32 + 0.5);
 
-                                        // Evaluate the edges
-                                        let edge0 = edges[0].evaluate(p);
-                                        if edge0 >= 0.0 && edges[0].visible {
-                                            let edge1 = edges[1].evaluate(p);
-                                            if edge1 >= 0.0 && edges[1].visible {
-                                                let edge2 = edges[2].evaluate(p);
-                                                if edge2 >= 0.0 && edges[2].visible {
-                                                    // Interpolate barycentric coordinates
-                                                    let w =
-                                                        self.barycentric_weights_3d(v0, v1, v2, p);
-
-                                                    // Compute reciprocal depths (1 / z) for each vertex
-                                                    let z0 = 1.0 / v0.z;
-                                                    let z1 = 1.0 / v1.z;
-                                                    let z2 = 1.0 / v2.z;
-
-                                                    // Interpolate reciprocal depth
-                                                    let one_over_z = z0 * w.x + z1 * w.y + z2 * w.z;
-                                                    // let one_over_z =
-                                                    // (w.x / v0.z) + (w.y / v1.z) + (w.z / v2.z);
-
-                                                    let z = 1.0 - (1.0 / one_over_z);
-
-                                                    let zidx =
-                                                        (ty - tile.y) * tile.width + (tx - tile.x);
-
-                                                    if z < z_buffer[zidx] {
-                                                        z_buffer[zidx] = z;
-
-                                                        // Perspective-correct interpolation of UVs
-                                                        let u_over_z = uv0.x * z0 * w.x
-                                                            + uv1.x * z1 * w.y
-                                                            + uv2.x * z2 * w.z;
-                                                        let v_over_z = uv0.y * z0 * w.x
-                                                            + uv1.y * z1 * w.y
-                                                            + uv2.y * z2 * w.z;
-
-                                                        let u = u_over_z / one_over_z;
-                                                        let v = v_over_z / one_over_z;
-
-                                                        // Sample the texture
-                                                        let texel = textures[batch.texture_index]
-                                                            .sample(
-                                                                u,
-                                                                v,
-                                                                batch.sample_mode,
-                                                                batch.repeat_mode,
+                                                // Evaluate the edges
+                                                let edge0 = edges[0].evaluate(p);
+                                                if edge0 >= 0.0 && edges[0].visible {
+                                                    let edge1 = edges[1].evaluate(p);
+                                                    if edge1 >= 0.0 && edges[1].visible {
+                                                        let edge2 = edges[2].evaluate(p);
+                                                        if edge2 >= 0.0 && edges[2].visible {
+                                                            // Interpolate barycentric coordinates
+                                                            let w = self.barycentric_weights_3d(
+                                                                v0, v1, v2, p,
                                                             );
-                                                        // let texel = [
-                                                        //     (u * 255.0) as u8,
-                                                        //     (v * 255.0) as u8,
-                                                        //     0,
-                                                        //     255,
-                                                        // ];
 
-                                                        // Write to framebuffer
-                                                        let idx = ((ty - tile.y) * tile.width
-                                                            + (tx - tile.x))
-                                                            * 4;
-                                                        buffer[idx..idx + 4]
-                                                            .copy_from_slice(&texel);
+                                                            // Compute reciprocal depths (1 / z) for each vertex
+                                                            let z0 = 1.0 / v0.z;
+                                                            let z1 = 1.0 / v1.z;
+                                                            let z2 = 1.0 / v2.z;
+
+                                                            // Interpolate reciprocal depth
+                                                            let one_over_z =
+                                                                z0 * w.x + z1 * w.y + z2 * w.z;
+                                                            // let one_over_z =
+                                                            // (w.x / v0.z) + (w.y / v1.z) + (w.z / v2.z);
+
+                                                            let z = 1.0 - (1.0 / one_over_z);
+
+                                                            let zidx = (ty - tile.y) * tile.width
+                                                                + (tx - tile.x);
+
+                                                            if z < z_buffer[zidx] {
+                                                                z_buffer[zidx] = z;
+
+                                                                // Perspective-correct interpolation of UVs
+                                                                let u_over_z = uv0.x * z0 * w.x
+                                                                    + uv1.x * z1 * w.y
+                                                                    + uv2.x * z2 * w.z;
+                                                                let v_over_z = uv0.y * z0 * w.x
+                                                                    + uv1.y * z1 * w.y
+                                                                    + uv2.y * z2 * w.z;
+
+                                                                let u = u_over_z / one_over_z;
+                                                                let v = v_over_z / one_over_z;
+
+                                                                // Sample the texture
+                                                                let texel = textures
+                                                                    [batch.texture_index]
+                                                                    .sample(
+                                                                        u,
+                                                                        v,
+                                                                        batch.sample_mode,
+                                                                        batch.repeat_mode,
+                                                                    );
+                                                                // let texel = [
+                                                                //     (u * 255.0) as u8,
+                                                                //     (v * 255.0) as u8,
+                                                                //     0,
+                                                                //     255,
+                                                                // ];
+
+                                                                // Write to framebuffer
+                                                                let idx = ((ty - tile.y)
+                                                                    * tile.width
+                                                                    + (tx - tile.x))
+                                                                    * 4;
+                                                                buffer[idx..idx + 4]
+                                                                    .copy_from_slice(&texel);
+                                                            }
+                                                        }
                                                     }
                                                 }
                                             }
                                         }
+                                    }
+                                }
+                                PrimitiveMode::Lines => {
+                                    for &(i0, i1, _) in batch.indices.iter() {
+                                        let p0 = batch.projected_vertices[i0];
+                                        let p1 = batch.projected_vertices[i1];
+
+                                        self.rasterize_line_bresenham(
+                                            Vec2::new(p0.x, p0.y),
+                                            Vec2::new(p1.x, p1.y),
+                                            &mut buffer[..],
+                                            tile,
+                                            &batch.color,
+                                        );
+                                    }
+                                }
+                                PrimitiveMode::LineStrip => {
+                                    for i in 0..(batch.projected_vertices.len() - 1) {
+                                        let p0 = batch.projected_vertices[i];
+                                        let p1 = batch.projected_vertices[i + 1];
+
+                                        self.rasterize_line_bresenham(
+                                            Vec2::new(p0.x, p0.y),
+                                            Vec2::new(p1.x, p1.y),
+                                            &mut buffer[..],
+                                            tile,
+                                            &batch.color,
+                                        );
+                                    }
+                                }
+
+                                PrimitiveMode::LineLoop => {
+                                    for i in 0..batch.projected_vertices.len() {
+                                        let p0 = batch.projected_vertices[i];
+                                        let p1 = batch.projected_vertices
+                                            [(i + 1) % batch.projected_vertices.len()];
+
+                                        self.rasterize_line_bresenham(
+                                            Vec2::new(p0.x, p0.y),
+                                            Vec2::new(p1.x, p1.y),
+                                            &mut buffer[..],
+                                            tile,
+                                            &batch.color,
+                                        );
                                     }
                                 }
                             }

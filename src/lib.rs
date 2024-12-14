@@ -1,3 +1,6 @@
+//! Rusterix is a fast software renderer for 2D and 3D triangles and lines.
+//! Its goals are to provide an easy and portable alternative to hardware rasterization for retro and low-poly games.
+
 pub mod batch;
 pub mod edge;
 pub mod intodata;

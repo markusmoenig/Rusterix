@@ -1,4 +1,5 @@
-![Logo](images/logo_small.png)
+![Logo](images/logo.png)
+
 
 Rusterix is a fast software renderer for 2D and 3D triangles and lines. Its goals are to provide an easy and portable alternative to hardware rasterization for retro and low-poly games.
 
@@ -16,26 +17,27 @@ Because of these optimizations, Rusterix is not a general-purpose abstraction of
 
 Once finished, you will be able to use Rusterix in several different ways:
 
-* As a library to rasterize 2D and 3D meshes, WIP. See the `Cube` example.
-* As a retro game engine with an editor for Doom style games. Programmable in Rust and an inbuild scripting system (TBD).
+* As a library to rasterize 2D and 3D meshes, WIP. See the `Cube` and `Obj` examples.
+* As a retro game engine with text driven editors for Doom like maps. Programmable in Rust and an inbuild scripting system (TBD).
 
 My goals for both of these use cases:
 
 * Fast software based rendering.
 * Procedural materials and particles for in game effects and content.
+* Texture based and procedural entities / characters.
 
 ## Motivation
 
 I use `rusterix` as the rendering engine for my [Eldiron](https://github.com/markusmoenig/Eldiron) project. But it makes sense to split it out into a re-usable library and engine.
 
-![Logo](images/screenshot.png)
-
 ## Examples
 
 To execute an example just do something like ```cargo run --release --example cube```.
 
-* **cube** displays a spinning, textured cube.
-* **obj** demonstrates how to load and display an obj file.
+* **cube** displays a spinning, textured cube. ![Cube](images/screenshot.png)
+
+* **obj** demonstrates how to load and display an obj file. ![Logo](images/screenshot_obj.png)
+
 
 
 ## Disclaimer

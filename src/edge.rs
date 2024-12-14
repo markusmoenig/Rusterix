@@ -1,5 +1,6 @@
 use vek::Vec2;
 
+/// Represents a pre-computed edge of a 2D triangle. Only used internally.
 #[derive(Debug, Clone, Copy)]
 pub struct Edge {
     a: f32,

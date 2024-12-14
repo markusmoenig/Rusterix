@@ -25,9 +25,9 @@ impl TheTrait for ObjDemo {
         Self: Sized,
     {
         let batches_2d = vec![Batch::from_rectangle(0.0, 0.0, 200.0, 200.0)];
-        let batches_3d = vec![
-            Batch::from_obj(Path::new("examples/teapot.obj")).sample_mode(SampleMode::Nearest)
-        ];
+        let batches_3d = vec![Batch::from_obj(Path::new("examples/teapot.obj"))
+            .sample_mode(SampleMode::Linear)
+            .repeat_mode(RepeatMode::RepeatXY)];
 
         Self {
             textures: vec![Texture::from_image(Path::new("images/logo.png"))],
@@ -53,14 +53,14 @@ impl TheTrait for ObjDemo {
 
         self.i += 10;
 
-        // Rasterize the batch
+        // Rasterize the batches
         Rasterizer {}.rasterize(
             &mut self.batches_2d,
             &mut self.batches_3d,
-            pixels,
-            ctx.width,
-            ctx.height,
-            80,
+            pixels,     // Destination buffer
+            ctx.width,  // Destination buffer width
+            ctx.height, // Destination buffer height
+            80,         // Tile size
             projection_matrix_2d,
             projection_matrix_3d,
             &self.textures,
@@ -86,7 +86,7 @@ impl TheTrait for ObjDemo {
     }
 
     fn window_title(&self) -> String {
-        "Rusterix Cube Demo".to_string()
+        "Rusterix OBJ Demo".to_string()
     }
 }
 
