@@ -1,3 +1,6 @@
+use crate::IntoDataInput;
+use std::io::Cursor;
+
 /// Sample mode for texture sampling.
 #[derive(Debug, Clone, Copy)]
 pub enum SampleMode {
@@ -65,10 +68,12 @@ impl Texture {
     }
 
     /// Loads a texture from an image file at the given path.
-    pub fn from_image_path(path: &str) -> Self {
-        // Load the image
-        let img = image::ImageReader::open(path)
-            .expect("Failed to open the image file")
+    pub fn from_image(input: impl IntoDataInput) -> Self {
+        // Load the image from the input source
+        let data = input.load_data().expect("Failed to load data");
+        let img = image::ImageReader::new(Cursor::new(data))
+            .with_guessed_format()
+            .expect("Failed to read image format")
             .decode()
             .expect("Failed to decode the image");
 

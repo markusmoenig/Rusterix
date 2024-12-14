@@ -106,11 +106,11 @@ impl Rasterizer {
 
                                         // Evaluate the edges
                                         let edge0 = edges[0].evaluate(p);
-                                        if edge0 >= 0.0 {
+                                        if edge0 >= 0.0 && edges[0].visible {
                                             let edge1 = edges[1].evaluate(p);
-                                            if edge1 >= 0.0 {
+                                            if edge1 >= 0.0 && edges[1].visible {
                                                 let edge2 = edges[2].evaluate(p);
-                                                if edge2 >= 0.0 {
+                                                if edge2 >= 0.0 && edges[2].visible {
                                                     // Interpolate barycentric coordinates
                                                     let w =
                                                         self.barycentric_weights_3d(v0, v1, v2, p);

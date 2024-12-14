@@ -4,29 +4,30 @@ use theframework::*;
 use vek::{Mat4, Vec3, Vec4};
 
 fn main() {
-    let cube = Cube::new();
+    let demo = ObjDemo::new();
     let mut app = TheApp::new();
 
-    () = app.run(Box::new(cube));
+    () = app.run(Box::new(demo));
 }
 
 // This example uses raw draw calls into rusterix, bypassing the engine API.
 
-pub struct Cube {
+pub struct ObjDemo {
     textures: Vec<Texture>,
     batches_2d: Vec<Batch<Vec3<f32>>>,
     batches_3d: Vec<Batch<Vec4<f32>>>,
     i: i32,
 }
 
-impl TheTrait for Cube {
+impl TheTrait for ObjDemo {
     fn new() -> Self
     where
         Self: Sized,
     {
         let batches_2d = vec![Batch::from_rectangle(0.0, 0.0, 200.0, 200.0)];
-        let batches_3d =
-            vec![Batch::from_box(-0.5, -0.5, -0.5, 1.0, 1.0, 1.0).sample_mode(SampleMode::Nearest)];
+        let batches_3d = vec![
+            Batch::from_obj(Path::new("examples/teapot.obj")).sample_mode(SampleMode::Nearest)
+        ];
 
         Self {
             textures: vec![Texture::from_image(Path::new("images/logo.png"))],
@@ -36,7 +37,6 @@ impl TheTrait for Cube {
         }
     }
 
-    /// Draw a cube and a rectangle
     fn draw(&mut self, pixels: &mut [u8], ctx: &mut TheContext) {
         let _start = get_time();
 
@@ -48,7 +48,8 @@ impl TheTrait for Cube {
                 * Mat4::translation_3d(Vec3::new(0.0, 0.0, -2.0))
                 * Mat4::rotation_x((self.i as f32 * 0.0002).sin() * 8.0)
                 * Mat4::rotation_y((self.i as f32 * 0.0004).cos() * 4.0)
-                * Mat4::rotation_z((self.i as f32 * 0.0008).sin() * 2.0);
+                * Mat4::rotation_z((self.i as f32 * 0.0008).sin() * 2.0)
+                * Mat4::scaling_3d(Vec3::new(0.3, 0.3, 0.3));
 
         self.i += 10;
 
@@ -66,7 +67,7 @@ impl TheTrait for Cube {
         );
 
         let _stop = get_time();
-        //println!("Execution time: {:?} ms.", _stop - _start);
+        // println!("Execution time: {:?} ms.", _stop - _start);
     }
 
     // Touch down event

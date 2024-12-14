@@ -1,4 +1,4 @@
-![Logo](images/logo.png)
+![Logo](images/logo_small.png)
 
 Rusterix is a fast software renderer for 2D and 3D triangles and lines. Its goals are to provide an easy and portable alternative to hardware rasterization for retro and low-poly games.
 
@@ -29,6 +29,14 @@ My goals for both of these use cases:
 I use `rusterix` as the rendering engine for my [Eldiron](https://github.com/markusmoenig/Eldiron) project. But it makes sense to split it out into a re-usable library and engine.
 
 ![Logo](images/screenshot.png)
+
+## Examples
+
+To execute an example just do something like ```cargo run --release --example cube```.
+
+* **cube** displays a spinning, textured cube.
+* **obj** demonstrates how to load and display an obj file.
+
 
 ## Disclaimer
 

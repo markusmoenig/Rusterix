@@ -1,4 +1,5 @@
-use crate::{Edge, Pixel, Rect, RepeatMode, SampleMode, WHITE};
+use crate::wavefront::Wavefront;
+use crate::{Edge, IntoDataInput, Pixel, Rect, RepeatMode, SampleMode, WHITE};
 use vek::{Mat3, Mat4, Vec2, Vec3, Vec4};
 
 /// The primitive mode. The rasterizer can draw triangles and lines.
@@ -14,6 +15,18 @@ pub enum PrimitiveMode {
     LineLoop,
 }
 
+/// The CullMode of the batch, Off by default.
+#[derive(Debug, Clone, Copy)]
+pub enum CullMode {
+    /// Render all faces
+    Off,
+    /// Cull front-facing triangles
+    Front,
+    /// Cull back-facing triangles
+    Back,
+}
+
+use CullMode::*;
 use PrimitiveMode::*;
 use RepeatMode::*;
 use SampleMode::*;
@@ -49,6 +62,9 @@ pub struct Batch<T> {
     /// RepeatMode, default is ClampXY.
     pub repeat_mode: RepeatMode,
 
+    /// CullMode, default is None.
+    pub cull_mode: CullMode,
+
     /// Texture index. Specifies the texture index into the texture array during rasterization for this batch. Default is 0.
     pub texture_index: usize,
 }
@@ -72,6 +88,7 @@ impl Batch<Vec3<f32>> {
             color: WHITE,
             sample_mode: Nearest,
             repeat_mode: ClampXY,
+            cull_mode: Off,
             texture_index: 0,
         }
     }
@@ -123,6 +140,11 @@ impl Batch<Vec3<f32>> {
         }
     }
 
+    /// Sets the cull mode for the batch using the builder pattern.
+    pub fn cull_mode(self, cull_mode: CullMode) -> Self {
+        Self { cull_mode, ..self }
+    }
+
     /// Set the color for the batch using the builder pattern. Colors are only used for line drawing.
     pub fn color(self, color: Pixel) -> Self {
         Self { color, ..self }
@@ -156,9 +178,9 @@ impl Batch<Vec3<f32>> {
                 let v1 = self.projected_vertices[i1];
                 let v2 = self.projected_vertices[i2];
                 [
-                    Edge::new(Vec2::new(v0.x, v0.y), Vec2::new(v1.x, v1.y)),
-                    Edge::new(Vec2::new(v1.x, v1.y), Vec2::new(v2.x, v2.y)),
-                    Edge::new(Vec2::new(v2.x, v2.y), Vec2::new(v0.x, v0.y)),
+                    Edge::new(Vec2::new(v0.x, v0.y), Vec2::new(v1.x, v1.y), true),
+                    Edge::new(Vec2::new(v1.x, v1.y), Vec2::new(v2.x, v2.y), true),
+                    Edge::new(Vec2::new(v2.x, v2.y), Vec2::new(v0.x, v0.y), true),
                 ]
             })
             .collect();
@@ -205,6 +227,7 @@ impl Batch<Vec4<f32>> {
             color: WHITE,
             sample_mode: Nearest,
             repeat_mode: ClampXY,
+            cull_mode: Off,
             texture_index: 0,
         }
     }
@@ -316,6 +339,21 @@ impl Batch<Vec4<f32>> {
         Batch::new_3d(vertices, indices, uvs)
     }
 
+    /// Load a Batch from an OBJ file using the Wavefront struct.
+    pub fn from_obj(input: impl IntoDataInput) -> Self {
+        // Load data using the flexible input trait
+        let data = input
+            .load_data()
+            .expect("Failed to load data from the provided input source");
+
+        // Parse the OBJ data
+        let obj_data = String::from_utf8(data).expect("Input data is not valid UTF-8");
+        let wavefront = Wavefront::parse_string(obj_data);
+
+        // Convert the Wavefront object into a Batch
+        wavefront.to_batch()
+    }
+
     /// Sets the drawing mode for the batch using the builder pattern.
     pub fn mode(self, mode: PrimitiveMode) -> Self {
         Self { mode, ..self }
@@ -335,6 +373,11 @@ impl Batch<Vec4<f32>> {
             repeat_mode,
             ..self
         }
+    }
+
+    /// Sets the cull mode for the batch using the builder pattern.
+    pub fn cull_mode(self, cull_mode: CullMode) -> Self {
+        Self { cull_mode, ..self }
     }
 
     /// Set the color for the batch using the builder pattern. Colors are only used for line drawing.
@@ -376,15 +419,41 @@ impl Batch<Vec4<f32>> {
             .iter()
             .map(|&(i0, i1, i2)| {
                 let v0 = self.projected_vertices[i0];
-                let v1 = self.projected_vertices[i1];
-                let v2 = self.projected_vertices[i2];
+                let mut v1 = self.projected_vertices[i1];
+                let mut v2 = self.projected_vertices[i2];
+
+                let visible = match self.cull_mode {
+                    CullMode::Off => {
+                        // No culling; all triangles are visible
+                        if self.is_front_facing(&v0, &v1, &v2) {
+                            std::mem::swap(&mut v1, &mut v2);
+                        }
+                        true
+                    }
+                    CullMode::Front => {
+                        // Cull front-facing triangles
+                        !self.is_front_facing(&v0, &v1, &v2)
+                    }
+                    CullMode::Back => {
+                        // Cull back-facing triangles
+                        self.is_front_facing(&v0, &v1, &v2)
+                    }
+                };
+
+                // Return edges for the triangle, marking them as visible or invisible
                 [
-                    Edge::new(Vec2::new(v0.x, v0.y), Vec2::new(v1.x, v1.y)),
-                    Edge::new(Vec2::new(v1.x, v1.y), Vec2::new(v2.x, v2.y)),
-                    Edge::new(Vec2::new(v2.x, v2.y), Vec2::new(v0.x, v0.y)),
+                    Edge::new(Vec2::new(v0.x, v0.y), Vec2::new(v1.x, v1.y), visible),
+                    Edge::new(Vec2::new(v1.x, v1.y), Vec2::new(v2.x, v2.y), visible),
+                    Edge::new(Vec2::new(v2.x, v2.y), Vec2::new(v0.x, v0.y), visible),
                 ]
             })
             .collect();
+    }
+
+    /// Returns true if the triangle faces to the front.
+    fn is_front_facing(&self, v0: &Vec4<f32>, v1: &Vec4<f32>, v2: &Vec4<f32>) -> bool {
+        let orientation = (v1.x - v0.x) * (v2.y - v0.y) - (v1.y - v0.y) * (v2.x - v0.x);
+        orientation > 0.0 // CCW convention for front-facing
     }
 
     /// Calculate the bounding box for the projected vertices
