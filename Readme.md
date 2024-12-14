@@ -34,7 +34,7 @@ I use `rusterix` as the rendering engine for my [Eldiron](https://github.com/mar
 
 To execute an example just do something like ```cargo run --release --example cube```.
 
-* **cube** displays a spinning, textured cube. ![Cube](images/screenshot.png)
+* **cube** displays a spinning, textured cube. ![Cube](images/screenshot_cube.png)
 
 * **obj** demonstrates how to load and display an obj file. ![Logo](images/screenshot_obj.png)
 
