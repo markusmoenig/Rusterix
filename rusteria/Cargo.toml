@@ -1,0 +1,15 @@
+[package]
+name = "rusteria"
+version = "0.1.0"
+edition = "2021"
+description = "Rusteria is the game engine of Rusterix."
+license = "Apache-2.0 AND MIT"
+repository = "https://github.com/markusmoenig/Rusterix"
+keywords = ["software", "rendering", "graphics", "game", "3d", "doom", "engine"]
+
+[dependencies]
+clap = "4.5.23"
+rustyline = "15.0.0"
+rusterix = { version = "0.1.1", path = "../." }
+shared = { path = "../shared" }
+rustc-hash = "2.1.0"

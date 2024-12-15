@@ -1,3 +1,6 @@
 /target
 .DS_store
 /data
+history.txt
+/map.rxmap
+/example_game

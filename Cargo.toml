@@ -1,11 +1,15 @@
 [package]
 name = "rusterix"
-version = "0.1.2"
+version = "0.1.3"
 edition = "2021"
-description = "Rusterix is a fast software renderer for 2D and 3D triangles and lines"
+description = "Rusterix is a fast software renderer for 2D and 3D meshes and lines."
 author = "Markus Moenig <markus@moenig.io>"
 license = "Apache-2.0 AND MIT"
 repository = "https://github.com/markusmoenig/Rusterix"
+keywords = ["software", "rendering", "graphics", "game", "3d", "doom", "engine"]
+
+[workspace]
+members = [".", "rusteria", "shared"]
 
 [dependencies]
 # theframework = { git = "https://github.com/markusmoenig/TheFramework" }
