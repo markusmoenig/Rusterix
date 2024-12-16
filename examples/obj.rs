@@ -1,7 +1,7 @@
 use rusterix::prelude::*;
 use std::path::Path;
 use theframework::*;
-use vek::{Mat4, Vec3, Vec4};
+use vek::{Mat4, Vec3};
 
 fn main() {
     let demo = ObjDemo::new();
@@ -14,8 +14,7 @@ fn main() {
 
 pub struct ObjDemo {
     textures: Vec<Texture>,
-    batches_2d: Vec<Batch<Vec3<f32>>>,
-    batches_3d: Vec<Batch<Vec4<f32>>>,
+    scene: Scene,
     i: i32,
 }
 
@@ -24,15 +23,17 @@ impl TheTrait for ObjDemo {
     where
         Self: Sized,
     {
-        let batches_2d = vec![Batch::from_rectangle(0.0, 0.0, 200.0, 200.0)];
-        let batches_3d = vec![Batch::from_obj(Path::new("examples/teapot.obj"))
-            .sample_mode(SampleMode::Linear)
-            .repeat_mode(RepeatMode::RepeatXY)];
+        let mut scene = Scene::from_static(
+            vec![Batch::from_rectangle(0.0, 0.0, 200.0, 200.0)],
+            vec![Batch::from_obj(Path::new("examples/teapot.obj"))
+                .sample_mode(SampleMode::Linear)
+                .repeat_mode(RepeatMode::RepeatXY)],
+        );
+        scene.background = Some(Box::new(VGrayGradientShader::new()));
 
         Self {
             textures: vec![Texture::from_image(Path::new("images/logo.png"))],
-            batches_2d,
-            batches_3d,
+            scene,
             i: 0,
         }
     }
@@ -55,8 +56,7 @@ impl TheTrait for ObjDemo {
 
         // Rasterize the batches
         Rasterizer {}.rasterize(
-            &mut self.batches_2d,
-            &mut self.batches_3d,
+            &mut self.scene,
             pixels,     // Destination buffer
             ctx.width,  // Destination buffer width
             ctx.height, // Destination buffer height

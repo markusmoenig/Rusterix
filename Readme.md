@@ -38,8 +38,6 @@ To execute an example just do something like ```cargo run --release --example cu
 
 * **obj** demonstrates how to load and display an obj file. ![Logo](images/screenshot_obj.png)
 
-
-
 ## Disclaimer
 
 Rusterix is an independent project and is not affiliated with or endorsed by the Rust programming language team or the Rust Foundation. All trademarks are the property of their respective owners.

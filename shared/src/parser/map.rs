@@ -7,8 +7,8 @@ use rusterix::Map;
 pub struct MapParser {
     scanner: Scanner,
 
-    current: Token,
-    previous: Token,
+    pub current: Token,
+    pub previous: Token,
 
     error: Option<ParseError>,
 }
@@ -34,7 +34,7 @@ impl MapParser {
         self.error = None;
         self.scanner = Scanner::new(source);
 
-        let mut map = Map::default();
+        let map = Map::default();
 
         Ok(map)
     }

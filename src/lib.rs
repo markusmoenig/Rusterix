@@ -7,6 +7,8 @@ pub mod intodata;
 pub mod map;
 pub mod rasterizer;
 pub mod rect;
+pub mod scene;
+pub mod shader;
 pub mod texture;
 pub mod wavefront;
 
@@ -23,15 +25,19 @@ pub use crate::{
     map::{linedef::Linedef, sector::Sector, vertex::Vertex, Map},
     rasterizer::Rasterizer,
     rect::Rect,
+    scene::Scene,
+    shader::{vgradient::VGrayGradientShader, Shader},
     texture::{RepeatMode, SampleMode, Texture},
 };
 
 // Prelude
 pub mod prelude {
+    pub use crate::scene::Scene;
     pub use crate::Edge;
     pub use crate::Rasterizer;
     pub use crate::Rect;
     pub use crate::{Batch, CullMode, PrimitiveMode};
     pub use crate::{Linedef, Map, Sector, Vertex};
     pub use crate::{RepeatMode, SampleMode, Texture};
+    pub use crate::{Shader, VGrayGradientShader};
 }

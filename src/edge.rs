@@ -19,6 +19,7 @@ impl Edge {
     }
 
     /// Evaluate the edge function for a point p
+    #[inline(always)]
     pub fn evaluate(&self, p: Vec2<f32>) -> f32 {
         self.a * p.x + self.b * p.y + self.c
     }

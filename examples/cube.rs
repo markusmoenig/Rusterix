@@ -1,7 +1,7 @@
 use rusterix::prelude::*;
 use std::path::Path;
 use theframework::*;
-use vek::{Mat4, Vec3, Vec4};
+use vek::{Mat4, Vec3};
 
 fn main() {
     let cube = Cube::new();
@@ -14,8 +14,7 @@ fn main() {
 
 pub struct Cube {
     textures: Vec<Texture>,
-    batches_2d: Vec<Batch<Vec3<f32>>>,
-    batches_3d: Vec<Batch<Vec4<f32>>>,
+    scene: Scene,
     i: i32,
 }
 
@@ -24,14 +23,15 @@ impl TheTrait for Cube {
     where
         Self: Sized,
     {
-        let batches_2d = vec![Batch::from_rectangle(0.0, 0.0, 200.0, 200.0)];
-        let batches_3d =
-            vec![Batch::from_box(-0.5, -0.5, -0.5, 1.0, 1.0, 1.0).sample_mode(SampleMode::Nearest)];
+        let mut scene = Scene::from_static(
+            vec![Batch::from_rectangle(0.0, 0.0, 200.0, 200.0)],
+            vec![Batch::from_box(-0.5, -0.5, -0.5, 1.0, 1.0, 1.0).sample_mode(SampleMode::Nearest)],
+        );
+        scene.background = Some(Box::new(VGrayGradientShader::new()));
 
         Self {
             textures: vec![Texture::from_image(Path::new("images/logo.png"))],
-            batches_2d,
-            batches_3d,
+            scene,
             i: 0,
         }
     }
@@ -54,8 +54,7 @@ impl TheTrait for Cube {
 
         // Rasterize the batches
         Rasterizer {}.rasterize(
-            &mut self.batches_2d,
-            &mut self.batches_3d,
+            &mut self.scene,
             pixels,     // Destination buffer
             ctx.width,  // Destination buffer width
             ctx.height, // Destination buffer height
@@ -66,7 +65,7 @@ impl TheTrait for Cube {
         );
 
         let _stop = get_time();
-        //println!("Execution time: {:?} ms.", _stop - _start);
+        // println!("Execution time: {:?} ms.", _stop - _start);
     }
 
     // Touch down event
