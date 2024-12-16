@@ -26,6 +26,12 @@ My goals for both of these use cases:
 * Procedural materials and particles for in game effects and content.
 * Texture based and procedural entities / characters.
 
+## Implemented Features
+
+* Fast software-based rendering.
+* Supports batches of 2D and 3D geometry, each with configurable parameters (e.g., DrawMode, SamplingMode, CullingMode, RepeatMode, TextureIndex, etc.).
+* Shaders can be applied to the screen or individual batches.
+
 ## Motivation
 
 I use `rusterix` as the rendering engine for my [Eldiron](https://github.com/markusmoenig/Eldiron) project. But it makes sense to split it out into a re-usable library and engine.

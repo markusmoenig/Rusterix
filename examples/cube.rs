@@ -58,7 +58,7 @@ impl TheTrait for Cube {
             pixels,     // Destination buffer
             ctx.width,  // Destination buffer width
             ctx.height, // Destination buffer height
-            80,         // Tile size
+            200,        // Tile size
             projection_matrix_2d,
             projection_matrix_3d,
             &self.textures,
