@@ -2385,7 +2385,6 @@ dependencies = [
  "rustc-hash 2.1.0",
  "rusterix",
  "rustyline",
- "shared",
 ]
 
 [[package]]
@@ -2397,9 +2396,11 @@ dependencies = [
  "obj-rs",
  "rayon",
  "rect_packer",
+ "rustc-hash 2.1.0",
  "serde",
  "serde_json",
  "theframework",
+ "uuid",
  "vek",
 ]
 

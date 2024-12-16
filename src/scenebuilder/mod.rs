@@ -1,7 +1,9 @@
-use rusterix::{Map, Scene};
+pub mod d2preview;
+
+use crate::{Map, Scene};
 
 #[allow(unused)]
-pub trait MapBuilder: Send + Sync {
+pub trait SceneBuilder: Send + Sync {
     fn new() -> Self
     where
         Self: Sized;

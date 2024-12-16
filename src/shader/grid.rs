@@ -1,11 +1,22 @@
 use crate::{vec4_to_pixel, Pixel, Shader};
 use vek::{Vec2, Vec4};
 
-pub struct GridShader;
+pub struct GridShader {
+    offset: Vec2<f32>,
+}
 
 impl Shader for GridShader {
     fn new() -> Self {
-        GridShader
+        Self {
+            offset: Vec2::zero(),
+        }
+    }
+
+    fn set_parameter_vec2(&mut self, key: &str, value: Vec2<f32>) {
+        match key {
+            "offset" => self.offset = value,
+            _ => {}
+        }
     }
 
     fn shade_pixel(&self, uv: Vec2<f32>, screen: Vec2<f32>) -> Pixel {
@@ -30,11 +41,10 @@ impl Shader for GridShader {
         }
 
         let position = uv * screen;
-        let offset = Vec2::zero();
         let grid_size = 30.0;
         let subdivisions = 2.0;
 
-        let origin = screen / 2.0 + offset;
+        let origin = screen / 2.0 + self.offset;
         let grid_size = Vec2::new(grid_size, grid_size);
         let sub_grid_div = Vec2::new(subdivisions, subdivisions);
 

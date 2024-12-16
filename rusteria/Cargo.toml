@@ -11,5 +11,4 @@ keywords = ["software", "rendering", "graphics", "game", "3d", "doom", "engine"]
 clap = "4.5.23"
 rustyline = "15.0.0"
 rusterix = { version = "0.1.1", path = "../." }
-shared = { path = "../shared" }
 rustc-hash = "2.1.0"

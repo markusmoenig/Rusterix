@@ -2,7 +2,9 @@ pub mod linedef;
 pub mod sector;
 pub mod vertex;
 
-use theframework::prelude::*;
+use serde::{Deserialize, Serialize};
+use uuid::Uuid;
+use vek::{Vec2, Vec4};
 
 use linedef::*;
 use sector::*;
@@ -22,7 +24,7 @@ pub struct Map {
     #[serde(default)]
     pub name: String,
 
-    pub offset: Vec2f,
+    pub offset: Vec2<f32>,
     pub grid_size: f32,
     pub subdivisions: f32,
 
@@ -32,11 +34,11 @@ pub struct Map {
 
     // For temporary line previews
     #[serde(skip)]
-    pub curr_grid_pos: Option<Vec2f>,
+    pub curr_grid_pos: Option<Vec2<f32>>,
     #[serde(skip)]
-    pub curr_mouse_pos: Option<Vec2f>,
+    pub curr_mouse_pos: Option<Vec2<f32>>,
     #[serde(skip)]
-    pub curr_rectangle: Option<(Vec2f, Vec2f)>,
+    pub curr_rectangle: Option<(Vec2<f32>, Vec2<f32>)>,
 
     pub vertices: Vec<Vertex>,
     pub linedefs: Vec<Linedef>,
@@ -45,7 +47,7 @@ pub struct Map {
     // Camera Mode
     pub camera: MapCamera,
     #[serde(skip)]
-    pub camera_xz: Option<Vec2f>,
+    pub camera_xz: Option<Vec2<f32>>,
 
     // Selection
     pub selected_vertices: Vec<u32>,
@@ -65,7 +67,7 @@ impl Map {
             id: Uuid::new_v4(),
             name: "New Model".to_string(),
 
-            offset: Vec2f::zero(),
+            offset: Vec2::zero(),
             grid_size: 30.0,
             subdivisions: 1.0,
 
@@ -95,7 +97,7 @@ impl Map {
     }
 
     /// Generate a bounding box for all vertices in the map
-    pub fn bounding_box(&self) -> Option<Vec4f> {
+    pub fn bounding_box(&self) -> Option<Vec4<f32>> {
         if self.vertices.is_empty() {
             return None; // No vertices in the map
         }
@@ -127,7 +129,7 @@ impl Map {
         let height = max_y - min_y;
 
         // Return the bounding box as Vec4f (x, y, width, height)
-        Some(Vec4f::new(min_x, min_y, width, height))
+        Some(Vec4::new(min_x, min_y, width, height))
     }
 
     //
