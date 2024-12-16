@@ -13,6 +13,7 @@ impl Shader for GridShader {
     }
 
     fn set_parameter_vec2(&mut self, key: &str, value: Vec2<f32>) {
+        #[allow(clippy::single_match)]
         match key {
             "offset" => self.offset = value,
             _ => {}

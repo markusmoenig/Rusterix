@@ -1,7 +1,7 @@
 use rusterix::prelude::*;
 use std::path::Path;
 use theframework::*;
-use vek::{Mat4, Vec3};
+use vek::Vec2;
 
 fn main() {
     let cube = Cube::new();
@@ -14,8 +14,8 @@ fn main() {
 
 pub struct Cube {
     textures: Vec<Texture>,
+    camera: Box<dyn D3Camera>,
     scene: Scene,
-    i: i32,
 }
 
 impl TheTrait for Cube {
@@ -31,8 +31,8 @@ impl TheTrait for Cube {
 
         Self {
             textures: vec![Texture::from_image(Path::new("images/logo.png"))],
+            camera: Box::new(D3OrbitCamera::new()),
             scene,
-            i: 0,
         }
     }
 
@@ -42,16 +42,6 @@ impl TheTrait for Cube {
 
         let projection_matrix_2d = None;
 
-        // Rotation code taken from euc
-        let projection_matrix_3d =
-            Mat4::perspective_fov_lh_zo(1.3, ctx.width as f32, ctx.height as f32, 0.01, 100.0)
-                * Mat4::translation_3d(Vec3::new(0.0, 0.0, -2.0))
-                * Mat4::rotation_x((self.i as f32 * 0.0002).sin() * 8.0)
-                * Mat4::rotation_y((self.i as f32 * 0.0004).cos() * 4.0)
-                * Mat4::rotation_z((self.i as f32 * 0.0008).sin() * 2.0);
-
-        self.i += 10;
-
         // Rasterize the batches
         Rasterizer {}.rasterize(
             &mut self.scene,
@@ -60,7 +50,13 @@ impl TheTrait for Cube {
             ctx.height, // Destination buffer height
             200,        // Tile size
             projection_matrix_2d,
-            projection_matrix_3d,
+            self.camera.view_projection_matrix(
+                75.0,
+                ctx.width as f32,
+                ctx.height as f32,
+                0.1,
+                100.0,
+            ),
             &self.textures,
         );
 
@@ -68,19 +64,18 @@ impl TheTrait for Cube {
         // println!("Execution time: {:?} ms.", _stop - _start);
     }
 
-    // Touch down event
-    fn touch_down(&mut self, _x: f32, _y: f32, _ctx: &mut TheContext) -> bool {
-        false
-    }
-
-    // Touch up event
-    fn touch_up(&mut self, _x: f32, _y: f32, _ctx: &mut TheContext) -> bool {
-        false
+    // Hover event
+    fn hover(&mut self, x: f32, y: f32, ctx: &mut TheContext) -> bool {
+        self.camera.set_parameter_vec2(
+            "from_normalized",
+            Vec2::new(x / ctx.width as f32, y / ctx.height as f32),
+        );
+        true
     }
 
     // Query if the widget needs a redraw
     fn update(&mut self, _ctx: &mut TheContext) -> bool {
-        true
+        false
     }
 
     fn window_title(&self) -> String {

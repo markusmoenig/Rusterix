@@ -2,6 +2,7 @@
 //! Its goals are to provide an easy and portable alternative to hardware rasterization for retro and low-poly games.
 
 pub mod batch;
+pub mod camera;
 pub mod edge;
 pub mod intodata;
 pub mod map;
@@ -45,6 +46,7 @@ pub const WHITE: Pixel = [255, 255, 255, 255];
 // Re-exports
 pub use crate::{
     batch::{Batch, CullMode, PrimitiveMode},
+    camera::{d3orbit::D3OrbitCamera, D3Camera},
     edge::Edge,
     intodata::IntoDataInput,
     map::{linedef::Linedef, sector::Sector, vertex::Vertex, Map},
@@ -66,6 +68,7 @@ pub mod prelude {
     pub use crate::Rect;
     pub use crate::{pixel_to_vec4, vec4_to_pixel};
     pub use crate::{Batch, CullMode, PrimitiveMode};
+    pub use crate::{D3Camera, D3OrbitCamera};
     pub use crate::{GridShader, Shader, VGrayGradientShader};
     pub use crate::{Linedef, Map, Sector, Vertex};
     pub use crate::{RepeatMode, SampleMode, Texture};
