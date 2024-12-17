@@ -14,7 +14,7 @@ fn main() {
 
 pub struct ObjDemo {
     textures: Vec<Texture>,
-    camera: Box<dyn D3Camera>,
+    camera: D3OrbitCamera,
     scene: Scene,
 }
 
@@ -23,17 +23,17 @@ impl TheTrait for ObjDemo {
     where
         Self: Sized,
     {
-        let mut scene = Scene::from_static(
+        let scene = Scene::from_static(
             vec![Batch::from_rectangle(0.0, 0.0, 200.0, 200.0)],
             vec![Batch::from_obj(Path::new("examples/teapot.obj"))
                 .sample_mode(SampleMode::Linear)
                 .repeat_mode(RepeatMode::RepeatXY)],
-        );
-        scene.background = Some(Box::new(VGrayGradientShader::new()));
+        )
+        .background(Box::new(VGrayGradientShader::new()));
 
         Self {
             textures: vec![Texture::from_image(Path::new("images/logo.png"))],
-            camera: Box::new(D3OrbitCamera::new()),
+            camera: D3OrbitCamera::new(),
             scene,
         }
     }

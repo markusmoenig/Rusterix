@@ -17,33 +17,39 @@ Rendering a rectangle and a 3D cube is as easy as:
 
 ```rust
 // Create a scene with a static 2D rectangle and a box
-let mut scene = Scene::from_static(
+let scene = Scene::from_static(
     vec![Batch::from_rectangle(0.0, 0.0, 200.0, 200.0)],
     vec![Batch::from_box(-0.5, -0.5, -0.5, 1.0, 1.0, 1.0).sample_mode(SampleMode::Nearest)],
-);
-
-// Set a gradient background shader
-scene.background = Some(Box::new(VGrayGradientShader::new()));
+)
+.background(Box::new(VGrayGradientShader::new())); // Apply a background shader
 
 // Textures needed by the scene
 let textures = vec![Texture::from_image(Path::new("images/logo.png"))];
+
+// Create a camera
+let camera = D3OrbitCamera::new();
 
 let width = 800;
 let height = 600;
 let mut pixels = vec![0; width * height * 4];
 
-// Create the projection matrices for 2D and 3D
-let projection_matrix_2d = None;
-let projection_matrix_3d = Mat4::perspective_fov_lh_zo(1.3, width as f32, height as f32, 0.01, 100.0);
+// Create the view projection camera matrix
+let projection_matrix_3d = camera.view_projection_matrix(
+    75.0, // Fov
+    width as f32,
+    height as f32,
+    0.1, // Near plane
+    100.0, // Far plane
+);
 
 // Rasterize the scene
 Rasterizer {}.rasterize(
     &mut scene,
-    pixels, 
+    pixels,
     width,
     height,
     80, // Tile size for parallelization
-    projection_matrix_2d,
+    None, // No 2D projection matrix
     projection_matrix_3d,
     &self.textures,
 );
@@ -76,7 +82,7 @@ I use `rusterix` as the rendering engine for my [Eldiron](https://github.com/mar
 
 To execute an example just do something like ```cargo run --release --example cube```.
 
-* **cube** displays a spinning, textured cube. ![Cube](images/screenshot_cube.png)
+* **cube** displays a textured cube. ![Cube](images/screenshot_cube.png)
 
 * **obj** demonstrates how to load and display an obj file. ![Logo](images/screenshot_obj.png)
 

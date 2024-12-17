@@ -42,6 +42,14 @@ impl Scene {
         }
     }
 
+    /// Sets the background shader using the builder pattern.
+    pub fn background(self, background: Box<dyn Shader>) -> Self {
+        Self {
+            background: Some(background),
+            ..self
+        }
+    }
+
     /// Project the batches using the given matrices (which represent the global camera).
     pub fn project(
         &mut self,

@@ -1,6 +1,6 @@
 [package]
 name = "rusterix"
-version = "0.1.3"
+version = "0.1.4"
 edition = "2021"
 description = "Rusterix is a fast software renderer for 2D and 3D meshes and lines."
 author = "Markus Moenig <markus@moenig.io>"

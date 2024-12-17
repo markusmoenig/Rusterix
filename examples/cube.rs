@@ -14,7 +14,7 @@ fn main() {
 
 pub struct Cube {
     textures: Vec<Texture>,
-    camera: Box<dyn D3Camera>,
+    camera: D3OrbitCamera,
     scene: Scene,
 }
 
@@ -23,15 +23,15 @@ impl TheTrait for Cube {
     where
         Self: Sized,
     {
-        let mut scene = Scene::from_static(
+        let scene = Scene::from_static(
             vec![Batch::from_rectangle(0.0, 0.0, 200.0, 200.0)],
             vec![Batch::from_box(-0.5, -0.5, -0.5, 1.0, 1.0, 1.0).sample_mode(SampleMode::Nearest)],
-        );
-        scene.background = Some(Box::new(VGrayGradientShader::new()));
+        )
+        .background(Box::new(VGrayGradientShader::new()));
 
         Self {
             textures: vec![Texture::from_image(Path::new("images/logo.png"))],
-            camera: Box::new(D3OrbitCamera::new()),
+            camera: D3OrbitCamera::new(),
             scene,
         }
     }
