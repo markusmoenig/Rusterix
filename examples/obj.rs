@@ -13,7 +13,6 @@ fn main() {
 // This example uses raw draw calls into rusterix, bypassing the engine API.
 
 pub struct ObjDemo {
-    textures: Vec<Texture>,
     camera: D3OrbitCamera,
     scene: Scene,
 }
@@ -29,10 +28,10 @@ impl TheTrait for ObjDemo {
                 .sample_mode(SampleMode::Linear)
                 .repeat_mode(RepeatMode::RepeatXY)],
         )
-        .background(Box::new(VGrayGradientShader::new()));
+        .background(Box::new(VGrayGradientShader::new()))
+        .textures(vec![Texture::from_image(Path::new("images/logo.png"))]);
 
         Self {
-            textures: vec![Texture::from_image(Path::new("images/logo.png"))],
             camera: D3OrbitCamera::new(),
             scene,
         }
@@ -58,7 +57,6 @@ impl TheTrait for ObjDemo {
                 0.1,
                 100.0,
             ) * Mat4::scaling_3d(Vec3::new(0.3, 0.3, 0.3)),
-            &self.textures,
         );
 
         let _stop = get_time();

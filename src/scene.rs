@@ -1,4 +1,4 @@
-use crate::{Batch, Shader};
+use crate::{Batch, Shader, Texture};
 use rayon::prelude::*;
 use vek::{Mat3, Mat4, Vec3, Vec4};
 
@@ -13,6 +13,9 @@ pub struct Scene {
 
     /// The 2D batches get rendered on top of the 3D batches (2D game or UI).
     pub d2: Vec<Batch<Vec3<f32>>>,
+
+    /// The list of textures which the batches index into.
+    pub textures: Vec<Texture>,
 }
 
 impl Default for Scene {
@@ -29,6 +32,7 @@ impl Scene {
             d3_static: vec![],
             d3_dynamic: vec![],
             d2: vec![],
+            textures: vec![],
         }
     }
 
@@ -39,15 +43,20 @@ impl Scene {
             d3_static: d3,
             d3_dynamic: vec![],
             d2,
+            textures: vec![],
         }
     }
 
     /// Sets the background shader using the builder pattern.
-    pub fn background(self, background: Box<dyn Shader>) -> Self {
-        Self {
-            background: Some(background),
-            ..self
-        }
+    pub fn background(mut self, background: Box<dyn Shader>) -> Self {
+        self.background = Some(background);
+        self
+    }
+
+    /// Sets the background shader using the builder pattern.
+    pub fn textures(mut self, textures: Vec<Texture>) -> Self {
+        self.textures = textures;
+        self
     }
 
     /// Project the batches using the given matrices (which represent the global camera).

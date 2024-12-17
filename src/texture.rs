@@ -1,5 +1,6 @@
 use crate::IntoDataInput;
 use std::io::Cursor;
+use theframework::prelude::*;
 
 /// Sample mode for texture sampling.
 #[derive(Debug, Clone, Copy)]
@@ -24,6 +25,7 @@ pub enum RepeatMode {
 }
 
 /// Textures contain RGBA [u8;4] pixels.
+#[derive(Serialize, Deserialize, PartialEq, PartialOrd, Clone, Debug)]
 pub struct Texture {
     pub data: Vec<u8>,
     pub width: usize,
@@ -65,6 +67,15 @@ impl Texture {
             data,
             width,
             height,
+        }
+    }
+
+    /// Creates a texture filled with a single color (1x1 texture)
+    pub fn from_color(color: [u8; 4]) -> Self {
+        Texture {
+            data: color.to_vec(),
+            width: 1,
+            height: 1,
         }
     }
 

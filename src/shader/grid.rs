@@ -2,13 +2,26 @@ use crate::{vec4_to_pixel, Pixel, Shader};
 use vek::{Vec2, Vec4};
 
 pub struct GridShader {
+    grid_size: f32,
+    subdivisions: f32,
     offset: Vec2<f32>,
 }
 
 impl Shader for GridShader {
     fn new() -> Self {
         Self {
+            grid_size: 30.0,
+            subdivisions: 2.0,
             offset: Vec2::zero(),
+        }
+    }
+
+    fn set_parameter_f32(&mut self, key: &str, value: f32) {
+        #[allow(clippy::single_match)]
+        match key {
+            "grid_size" => self.grid_size = value,
+            "subdivisions" => self.subdivisions = value,
+            _ => {}
         }
     }
 
@@ -42,12 +55,10 @@ impl Shader for GridShader {
         }
 
         let position = uv * screen;
-        let grid_size = 30.0;
-        let subdivisions = 2.0;
 
         let origin = screen / 2.0 + self.offset;
-        let grid_size = Vec2::new(grid_size, grid_size);
-        let sub_grid_div = Vec2::new(subdivisions, subdivisions);
+        let grid_size = Vec2::new(self.grid_size, self.grid_size);
+        let sub_grid_div = Vec2::new(self.subdivisions, self.subdivisions);
 
         let bg_color = Vec4::new(0.05, 0.05, 0.05, 1.0);
         let line_color = Vec4::new(0.15, 0.15, 0.15, 1.0);

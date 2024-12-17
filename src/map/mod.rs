@@ -1,5 +1,6 @@
 pub mod linedef;
 pub mod sector;
+pub mod tile;
 pub mod vertex;
 
 use serde::{Deserialize, Serialize};
@@ -10,11 +11,20 @@ use linedef::*;
 use sector::*;
 use vertex::*;
 
-#[derive(Serialize, Deserialize, PartialEq, Clone, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Clone, Debug, Copy)]
 pub enum MapCamera {
     TwoD,
     ThreeDIso,
     ThreeDFirstPerson,
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Clone, Debug, Copy)]
+pub enum MapToolType {
+    General,
+    Selection,
+    Vertex,
+    Linedef,
+    Sector,
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Clone, Debug)]

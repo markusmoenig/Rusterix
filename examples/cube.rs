@@ -13,7 +13,6 @@ fn main() {
 // This example uses raw draw calls into rusterix, bypassing the engine API.
 
 pub struct Cube {
-    textures: Vec<Texture>,
     camera: D3OrbitCamera,
     scene: Scene,
 }
@@ -27,10 +26,10 @@ impl TheTrait for Cube {
             vec![Batch::from_rectangle(0.0, 0.0, 200.0, 200.0)],
             vec![Batch::from_box(-0.5, -0.5, -0.5, 1.0, 1.0, 1.0).sample_mode(SampleMode::Nearest)],
         )
-        .background(Box::new(VGrayGradientShader::new()));
+        .background(Box::new(VGrayGradientShader::new()))
+        .textures(vec![Texture::from_image(Path::new("images/logo.png"))]);
 
         Self {
-            textures: vec![Texture::from_image(Path::new("images/logo.png"))],
             camera: D3OrbitCamera::new(),
             scene,
         }
@@ -57,7 +56,6 @@ impl TheTrait for Cube {
                 0.1,
                 100.0,
             ),
-            &self.textures,
         );
 
         let _stop = get_time();

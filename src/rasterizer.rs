@@ -15,7 +15,6 @@ impl Rasterizer {
         tile_size: usize,
         projection_matrix_2d: Option<Mat3<f32>>,
         projection_matrix_3d: Mat4<f32>,
-        textures: &[Texture],
     ) {
         scene.project(projection_matrix_2d, projection_matrix_3d, width, height);
 
@@ -59,16 +58,16 @@ impl Rasterizer {
                 }
 
                 for batch in scene.d3_static.iter() {
-                    self.d3_rasterize(&mut buffer, &mut z_buffer, tile, batch, textures);
+                    self.d3_rasterize(&mut buffer, &mut z_buffer, tile, batch, &scene.textures);
                 }
 
                 for batch in scene.d3_dynamic.iter() {
-                    self.d3_rasterize(&mut buffer, &mut z_buffer, tile, batch, textures);
+                    self.d3_rasterize(&mut buffer, &mut z_buffer, tile, batch, &scene.textures);
                 }
 
                 // Render 2D geometry on top of the 3D geometry (UI)
                 for batch in scene.d2.iter() {
-                    self.d2_rasterize(&mut buffer, tile, batch, textures);
+                    self.d2_rasterize(&mut buffer, tile, batch, &scene.textures);
                 }
 
                 buffer
