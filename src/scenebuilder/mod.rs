@@ -1,6 +1,6 @@
 pub mod d2preview;
 
-use crate::{Map, MapToolType, Scene, Tile};
+use crate::{Map, MapToolType, Scene, Texture, Tile};
 use theframework::prelude::*;
 use vek::Vec2;
 
@@ -10,7 +10,13 @@ pub trait SceneBuilder: Send + Sync {
     where
         Self: Sized;
 
-    fn build(&self, map: &Map, tiles: FxHashMap<Uuid, Tile>, screen_size: Vec2<f32>) -> Scene;
+    fn build(
+        &self,
+        map: &Map,
+        tiles: FxHashMap<Uuid, Tile>,
+        atlas: Texture,
+        screen_size: Vec2<f32>,
+    ) -> Scene;
 
     /// Convert a map grid position to screen coordinates
     fn map_grid_to_local(

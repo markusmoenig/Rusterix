@@ -1,11 +1,12 @@
 use crate::Texture;
 use theframework::prelude::*;
 
-#[derive(Serialize, Deserialize, PartialEq, PartialOrd, Clone, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Clone, Debug)]
 pub struct Tile {
     pub id: Uuid,
     pub name: String,
-    pub buffer: Vec<Texture>,
+    pub uvs: Vec<vek::Vec4<i32>>,
+    pub textures: Vec<Texture>,
     pub role: u8,
     pub blocking: bool,
     pub billboard: bool,

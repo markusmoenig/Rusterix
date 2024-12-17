@@ -27,7 +27,13 @@ impl SceneBuilder for D2PreviewBuilder {
         }
     }
 
-    fn build(&self, map: &Map, _tiles: FxHashMap<Uuid, Tile>, screen_size: Vec2<f32>) -> Scene {
+    fn build(
+        &self,
+        map: &Map,
+        _tiles: FxHashMap<Uuid, Tile>,
+        _atlas: Texture,
+        screen_size: Vec2<f32>,
+    ) -> Scene {
         let mut scene = Scene::empty();
         let mut grid_shader = GridShader::new();
 

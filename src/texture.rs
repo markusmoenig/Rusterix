@@ -32,6 +32,12 @@ pub struct Texture {
     pub height: usize,
 }
 
+impl Default for Texture {
+    fn default() -> Self {
+        Self::white()
+    }
+}
+
 impl Texture {
     /// Creates a new texture with the given width, height, and data
     pub fn new(data: Vec<u8>, width: usize, height: usize) -> Self {
@@ -74,6 +80,15 @@ impl Texture {
     pub fn from_color(color: [u8; 4]) -> Self {
         Texture {
             data: color.to_vec(),
+            width: 1,
+            height: 1,
+        }
+    }
+
+    /// Creates a texture filled with a white color (1x1 texture)
+    pub fn white() -> Self {
+        Texture {
+            data: vec![255, 255, 255, 255],
             width: 1,
             height: 1,
         }
