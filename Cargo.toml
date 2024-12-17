@@ -6,7 +6,7 @@ description = "Rusterix is a fast software renderer for 2D and 3D meshes and lin
 author = "Markus Moenig <markus@moenig.io>"
 license = "Apache-2.0 AND MIT"
 repository = "https://github.com/markusmoenig/Rusterix"
-keywords = ["software", "rendering", "graphics", "game", "3d", "doom", "engine"]
+keywords = ["software", "rendering", "graphics", "game", "engine"]
 
 [workspace]
 members = [".", "rusteria", "shared"]
