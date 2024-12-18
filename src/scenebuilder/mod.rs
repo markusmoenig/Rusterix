@@ -13,7 +13,7 @@ pub trait SceneBuilder: Send + Sync {
     fn build(
         &self,
         map: &Map,
-        tiles: FxHashMap<Uuid, Tile>,
+        tiles: &FxHashMap<Uuid, Tile>,
         atlas: Texture,
         screen_size: Vec2<f32>,
     ) -> Scene;

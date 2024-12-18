@@ -30,23 +30,29 @@ impl SceneBuilder for D2PreviewBuilder {
     fn build(
         &self,
         map: &Map,
-        _tiles: FxHashMap<Uuid, Tile>,
-        _atlas: Texture,
+        tiles: &FxHashMap<Uuid, Tile>,
+        atlas: Texture,
         screen_size: Vec2<f32>,
     ) -> Scene {
         let mut scene = Scene::empty();
         let mut grid_shader = GridShader::new();
+        let atlas_size = atlas.width as f32;
 
-        scene.textures = vec![
+        let mut textures = vec![
+            atlas,
             Texture::from_color(WHITE),
             Texture::from_color(self.selection_color),
             Texture::from_color(vek::Rgba::yellow().into_array()),
             Texture::from_color([128, 128, 128, 255]),
         ];
 
-        let mut white_batch = Batch::emptyd2();
-        let mut selected_batch = Batch::emptyd2().texture_index(1);
+        let mut atlas_batch = Batch::emptyd2();
+        let mut white_batch = Batch::emptyd2().texture_index(1);
+        let mut selected_batch = Batch::emptyd2().texture_index(2);
 
+        // Repeated tile textures have their own batches
+        let mut repeated_batches: Vec<Batch<[f32; 3]>> = vec![];
+        let mut repeated_offsets: FxHashMap<Uuid, usize> = FxHashMap::default();
         //let mut yellow_rect = Batch::emptyd2().texture_index(1);
 
         // Grid
@@ -55,7 +61,79 @@ impl SceneBuilder for D2PreviewBuilder {
         grid_shader.set_parameter_vec2("offset", Vec2::new(map.offset.x, -map.offset.y));
         scene.background = Some(Box::new(grid_shader));
 
-        // Draw Vertices
+        // Add Sectors
+        if self.map_tool_type == MapToolType::General
+            || self.map_tool_type == MapToolType::Selection
+            || self.map_tool_type == MapToolType::Sector
+        {
+            for sector in &map.sectors {
+                if let Some(geo) = sector.generate_geometry(map) {
+                    let mut vertices: Vec<[f32; 3]> = vec![];
+                    let mut uvs: Vec<[f32; 2]> = vec![];
+                    let bbox = sector.bounding_box(map);
+
+                    let repeat = true;
+
+                    if let Some(floor_texture_id) = &sector.floor_texture {
+                        if let Some(tile) = tiles.get(floor_texture_id) {
+                            for vertex in &geo.0 {
+                                let local = self.map_grid_to_local(
+                                    screen_size,
+                                    Vec2::new(vertex[0], vertex[1]),
+                                    map,
+                                );
+
+                                let index = 0;
+
+                                if !repeat {
+                                    let uv = [
+                                        (tile.uvs[index].x as f32
+                                            + ((vertex[0] - bbox.0.x) / (bbox.1.x - bbox.0.x)
+                                                * tile.uvs[index].z as f32))
+                                            / atlas_size,
+                                        ((tile.uvs[index].y as f32
+                                            + (vertex[1] - bbox.0.y) / (bbox.1.y - bbox.0.y)
+                                                * tile.uvs[index].w as f32)
+                                            / atlas_size),
+                                    ];
+                                    uvs.push(uv);
+                                } else {
+                                    let texture_scale = 1.0;
+                                    let uv = [
+                                        (vertex[0] - bbox.0.x) / texture_scale,
+                                        (vertex[1] - bbox.0.y) / texture_scale,
+                                    ];
+                                    uvs.push(uv);
+                                }
+                                vertices.push([local.x, local.y, 1.0]);
+                            }
+
+                            if repeat {
+                                if let Some(offset) = repeated_offsets.get(&tile.id) {
+                                    repeated_batches[*offset].add(vertices, geo.1, uvs);
+                                } else {
+                                    let texture_index = textures.len();
+
+                                    let mut batch = Batch::emptyd2()
+                                        .repeat_mode(crate::RepeatMode::RepeatXY)
+                                        .texture_index(texture_index);
+
+                                    batch.add(vertices, geo.1, uvs);
+
+                                    textures.push(tile.textures[0].clone());
+                                    repeated_offsets.insert(tile.id, repeated_batches.len());
+                                    repeated_batches.push(batch);
+                                }
+                            } else {
+                                atlas_batch.add(vertices, geo.1, uvs);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Add Vertices
         if self.map_tool_type == MapToolType::Selection || self.map_tool_type == MapToolType::Vertex
         {
             for vertex in &map.vertices {
@@ -72,19 +150,10 @@ impl SceneBuilder for D2PreviewBuilder {
                 } else {
                     white_batch.add_rectangle(pos.x - size, pos.y - size, size * 2.0, size * 2.0);
                 }
-
-                // let size = 4.0;
-                // drawer.add_box(
-                //     pos.x - size,
-                //     pos.y - size,
-                //     size * 2.0,
-                //     size * 2.0,
-                //     Rgba::new(color[0], color[1], color[2], color[3]),
-                // );
             }
         }
 
-        // Draw Lines
+        // Add Lines
         if self.map_tool_type == MapToolType::Selection
             || self.map_tool_type == MapToolType::Linedef
             || self.map_tool_type == MapToolType::Sector
@@ -145,7 +214,11 @@ impl SceneBuilder for D2PreviewBuilder {
             }
         }
 
-        scene.d2 = vec![white_batch, selected_batch];
+        let mut batches = vec![atlas_batch, white_batch, selected_batch];
+        batches.extend(repeated_batches);
+
+        scene.d2 = batches;
+        scene.textures = textures;
         scene
     }
 

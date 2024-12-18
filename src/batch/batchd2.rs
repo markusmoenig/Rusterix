@@ -66,10 +66,10 @@ impl Batch<[f32; 3]> {
         let indices = vec![(0, 1, 2), (0, 2, 3)];
 
         let uvs = vec![
-            [0.0, 1.0], // Top-left
-            [0.0, 0.0], // Bottom-left
-            [1.0, 0.0], // Bottom-right
-            [1.0, 1.0], // Top-right
+            [0.0, 0.0], // Top-left
+            [0.0, 1.0], // Bottom-left
+            [1.0, 1.0], // Bottom-right
+            [1.0, 0.0], // Top-right
         ];
 
         Batch::new_2d(vertices, indices, uvs)
@@ -89,10 +89,10 @@ impl Batch<[f32; 3]> {
 
         // Add UVs
         self.uvs.extend(vec![
-            [0.0, 1.0], // Top-left
-            [0.0, 0.0], // Bottom-left
-            [1.0, 0.0], // Bottom-right
-            [1.0, 1.0], // Top-right
+            [0.0, 0.0], // Top-left
+            [0.0, 1.0], // Bottom-left
+            [1.0, 1.0], // Bottom-right
+            [1.0, 0.0], // Top-right
         ]);
 
         // Add indices
@@ -100,6 +100,24 @@ impl Batch<[f32; 3]> {
             (base_index, base_index + 1, base_index + 2),
             (base_index, base_index + 2, base_index + 3),
         ]);
+    }
+
+    /// Add a set of geometry to the batch.
+    pub fn add(
+        &mut self,
+        vertices: Vec<[f32; 3]>,
+        indices: Vec<(usize, usize, usize)>,
+        uvs: Vec<[f32; 2]>,
+    ) {
+        let base_index = self.vertices.len();
+
+        self.vertices.extend(vertices);
+        self.uvs.extend(uvs);
+
+        for i in &indices {
+            self.indices
+                .push((i.0 + base_index, i.1 + base_index, i.2 + base_index));
+        }
     }
 
     /// Append a line to the existing batch

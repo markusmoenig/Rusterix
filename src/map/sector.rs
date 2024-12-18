@@ -71,7 +71,11 @@ impl Sector {
     }
 
     /// Generate geometry (vertices and indices) for the polygon using earcutr
-    pub fn generate_geometry(&self, map: &Map) -> Option<(Vec<[f32; 2]>, Vec<u32>)> {
+    #[allow(clippy::type_complexity)]
+    pub fn generate_geometry(
+        &self,
+        map: &Map,
+    ) -> Option<(Vec<[f32; 2]>, Vec<(usize, usize, usize)>)> {
         // Collect unique vertices from the Linedefs in order
         let mut vertices = Vec::new();
         for &linedef_id in self.linedefs.iter() {
@@ -100,7 +104,10 @@ impl Sector {
 
         // Perform triangulation
         if let Ok(indices) = earcut(&flattened_vertices, &holes, 2) {
-            let indices: Vec<u32> = indices.iter().rev().map(|&i| i as u32).collect();
+            let indices: Vec<(usize, usize, usize)> = indices
+                .chunks_exact(3)
+                .map(|chunk| (chunk[2], chunk[1], chunk[0]))
+                .collect();
             Some((vertices, indices))
         } else {
             None

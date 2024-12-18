@@ -199,13 +199,25 @@ impl Batch<[f32; 4]> {
             .iter()
             .map(|&(i0, i1, i2)| {
                 let v0 = self.projected_vertices[i0];
-                let v1 = self.projected_vertices[i1];
-                let v2 = self.projected_vertices[i2];
+                let mut v1 = self.projected_vertices[i1];
+                let mut v2 = self.projected_vertices[i2];
 
                 let visible = match self.cull_mode {
-                    CullMode::Off => true,
+                    CullMode::Off => {
+                        if self.is_front_facing(&v0, &v1, &v2) {
+                            std::mem::swap(&mut v1, &mut v2);
+                        }
+                        true
+                    }
                     CullMode::Front => !self.is_front_facing(&v0, &v1, &v2),
-                    CullMode::Back => self.is_front_facing(&v0, &v1, &v2),
+                    CullMode::Back => {
+                        if self.is_front_facing(&v0, &v1, &v2) {
+                            std::mem::swap(&mut v1, &mut v2);
+                            true
+                        } else {
+                            false
+                        }
+                    }
                 };
 
                 [

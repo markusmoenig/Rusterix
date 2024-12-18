@@ -167,21 +167,14 @@ impl Rasterizer {
                                             let edge2 = edges[2].evaluate(p);
                                             if edge2 >= 0.0 {
                                                 // Interpolate barycentric coordinates
-                                                let w = self.barycentric_weights_2d(v0, v1, v2, p);
+                                                let w =
+                                                    self.barycentric_weights_2d(&v0, &v1, &v2, &p);
 
                                                 // Interpolate UV coordinates
-                                                // let u = uv0.x * w.x + uv1.x * w.y + uv2.x * w.z;
-                                                // let v =
-                                                //     1.0 - (uv0.y * w.x + uv1.y * w.y + uv2.y * w.z);
-                                                // u = u.clamp(0.0, 1.0);
-                                                // v = v.clamp(0.0, 1.0);
-
                                                 let u =
                                                     uv0[0] * w[0] + uv1[0] * w[1] + uv2[0] * w[2];
-                                                let v = 1.0
-                                                    - (uv0[1] * w[0]
-                                                        + uv1[1] * w[1]
-                                                        + uv2[1] * w[2]);
+                                                let v =
+                                                    uv0[1] * w[0] + uv1[1] * w[1] + uv2[1] * w[2];
 
                                                 // Sample the texture
                                                 let texel = textures[batch.texture_index].sample(
@@ -330,7 +323,8 @@ impl Rasterizer {
                                             let edge2 = edges[2].evaluate(p);
                                             if edge2 >= 0.0 && edges[2].visible {
                                                 // Interpolate barycentric coordinates
-                                                let w = self.barycentric_weights_3d(v0, v1, v2, p);
+                                                let w =
+                                                    self.barycentric_weights_3d(&v0, &v1, &v2, &p);
 
                                                 // Compute reciprocal depths (1 / z) for each vertex
                                                 let z0 = 1.0 / v0[2];
@@ -438,10 +432,10 @@ impl Rasterizer {
     /// Compute the barycentric weights for a Vec2
     fn barycentric_weights_2d(
         &self,
-        a: [f32; 3],
-        b: [f32; 3],
-        c: [f32; 3],
-        p: [f32; 2],
+        a: &[f32; 3],
+        b: &[f32; 3],
+        c: &[f32; 3],
+        p: &[f32; 2],
     ) -> [f32; 3] {
         let ac = [c[0] - a[0], c[1] - a[1]];
         let ab = [b[0] - a[0], b[1] - a[1]];
@@ -460,10 +454,10 @@ impl Rasterizer {
     /// Compute the barycentric weights for a Vec2
     fn barycentric_weights_3d(
         &self,
-        a: [f32; 4],
-        b: [f32; 4],
-        c: [f32; 4],
-        p: [f32; 2],
+        a: &[f32; 4],
+        b: &[f32; 4],
+        c: &[f32; 4],
+        p: &[f32; 2],
     ) -> [f32; 3] {
         let ac = [c[0] - a[0], c[1] - a[1]];
         let ab = [b[0] - a[0], b[1] - a[1]];
