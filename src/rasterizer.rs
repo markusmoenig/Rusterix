@@ -333,7 +333,7 @@ impl Rasterizer {
 
                                                 // Interpolate reciprocal depth
                                                 let one_over_z = z0 * w[0] + z1 * w[1] + z2 * w[2];
-                                                let z = 1.0 - (1.0 / one_over_z);
+                                                let z = 1.0 / one_over_z;
 
                                                 let zidx =
                                                     (ty - tile.y) * tile.width + (tx - tile.x);
@@ -341,31 +341,38 @@ impl Rasterizer {
                                                 if z < z_buffer[zidx] {
                                                     z_buffer[zidx] = z;
 
-                                                    // Perspective-correct interpolation of UVs
-                                                    let u_over_z = uv0[0] * z0 * w[0]
-                                                        + uv1[0] * z1 * w[1]
-                                                        + uv2[0] * z2 * w[2];
-                                                    let v_over_z = uv0[1] * z0 * w[0]
-                                                        + uv1[1] * z1 * w[1]
-                                                        + uv2[1] * z2 * w[2];
+                                                    let alpha = w[0];
+                                                    let beta = w[1];
+                                                    let gamma = w[2];
 
-                                                    let u = u_over_z / one_over_z;
-                                                    let v = v_over_z / one_over_z;
+                                                    // Perform the interpolation of all U/w and V/w values using barycentric weights and a factor of 1/w
+                                                    let mut interpolated_u = (uv0[0] / v0[3])
+                                                        * alpha
+                                                        + (uv1[0] / v1[3]) * beta
+                                                        + (uv2[0] / v2[3]) * gamma;
+                                                    let mut interpolated_v = (uv0[1] / v0[3])
+                                                        * alpha
+                                                        + (uv1[1] / v1[3]) * beta
+                                                        + (uv2[1] / v2[3]) * gamma;
+
+                                                    // Also interpolate the value of 1/w for the current pixel
+                                                    let interpolated_reciprocal_w = (1.0 / v0[3])
+                                                        * alpha
+                                                        + (1.0 / v1[3]) * beta
+                                                        + (1.0 / v2[3]) * gamma;
+
+                                                    // Now we can divide back both interpolated values by 1/w
+                                                    interpolated_u /= interpolated_reciprocal_w;
+                                                    interpolated_v /= interpolated_reciprocal_w;
 
                                                     // Sample the texture
                                                     let texel = textures[batch.texture_index]
                                                         .sample(
-                                                            u,
-                                                            v,
+                                                            interpolated_u,
+                                                            interpolated_v,
                                                             batch.sample_mode,
                                                             batch.repeat_mode,
                                                         );
-                                                    // let texel = [
-                                                    //     (u * 255.0) as u8,
-                                                    //     (v * 255.0) as u8,
-                                                    //     0,
-                                                    //     255,
-                                                    // ];
 
                                                     // Write to framebuffer
                                                     let idx = ((ty - tile.y) * tile.width

@@ -14,7 +14,7 @@ impl D3Camera for D3OrbitCamera {
     fn new() -> Self {
         Self {
             target: Vec3::zero(),
-            distance: -10.0,
+            distance: -1.5,
             azimuth: std::f32::consts::PI / 2.0,
             elevation: 0.0,
             up: Vec3::unit_y(),

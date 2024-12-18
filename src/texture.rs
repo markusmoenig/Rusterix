@@ -152,10 +152,6 @@ impl Texture {
 
     /// Samples the texture at given UV coordinates.
     pub fn sample_nearest(&self, u: f32, v: f32) -> [u8; 4] {
-        // Clamp UV coordinates to [0, 1]
-        // let u = u.clamp(0.0, 1.0);
-        // let v = v.clamp(0.0, 1.0);
-
         // Map UV coordinates to pixel indices
         let tex_x = (u * (self.width as f32 - 1.0)).round() as usize;
         let tex_y = (v * (self.height as f32 - 1.0)).round() as usize;
