@@ -11,3 +11,7 @@ pub struct Tile {
     pub blocking: bool,
     pub billboard: bool,
 }
+
+impl Tile {
+    pub fn create_uv(&self, _index: usize, _atlas: &Texture) {}
+}

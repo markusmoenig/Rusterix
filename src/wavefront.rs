@@ -1,21 +1,20 @@
 use crate::Batch;
-use vek::{Vec2, Vec3, Vec4};
 
 #[derive(Clone, Debug)]
 pub struct Wavefront {
-    pub vertices: Vec<Vec4<f32>>, // 4D vertices for compatibility with Batch
-    pub texture_coords: Vec<Vec2<f32>>, // Texture coordinates
-    pub normals: Vec<Vec3<f32>>,  // Normals
+    pub vertices: Vec<[f32; 4]>, // 4D vertices for compatibility with Batch
+    pub texture_coords: Vec<[f32; 2]>, // Texture coordinates
+    pub normals: Vec<[f32; 3]>,  // Normals
     pub indices: Vec<(usize, usize, usize)>, // Triangle indices
 }
 
 impl Wavefront {
     /// Create a new Wavefront object.
     pub fn new(
-        vertices: Vec<Vec4<f32>>,
+        vertices: Vec<[f32; 4]>,
         indices: Vec<(usize, usize, usize)>,
-        normals: Vec<Vec3<f32>>,
-        texture_coords: Vec<Vec2<f32>>,
+        normals: Vec<[f32; 3]>,
+        texture_coords: Vec<[f32; 2]>,
     ) -> Self {
         Wavefront {
             vertices,
@@ -52,21 +51,21 @@ impl Wavefront {
                 let x: f32 = items.next().unwrap().parse().unwrap();
                 let y: f32 = items.next().unwrap().parse().unwrap();
                 let z: f32 = items.next().unwrap().parse().unwrap();
-                // Convert Vec3<f32> to Vec4<f32> by appending 1.0 as the w component
-                vertices.push(Vec4::new(x, y, z, 1.0));
+                // Convert to `[f32; 4]` by appending 1.0 as the w component
+                vertices.push([x, y, z, 1.0]);
             } else if trimmed.starts_with("vn ") {
                 let mut items = trimmed.split_ascii_whitespace();
                 items.next().unwrap(); // Skip "vn"
                 let x: f32 = items.next().unwrap().parse().unwrap();
                 let y: f32 = items.next().unwrap().parse().unwrap();
                 let z: f32 = items.next().unwrap().parse().unwrap();
-                normals.push(Vec3::new(x, y, z));
+                normals.push([x, y, z]);
             } else if trimmed.starts_with("vt ") {
                 let mut items = trimmed.split_ascii_whitespace();
                 items.next().unwrap(); // Skip "vt"
                 let u: f32 = items.next().unwrap().parse().unwrap();
                 let v: f32 = items.next().unwrap().parse().unwrap();
-                texture_coords.push(Vec2::new(u, v));
+                texture_coords.push([u, v]);
             } else if trimmed.starts_with("f ") {
                 let mut items = trimmed.split_ascii_whitespace();
                 items.next().unwrap(); // Skip "f"
@@ -89,10 +88,10 @@ impl Wavefront {
     }
 
     /// Convert the Wavefront object into a Batch for rendering.
-    pub fn to_batch(self) -> Batch<Vec4<f32>> {
+    pub fn to_batch(self) -> Batch<[f32; 4]> {
         let uvs = if self.texture_coords.is_empty() {
             // Generate default UVs if none exist
-            self.vertices.iter().map(|v| Vec2::new(v.x, v.y)).collect()
+            self.vertices.iter().map(|v| [v[0], v[1]]).collect()
         } else {
             // Map texture coordinates
             self.texture_coords

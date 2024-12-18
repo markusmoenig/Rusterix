@@ -1,6 +1,6 @@
 use crate::prelude::*;
 use crate::wavefront::Wavefront;
-use vek::{Mat4, Vec2, Vec4};
+use vek::{Mat4, Vec4};
 
 use CullMode::*;
 use PrimitiveMode::*;
@@ -8,11 +8,11 @@ use RepeatMode::*;
 use SampleMode::*;
 
 /// A batch of 4D vertices, indices and their UVs which make up a 3D mesh.
-impl Batch<Vec4<f32>> {
+impl Batch<[f32; 4]> {
     pub fn new_3d(
-        vertices: Vec<Vec4<f32>>,
+        vertices: Vec<[f32; 4]>,
         indices: Vec<(usize, usize, usize)>,
-        uvs: Vec<Vec2<f32>>,
+        uvs: Vec<[f32; 2]>,
     ) -> Self {
         Batch {
             mode: Triangles,
@@ -34,35 +34,35 @@ impl Batch<Vec4<f32>> {
     pub fn from_box(x: f32, y: f32, z: f32, width: f32, height: f32, depth: f32) -> Self {
         let vertices = vec![
             // Front face
-            Vec4::new(x, y, z, 1.0),                  // Bottom-left-front
-            Vec4::new(x + width, y, z, 1.0),          // Bottom-right-front
-            Vec4::new(x + width, y + height, z, 1.0), // Top-right-front
-            Vec4::new(x, y + height, z, 1.0),         // Top-left-front
+            [x, y, z, 1.0],                  // Bottom-left-front
+            [x + width, y, z, 1.0],          // Bottom-right-front
+            [x + width, y + height, z, 1.0], // Top-right-front
+            [x, y + height, z, 1.0],         // Top-left-front
             // Back face
-            Vec4::new(x, y, z + depth, 1.0), // Bottom-left-back
-            Vec4::new(x + width, y, z + depth, 1.0), // Bottom-right-back
-            Vec4::new(x + width, y + height, z + depth, 1.0), // Top-right-back
-            Vec4::new(x, y + height, z + depth, 1.0), // Top-left-back
+            [x, y, z + depth, 1.0],                  // Bottom-left-back
+            [x + width, y, z + depth, 1.0],          // Bottom-right-back
+            [x + width, y + height, z + depth, 1.0], // Top-right-back
+            [x, y + height, z + depth, 1.0],         // Top-left-back
             // Left face
-            Vec4::new(x, y, z, 1.0),                  // Bottom-left-front
-            Vec4::new(x, y + height, z, 1.0),         // Top-left-front
-            Vec4::new(x, y + height, z + depth, 1.0), // Top-left-back
-            Vec4::new(x, y, z + depth, 1.0),          // Bottom-left-back
+            [x, y, z, 1.0],                  // Bottom-left-front
+            [x, y + height, z, 1.0],         // Top-left-front
+            [x, y + height, z + depth, 1.0], // Top-left-back
+            [x, y, z + depth, 1.0],          // Bottom-left-back
             // Right face
-            Vec4::new(x + width, y, z, 1.0), // Bottom-right-front
-            Vec4::new(x + width, y + height, z, 1.0), // Top-right-front
-            Vec4::new(x + width, y + height, z + depth, 1.0), // Top-right-back
-            Vec4::new(x + width, y, z + depth, 1.0), // Bottom-right-back
+            [x + width, y, z, 1.0],                  // Bottom-right-front
+            [x + width, y + height, z, 1.0],         // Top-right-front
+            [x + width, y + height, z + depth, 1.0], // Top-right-back
+            [x + width, y, z + depth, 1.0],          // Bottom-right-back
             // Top face
-            Vec4::new(x, y + height, z, 1.0), // Top-left-front
-            Vec4::new(x + width, y + height, z, 1.0), // Top-right-front
-            Vec4::new(x + width, y + height, z + depth, 1.0), // Top-right-back
-            Vec4::new(x, y + height, z + depth, 1.0), // Top-left-back
+            [x, y + height, z, 1.0],                 // Top-left-front
+            [x + width, y + height, z, 1.0],         // Top-right-front
+            [x + width, y + height, z + depth, 1.0], // Top-right-back
+            [x, y + height, z + depth, 1.0],         // Top-left-back
             // Bottom face
-            Vec4::new(x, y, z, 1.0),                 // Bottom-left-front
-            Vec4::new(x + width, y, z, 1.0),         // Bottom-right-front
-            Vec4::new(x + width, y, z + depth, 1.0), // Bottom-right-back
-            Vec4::new(x, y, z + depth, 1.0),         // Bottom-left-back
+            [x, y, z, 1.0],                 // Bottom-left-front
+            [x + width, y, z, 1.0],         // Bottom-right-front
+            [x + width, y, z + depth, 1.0], // Bottom-right-back
+            [x, y, z + depth, 1.0],         // Bottom-left-back
         ];
 
         let indices = vec![
@@ -88,51 +88,36 @@ impl Batch<Vec4<f32>> {
 
         let uvs = vec![
             // Front face
-            Vec2::new(0.0, 0.0),
-            Vec2::new(1.0, 0.0),
-            Vec2::new(1.0, 1.0),
-            Vec2::new(0.0, 1.0),
+            [0.0, 0.0],
+            [1.0, 0.0],
+            [1.0, 1.0],
+            [0.0, 1.0],
             // Back face
-            Vec2::new(0.0, 0.0),
-            Vec2::new(1.0, 0.0),
-            Vec2::new(1.0, 1.0),
-            Vec2::new(0.0, 1.0),
+            [0.0, 0.0],
+            [1.0, 0.0],
+            [1.0, 1.0],
+            [0.0, 1.0],
             // Left face
-            Vec2::new(0.0, 0.0),
-            Vec2::new(1.0, 0.0),
-            Vec2::new(1.0, 1.0),
-            Vec2::new(0.0, 1.0),
+            [0.0, 0.0],
+            [1.0, 0.0],
+            [1.0, 1.0],
+            [0.0, 1.0],
             // Right face
-            Vec2::new(0.0, 0.0),
-            Vec2::new(1.0, 0.0),
-            Vec2::new(1.0, 1.0),
-            Vec2::new(0.0, 1.0),
+            [0.0, 0.0],
+            [1.0, 0.0],
+            [1.0, 1.0],
+            [0.0, 1.0],
             // Top face
-            Vec2::new(0.0, 0.0),
-            Vec2::new(1.0, 0.0),
-            Vec2::new(1.0, 1.0),
-            Vec2::new(0.0, 1.0),
+            [0.0, 0.0],
+            [1.0, 0.0],
+            [1.0, 1.0],
+            [0.0, 1.0],
             // Bottom face
-            Vec2::new(0.0, 0.0),
-            Vec2::new(1.0, 0.0),
-            Vec2::new(1.0, 1.0),
-            Vec2::new(0.0, 1.0),
+            [0.0, 0.0],
+            [1.0, 0.0],
+            [1.0, 1.0],
+            [0.0, 1.0],
         ];
-
-        // fn is_ccw(v0: Vec3<f32>, v1: Vec3<f32>, v2: Vec3<f32>) -> bool {
-        //     let edge1 = v1 - v0;
-        //     let edge2 = v2 - v0;
-        //     let normal = edge1.cross(edge2);
-        //     normal.z > 0.0
-        // }
-
-        // for (index, (a, b, c)) in indices.iter().enumerate() {
-        //     println!(
-        //         "is_ccw {}: {}",
-        //         index,
-        //         is_ccw(vertices[*a], vertices[*b], vertices[*c])
-        //     );
-        // }
 
         Batch::new_3d(vertices, indices, uvs)
     }
@@ -194,14 +179,14 @@ impl Batch<Vec4<f32>> {
             .vertices
             .iter()
             .map(|&v| {
-                let result = matrix * v;
-                let w = result.w;
-                let mut vec = Vec4::new(result.x / w, result.y / w, result.z / w, 1.0);
-
-                vec.x = (result.x * 0.5 + 0.5) * viewport_width;
-                vec.y = (result.y * 0.5 + 0.5) * viewport_height;
-
-                vec
+                let result = matrix * Vec4::new(v[0], v[1], v[2], v[3]);
+                let w = 1.0; //result.w;
+                [
+                    ((result.x / w) * 0.5 + 0.5) * viewport_width,
+                    ((result.y / w) * 0.5 + 0.5) * viewport_height,
+                    result.z / result.w,
+                    1.0,
+                ]
             })
             .collect();
 
@@ -214,40 +199,27 @@ impl Batch<Vec4<f32>> {
             .iter()
             .map(|&(i0, i1, i2)| {
                 let v0 = self.projected_vertices[i0];
-                let mut v1 = self.projected_vertices[i1];
-                let mut v2 = self.projected_vertices[i2];
+                let v1 = self.projected_vertices[i1];
+                let v2 = self.projected_vertices[i2];
 
                 let visible = match self.cull_mode {
-                    CullMode::Off => {
-                        // No culling; all triangles are visible
-                        if self.is_front_facing(&v0, &v1, &v2) {
-                            std::mem::swap(&mut v1, &mut v2);
-                        }
-                        true
-                    }
-                    CullMode::Front => {
-                        // Cull front-facing triangles
-                        !self.is_front_facing(&v0, &v1, &v2)
-                    }
-                    CullMode::Back => {
-                        // Cull back-facing triangles
-                        self.is_front_facing(&v0, &v1, &v2)
-                    }
+                    CullMode::Off => true,
+                    CullMode::Front => !self.is_front_facing(&v0, &v1, &v2),
+                    CullMode::Back => self.is_front_facing(&v0, &v1, &v2),
                 };
 
-                // Return edges for the triangle, marking them as visible or invisible
                 [
-                    Edge::new(Vec2::new(v0.x, v0.y), Vec2::new(v1.x, v1.y), visible),
-                    Edge::new(Vec2::new(v1.x, v1.y), Vec2::new(v2.x, v2.y), visible),
-                    Edge::new(Vec2::new(v2.x, v2.y), Vec2::new(v0.x, v0.y), visible),
+                    Edge::new([v0[0], v0[1]], [v1[0], v1[1]], visible),
+                    Edge::new([v1[0], v1[1]], [v2[0], v2[1]], visible),
+                    Edge::new([v2[0], v2[1]], [v0[0], v0[1]], visible),
                 ]
             })
             .collect();
     }
 
-    /// Returns true if the triangle faces to the front.
-    fn is_front_facing(&self, v0: &Vec4<f32>, v1: &Vec4<f32>, v2: &Vec4<f32>) -> bool {
-        let orientation = (v1.x - v0.x) * (v2.y - v0.y) - (v1.y - v0.y) * (v2.x - v0.x);
+    /// Returns true if the triangle faces to the front
+    fn is_front_facing(&self, v0: &[f32; 4], v1: &[f32; 4], v2: &[f32; 4]) -> bool {
+        let orientation = (v1[0] - v0[0]) * (v2[1] - v0[1]) - (v1[1] - v0[1]) * (v2[0] - v0[0]);
         orientation > 0.0 // CCW convention for front-facing
     }
 
@@ -259,10 +231,10 @@ impl Batch<Vec4<f32>> {
         let mut max_y = f32::NEG_INFINITY;
 
         for v in &self.projected_vertices {
-            min_x = min_x.min(v.x);
-            max_x = max_x.max(v.x);
-            min_y = min_y.min(v.y);
-            max_y = max_y.max(v.y);
+            min_x = min_x.min(v[0]); // x coordinate
+            max_x = max_x.max(v[0]);
+            min_y = min_y.min(v[1]); // y coordinate
+            max_y = max_y.max(v[1]);
         }
 
         Rect {

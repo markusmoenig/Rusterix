@@ -2,7 +2,6 @@ pub mod batchd2;
 pub mod batchd3;
 
 use crate::{Edge, Pixel, Rect, RepeatMode, SampleMode};
-use vek::Vec2;
 
 /// The primitive mode. The rasterizer can draw triangles and lines.
 #[derive(Debug, Clone, Copy)]
@@ -39,7 +38,7 @@ pub struct Batch<T> {
     pub indices: Vec<(usize, usize, usize)>,
 
     /// The UVs of the batch.
-    pub uvs: Vec<Vec2<f32>>,
+    pub uvs: Vec<[f32; 2]>,
 
     /// Projected vertices
     pub projected_vertices: Vec<T>,

@@ -1,6 +1,6 @@
 use crate::{Batch, Pixel, PrimitiveMode, Scene, Texture};
 use rayon::prelude::*;
-use vek::{Mat3, Mat4, Vec2, Vec3, Vec4};
+use vek::{Mat3, Mat4, Vec2};
 pub struct Rasterizer;
 
 /// Rasterizes batches of 2D and 3D meshes (and lines).
@@ -103,7 +103,7 @@ impl Rasterizer {
         &self,
         buffer: &mut [u8],
         tile: &TileRect,
-        batch: &Batch<Vec3<f32>>,
+        batch: &Batch<[f32; 3]>,
         textures: &[Texture],
     ) {
         if let Some(bbox) = batch.bounding_box {
@@ -125,28 +125,28 @@ impl Rasterizer {
                             let uv2 = batch.uvs[i2];
 
                             // Compute bounding box of the triangle
-                            let min_x = [v0.x, v1.x, v2.x]
+                            let min_x = [v0[0], v1[0], v2[0]]
                                 .iter()
                                 .cloned()
                                 .fold(f32::INFINITY, f32::min)
                                 .floor()
                                 .max(tile.x as f32)
                                 as usize;
-                            let max_x = [v0.x, v1.x, v2.x]
+                            let max_x = [v0[0], v1[0], v2[0]]
                                 .iter()
                                 .cloned()
                                 .fold(f32::NEG_INFINITY, f32::max)
                                 .ceil()
                                 .min((tile.x + tile.width) as f32)
                                 as usize;
-                            let min_y = [v0.y, v1.y, v2.y]
+                            let min_y = [v0[1], v1[1], v2[1]]
                                 .iter()
                                 .cloned()
                                 .fold(f32::INFINITY, f32::min)
                                 .floor()
                                 .max(tile.y as f32)
                                 as usize;
-                            let max_y = [v0.y, v1.y, v2.y]
+                            let max_y = [v0[1], v1[1], v2[1]]
                                 .iter()
                                 .cloned()
                                 .fold(f32::NEG_INFINITY, f32::max)
@@ -157,7 +157,7 @@ impl Rasterizer {
                             // Rasterize the triangle within its bounding box
                             for ty in min_y..max_y {
                                 for tx in min_x..max_x {
-                                    let p = Vec2::new(tx as f32 + 0.5, ty as f32 + 0.5);
+                                    let p = [tx as f32 + 0.5, ty as f32 + 0.5];
 
                                     // Edge function tests for triangle rasterization
                                     let edge0 = edges[0].evaluate(p);
@@ -170,11 +170,18 @@ impl Rasterizer {
                                                 let w = self.barycentric_weights_2d(v0, v1, v2, p);
 
                                                 // Interpolate UV coordinates
-                                                let u = uv0.x * w.x + uv1.x * w.y + uv2.x * w.z;
-                                                let v =
-                                                    1.0 - (uv0.y * w.x + uv1.y * w.y + uv2.y * w.z);
+                                                // let u = uv0.x * w.x + uv1.x * w.y + uv2.x * w.z;
+                                                // let v =
+                                                //     1.0 - (uv0.y * w.x + uv1.y * w.y + uv2.y * w.z);
                                                 // u = u.clamp(0.0, 1.0);
                                                 // v = v.clamp(0.0, 1.0);
+
+                                                let u =
+                                                    uv0[0] * w[0] + uv1[0] * w[1] + uv2[0] * w[2];
+                                                let v = 1.0
+                                                    - (uv0[1] * w[0]
+                                                        + uv1[1] * w[1]
+                                                        + uv2[1] * w[2]);
 
                                                 // Sample the texture
                                                 let texel = textures[batch.texture_index].sample(
@@ -203,8 +210,8 @@ impl Rasterizer {
                             let p1 = batch.projected_vertices[i1];
 
                             self.rasterize_line_bresenham(
-                                Vec2::new(p0.x, p0.y),
-                                Vec2::new(p1.x, p1.y),
+                                [p0[0], p0[1]],
+                                [p1[0], p1[1]],
                                 &mut buffer[..],
                                 tile,
                                 &batch.color,
@@ -217,8 +224,8 @@ impl Rasterizer {
                             let p1 = batch.projected_vertices[i + 1];
 
                             self.rasterize_line_bresenham(
-                                Vec2::new(p0.x, p0.y),
-                                Vec2::new(p1.x, p1.y),
+                                [p0[0], p0[1]],
+                                [p1[0], p1[1]],
                                 &mut buffer[..],
                                 tile,
                                 &batch.color,
@@ -233,8 +240,8 @@ impl Rasterizer {
                                 batch.projected_vertices[(i + 1) % batch.projected_vertices.len()];
 
                             self.rasterize_line_bresenham(
-                                Vec2::new(p0.x, p0.y),
-                                Vec2::new(p1.x, p1.y),
+                                [p0[0], p0[1]],
+                                [p1[0], p1[1]],
                                 &mut buffer[..],
                                 tile,
                                 &batch.color,
@@ -253,7 +260,7 @@ impl Rasterizer {
         buffer: &mut [u8],
         z_buffer: &mut [f32],
         tile: &TileRect,
-        batch: &Batch<Vec4<f32>>,
+        batch: &Batch<[f32; 4]>,
         textures: &[Texture],
     ) {
         // Bounding box check for the tile with the batch bbox
@@ -276,33 +283,33 @@ impl Rasterizer {
                             let uv2 = batch.uvs[i2];
 
                             // Check if all three vertices are behind the near clipping plane
-                            if v0.z < 0.0 && v1.z < 0.0 && v2.z < 0.0 {
+                            if v0[2] < 0.0 && v1[2] < 0.0 && v2[2] < 0.0 {
                                 continue;
                             }
 
                             // Compute bounding box of the triangle
-                            let min_x = [v0.x, v1.x, v2.x]
+                            let min_x = [v0[0], v1[0], v2[0]]
                                 .iter()
                                 .cloned()
                                 .fold(f32::INFINITY, f32::min)
                                 .floor()
                                 .max(tile.x as f32)
                                 as usize;
-                            let max_x = [v0.x, v1.x, v2.x]
+                            let max_x = [v0[0], v1[0], v2[0]]
                                 .iter()
                                 .cloned()
                                 .fold(f32::NEG_INFINITY, f32::max)
                                 .ceil()
                                 .min((tile.x + tile.width) as f32)
                                 as usize;
-                            let min_y = [v0.y, v1.y, v2.y]
+                            let min_y = [v0[1], v1[1], v2[1]]
                                 .iter()
                                 .cloned()
                                 .fold(f32::INFINITY, f32::min)
                                 .floor()
                                 .max(tile.y as f32)
                                 as usize;
-                            let max_y = [v0.y, v1.y, v2.y]
+                            let max_y = [v0[1], v1[1], v2[1]]
                                 .iter()
                                 .cloned()
                                 .fold(f32::NEG_INFINITY, f32::max)
@@ -313,7 +320,7 @@ impl Rasterizer {
                             // Rasterize the triangle within its bounding box
                             for ty in min_y..max_y {
                                 for tx in min_x..max_x {
-                                    let p = Vec2::new(tx as f32 + 0.5, ty as f32 + 0.5);
+                                    let p = [tx as f32 + 0.5, ty as f32 + 0.5];
 
                                     // Evaluate the edges
                                     let edge0 = edges[0].evaluate(p);
@@ -326,15 +333,12 @@ impl Rasterizer {
                                                 let w = self.barycentric_weights_3d(v0, v1, v2, p);
 
                                                 // Compute reciprocal depths (1 / z) for each vertex
-                                                let z0 = 1.0 / v0.z;
-                                                let z1 = 1.0 / v1.z;
-                                                let z2 = 1.0 / v2.z;
+                                                let z0 = 1.0 / v0[2];
+                                                let z1 = 1.0 / v1[2];
+                                                let z2 = 1.0 / v2[2];
 
                                                 // Interpolate reciprocal depth
-                                                let one_over_z = z0 * w.x + z1 * w.y + z2 * w.z;
-                                                // let one_over_z =
-                                                // (w.x / v0.z) + (w.y / v1.z) + (w.z / v2.z);
-
+                                                let one_over_z = z0 * w[0] + z1 * w[1] + z2 * w[2];
                                                 let z = 1.0 - (1.0 / one_over_z);
 
                                                 let zidx =
@@ -344,12 +348,12 @@ impl Rasterizer {
                                                     z_buffer[zidx] = z;
 
                                                     // Perspective-correct interpolation of UVs
-                                                    let u_over_z = uv0.x * z0 * w.x
-                                                        + uv1.x * z1 * w.y
-                                                        + uv2.x * z2 * w.z;
-                                                    let v_over_z = uv0.y * z0 * w.x
-                                                        + uv1.y * z1 * w.y
-                                                        + uv2.y * z2 * w.z;
+                                                    let u_over_z = uv0[0] * z0 * w[0]
+                                                        + uv1[0] * z1 * w[1]
+                                                        + uv2[0] * z2 * w[2];
+                                                    let v_over_z = uv0[1] * z0 * w[0]
+                                                        + uv1[1] * z1 * w[1]
+                                                        + uv2[1] * z2 * w[2];
 
                                                     let u = u_over_z / one_over_z;
                                                     let v = v_over_z / one_over_z;
@@ -388,8 +392,8 @@ impl Rasterizer {
                             let p1 = batch.projected_vertices[i1];
 
                             self.rasterize_line_bresenham(
-                                Vec2::new(p0.x, p0.y),
-                                Vec2::new(p1.x, p1.y),
+                                [p0[0], p0[1]],
+                                [p1[0], p1[1]],
                                 &mut buffer[..],
                                 tile,
                                 &batch.color,
@@ -402,8 +406,8 @@ impl Rasterizer {
                             let p1 = batch.projected_vertices[i + 1];
 
                             self.rasterize_line_bresenham(
-                                Vec2::new(p0.x, p0.y),
-                                Vec2::new(p1.x, p1.y),
+                                [p0[0], p0[1]],
+                                [p1[0], p1[1]],
                                 &mut buffer[..],
                                 tile,
                                 &batch.color,
@@ -418,8 +422,8 @@ impl Rasterizer {
                                 batch.projected_vertices[(i + 1) % batch.projected_vertices.len()];
 
                             self.rasterize_line_bresenham(
-                                Vec2::new(p0.x, p0.y),
-                                Vec2::new(p1.x, p1.y),
+                                [p0[0], p0[1]],
+                                [p1[0], p1[1]],
                                 &mut buffer[..],
                                 tile,
                                 &batch.color,
@@ -434,61 +438,61 @@ impl Rasterizer {
     /// Compute the barycentric weights for a Vec2
     fn barycentric_weights_2d(
         &self,
-        a: Vec3<f32>,
-        b: Vec3<f32>,
-        c: Vec3<f32>,
-        p: Vec2<f32>,
-    ) -> Vec3<f32> {
-        let ac = c - a;
-        let ab = b - a;
-        let ap = p - a;
-        let pc = c - p;
-        let pb = b - p;
+        a: [f32; 3],
+        b: [f32; 3],
+        c: [f32; 3],
+        p: [f32; 2],
+    ) -> [f32; 3] {
+        let ac = [c[0] - a[0], c[1] - a[1]];
+        let ab = [b[0] - a[0], b[1] - a[1]];
+        let ap = [p[0] - a[0], p[1] - a[1]];
+        let pc = [c[0] - p[0], c[1] - p[1]];
+        let pb = [b[0] - p[0], b[1] - p[1]];
 
-        let area = ac.x * ab.y - ac.y * ab.x;
-        let alpha = (pc.x * pb.y - pc.y * pb.x) / area;
-        let beta = (ac.x * ap.y - ac.y * ap.x) / area;
+        let area = ac[0] * ab[1] - ac[1] * ab[0];
+        let alpha = (pc[0] * pb[1] - pc[1] * pb[0]) / area;
+        let beta = (ac[0] * ap[1] - ac[1] * ap[0]) / area;
         let gamma = 1.0 - alpha - beta;
 
-        Vec3::new(alpha, beta, gamma)
+        [alpha, beta, gamma]
     }
 
     /// Compute the barycentric weights for a Vec2
     fn barycentric_weights_3d(
         &self,
-        a: Vec4<f32>,
-        b: Vec4<f32>,
-        c: Vec4<f32>,
-        p: Vec2<f32>,
-    ) -> Vec3<f32> {
-        let ac = c - a;
-        let ab = b - a;
-        let ap = p - a;
-        let pc = c - p;
-        let pb = b - p;
+        a: [f32; 4],
+        b: [f32; 4],
+        c: [f32; 4],
+        p: [f32; 2],
+    ) -> [f32; 3] {
+        let ac = [c[0] - a[0], c[1] - a[1]];
+        let ab = [b[0] - a[0], b[1] - a[1]];
+        let ap = [p[0] - a[0], p[1] - a[1]];
+        let pc = [c[0] - p[0], c[1] - p[1]];
+        let pb = [b[0] - p[0], b[1] - p[1]];
 
-        let area = ac.x * ab.y - ac.y * ab.x;
-        let alpha = (pc.x * pb.y - pc.y * pb.x) / area;
-        let beta = (ac.x * ap.y - ac.y * ap.x) / area;
+        let area = ac[0] * ab[1] - ac[1] * ab[0];
+        let alpha = (pc[0] * pb[1] - pc[1] * pb[0]) / area;
+        let beta = (ac[0] * ap[1] - ac[1] * ap[0]) / area;
         let gamma = 1.0 - alpha - beta;
 
-        Vec3::new(alpha, beta, gamma)
+        [alpha, beta, gamma]
     }
 
     /// Rasterize a line via Bresenham.
     #[allow(clippy::too_many_arguments)]
     fn rasterize_line_bresenham(
         &self,
-        p0: Vec2<f32>,
-        p1: Vec2<f32>,
+        p0: [f32; 2],
+        p1: [f32; 2],
         buffer: &mut [u8],
         tile: &TileRect,
         color: &Pixel,
     ) {
-        let x0 = p0.x as isize;
-        let y0 = p0.y as isize;
-        let x1 = p1.x as isize;
-        let y1 = p1.y as isize;
+        let x0 = p0[0] as isize;
+        let y0 = p0[1] as isize;
+        let x1 = p1[0] as isize;
+        let y1 = p1[1] as isize;
 
         let dx = (x1 - x0).abs();
         let dy = (y1 - y0).abs();
@@ -519,46 +523,6 @@ impl Rasterizer {
             if e2 < dx {
                 err += dx;
                 y += sy;
-            }
-        }
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    fn _rasterize_line_with_width(
-        &self,
-        p0: Vec2<f32>,
-        p1: Vec2<f32>,
-        buffer: &mut [u8],
-        tile: &TileRect,
-        color: &Pixel,
-        line_width: f32,
-    ) {
-        fn distance_to_line(p0: Vec2<f32>, p1: Vec2<f32>, p: Vec2<f32>) -> f32 {
-            let line = p1 - p0;
-            let to_point = p - p0;
-            let cross = line.x * to_point.y - line.y * to_point.x;
-            cross.abs() / line.magnitude()
-        }
-
-        let min_x = p0.x.min(p1.x) - line_width;
-        let max_x = p0.x.max(p1.x) + line_width;
-        let min_y = p0.y.min(p1.y) - line_width;
-        let max_y = p0.y.max(p1.y) + line_width;
-
-        for ty in min_y.floor() as usize..=max_y.ceil() as usize {
-            for tx in min_x.floor() as usize..=max_x.ceil() as usize {
-                let p = Vec2::new(tx as f32 + 0.5, ty as f32 + 0.5);
-                let dist = distance_to_line(p0, p1, p);
-
-                if dist <= line_width / 2.0 {
-                    let tile_tx = tx - tile.x;
-                    let tile_ty = ty - tile.y;
-
-                    if tile_tx < tile.width && tile_ty < tile.height {
-                        let idx = (tile_ty * tile.width + tile_tx) * 4;
-                        buffer[idx..idx + 4].copy_from_slice(color);
-                    }
-                }
             }
         }
     }

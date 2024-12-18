@@ -13,7 +13,7 @@ use SampleMode::*;
 // }
 
 /// A batch of 3D vertices, indices and their UVs which make up a 2D polygons.
-impl Batch<Vec3<f32>> {
+impl Batch<[f32; 3]> {
     /// Empty constructor (the default)
     pub fn emptyd2() -> Self {
         Batch {
@@ -34,9 +34,9 @@ impl Batch<Vec3<f32>> {
 
     /// Constructor for 2D vertices
     pub fn new_2d(
-        vertices: Vec<Vec3<f32>>,
+        vertices: Vec<[f32; 3]>,
         indices: Vec<(usize, usize, usize)>,
-        uvs: Vec<Vec2<f32>>,
+        uvs: Vec<[f32; 2]>,
     ) -> Self {
         Batch {
             mode: Triangles,
@@ -54,22 +54,22 @@ impl Batch<Vec3<f32>> {
         }
     }
 
-    /// Create a Batch for a rectangle in 2D
+    /// Create a Batch for a rectangle in 2D.
     pub fn from_rectangle(x: f32, y: f32, width: f32, height: f32) -> Self {
         let vertices = vec![
-            Vec3::new(x, y, 1.0),                  // Bottom-left
-            Vec3::new(x, y + height, 1.0),         // Top-left
-            Vec3::new(x + width, y + height, 1.0), // Top-right
-            Vec3::new(x + width, y, 1.0),          // Bottom-right
+            [x, y, 1.0],                  // Bottom-left
+            [x, y + height, 1.0],         // Top-left
+            [x + width, y + height, 1.0], // Top-right
+            [x + width, y, 1.0],          // Bottom-right
         ];
 
         let indices = vec![(0, 1, 2), (0, 2, 3)];
 
         let uvs = vec![
-            Vec2::new(0.0, 1.0), // Top-left
-            Vec2::new(0.0, 0.0), // Bottom-left
-            Vec2::new(1.0, 0.0), // Bottom-right
-            Vec2::new(1.0, 1.0), // Top-right
+            [0.0, 1.0], // Top-left
+            [0.0, 0.0], // Bottom-left
+            [1.0, 0.0], // Bottom-right
+            [1.0, 1.0], // Top-right
         ];
 
         Batch::new_2d(vertices, indices, uvs)
@@ -81,18 +81,18 @@ impl Batch<Vec3<f32>> {
 
         // Add vertices
         self.vertices.extend(vec![
-            Vec3::new(x, y, 1.0),                  // Bottom-left
-            Vec3::new(x, y + height, 1.0),         // Top-left
-            Vec3::new(x + width, y + height, 1.0), // Top-right
-            Vec3::new(x + width, y, 1.0),          // Bottom-right
+            [x, y, 1.0],                  // Bottom-left
+            [x, y + height, 1.0],         // Top-left
+            [x + width, y + height, 1.0], // Top-right
+            [x + width, y, 1.0],          // Bottom-right
         ]);
 
         // Add UVs
         self.uvs.extend(vec![
-            Vec2::new(0.0, 1.0), // Top-left
-            Vec2::new(0.0, 0.0), // Bottom-left
-            Vec2::new(1.0, 0.0), // Bottom-right
-            Vec2::new(1.0, 1.0), // Top-right
+            [0.0, 1.0], // Top-left
+            [0.0, 0.0], // Bottom-left
+            [1.0, 0.0], // Bottom-right
+            [1.0, 1.0], // Top-right
         ]);
 
         // Add indices
@@ -102,46 +102,33 @@ impl Batch<Vec3<f32>> {
         ]);
     }
 
-    /*
-    /// Append a rectangle to the existing batch. Has to be rendered in Line mode.
-    pub fn add_line(&mut self, x0: f32, y0: f32, x1: f32, y1: f32) {
-        let base_index = self.vertices.len();
-
-        // Add vertices
-        self.vertices
-            .extend(vec![Vec3::new(x0, y0, 1.0), Vec3::new(x1, y1, 1.0)]);
-
-        // Add indices
-        self.indices
-            .extend(vec![(base_index, base_index + 1, base_index)]);
-    }*/
-
     /// Append a line to the existing batch
     pub fn add_line(&mut self, start: Vec2<f32>, end: Vec2<f32>, thickness: f32) {
-        let direction = (end - start).normalized();
-        let normal = Vec2::new(-direction.y, direction.x) * thickness / 2.0;
+        let start = [start.x, start.y];
+        let end = [end.x, end.y];
+
+        let direction = [end[0] - start[0], end[1] - start[1]];
+        let length = (direction[0] * direction[0] + direction[1] * direction[1]).sqrt();
+        let normalized = [direction[0] / length, direction[1] / length];
+        let normal = [
+            -normalized[1] * thickness / 2.0,
+            normalized[0] * thickness / 2.0,
+        ];
 
         let base_index = self.vertices.len();
 
-        // Calculate vertices for a thick line
         let vertices = vec![
-            Vec3::new(start.x - normal.x, start.y - normal.y, 1.0),
-            Vec3::new(start.x + normal.x, start.y + normal.y, 1.0),
-            Vec3::new(end.x + normal.x, end.y + normal.y, 1.0),
-            Vec3::new(end.x - normal.x, end.y - normal.y, 1.0),
+            [start[0] - normal[0], start[1] - normal[1], 1.0],
+            [start[0] + normal[0], start[1] + normal[1], 1.0],
+            [end[0] + normal[0], end[1] + normal[1], 1.0],
+            [end[0] - normal[0], end[1] - normal[1], 1.0],
         ];
 
-        let uvs = vec![
-            Vec2::new(0.0, 1.0),
-            Vec2::new(0.0, 0.0),
-            Vec2::new(1.0, 0.0),
-            Vec2::new(1.0, 1.0),
-        ];
+        let uvs = vec![[0.0, 1.0], [0.0, 0.0], [1.0, 0.0], [1.0, 1.0]];
 
         self.vertices.extend(vertices);
         self.uvs.extend(uvs);
 
-        // Add indices for two triangles
         self.indices.extend(vec![
             (base_index, base_index + 1, base_index + 2),
             (base_index, base_index + 2, base_index + 3),
@@ -187,12 +174,19 @@ impl Batch<Vec3<f32>> {
     /// Project 2D vertices using a optional Mat3 transformation matrix
     pub fn project(&mut self, matrix: Option<Mat3<f32>>) {
         if let Some(matrix) = matrix {
-            self.projected_vertices = self.vertices.iter().map(|&v| matrix * v).collect();
+            self.projected_vertices = self
+                .vertices
+                .iter()
+                .map(|&v| {
+                    let result = matrix * Vec3::new(v[0], v[1], v[2]);
+                    [result.x, result.y, result.z]
+                })
+                .collect();
         } else {
             self.projected_vertices = self.vertices.clone();
         }
 
-        // Precompute batch bounding box
+        // Precompute the bounding box
         self.bounding_box = Some(self.calculate_bounding_box());
 
         // Precompute edges for each triangle
@@ -204,9 +198,9 @@ impl Batch<Vec3<f32>> {
                 let v1 = self.projected_vertices[i1];
                 let v2 = self.projected_vertices[i2];
                 [
-                    Edge::new(Vec2::new(v0.x, v0.y), Vec2::new(v1.x, v1.y), true),
-                    Edge::new(Vec2::new(v1.x, v1.y), Vec2::new(v2.x, v2.y), true),
-                    Edge::new(Vec2::new(v2.x, v2.y), Vec2::new(v0.x, v0.y), true),
+                    Edge::new([v0[0], v0[1]], [v1[0], v1[1]], true),
+                    Edge::new([v1[0], v1[1]], [v2[0], v2[1]], true),
+                    Edge::new([v2[0], v2[1]], [v0[0], v0[1]], true),
                 ]
             })
             .collect();
@@ -220,10 +214,10 @@ impl Batch<Vec3<f32>> {
         let mut max_y = f32::NEG_INFINITY;
 
         for v in &self.projected_vertices {
-            min_x = min_x.min(v.x);
-            max_x = max_x.max(v.x);
-            min_y = min_y.min(v.y);
-            max_y = max_y.max(v.y);
+            min_x = min_x.min(v[0]); // `x` coordinate
+            max_x = max_x.max(v[0]);
+            min_y = min_y.min(v[1]); // `y` coordinate
+            max_y = max_y.max(v[1]);
         }
 
         Rect {
