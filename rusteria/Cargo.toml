@@ -12,3 +12,6 @@ clap = "4.5.23"
 rustyline = "15.0.0"
 rusterix = { version = "0.1.1", path = "../." }
 rustc-hash = "2.1.0"
+#theframework = "0.1.30"
+theframework = { path = "../../theframework" }
+vek = { version = "0.17.1", default-features = true }

@@ -2385,6 +2385,8 @@ dependencies = [
  "rustc-hash 2.1.0",
  "rusterix",
  "rustyline",
+ "theframework",
+ "vek",
 ]
 
 [[package]]
@@ -2728,8 +2730,6 @@ dependencies = [
 [[package]]
 name = "theframework"
 version = "0.1.30"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "55062c35eb0e0b1991540a697cbb6c789ce229ca5b7effa101c0b0aecea036db"
 dependencies = [
  "aict",
  "arboard",

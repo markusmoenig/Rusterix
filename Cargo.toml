@@ -13,7 +13,8 @@ members = [".", "rusteria", "shared"]
 
 [dependencies]
 # theframework = { git = "https://github.com/markusmoenig/TheFramework" }
-theframework = "0.1.30"
+#theframework = "0.1.30"
+theframework = { path = "../theframework" }
 rayon = "1.10"
 vek = { version = "0.17.1", default-features = true }
 earcutr = "0.4"
