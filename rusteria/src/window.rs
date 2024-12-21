@@ -39,7 +39,7 @@ impl TheTrait for Editor {
                     match command {
                         FocusMap(map) => self.content = MapPreview(map),
                         Exit => {
-                            println!("exidwadt");
+                            // TODO
                         }
                         _ => {}
                     }
@@ -107,20 +107,6 @@ impl TheTrait for Editor {
         );
         true
     }
-
-    // Hover event
-    // fn hover(&mut self, x: f32, y: f32, _ctx: &mut TheContext) -> bool {
-    // if let Some(tx) = TX.get() {
-    //     tx.send(MouseDown(Vec2::zero())).unwrap();
-    // }
-
-    // self.camera.set_parameter_vec2(
-    //     "from_normalized",
-    //     Vec2::new(x / ctx.width as f32, y / ctx.height as f32),
-    // );
-    // true
-    // false
-    // }
 
     // Query if the widget needs a redraw
     fn update(&mut self, _ctx: &mut TheContext) -> bool {

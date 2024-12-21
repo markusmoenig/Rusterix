@@ -81,6 +81,9 @@ fn main() -> Result<()> {
                         if let Some(tx) = FROM_WINDOW_TX.get() {
                             tx.send(Exit).unwrap();
                         }
+                        if let Some(tx) = TO_WINDOW_TX.get() {
+                            tx.send(Exit).unwrap();
+                        }
                         break;
                     }
                     if line == "open" {
