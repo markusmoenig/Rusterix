@@ -3,7 +3,7 @@ use std::io::Cursor;
 use theframework::prelude::*;
 
 /// Sample mode for texture sampling.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum SampleMode {
     /// Nearest-neighbor sampling
     Nearest,
@@ -12,7 +12,7 @@ pub enum SampleMode {
 }
 
 /// The repeat mode for texture sampling.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum RepeatMode {
     /// Clamps UVs to [0, 1] (the default)
     ClampXY,

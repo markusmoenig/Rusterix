@@ -6,11 +6,11 @@ pub mod camera;
 pub mod edge;
 pub mod intodata;
 pub mod map;
-pub mod parser;
 pub mod rasterizer;
 pub mod rect;
 pub mod scene;
 pub mod scenebuilder;
+pub mod script;
 pub mod shader;
 pub mod texture;
 pub mod wavefront;
@@ -60,9 +60,9 @@ pub use crate::{
 
 // Prelude
 pub mod prelude {
-    pub use crate::parser::map::MapParser;
     pub use crate::scene::Scene;
     pub use crate::scenebuilder::{d2preview::D2PreviewBuilder, SceneBuilder};
+    pub use crate::script::map::MapScript;
     pub use crate::Edge;
     pub use crate::IntoDataInput;
     pub use crate::Rasterizer;

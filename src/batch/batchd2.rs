@@ -135,22 +135,42 @@ impl Batch<[f32; 3]> {
 
         let base_index = self.vertices.len();
 
-        let vertices = vec![
-            [start[0] - normal[0], start[1] - normal[1], 1.0],
-            [start[0] + normal[0], start[1] + normal[1], 1.0],
-            [end[0] + normal[0], end[1] + normal[1], 1.0],
-            [end[0] - normal[0], end[1] - normal[1], 1.0],
-        ];
+        if self.mode == PrimitiveMode::Lines {
+            // In line mode we add the start / end vertices directly.
+            let vertices = vec![
+                [start[0], start[1], 1.0],
+                [end[0], end[1], 1.0],
+                [end[0], end[1], 1.0],     // Repeated to ensure valid triangles
+                [start[0], start[1], 1.0], // Repeated to ensure valid triangles
+            ];
 
-        let uvs = vec![[0.0, 1.0], [0.0, 0.0], [1.0, 0.0], [1.0, 1.0]];
+            let uvs = vec![[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]];
 
-        self.vertices.extend(vertices);
-        self.uvs.extend(uvs);
+            self.vertices.extend(vertices);
+            self.uvs.extend(uvs);
 
-        self.indices.extend(vec![
-            (base_index, base_index + 1, base_index + 2),
-            (base_index, base_index + 2, base_index + 3),
-        ]);
+            self.indices.extend(vec![
+                (base_index, base_index + 1, base_index + 2),
+                (base_index, base_index + 2, base_index + 3),
+            ]);
+        } else {
+            let vertices = vec![
+                [start[0] - normal[0], start[1] - normal[1], 1.0],
+                [start[0] + normal[0], start[1] + normal[1], 1.0],
+                [end[0] + normal[0], end[1] + normal[1], 1.0],
+                [end[0] - normal[0], end[1] - normal[1], 1.0],
+            ];
+
+            let uvs = vec![[0.0, 1.0], [0.0, 0.0], [1.0, 0.0], [1.0, 1.0]];
+
+            self.vertices.extend(vertices);
+            self.uvs.extend(uvs);
+
+            self.indices.extend(vec![
+                (base_index, base_index + 1, base_index + 2),
+                (base_index, base_index + 2, base_index + 3),
+            ]);
+        }
     }
 
     /// Sets the drawing mode for the batch using the builder pattern.
@@ -216,9 +236,9 @@ impl Batch<[f32; 3]> {
                 let v1 = self.projected_vertices[i1];
                 let v2 = self.projected_vertices[i2];
                 [
-                    Edge::new([v0[0], v0[1]], [v1[0], v1[1]], true),
-                    Edge::new([v1[0], v1[1]], [v2[0], v2[1]], true),
-                    Edge::new([v2[0], v2[1]], [v0[0], v0[1]], true),
+                    Edge::new(&[v0[0], v0[1]], &[v1[0], v1[1]], true),
+                    Edge::new(&[v1[0], v1[1]], &[v2[0], v2[1]], true),
+                    Edge::new(&[v2[0], v2[1]], &[v0[0], v0[1]], true),
                 ]
             })
             .collect();

@@ -14,6 +14,9 @@ pub struct D2PreviewBuilder {
     pub hover: (Option<u32>, Option<u32>, Option<u32>),
     /// The current grid hover position
     pub hover_cursor: Option<Vec2<f32>>,
+    /// Camera
+    pub camera_pos: Option<vek::Vec3<f32>>,
+    pub look_at: vek::Vec3<f32>,
 }
 
 impl SceneBuilder for D2PreviewBuilder {
@@ -24,6 +27,9 @@ impl SceneBuilder for D2PreviewBuilder {
 
             hover: (None, None, None),
             hover_cursor: None,
+
+            camera_pos: None,
+            look_at: vek::Vec3::zero(),
         }
     }
 
@@ -43,12 +49,17 @@ impl SceneBuilder for D2PreviewBuilder {
             Texture::from_color(WHITE),
             Texture::from_color(self.selection_color),
             Texture::from_color(vek::Rgba::yellow().into_array()),
+            Texture::from_color(vek::Rgba::red().into_array()),
             Texture::from_color([128, 128, 128, 255]),
         ];
 
         let mut atlas_batch = Batch::emptyd2();
-        let mut white_batch = Batch::emptyd2().texture_index(1);
+        let mut white_batch = Batch::emptyd2()
+            .texture_index(1)
+            .mode(crate::PrimitiveMode::Lines);
         let mut selected_batch = Batch::emptyd2().texture_index(2);
+        let mut yellow_batch = Batch::emptyd2().texture_index(3);
+        let mut red_batch = Batch::emptyd2().texture_index(4);
 
         // Repeated tile textures have their own batches
         let mut repeated_batches: Vec<Batch<[f32; 3]>> = vec![];
@@ -214,8 +225,29 @@ impl SceneBuilder for D2PreviewBuilder {
             }
         }
 
-        let mut batches = vec![atlas_batch, white_batch, selected_batch];
-        batches.extend(repeated_batches);
+        // Hover Cursor
+        if let Some(hover_pos) = self.hover_cursor {
+            let pos = self.map_grid_to_local(screen_size, hover_pos, map);
+            let size = 4.0;
+            yellow_batch.add_rectangle(pos.x - size, pos.y - size, size * 2.0, size * 2.0);
+        }
+
+        // Camera Pos
+        if let Some(camera_pos) = self.camera_pos {
+            let pos =
+                self.map_grid_to_local(screen_size, Vec2::new(camera_pos.x, camera_pos.z), map);
+            let size = 4.0;
+            red_batch.add_rectangle(pos.x - size, pos.y - size, size * 2.0, size * 2.0);
+        }
+
+        let mut batches = repeated_batches;
+        batches.extend(vec![
+            atlas_batch,
+            white_batch,
+            selected_batch,
+            yellow_batch,
+            red_batch,
+        ]);
 
         scene.d2 = batches;
         scene.textures = textures;
@@ -233,5 +265,10 @@ impl SceneBuilder for D2PreviewBuilder {
     ) {
         self.hover = hover;
         self.hover_cursor = hover_cursor;
+    }
+
+    fn set_camera_info(&mut self, pos: Option<vek::Vec3<f32>>, look_at: vek::Vec3<f32>) {
+        self.camera_pos = pos;
+        self.look_at = look_at;
     }
 }

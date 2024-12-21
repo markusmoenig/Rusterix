@@ -9,7 +9,7 @@ pub struct Edge {
 
 impl Edge {
     /// Create an edge from two vertices
-    pub fn new(v0: [f32; 2], v1: [f32; 2], visible: bool) -> Self {
+    pub fn new(v0: &[f32; 2], v1: &[f32; 2], visible: bool) -> Self {
         let a = v1[1] - v0[1];
         let b = v0[0] - v1[0];
         let c = v1[0] * v0[1] - v1[1] * v0[0];

@@ -1,32 +1,31 @@
 use rusterix::prelude::*;
-use std::path::Path;
-use theframework::*;
+use theframework::prelude::*;
 use vek::Vec2;
 
-use crate::{Cmd::*, TX};
+use crate::{Cmd::*, FROM_WINDOW_TX, TO_WINDOW_RX};
 
-pub struct Cube {
-    camera: D3OrbitCamera,
-    scene: Scene,
+#[derive(Debug, Clone)]
+#[allow(dead_code, clippy::large_enum_variant)]
+enum Content {
+    Off,
+    MapPreview(Map),
 }
 
-impl TheTrait for Cube {
+use Content::*;
+
+pub struct Editor {
+    camera: D3OrbitCamera,
+    content: Content,
+}
+
+impl TheTrait for Editor {
     fn new() -> Self
     where
         Self: Sized,
     {
-        let scene = Scene::from_static(
-            vec![Batch::from_rectangle(0.0, 0.0, 200.0, 200.0)],
-            vec![Batch::from_box(-0.5, -0.5, -0.5, 1.0, 1.0, 1.0)
-                .sample_mode(SampleMode::Nearest)
-                .cull_mode(CullMode::Back)],
-        )
-        .background(Box::new(VGrayGradientShader::new()))
-        .textures(vec![Texture::from_image(Path::new("images/logo.png"))]);
-
         Self {
             camera: D3OrbitCamera::new(),
-            scene,
+            content: Off,
         }
     }
 
@@ -34,6 +33,45 @@ impl TheTrait for Cube {
     fn draw(&mut self, pixels: &mut [u8], ctx: &mut TheContext) {
         // let _start = get_time();
 
+        if let Some(rx) = TO_WINDOW_RX.get() {
+            if let Ok(r) = rx.lock() {
+                while let Ok(command) = r.try_recv() {
+                    match command {
+                        FocusMap(map) => self.content = MapPreview(map),
+                        Exit => {
+                            println!("exidwadt");
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+
+        #[allow(clippy::single_match)]
+        match &self.content {
+            MapPreview(map) => {
+                let builder = D2PreviewBuilder::new();
+                let mut scene = builder.build(
+                    map,
+                    &FxHashMap::default(),
+                    Texture::from_color(BLACK),
+                    vek::Vec2::new(ctx.width as f32, ctx.height as f32),
+                );
+
+                Rasterizer {}.rasterize(
+                    &mut scene,
+                    pixels,
+                    ctx.width,
+                    ctx.height,
+                    100,
+                    None,
+                    vek::Mat4::identity(),
+                );
+            }
+            _ => {}
+        }
+
+        /*
         let projection_matrix_2d = None;
 
         // Rasterize the batches
@@ -51,7 +89,7 @@ impl TheTrait for Cube {
                 0.1,
                 100.0,
             ),
-        );
+        );*/
 
         //let _stop = get_time();
         // println!("Execution time: {:?} ms.", _stop - _start);
@@ -59,7 +97,7 @@ impl TheTrait for Cube {
 
     // Hover event
     fn touch_down(&mut self, x: f32, y: f32, ctx: &mut TheContext) -> bool {
-        if let Some(tx) = TX.get() {
+        if let Some(tx) = FROM_WINDOW_TX.get() {
             tx.send(MouseDown(Vec2::new(x, y))).unwrap();
         }
 
@@ -86,15 +124,19 @@ impl TheTrait for Cube {
 
     // Query if the widget needs a redraw
     fn update(&mut self, _ctx: &mut TheContext) -> bool {
-        false
+        true
     }
 
     fn window_title(&self) -> String {
         "Rusteria Editor".to_string()
     }
 
+    fn default_window_size(&self) -> (usize, usize) {
+        (640, 403)
+    }
+
     fn closing(&self) -> bool {
-        if let Some(tx) = TX.get() {
+        if let Some(tx) = FROM_WINDOW_TX.get() {
             tx.send(ClosingWindow).unwrap();
         }
         false

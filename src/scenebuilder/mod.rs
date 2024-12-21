@@ -39,4 +39,7 @@ pub trait SceneBuilder: Send + Sync {
         hover_cursor: Option<Vec2<f32>>,
     ) {
     }
+
+    /// Set the camera info, only needed for previews of visual editors. Used by D2PreviewBuilder.
+    fn set_camera_info(&mut self, pos: Option<vek::Vec3<f32>>, look_at: vek::Vec3<f32>) {}
 }

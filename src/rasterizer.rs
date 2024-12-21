@@ -203,8 +203,8 @@ impl Rasterizer {
                             let p1 = batch.projected_vertices[i1];
 
                             self.rasterize_line_bresenham(
-                                [p0[0], p0[1]],
-                                [p1[0], p1[1]],
+                                &[p0[0], p0[1]],
+                                &[p1[0], p1[1]],
                                 &mut buffer[..],
                                 tile,
                                 &batch.color,
@@ -217,8 +217,8 @@ impl Rasterizer {
                             let p1 = batch.projected_vertices[i + 1];
 
                             self.rasterize_line_bresenham(
-                                [p0[0], p0[1]],
-                                [p1[0], p1[1]],
+                                &[p0[0], p0[1]],
+                                &[p1[0], p1[1]],
                                 &mut buffer[..],
                                 tile,
                                 &batch.color,
@@ -233,8 +233,8 @@ impl Rasterizer {
                                 batch.projected_vertices[(i + 1) % batch.projected_vertices.len()];
 
                             self.rasterize_line_bresenham(
-                                [p0[0], p0[1]],
-                                [p1[0], p1[1]],
+                                &[p0[0], p0[1]],
+                                &[p1[0], p1[1]],
                                 &mut buffer[..],
                                 tile,
                                 &batch.color,
@@ -393,8 +393,8 @@ impl Rasterizer {
                             let p1 = batch.projected_vertices[i1];
 
                             self.rasterize_line_bresenham(
-                                [p0[0], p0[1]],
-                                [p1[0], p1[1]],
+                                &[p0[0], p0[1]],
+                                &[p1[0], p1[1]],
                                 &mut buffer[..],
                                 tile,
                                 &batch.color,
@@ -407,8 +407,8 @@ impl Rasterizer {
                             let p1 = batch.projected_vertices[i + 1];
 
                             self.rasterize_line_bresenham(
-                                [p0[0], p0[1]],
-                                [p1[0], p1[1]],
+                                &[p0[0], p0[1]],
+                                &[p1[0], p1[1]],
                                 &mut buffer[..],
                                 tile,
                                 &batch.color,
@@ -423,8 +423,8 @@ impl Rasterizer {
                                 batch.projected_vertices[(i + 1) % batch.projected_vertices.len()];
 
                             self.rasterize_line_bresenham(
-                                [p0[0], p0[1]],
-                                [p1[0], p1[1]],
+                                &[p0[0], p0[1]],
+                                &[p1[0], p1[1]],
                                 &mut buffer[..],
                                 tile,
                                 &batch.color,
@@ -484,8 +484,8 @@ impl Rasterizer {
     #[allow(clippy::too_many_arguments)]
     fn rasterize_line_bresenham(
         &self,
-        p0: [f32; 2],
-        p1: [f32; 2],
+        p0: &[f32; 2],
+        p1: &[f32; 2],
         buffer: &mut [u8],
         tile: &TileRect,
         color: &Pixel,
@@ -527,24 +527,6 @@ impl Rasterizer {
             }
         }
     }
-
-    //// Edge function for a triangle for a Vec2
-    // fn edge_function_2d(&self, v0: Vec3<f32>, v1: Vec3<f32>, p: Vec2<f32>) -> f32 {
-    //     let edge = v1 - v0;
-    //     let to_point = p - v0;
-    //     edge.x * to_point.y - edge.y * to_point.x
-    // }
-
-    //// Edge function for a triangle for a Vec3
-    // fn edge_function_3d(&self, v0: Vec4<f32>, v1: Vec4<f32>, p: Vec2<f32>) -> f32 {
-    //     let edge = Vec2::new(v1.x - v0.x, v1.y - v0.y);
-    //     let to_point = Vec2::new(p.x - v0.x, p.y - v0.y);
-    //     edge.x * to_point.y - edge.y * to_point.x
-    // }
-
-    // fn edge_function_3d(&self, v0: Vec3<f32>, v1: Vec3<f32>, p: Vec2<f32>) -> f32 {
-    //     (p.x - v0.x) * (v1.y - v0.y) - (p.y - v0.y) * (v1.x - v0.x)
-    // }
 }
 
 /// A rectangle struct which represents a Tile

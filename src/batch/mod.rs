@@ -4,7 +4,7 @@ pub mod batchd3;
 use crate::{Edge, Pixel, Rect, RepeatMode, SampleMode};
 
 /// The primitive mode. The rasterizer can draw triangles and lines.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum PrimitiveMode {
     /// Draw as triangles.
     Triangles,
@@ -17,7 +17,7 @@ pub enum PrimitiveMode {
 }
 
 /// The CullMode of the batch, Off by default.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum CullMode {
     /// Render all faces
     Off,

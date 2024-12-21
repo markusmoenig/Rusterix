@@ -1,5 +1,4 @@
 pub mod map;
-pub mod scanner;
 
 #[derive(Clone, Debug)]
 pub struct ParseError {
