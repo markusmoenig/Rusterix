@@ -8,14 +8,22 @@ use crate::{Cmd::*, FROM_WINDOW_TX, TO_WINDOW_RX};
 #[allow(dead_code, clippy::large_enum_variant)]
 enum Content {
     Off,
-    MapPreview(Map),
+    MapPreview(MapMeta),
+}
+
+#[derive(Debug, Clone)]
+enum PreviewMode {
+    D2,
+    D3,
 }
 
 use Content::*;
+use PreviewMode::*;
 
 pub struct Editor {
-    camera: D3OrbitCamera,
+    camera: D3IsoCamera,
     content: Content,
+    preview_mode: PreviewMode,
 }
 
 impl TheTrait for Editor {
@@ -24,8 +32,9 @@ impl TheTrait for Editor {
         Self: Sized,
     {
         Self {
-            camera: D3OrbitCamera::new(),
+            camera: D3IsoCamera::new(),
             content: Off,
+            preview_mode: D3,
         }
     }
 
@@ -49,25 +58,58 @@ impl TheTrait for Editor {
 
         #[allow(clippy::single_match)]
         match &self.content {
-            MapPreview(map) => {
-                let builder = D2PreviewBuilder::new();
-                let mut scene = builder.build(
-                    map,
-                    &FxHashMap::default(),
-                    Texture::from_color(BLACK),
-                    vek::Vec2::new(ctx.width as f32, ctx.height as f32),
-                );
+            MapPreview(meta) => match &self.preview_mode {
+                D2 => {
+                    let mut builder = D2PreviewBuilder::new();
+                    builder.set_map_tool_type(MapToolType::Selection);
 
-                Rasterizer {}.rasterize(
-                    &mut scene,
-                    pixels,
-                    ctx.width,
-                    ctx.height,
-                    100,
-                    None,
-                    vek::Mat4::identity(),
-                );
-            }
+                    let mut scene = builder.build(
+                        &meta.map,
+                        &meta.tiles,
+                        Texture::from_color(BLACK),
+                        vek::Vec2::new(ctx.width as f32, ctx.height as f32),
+                    );
+
+                    Rasterizer {}.rasterize(
+                        &mut scene,
+                        pixels,
+                        ctx.width,
+                        ctx.height,
+                        100,
+                        None,
+                        vek::Mat4::identity(),
+                    );
+                }
+                D3 => {
+                    let builder = D3Builder::new();
+
+                    let mut scene = builder.build(
+                        &meta.map,
+                        &meta.tiles,
+                        Texture::from_color(BLACK),
+                        vek::Vec2::new(ctx.width as f32, ctx.height as f32),
+                    );
+
+                    let look_at = vek::Vec3::new(2.0, 0.0, -2.0);
+
+                    let position =
+                        vek::Vec3::new(look_at.x - 10.0, look_at.y + 10.0, look_at.z + 10.0);
+
+                    self.camera.set_parameter_vec3("position", position);
+                    self.camera.set_parameter_vec3("look_at", look_at);
+
+                    let matrix = self.camera.view_projection_matrix(
+                        75.0,
+                        ctx.width as f32,
+                        ctx.height as f32,
+                        0.1,
+                        100.0,
+                    );
+
+                    Rasterizer {}
+                        .rasterize(&mut scene, pixels, ctx.width, ctx.height, 100, None, matrix);
+                }
+            },
             _ => {}
         }
 

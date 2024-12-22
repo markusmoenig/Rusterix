@@ -60,6 +60,7 @@ impl SceneBuilder for D2PreviewBuilder {
         let mut selected_batch = Batch::emptyd2().texture_index(2);
         let mut yellow_batch = Batch::emptyd2().texture_index(3);
         let mut red_batch = Batch::emptyd2().texture_index(4);
+        let mut gray_batch = Batch::emptyd2().texture_index(5);
 
         // Repeated tile textures have their own batches
         let mut repeated_batches: Vec<Batch<[f32; 3]>> = vec![];
@@ -159,7 +160,7 @@ impl SceneBuilder for D2PreviewBuilder {
                         size * 2.0,
                     );
                 } else {
-                    white_batch.add_rectangle(pos.x - size, pos.y - size, size * 2.0, size * 2.0);
+                    gray_batch.add_rectangle(pos.x - size, pos.y - size, size * 2.0, size * 2.0);
                 }
             }
         }
@@ -247,6 +248,7 @@ impl SceneBuilder for D2PreviewBuilder {
             selected_batch,
             yellow_batch,
             red_batch,
+            gray_batch,
         ]);
 
         scene.d2 = batches;

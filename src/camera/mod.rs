@@ -1,3 +1,5 @@
+pub mod d3firstp;
+pub mod d3iso;
 pub mod d3orbit;
 
 use vek::{Mat4, Vec2, Vec3, Vec4};

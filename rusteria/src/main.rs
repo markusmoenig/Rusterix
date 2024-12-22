@@ -17,7 +17,7 @@ use vek::Vec2;
 enum Cmd {
     OpenWindow,
     ClosingWindow,
-    FocusMap(Map),
+    FocusMap(MapMeta),
     Exit,
     MouseDown(Vec2<f32>),
 }
@@ -224,15 +224,15 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn compile_map(file_name: &str) -> Option<Map> {
+fn compile_map(file_name: &str) -> Option<MapMeta> {
     if let Ok(source) = std::fs::read_to_string(file_name) {
         let mut mapscript = MapScript::new();
         let result = mapscript.run(source);
 
         match result {
-            Ok(map) => {
-                println!("vertices {}", map.vertices.len());
-                Some(map)
+            Ok(meta) => {
+                println!("{}", meta.map.info());
+                Some(meta)
             }
             Err(errors) => {
                 for err in errors {

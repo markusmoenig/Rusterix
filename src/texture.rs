@@ -118,6 +118,30 @@ impl Texture {
         }
     }
 
+    /// Loads a texture from an image file at the given path (if available).
+    pub fn from_image_safe(input: impl IntoDataInput) -> Option<Self> {
+        // Try to load the image from the input source
+        let data = input.load_data().ok()?;
+        let img = image::ImageReader::new(Cursor::new(data))
+            .with_guessed_format()
+            .ok()? // Early return on format guessing failure
+            .decode()
+            .ok()?; // Early return on decoding failure
+
+        // Convert to RGBA8 format
+        let rgba_img = img.to_rgba8();
+        let (width, height) = rgba_img.dimensions();
+
+        // Flatten the image data into a Vec<u8>
+        let data = rgba_img.into_raw();
+
+        Some(Texture {
+            data,
+            width: width as usize,
+            height: height as usize,
+        })
+    }
+
     /// Samples the texture using the specified sampling and repeat mode
     pub fn sample(
         &self,

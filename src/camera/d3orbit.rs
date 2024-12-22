@@ -3,11 +3,11 @@ use vek::{Mat4, Vec2, Vec3};
 use super::D3Camera;
 
 pub struct D3OrbitCamera {
-    pub target: Vec3<f32>, // The point the camera orbits around
-    pub distance: f32,     // Distance from the target
-    pub azimuth: f32,      // Horizontal rotation in radians
-    pub elevation: f32,    // Vertical rotation in radians
-    pub up: Vec3<f32>,     // Camera's "up" direction (usually Vec3::unit_y())
+    pub target: Vec3<f32>,
+    pub distance: f32,
+    pub azimuth: f32,
+    pub elevation: f32,
+    pub up: Vec3<f32>,
 }
 
 impl D3Camera for D3OrbitCamera {

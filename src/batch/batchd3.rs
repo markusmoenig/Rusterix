@@ -9,6 +9,24 @@ use SampleMode::*;
 
 /// A batch of 4D vertices, indices and their UVs which make up a 3D mesh.
 impl Batch<[f32; 4]> {
+    /// Empty constructor
+    pub fn emptyd3() -> Self {
+        Batch {
+            mode: Triangles,
+            vertices: vec![],
+            indices: vec![],
+            uvs: vec![],
+            projected_vertices: vec![],
+            bounding_box: None,
+            edges: vec![],
+            color: WHITE,
+            sample_mode: Nearest,
+            repeat_mode: ClampXY,
+            cull_mode: Off,
+            texture_index: 0,
+        }
+    }
+
     pub fn new_3d(
         vertices: Vec<[f32; 4]>,
         indices: Vec<(usize, usize, usize)>,
@@ -143,6 +161,24 @@ impl Batch<[f32; 4]> {
             .push((base_index, base_index + 1, base_index + 2)); // Bottom-right triangle
         self.indices
             .push((base_index, base_index + 2, base_index + 3)); // Top-left triangle
+    }
+
+    /// Add a set of geometry to the batch.
+    pub fn add(
+        &mut self,
+        vertices: Vec<[f32; 4]>,
+        indices: Vec<(usize, usize, usize)>,
+        uvs: Vec<[f32; 2]>,
+    ) {
+        let base_index = self.vertices.len();
+
+        self.vertices.extend(vertices);
+        self.uvs.extend(uvs);
+
+        for i in &indices {
+            self.indices
+                .push((i.0 + base_index, i.1 + base_index, i.2 + base_index));
+        }
     }
 
     /// Load a Batch from an OBJ file using the Wavefront struct.

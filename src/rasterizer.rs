@@ -338,7 +338,7 @@ impl Rasterizer {
                                                 let zidx =
                                                     (ty - tile.y) * tile.width + (tx - tile.x);
 
-                                                if z < z_buffer[zidx] {
+                                                if z <= z_buffer[zidx] {
                                                     z_buffer[zidx] = z;
 
                                                     let alpha = w[0];

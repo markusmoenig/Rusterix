@@ -46,10 +46,13 @@ pub const WHITE: Pixel = [255, 255, 255, 255];
 // Re-exports
 pub use crate::{
     batch::{Batch, CullMode, PrimitiveMode},
-    camera::{d3orbit::D3OrbitCamera, D3Camera},
+    camera::{d3iso::D3IsoCamera, d3orbit::D3OrbitCamera, D3Camera},
     edge::Edge,
     intodata::IntoDataInput,
-    map::{linedef::Linedef, sector::Sector, tile::Tile, vertex::Vertex, Map, MapToolType},
+    map::{
+        linedef::Linedef, meta::MapMeta, sector::Sector, tile::Tile, vertex::Vertex, Map,
+        MapToolType,
+    },
     rasterizer::Rasterizer,
     rect::Rect,
     scene::Scene,
@@ -61,17 +64,19 @@ pub use crate::{
 // Prelude
 pub mod prelude {
     pub use crate::scene::Scene;
-    pub use crate::scenebuilder::{d2preview::D2PreviewBuilder, SceneBuilder};
-    pub use crate::script::map::MapScript;
+    pub use crate::scenebuilder::{
+        d2preview::D2PreviewBuilder, d3builder::D3Builder, SceneBuilder,
+    };
+    pub use crate::script::mapscript::MapScript;
     pub use crate::Edge;
     pub use crate::IntoDataInput;
     pub use crate::Rasterizer;
     pub use crate::Rect;
     pub use crate::{pixel_to_vec4, vec4_to_pixel};
     pub use crate::{Batch, CullMode, PrimitiveMode};
-    pub use crate::{D3Camera, D3OrbitCamera};
+    pub use crate::{D3Camera, D3IsoCamera, D3OrbitCamera};
     pub use crate::{GridShader, Shader, VGrayGradientShader};
-    pub use crate::{Linedef, Map, MapToolType, Sector, Tile, Vertex};
+    pub use crate::{Linedef, Map, MapMeta, MapToolType, Sector, Tile, Vertex};
     pub use crate::{Pixel, BLACK, TRANSPARENT, WHITE};
     pub use crate::{RepeatMode, SampleMode, Texture};
 }

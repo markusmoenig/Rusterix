@@ -1,4 +1,5 @@
 pub mod d2preview;
+pub mod d3builder;
 
 use crate::{Map, MapToolType, Scene, Texture, Tile};
 use theframework::prelude::*;

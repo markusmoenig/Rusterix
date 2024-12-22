@@ -1,4 +1,5 @@
 pub mod linedef;
+pub mod meta;
 pub mod sector;
 pub mod tile;
 pub mod vertex;
@@ -143,7 +144,10 @@ impl Map {
     }
 
     //
-    pub fn add_vertex_at(&mut self, x: f32, y: f32) -> u32 {
+    pub fn add_vertex_at(&mut self, mut x: f32, mut y: f32) -> u32 {
+        x = (x / self.subdivisions).round() * self.subdivisions;
+        y = (y / self.subdivisions).round() * self.subdivisions;
+
         // Check if the vertex already exists
         if let Some(id) = self.find_vertex_at(x, y) {
             return id;
@@ -392,5 +396,15 @@ impl Map {
         for s in &sectors {
             self.selected_sectors.retain(|&selected| selected != *s);
         }
+    }
+
+    /// Returns information about the Map
+    pub fn info(&self) -> String {
+        format!(
+            "V {}, L {}, S {}",
+            self.vertices.len(),
+            self.linedefs.len(),
+            self.sectors.len()
+        )
     }
 }
