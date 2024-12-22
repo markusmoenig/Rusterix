@@ -32,6 +32,16 @@ impl D3Camera for D3OrbitCamera {
         Mat4::look_at_lh(position, self.target, self.up)
     }
 
+    fn set_parameter_f32(&mut self, key: &str, value: f32) {
+        #[allow(clippy::single_match)]
+        match key {
+            "distance" => {
+                self.distance = value;
+            }
+            _ => {}
+        }
+    }
+
     fn set_parameter_vec2(&mut self, key: &str, value: Vec2<f32>) {
         #[allow(clippy::single_match)]
         match key {

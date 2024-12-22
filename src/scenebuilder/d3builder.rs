@@ -1,36 +1,15 @@
 // use crate::PrimitiveMode::*;
 use crate::SceneBuilder;
 use crate::Texture;
-use crate::{Batch, GridShader, Map, MapToolType, Pixel, Scene, Shader, Tile, WHITE};
+use crate::{Batch, Map, Scene, Tile};
 use theframework::prelude::*;
 use vek::Vec2;
 
-use MapToolType::*;
-
-pub struct D3Builder {
-    selection_color: Pixel,
-    map_tool_type: MapToolType,
-    /// Hover geometry info
-    pub hover: (Option<u32>, Option<u32>, Option<u32>),
-    /// The current grid hover position
-    pub hover_cursor: Option<Vec2<f32>>,
-    /// Camera
-    pub camera_pos: Option<vek::Vec3<f32>>,
-    pub look_at: vek::Vec3<f32>,
-}
+pub struct D3Builder {}
 
 impl SceneBuilder for D3Builder {
     fn new() -> Self {
-        Self {
-            selection_color: [187, 122, 208, 255],
-            map_tool_type: Linedef,
-
-            hover: (None, None, None),
-            hover_cursor: None,
-
-            camera_pos: None,
-            look_at: vek::Vec3::zero(),
-        }
+        Self {}
     }
 
     fn build(
@@ -38,14 +17,14 @@ impl SceneBuilder for D3Builder {
         map: &Map,
         tiles: &FxHashMap<Uuid, Tile>,
         atlas: Texture,
-        screen_size: Vec2<f32>,
+        _screen_size: Vec2<f32>,
     ) -> Scene {
         let mut scene = Scene::empty();
-        let atlas_size = atlas.width as f32;
+        // let atlas_size = atlas.width as f32;
 
         let mut textures = vec![atlas];
 
-        let mut atlas_batch = Batch::emptyd3();
+        let atlas_batch = Batch::emptyd3();
 
         // Repeated tile textures have their own batches
         let mut repeated_batches: Vec<Batch<[f32; 4]>> = vec![];
@@ -167,6 +146,7 @@ impl SceneBuilder for D3Builder {
                                     let mut batch = Batch::emptyd3()
                                         .repeat_mode(crate::RepeatMode::RepeatXY)
                                         .cull_mode(crate::CullMode::Off)
+                                        //.sample_mode(crate::SampleMode::Linear)
                                         .texture_index(texture_index);
 
                                     batch.add(wall_vertices, wall_indices, wall_uvs);
@@ -190,23 +170,5 @@ impl SceneBuilder for D3Builder {
         scene.d3_static = batches;
         scene.textures = textures;
         scene
-    }
-
-    fn set_map_tool_type(&mut self, tool: MapToolType) {
-        self.map_tool_type = tool;
-    }
-
-    fn set_map_hover_info(
-        &mut self,
-        hover: (Option<u32>, Option<u32>, Option<u32>),
-        hover_cursor: Option<Vec2<f32>>,
-    ) {
-        self.hover = hover;
-        self.hover_cursor = hover_cursor;
-    }
-
-    fn set_camera_info(&mut self, pos: Option<vek::Vec3<f32>>, look_at: vek::Vec3<f32>) {
-        self.camera_pos = pos;
-        self.look_at = look_at;
     }
 }

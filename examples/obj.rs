@@ -56,7 +56,7 @@ impl TheTrait for ObjDemo {
                 ctx.height as f32,
                 0.1,
                 100.0,
-            ) * Mat4::scaling_3d(Vec3::new(0.35, 0.35, 0.35)),
+            ) * Mat4::scaling_3d(Vec3::new(0.35, -0.35, 0.35)),
         );
 
         let _stop = get_time();

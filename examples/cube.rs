@@ -26,7 +26,7 @@ impl TheTrait for Cube {
             vec![Batch::from_rectangle(0.0, 0.0, 200.0, 200.0)],
             vec![Batch::from_box(-0.5, -0.5, -0.5, 1.0, 1.0, 1.0)
                 .sample_mode(SampleMode::Nearest)
-                .cull_mode(CullMode::Back)],
+                .cull_mode(CullMode::Front)],
         )
         .background(Box::new(VGrayGradientShader::new()))
         .textures(vec![Texture::from_image(Path::new("images/logo.png"))]);

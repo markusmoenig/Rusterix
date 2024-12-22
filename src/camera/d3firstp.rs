@@ -17,7 +17,7 @@ impl D3Camera for D3FirstPCamera {
 
     fn view_matrix(&self) -> Mat4<f32> {
         let up = vek::Vec3::new(0.0, 1.0, 0.0);
-        vek::Mat4::look_at_rh(self.position, self.look_at, up)
+        vek::Mat4::look_at_lh(self.position, self.look_at, up)
     }
 
     fn view_projection_matrix(
@@ -29,7 +29,7 @@ impl D3Camera for D3FirstPCamera {
         far: f32,
     ) -> Mat4<f32> {
         let view_matrix = self.view_matrix();
-        let projection_matrix = vek::Mat4::perspective_fov_rh_no(fov, width, height, near, far);
+        let projection_matrix = vek::Mat4::perspective_fov_lh_no(fov, width, height, near, far);
         projection_matrix * view_matrix
     }
 

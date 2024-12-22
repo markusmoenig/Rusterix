@@ -323,27 +323,20 @@ impl Rasterizer {
                                             let edge2 = edges[2].evaluate(p);
                                             if edge2 >= 0.0 && edges[2].visible {
                                                 // Interpolate barycentric coordinates
-                                                let w =
+                                                let [alpha, beta, gamma] =
                                                     self.barycentric_weights_3d(&v0, &v1, &v2, &p);
 
-                                                // Compute reciprocal depths (1 / z) for each vertex
-                                                let z0 = 1.0 / v0[2];
-                                                let z1 = 1.0 / v1[2];
-                                                let z2 = 1.0 / v2[2];
-
-                                                // Interpolate reciprocal depth
-                                                let one_over_z = z0 * w[0] + z1 * w[1] + z2 * w[2];
+                                                // Calculate Z-Buffer value
+                                                let one_over_z = 1.0 / v0[2] * alpha
+                                                    + 1.0 / v1[2] * beta
+                                                    + 1.0 / v2[2] * gamma;
                                                 let z = 1.0 / one_over_z;
 
                                                 let zidx =
                                                     (ty - tile.y) * tile.width + (tx - tile.x);
 
-                                                if z <= z_buffer[zidx] {
+                                                if z < z_buffer[zidx] {
                                                     z_buffer[zidx] = z;
-
-                                                    let alpha = w[0];
-                                                    let beta = w[1];
-                                                    let gamma = w[2];
 
                                                     // Perform the interpolation of all U/w and V/w values using barycentric weights and a factor of 1/w
                                                     let mut interpolated_u = (uv0[0] / v0[3])
@@ -355,7 +348,7 @@ impl Rasterizer {
                                                         + (uv1[1] / v1[3]) * beta
                                                         + (uv2[1] / v2[3]) * gamma;
 
-                                                    // Also interpolate the value of 1/w for the current pixel
+                                                    // Interpolate reciprocal depth
                                                     let interpolated_reciprocal_w = (1.0 / v0[3])
                                                         * alpha
                                                         + (1.0 / v1[3]) * beta

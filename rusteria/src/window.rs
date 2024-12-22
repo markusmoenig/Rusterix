@@ -12,6 +12,7 @@ enum Content {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 enum PreviewMode {
     D2,
     D3,
@@ -90,13 +91,18 @@ impl TheTrait for Editor {
                         vek::Vec2::new(ctx.width as f32, ctx.height as f32),
                     );
 
-                    let look_at = vek::Vec3::new(2.0, 0.0, -2.0);
+                    let look_at = vek::Vec3::new(2.0, 0.5, -2.0);
 
                     let position =
                         vek::Vec3::new(look_at.x - 10.0, look_at.y + 10.0, look_at.z + 10.0);
 
+                    // let look_at = vek::Vec3::new(2.0, 0.0, 2.0);
+                    // let position = vek::Vec3::new(2.0, 0.2, look_at.z + 1.0);
+
                     self.camera.set_parameter_vec3("position", position);
                     self.camera.set_parameter_vec3("look_at", look_at);
+
+                    self.camera.set_parameter_f32("distance", -8.0);
 
                     let matrix = self.camera.view_projection_matrix(
                         75.0,
@@ -107,7 +113,7 @@ impl TheTrait for Editor {
                     );
 
                     Rasterizer {}
-                        .rasterize(&mut scene, pixels, ctx.width, ctx.height, 100, None, matrix);
+                        .rasterize(&mut scene, pixels, ctx.width, ctx.height, 80, None, matrix);
                 }
             },
             _ => {}
@@ -143,6 +149,14 @@ impl TheTrait for Editor {
             tx.send(MouseDown(Vec2::new(x, y))).unwrap();
         }
 
+        self.camera.set_parameter_vec2(
+            "from_normalized",
+            Vec2::new(x / ctx.width as f32, y / ctx.height as f32),
+        );
+        true
+    }
+
+    fn hover(&mut self, x: f32, y: f32, ctx: &mut TheContext) -> bool {
         self.camera.set_parameter_vec2(
             "from_normalized",
             Vec2::new(x / ctx.width as f32, y / ctx.height as f32),

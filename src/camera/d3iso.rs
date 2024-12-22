@@ -17,7 +17,7 @@ impl D3Camera for D3IsoCamera {
 
     fn view_matrix(&self) -> Mat4<f32> {
         let up = vek::Vec3::new(0.0, 1.0, 0.0);
-        vek::Mat4::look_at_rh(self.position, self.look_at, up)
+        vek::Mat4::look_at_lh(self.position, self.look_at, up)
     }
 
     fn view_projection_matrix(
@@ -45,7 +45,7 @@ impl D3Camera for D3IsoCamera {
             near,
             far,
         };
-        let projection_matrix = vek::Mat4::orthographic_rh_zo(orthographic_planes);
+        let projection_matrix = vek::Mat4::orthographic_lh_no(orthographic_planes);
         projection_matrix * view_matrix
     }
 
