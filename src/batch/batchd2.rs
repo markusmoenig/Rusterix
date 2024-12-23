@@ -29,6 +29,8 @@ impl Batch<[f32; 3]> {
             repeat_mode: ClampXY,
             cull_mode: Off,
             texture_index: 0,
+            clipped_indices: vec![],
+            clipped_uvs: vec![],
         }
     }
 
@@ -51,6 +53,8 @@ impl Batch<[f32; 3]> {
             repeat_mode: ClampXY,
             cull_mode: Off,
             texture_index: 0,
+            clipped_indices: vec![],
+            clipped_uvs: vec![],
         }
     }
 

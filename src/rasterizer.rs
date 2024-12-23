@@ -14,9 +14,16 @@ impl Rasterizer {
         height: usize,
         tile_size: usize,
         projection_matrix_2d: Option<Mat3<f32>>,
+        view_matrix_3d: Mat4<f32>,
         projection_matrix_3d: Mat4<f32>,
     ) {
-        scene.project(projection_matrix_2d, projection_matrix_3d, width, height);
+        scene.project(
+            projection_matrix_2d,
+            view_matrix_3d,
+            projection_matrix_3d,
+            width,
+            height,
+        );
 
         // Divide the screen into tiles
         let mut tiles = Vec::new();
@@ -267,18 +274,18 @@ impl Rasterizer {
                     PrimitiveMode::Triangles => {
                         // Process each triangle in the batch
                         for (triangle_index, edges) in batch.edges.iter().enumerate() {
-                            let (i0, i1, i2) = batch.indices[triangle_index];
+                            let (i0, i1, i2) = batch.clipped_indices[triangle_index];
                             let v0 = batch.projected_vertices[i0];
                             let v1 = batch.projected_vertices[i1];
                             let v2 = batch.projected_vertices[i2];
-                            let uv0 = batch.uvs[i0];
-                            let uv1 = batch.uvs[i1];
-                            let uv2 = batch.uvs[i2];
+                            let uv0 = batch.clipped_uvs[i0];
+                            let uv1 = batch.clipped_uvs[i1];
+                            let uv2 = batch.clipped_uvs[i2];
 
                             // Check if all three vertices are behind the near clipping plane
-                            if v0[2] < 0.0 && v1[2] < 0.0 && v2[2] < 0.0 {
-                                continue;
-                            }
+                            // if v0[2] < 0.0 && v1[2] < 0.0 && v2[2] < 0.0 {
+                            //     continue;
+                            // }
 
                             // Compute bounding box of the triangle
                             let min_x = [v0[0], v1[0], v2[0]]

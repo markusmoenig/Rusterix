@@ -15,12 +15,16 @@ impl D3Camera for D3IsoCamera {
         }
     }
 
+    fn id(&self) -> String {
+        "iso".to_string()
+    }
+
     fn view_matrix(&self) -> Mat4<f32> {
         let up = vek::Vec3::new(0.0, 1.0, 0.0);
         vek::Mat4::look_at_lh(self.position, self.look_at, up)
     }
 
-    fn view_projection_matrix(
+    fn projection_matrix(
         &self,
         _fov: f32,
         width: f32,
@@ -28,7 +32,6 @@ impl D3Camera for D3IsoCamera {
         _near: f32,
         _far: f32,
     ) -> Mat4<f32> {
-        let view_matrix = self.view_matrix();
         let scale = 2.0;
         let aspect_ratio = width / height;
         let left = -scale * aspect_ratio;
@@ -45,8 +48,7 @@ impl D3Camera for D3IsoCamera {
             near,
             far,
         };
-        let projection_matrix = vek::Mat4::orthographic_lh_no(orthographic_planes);
-        projection_matrix * view_matrix
+        vek::Mat4::orthographic_lh_no(orthographic_planes)
     }
 
     fn set_parameter_vec3(&mut self, key: &str, value: Vec3<f32>) {

@@ -63,6 +63,7 @@ impl Scene {
     pub fn project(
         &mut self,
         projection_matrix_2d: Option<Mat3<f32>>,
+        view_matrix_3d: Mat4<f32>,
         projection_matrix_3d: Mat4<f32>,
         width: usize,
         height: usize,
@@ -72,11 +73,21 @@ impl Scene {
         });
 
         self.d3_static.par_iter_mut().for_each(|batch| {
-            batch.project(projection_matrix_3d, width as f32, height as f32);
+            batch.clip_and_project(
+                view_matrix_3d,
+                projection_matrix_3d,
+                width as f32,
+                height as f32,
+            );
         });
 
         self.d3_dynamic.par_iter_mut().for_each(|batch| {
-            batch.project(projection_matrix_3d, width as f32, height as f32);
+            batch.clip_and_project(
+                view_matrix_3d,
+                projection_matrix_3d,
+                width as f32,
+                height as f32,
+            );
         });
     }
 }

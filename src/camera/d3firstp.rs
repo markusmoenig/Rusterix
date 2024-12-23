@@ -15,12 +15,17 @@ impl D3Camera for D3FirstPCamera {
         }
     }
 
+    fn id(&self) -> String {
+        "firstp".to_string()
+    }
+
     fn view_matrix(&self) -> Mat4<f32> {
         let up = vek::Vec3::new(0.0, 1.0, 0.0);
         vek::Mat4::look_at_lh(self.position, self.look_at, up)
     }
 
-    fn view_projection_matrix(
+    /*
+    fn projection_matrix(
         &self,
         fov: f32,
         width: f32,
@@ -28,10 +33,8 @@ impl D3Camera for D3FirstPCamera {
         near: f32,
         far: f32,
     ) -> Mat4<f32> {
-        let view_matrix = self.view_matrix();
-        let projection_matrix = vek::Mat4::perspective_fov_lh_no(fov, width, height, near, far);
-        projection_matrix * view_matrix
-    }
+        vek::Mat4::perspective_fov_lh_no(fov, width, height, near, far)
+    }*/
 
     fn set_parameter_vec3(&mut self, key: &str, value: Vec3<f32>) {
         #[allow(clippy::single_match)]

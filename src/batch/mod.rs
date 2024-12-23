@@ -63,4 +63,7 @@ pub struct Batch<T> {
 
     /// Texture index. Specifies the texture index into the texture array during rasterization for this batch. Default is 0.
     pub texture_index: usize,
+
+    pub clipped_indices: Vec<(usize, usize, usize)>,
+    pub clipped_uvs: Vec<[f32; 2]>,
 }

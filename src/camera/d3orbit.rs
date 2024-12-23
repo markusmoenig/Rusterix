@@ -21,6 +21,10 @@ impl D3Camera for D3OrbitCamera {
         }
     }
 
+    fn id(&self) -> String {
+        "orbit".to_string()
+    }
+
     fn view_matrix(&self) -> Mat4<f32> {
         // Convert spherical coordinates to cartesian coordinates
         let x = self.distance * self.azimuth.cos() * self.elevation.cos();

@@ -50,13 +50,9 @@ impl TheTrait for ObjDemo {
             ctx.height, // Destination buffer height
             80,         // Tile size
             projection_matrix_2d,
-            self.camera.view_projection_matrix(
-                75.0,
-                ctx.width as f32,
-                ctx.height as f32,
-                0.1,
-                100.0,
-            ) * Mat4::scaling_3d(Vec3::new(0.35, -0.35, 0.35)),
+            self.camera.view_matrix() * Mat4::scaling_3d(Vec3::new(0.35, -0.35, 0.35)),
+            self.camera
+                .projection_matrix(75.0, ctx.width as f32, ctx.height as f32, 0.1, 100.0),
         );
 
         let _stop = get_time();

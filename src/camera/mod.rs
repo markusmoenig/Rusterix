@@ -10,11 +10,15 @@ pub trait D3Camera: Send + Sync {
     where
         Self: Sized;
 
+    fn id(&self) -> String {
+        "".to_string()
+    }
+
     fn view_matrix(&self) -> Mat4<f32> {
         Mat4::identity()
     }
 
-    fn view_projection_matrix(
+    fn projection_matrix(
         &self,
         fov: f32,
         width: f32,
@@ -22,10 +26,7 @@ pub trait D3Camera: Send + Sync {
         near: f32,
         far: f32,
     ) -> Mat4<f32> {
-        let view_matrix = self.view_matrix();
-        let projection_matrix =
-            Mat4::perspective_fov_lh_zo(fov.to_radians(), width, height, near, far);
-        projection_matrix * view_matrix
+        Mat4::perspective_fov_lh_zo(fov.to_radians(), width, height, near, far)
     }
 
     /// Set an f32 parameter.

@@ -51,13 +51,9 @@ impl TheTrait for Cube {
             ctx.height, // Destination buffer height
             200,        // Tile size
             projection_matrix_2d,
-            self.camera.view_projection_matrix(
-                75.0,
-                ctx.width as f32,
-                ctx.height as f32,
-                0.1,
-                100.0,
-            ),
+            self.camera.view_matrix(),
+            self.camera
+                .projection_matrix(75.0, ctx.width as f32, ctx.height as f32, 0.1, 100.0),
         );
 
         let _stop = get_time();
