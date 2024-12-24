@@ -11,8 +11,9 @@ keywords = ["software", "rendering", "graphics", "game", "3d", "doom", "engine"]
 clap = "4.5.23"
 rustyline = "15.0.0"
 rusterix = { version = "0.1.1", path = "../." }
-#theframework = "0.1.30"
-theframework = { path = "../../theframework" }
+# theframework = "0.1.30"
+theframework = { git = "https://github.com/markusmoenig/theframework" }
+# theframework = { path = "../../theframework" }
 vek = { version = "0.17.1", default-features = true }
 rustpython = "0.4.0"
 notify = "7.0.0"

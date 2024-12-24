@@ -108,11 +108,11 @@ fn rotate(angle: f32) -> PyResult<()> {
 }
 
 fn turn_left() -> PyResult<()> {
-    rotate(90.0)
+    rotate(-90.0)
 }
 
 fn turn_right() -> PyResult<()> {
-    rotate(-90.0)
+    rotate(90.0)
 }
 
 fn wall(length: f32) -> PyResult<()> {
@@ -132,7 +132,7 @@ fn wall(length: f32) -> PyResult<()> {
 
     if let Some(linedef) = map.find_linedef_mut(linedef_id) {
         linedef.texture = *DEFAULT_WALL_TEXTURE.read().unwrap();
-        linedef.wall_height = 1.0;
+        linedef.wall_height = 2.0;
     }
 
     if let Some(sector_id) = sector_id {

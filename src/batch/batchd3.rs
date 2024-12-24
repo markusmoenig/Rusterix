@@ -265,8 +265,7 @@ impl Batch<[f32; 4]> {
         let mut new_uvs = Vec::new();
 
         // Visibility flags for edges
-        let mut edge_visibility = vec![true; self.indices.len() * 3];
-        // let mut added_vertex_indices: FxHashSet<usize> = FxHashSet::default();
+        let mut edge_visibility = vec![true; self.indices.len()];
 
         // Iterate over triangles
         for (triangle_idx, &(i0, i1, i2)) in self.indices.iter().enumerate() {
@@ -286,9 +285,7 @@ impl Batch<[f32; 4]> {
                 continue;
             }
 
-            edge_visibility[triangle_idx * 3] = false;
-            edge_visibility[triangle_idx * 3 + 1] = false;
-            edge_visibility[triangle_idx * 3 + 2] = false;
+            edge_visibility[triangle_idx] = false;
 
             if !is_v0_inside && !is_v1_inside && !is_v2_inside {
                 // All vertices are outside, continue
@@ -306,7 +303,6 @@ impl Batch<[f32; 4]> {
 
                 if current[2] >= near_plane {
                     new_vertices.push(current);
-                    // clipped_indices.push(idx_current);
                     clipped_indices.push(self.vertices.len() + new_vertices.len() - 1);
                     new_uvs.push(uv_current);
                     new_edge_visibility.push(true);
@@ -395,66 +391,16 @@ impl Batch<[f32; 4]> {
                     }
                 };
 
-                let edge0_visible = edge_visibility
-                    .get(triangle_idx * 3)
-                    .copied()
-                    .unwrap_or(true)
-                    && visible;
-                // let edge1_visible = edge_visibility
-                //     .get(triangle_idx * 3 + 1)
-                //     .copied()
-                //     .unwrap_or(true);
-                // let edge2_visible = edge_visibility
-                //     .get(triangle_idx * 3 + 2)
-                //     .copied()
-                //     .unwrap_or(true);
+                let edge_visible =
+                    edge_visibility.get(triangle_idx).copied().unwrap_or(true) && visible;
 
                 [
-                    Edge::new(&[v0[0], v0[1]], &[v1[0], v1[1]], edge0_visible),
-                    Edge::new(&[v1[0], v1[1]], &[v2[0], v2[1]], edge0_visible),
-                    Edge::new(&[v2[0], v2[1]], &[v0[0], v0[1]], edge0_visible),
+                    Edge::new(&[v0[0], v0[1]], &[v1[0], v1[1]], edge_visible),
+                    Edge::new(&[v1[0], v1[1]], &[v2[0], v2[1]], edge_visible),
+                    Edge::new(&[v2[0], v2[1]], &[v0[0], v0[1]], edge_visible),
                 ]
             })
             .collect();
-        // Precompute edges for each triangle
-        /*
-        self.edges = self
-            .indices
-            .iter()
-            .map(|&(i0, i1, i2)| {
-                let v0 = self.projected_vertices[i0];
-                let mut v1 = self.projected_vertices[i1];
-                let mut v2 = self.projected_vertices[i2];
-
-                /*
-                let visible = match self.cull_mode {
-                    CullMode::Off => {
-                        if self.is_front_facing(&v0, &v1, &v2) {
-                            std::mem::swap(&mut v1, &mut v2);
-                        }
-                        true
-                    }
-                    CullMode::Front => !self.is_front_facing(&v0, &v1, &v2),
-                    CullMode::Back => {
-                        if self.is_front_facing(&v0, &v1, &v2) {
-                            std::mem::swap(&mut v1, &mut v2);
-                            true
-                        } else {
-                            false
-                        }
-                    }
-                };*/
-
-                let visible = true;
-
-                [
-                    Edge::new(&[v0[0], v0[1]], &[v1[0], v1[1]], visible),
-                    Edge::new(&[v1[0], v1[1]], &[v2[0], v2[1]], visible),
-                    Edge::new(&[v2[0], v2[1]], &[v0[0], v0[1]], visible),
-                ]
-            })
-            .collect();
-        */
     }
 
     /// Returns true if the triangle faces to the front

@@ -118,7 +118,10 @@ impl Linedef {
     }*/
 
     #[allow(clippy::type_complexity)]
-    pub fn generate_geometry(&self, map: &Map) -> Option<(Vec<[f32; 3]>, Vec<Vec2f>, Vec<u32>)> {
+    pub fn generate_geometry(
+        &self,
+        map: &Map,
+    ) -> Option<(Vec<[f32; 3]>, Vec<Vec2<f32>>, Vec<u32>)> {
         // Retrieve the start and end vertices for the linedef
         let start_vertex = map.vertices.get(self.start_vertex as usize)?;
         let end_vertex = map.vertices.get(self.end_vertex as usize)?;
@@ -146,11 +149,11 @@ impl Linedef {
         let vertices = vec![bottom_left, top_left, bottom_right, top_right];
 
         // Generate UVs for texture mapping (proportional to the wall dimensions)
-        let uvs: Vec<Vec2f> = vec![
-            vec2f(0.0, 0.0),                // bottom_left
-            vec2f(0.0, self.wall_width),    // top_left
-            vec2f(length, 0.0),             // bottom_right
-            vec2f(length, self.wall_width), // top_right
+        let uvs: Vec<Vec2<f32>> = vec![
+            Vec2::new(0.0, 0.0),                // bottom_left
+            Vec2::new(0.0, self.wall_width),    // top_left
+            Vec2::new(length, 0.0),             // bottom_right
+            Vec2::new(length, self.wall_width), // top_right
         ];
 
         // Indices for the two triangles forming the rectangle

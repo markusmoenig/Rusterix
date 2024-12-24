@@ -4,6 +4,7 @@
 pub mod batch;
 pub mod camera;
 pub mod edge;
+pub mod entity;
 pub mod intodata;
 pub mod map;
 pub mod rasterizer;
@@ -48,6 +49,7 @@ pub use crate::{
     batch::{Batch, CullMode, PrimitiveMode},
     camera::{d3firstp::D3FirstPCamera, d3iso::D3IsoCamera, d3orbit::D3OrbitCamera, D3Camera},
     edge::Edge,
+    entity::Entity,
     intodata::IntoDataInput,
     map::{
         linedef::Linedef, meta::MapMeta, sector::Sector, tile::Tile, vertex::Vertex, Map,
@@ -69,6 +71,7 @@ pub mod prelude {
     };
     pub use crate::script::mapscript::MapScript;
     pub use crate::Edge;
+    pub use crate::Entity;
     pub use crate::IntoDataInput;
     pub use crate::Rasterizer;
     pub use crate::Rect;

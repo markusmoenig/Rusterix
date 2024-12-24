@@ -23,10 +23,9 @@ use PreviewMode::*;
 
 pub struct Editor {
     camera: Box<dyn D3Camera>,
+    entity: Entity,
     content: Content,
     preview_mode: PreviewMode,
-    camera_pos: vek::Vec3<f32>,
-    camera_look_at: vek::Vec3<f32>,
 }
 
 impl TheTrait for Editor {
@@ -36,10 +35,9 @@ impl TheTrait for Editor {
     {
         Self {
             camera: Box::new(D3IsoCamera::new()),
+            entity: Entity::default(),
             content: Off,
             preview_mode: D2,
-            camera_pos: vek::Vec3::new(0.0, 1.0, -3.0),
-            camera_look_at: vek::Vec3::new(0.0, 0.0, 0.0),
         }
     }
 
@@ -66,6 +64,8 @@ impl TheTrait for Editor {
             MapPreview(meta) => match &self.preview_mode {
                 D2 => {
                     let mut builder = D2PreviewBuilder::new();
+                    builder
+                        .set_camera_info(Some(self.entity.position), self.entity.camera_look_at());
                     builder.set_map_tool_type(MapToolType::Selection);
 
                     let mut scene = builder.build(
@@ -96,22 +96,16 @@ impl TheTrait for Editor {
                         vek::Vec2::new(ctx.width as f32, ctx.height as f32),
                     );
 
-                    // let look_at = vek::Vec3::new(2.0, 0.0, 2.0);
-                    // let position = vek::Vec3::new(2.0, 0.2, look_at.z + 1.0);
-
-                    let mut position = self.camera_pos;
+                    self.entity.apply_to_camera(&mut self.camera);
 
                     if self.camera.id() == "iso" {
-                        position = vek::Vec3::new(
-                            self.camera_look_at.x - 10.0,
-                            self.camera_look_at.y + 10.0,
-                            self.camera_look_at.z + 10.0,
+                        let position = vek::Vec3::new(
+                            self.entity.position.x - 10.0,
+                            self.entity.position.y + 10.0,
+                            self.entity.position.z + 10.0,
                         );
+                        self.camera.set_parameter_vec3("position", position);
                     }
-
-                    self.camera.set_parameter_vec3("position", position);
-                    self.camera
-                        .set_parameter_vec3("look_at", self.camera_look_at);
 
                     self.camera.set_parameter_f32("distance", -8.0);
 
@@ -166,14 +160,31 @@ impl TheTrait for Editor {
 
     // Hover event
     fn touch_down(&mut self, x: f32, y: f32, ctx: &mut TheContext) -> bool {
-        if let Some(tx) = FROM_WINDOW_TX.get() {
-            tx.send(MouseDown(Vec2::new(x, y))).unwrap();
+        // if let Some(tx) = FROM_WINDOW_TX.get() {
+        //     tx.send(MouseDown(Vec2::new(x, y))).unwrap();
+        // }
+
+        // self.camera.set_parameter_vec2(
+        //     "from_normalized",
+        //     Vec2::new(x / ctx.width as f32, y / ctx.height as f32),
+        // );
+
+        #[allow(clippy::single_match)]
+        match &self.content {
+            MapPreview(meta) => {
+                let pos = local_to_map_grid(
+                    Vec2::new(ctx.width as f32, ctx.height as f32),
+                    Vec2::new(x, y),
+                    &meta.map,
+                    1.0,
+                );
+                self.entity.position.x = pos.x;
+                self.entity.position.y = 1.0;
+                self.entity.position.z = pos.y;
+            }
+            _ => {}
         }
 
-        self.camera.set_parameter_vec2(
-            "from_normalized",
-            Vec2::new(x / ctx.width as f32, y / ctx.height as f32),
-        );
         true
     }
 
@@ -184,25 +195,8 @@ impl TheTrait for Editor {
                 Vec2::new(x / ctx.width as f32, y / ctx.height as f32),
             );
         } else if self.camera.id() == "firstp" {
-            // First-person camera logic
-            let mouse_sensitivity = 0.2; // Adjust sensitivity as needed
-            let delta_x = x / ctx.width as f32 - 0.5; // Normalize to range [-0.5, 0.5]
-            let delta_y = -y / ctx.height as f32; // - 0.5;
-
-            // Update yaw and pitch based on mouse movement
-            let yaw = delta_x * mouse_sensitivity * std::f32::consts::PI;
-            let pitch = delta_y * mouse_sensitivity * std::f32::consts::PI;
-
-            // Calculate the forward vector using the updated yaw and pitch
-            let direction = vek::Vec3::new(
-                yaw.cos() * pitch.cos(),
-                pitch.sin(),
-                yaw.sin() * pitch.cos(),
-            )
-            .normalized();
-
-            // Update the camera's look_at based on the new direction
-            self.camera_look_at = self.camera_pos + direction;
+            self.entity
+                .set_tilt_from_screen_coordinate(1.0 - y / ctx.height as f32);
         }
         true
     }
@@ -211,12 +205,20 @@ impl TheTrait for Editor {
         #[allow(clippy::single_match)]
         match &mut self.content {
             MapPreview(meta) => {
-                meta.map.offset += vek::Vec2::new(delta.0 as f32 * 0.2, -delta.1 as f32 * 0.2);
+                meta.map.offset += Vec2::new(delta.0 as f32 * 0.2, -delta.1 as f32 * 0.2);
             }
             _ => {}
         }
         true
     }
+
+    // fn key_up(
+    //     &mut self,
+    //     char: Option<char>,
+    //     _key: Option<TheKeyCode>,
+    //     _ctx: &mut TheContext,
+    // ) -> bool {
+    // }
 
     fn key_down(
         &mut self,
@@ -243,42 +245,20 @@ impl TheTrait for Editor {
                     self.preview_mode = D3;
                 }
                 'w' => {
-                    // Move forward along the camera's forward direction
-                    let forward = (self.camera_look_at - self.camera_pos).normalized();
-                    self.camera_pos += forward * 0.1;
-                    self.camera_look_at += forward * 0.1;
+                    // Move forward
+                    self.entity.move_forward(0.5);
                 }
                 's' => {
                     // Move backward along the camera's forward direction
-                    let forward = (self.camera_look_at - self.camera_pos).normalized();
-                    self.camera_pos -= forward * 0.1;
-                    self.camera_look_at -= forward * 0.1;
+                    self.entity.move_backward(0.5);
                 }
                 'a' => {
-                    // Rotate camera left (yaw)
-                    let direction = self.camera_look_at - self.camera_pos;
-                    let rotation = vek::Mat4::rotation_y(-0.1); // Rotate by -0.1 radians
-                    let rotated_direction =
-                        rotation * vek::Vec4::new(direction.x, direction.y, direction.z, 1.0);
-                    self.camera_look_at = self.camera_pos
-                        + vek::Vec3::new(
-                            rotated_direction.x,
-                            rotated_direction.y,
-                            rotated_direction.z,
-                        );
+                    // Turn left
+                    self.entity.turn_left(5.0);
                 }
                 'd' => {
-                    // Rotate camera right (yaw)
-                    let direction = self.camera_look_at - self.camera_pos;
-                    let rotation = vek::Mat4::rotation_y(0.1); // Rotate by 0.1 radians
-                    let rotated_direction =
-                        rotation * vek::Vec4::new(direction.x, direction.y, direction.z, 1.0);
-                    self.camera_look_at = self.camera_pos
-                        + vek::Vec3::new(
-                            rotated_direction.x,
-                            rotated_direction.y,
-                            rotated_direction.z,
-                        );
+                    // Turn right
+                    self.entity.turn_right(5.0);
                 }
                 _ => {}
             }
@@ -305,5 +285,29 @@ impl TheTrait for Editor {
             tx.send(ClosingWindow).unwrap();
         }
         false
+    }
+}
+
+/// Convert local screen position to a map grid position
+pub fn local_to_map_grid(
+    screen_size: Vec2<f32>,
+    coord: Vec2<f32>,
+    map: &Map,
+    subdivisions: f32,
+) -> Vec2<f32> {
+    let grid_space_pos = coord - screen_size / 2.0 - Vec2::new(map.offset.x, -map.offset.y);
+    let snapped = grid_space_pos / map.grid_size;
+    let rounded = snapped.map(|x| x.round());
+
+    if subdivisions > 1.0 {
+        let subdivision_size = 1.0 / subdivisions;
+
+        // Calculate fractional part of the snapped position
+        let fractional = snapped - rounded;
+
+        // Snap the fractional part to the nearest subdivision
+        rounded + fractional.map(|x| (x / subdivision_size).round() * subdivision_size)
+    } else {
+        rounded
     }
 }

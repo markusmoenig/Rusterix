@@ -12,10 +12,6 @@ impl Vertex {
         Self { id, x, y }
     }
 
-    pub fn as_vec2f(&self) -> Vec2f {
-        vec2f(self.x, self.y)
-    }
-
     pub fn as_vec2(&self) -> vek::Vec2<f32> {
         vek::Vec2::new(self.x, self.y)
     }

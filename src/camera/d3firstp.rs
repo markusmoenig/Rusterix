@@ -4,14 +4,14 @@ use super::D3Camera;
 
 pub struct D3FirstPCamera {
     pub position: Vec3<f32>,
-    pub look_at: Vec3<f32>,
+    pub center: Vec3<f32>,
 }
 
 impl D3Camera for D3FirstPCamera {
     fn new() -> Self {
         Self {
             position: Vec3::zero(),
-            look_at: Vec3::zero(),
+            center: Vec3::zero(),
         }
     }
 
@@ -21,7 +21,7 @@ impl D3Camera for D3FirstPCamera {
 
     fn view_matrix(&self) -> Mat4<f32> {
         let up = vek::Vec3::new(0.0, 1.0, 0.0);
-        vek::Mat4::look_at_lh(self.position, self.look_at, up)
+        vek::Mat4::look_at_lh(self.position, self.center, up)
     }
 
     /*
@@ -42,8 +42,8 @@ impl D3Camera for D3FirstPCamera {
             "position" => {
                 self.position = value;
             }
-            "look_at" => {
-                self.look_at = value;
+            "center" => {
+                self.center = value;
             }
             _ => {}
         }

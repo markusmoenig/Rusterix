@@ -50,6 +50,7 @@ impl SceneBuilder for D3Builder {
 
                             let mut batch = Batch::emptyd3()
                                 .repeat_mode(crate::RepeatMode::RepeatXY)
+                                .sample_mode(crate::SampleMode::Nearest)
                                 .texture_index(texture_index);
 
                             batch.add(floor_vertices, indices, floor_uvs);
