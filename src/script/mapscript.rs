@@ -12,6 +12,9 @@ static DEFAULT_FLOOR_TEXTURE: LazyLock<RwLock<Option<Uuid>>> = LazyLock::new(|| 
 static DEFAULT_CEILING_TEXTURE: LazyLock<RwLock<Option<Uuid>>> =
     LazyLock::new(|| RwLock::new(None));
 
+static DEFAULT_WALL_HEIGHT: LazyLock<RwLock<f32>> = LazyLock::new(|| RwLock::new(2.0));
+static DEFAULT_WALL_WIDTH: LazyLock<RwLock<f32>> = LazyLock::new(|| RwLock::new(0.0));
+
 static MAP: LazyLock<RwLock<Map>> = LazyLock::new(|| RwLock::new(Map::default()));
 static TILES: LazyLock<RwLock<FxHashMap<Uuid, Tile>>> =
     LazyLock::new(|| RwLock::new(FxHashMap::default()));
@@ -19,7 +22,230 @@ static POSITION: LazyLock<RwLock<Vec2<f32>>> = LazyLock::new(|| RwLock::new(Vec2
 static ORIENTATION: LazyLock<RwLock<Vec2<f32>>> =
     LazyLock::new(|| RwLock::new(Vec2::new(1.0, 0.0))); // Default facing east
 
-// Gets or add the texture of the given name and returns its id
+static LAST_WALL: LazyLock<RwLock<Option<u32>>> = LazyLock::new(|| RwLock::new(None));
+static LAST_SECTOR: LazyLock<RwLock<Option<u32>>> = LazyLock::new(|| RwLock::new(None));
+
+fn set_default(key: PyObjectRef, value: PyObjectRef, vm: &VirtualMachine) -> PyResult<()> {
+    let key: String = String::try_from_object(vm, key)?;
+
+    match key.as_str() {
+        "floor_texture" => {
+            if let Ok(val) = String::try_from_object(vm, value) {
+                if let Some(id) = get_texture(&val) {
+                    *DEFAULT_FLOOR_TEXTURE.write().unwrap() = Some(id);
+                    Ok(())
+                } else {
+                    Err(vm.new_type_error(format!("Could not fnd texture {}", val).to_owned()))
+                }
+            } else {
+                Err(vm.new_type_error("Unsupported value type for 'floor_texture'".to_owned()))
+            }
+        }
+        "wall_texture" => {
+            if let Ok(val) = String::try_from_object(vm, value) {
+                if let Some(id) = get_texture(&val) {
+                    *DEFAULT_WALL_TEXTURE.write().unwrap() = Some(id);
+                    Ok(())
+                } else {
+                    Err(vm.new_type_error(format!("Could not fnd texture {}", val).to_owned()))
+                }
+            } else {
+                Err(vm.new_type_error("Unsupported value type for 'wall_texture'".to_owned()))
+            }
+        }
+        "wall_height" => {
+            *DEFAULT_WALL_HEIGHT.write().unwrap() = if value.class().is(vm.ctx.types.int_type) {
+                let value: i32 = value.try_into_value(vm)?;
+                value as f32
+            } else if value.class().is(vm.ctx.types.float_type) {
+                let value: f32 = value.try_into_value(vm)?;
+                value
+            } else {
+                0.0
+            };
+            Ok(())
+        }
+        "wall_width" => {
+            *DEFAULT_WALL_WIDTH.write().unwrap() = if value.class().is(vm.ctx.types.int_type) {
+                let value: i32 = value.try_into_value(vm)?;
+                value as f32
+            } else if value.class().is(vm.ctx.types.float_type) {
+                let value: f32 = value.try_into_value(vm)?;
+                value
+            } else {
+                0.0
+            };
+            Ok(())
+        }
+        "ceiling_texture" => {
+            if let Ok(val) = String::try_from_object(vm, value) {
+                if let Some(id) = get_texture(&val) {
+                    *DEFAULT_CEILING_TEXTURE.write().unwrap() = Some(id);
+                    Ok(())
+                } else {
+                    Err(vm.new_type_error(format!("Could not fnd texture {}", val).to_owned()))
+                }
+            } else {
+                Err(vm.new_type_error("Unsupported value type for 'ceiling_texture'".to_owned()))
+            }
+        }
+        _ => Err(vm.new_type_error("Unsupported value type".to_owned())),
+    }
+}
+
+/// Set a value from Python.
+fn set(key: PyObjectRef, value: PyObjectRef, vm: &VirtualMachine) -> PyResult<()> {
+    let key: String = String::try_from_object(vm, key)?;
+
+    match key.as_str() {
+        "floor_texture" => {
+            if let Ok(val) = String::try_from_object(vm, value) {
+                if let Some(id) = get_texture(&val) {
+                    if let Some(sectori_id) = *LAST_SECTOR.read().unwrap() {
+                        let mut map = MAP.write().unwrap();
+                        if let Some(sector) = map.find_sector_mut(sectori_id) {
+                            sector.floor_texture = Some(id);
+                        }
+                        Ok(())
+                    } else {
+                        Err(vm.new_type_error("No sector available".to_owned()))
+                    }
+                } else {
+                    Err(vm.new_type_error(format!("Could not fnd texture {}", val).to_owned()))
+                }
+            } else {
+                Err(vm.new_type_error("Unsupported value type for 'floor_texture'".to_owned()))
+            }
+        }
+        "wall_texture" => {
+            if let Ok(val) = String::try_from_object(vm, value) {
+                if let Some(id) = get_texture(&val) {
+                    if let Some(wall_id) = *LAST_WALL.read().unwrap() {
+                        let mut map = MAP.write().unwrap();
+                        if let Some(linedef) = map.find_linedef_mut(wall_id) {
+                            linedef.texture = Some(id);
+                        }
+                        Ok(())
+                    } else {
+                        Err(vm.new_type_error("No wall available".to_owned()))
+                    }
+                } else {
+                    Err(vm.new_type_error(format!("Could not fnd texture {}", val).to_owned()))
+                }
+            } else {
+                Err(vm.new_type_error("Unsupported value type for 'wall_texture'".to_owned()))
+            }
+        }
+        "wall_height" => {
+            if let Some(wall_id) = *LAST_WALL.read().unwrap() {
+                let mut map = MAP.write().unwrap();
+                if let Some(linedef) = map.find_linedef_mut(wall_id) {
+                    let height = if value.class().is(vm.ctx.types.int_type) {
+                        let value: i32 = value.try_into_value(vm)?;
+                        value as f32
+                    } else if value.class().is(vm.ctx.types.float_type) {
+                        let value: f32 = value.try_into_value(vm)?;
+                        value
+                    } else {
+                        0.0
+                    };
+                    linedef.wall_height = height;
+                }
+                Ok(())
+            } else {
+                Err(vm.new_type_error("No wall available".to_owned()))
+            }
+        }
+        "wall_width" => {
+            if let Some(wall_id) = *LAST_WALL.read().unwrap() {
+                let mut map = MAP.write().unwrap();
+                if let Some(linedef) = map.find_linedef_mut(wall_id) {
+                    let height = if value.class().is(vm.ctx.types.int_type) {
+                        let value: i32 = value.try_into_value(vm)?;
+                        value as f32
+                    } else if value.class().is(vm.ctx.types.float_type) {
+                        let value: f32 = value.try_into_value(vm)?;
+                        value
+                    } else {
+                        0.0
+                    };
+                    linedef.wall_width = height;
+                }
+                Ok(())
+            } else {
+                Err(vm.new_type_error("No wall available".to_owned()))
+            }
+        }
+        "ceiling_texture" => {
+            if let Ok(val) = String::try_from_object(vm, value) {
+                if let Some(id) = get_texture(&val) {
+                    if let Some(sectori_id) = *LAST_SECTOR.read().unwrap() {
+                        let mut map = MAP.write().unwrap();
+                        if let Some(sector) = map.find_sector_mut(sectori_id) {
+                            sector.ceiling_texture = Some(id);
+                        }
+                        Ok(())
+                    } else {
+                        Err(vm.new_type_error("No sector available".to_owned()))
+                    }
+                } else {
+                    Err(vm.new_type_error(format!("Could not fnd texture {}", val).to_owned()))
+                }
+            } else {
+                Err(vm.new_type_error("Unsupported value type for 'ceiling_texture'".to_owned()))
+            }
+        }
+        _ => Err(vm.new_type_error("Unsupported value type".to_owned())),
+    }
+}
+
+/// Set a default value from Python.
+fn wall(value: PyObjectRef, vm: &VirtualMachine) -> PyResult<()> {
+    let length = if value.class().is(vm.ctx.types.int_type) {
+        let value: i32 = value.try_into_value(vm)?;
+        value as f32
+    } else if value.class().is(vm.ctx.types.float_type) {
+        let value: f32 = value.try_into_value(vm)?;
+        value
+    } else {
+        0.0
+    };
+
+    let mut map = MAP.write().unwrap();
+    let mut position = POSITION.write().unwrap();
+    let orientation = ORIENTATION.read().unwrap();
+
+    // Calculate the "to" position based on the current orientation
+    let to = *position + *orientation * length;
+
+    // Add vertices to the map
+    let from_index = map.add_vertex_at(position.x, position.y);
+    let to_index = map.add_vertex_at(to.x, to.y);
+
+    // Create the linedef
+    let (linedef_id, sector_id) = map.create_linedef(from_index, to_index);
+
+    if let Some(linedef) = map.find_linedef_mut(linedef_id) {
+        linedef.texture = *DEFAULT_WALL_TEXTURE.read().unwrap();
+        linedef.wall_height = *DEFAULT_WALL_HEIGHT.read().unwrap();
+        *LAST_WALL.write().unwrap() = Some(linedef.id);
+    }
+
+    if let Some(sector_id) = sector_id {
+        if let Some(sector) = map.find_sector_mut(sector_id) {
+            sector.floor_texture = *DEFAULT_FLOOR_TEXTURE.read().unwrap();
+            sector.ceiling_texture = *DEFAULT_CEILING_TEXTURE.read().unwrap();
+        }
+        *LAST_SECTOR.write().unwrap() = Some(sector_id);
+    }
+
+    // Update the current position
+    *position = to;
+
+    Ok(())
+}
+
+/// Gets or add the texture of the given name and returns its id
 fn get_texture(texture_name: &str) -> Option<Uuid> {
     let mut tiles = TILES.write().unwrap();
 
@@ -39,27 +265,6 @@ fn get_texture(texture_name: &str) -> Option<Uuid> {
     } else {
         None
     }
-}
-
-fn set_default_wall_texture(texture_name: String) -> PyResult<()> {
-    if let Some(id) = get_texture(&texture_name) {
-        *DEFAULT_WALL_TEXTURE.write().unwrap() = Some(id);
-    }
-    Ok(())
-}
-
-fn set_default_floor_texture(texture_name: String) -> PyResult<()> {
-    if let Some(id) = get_texture(&texture_name) {
-        *DEFAULT_FLOOR_TEXTURE.write().unwrap() = Some(id);
-    }
-    Ok(())
-}
-
-fn set_default_ceiling_texture(texture_name: String) -> PyResult<()> {
-    if let Some(id) = get_texture(&texture_name) {
-        *DEFAULT_CEILING_TEXTURE.write().unwrap() = Some(id);
-    }
-    Ok(())
 }
 
 fn move_forward(length: f32) -> PyResult<()> {
@@ -115,39 +320,6 @@ fn turn_right() -> PyResult<()> {
     rotate(90.0)
 }
 
-fn wall(length: f32) -> PyResult<()> {
-    let mut map = MAP.write().unwrap();
-    let mut position = POSITION.write().unwrap();
-    let orientation = ORIENTATION.read().unwrap();
-
-    // Calculate the "to" position based on the current orientation
-    let to = *position + *orientation * length;
-
-    // Add vertices to the map
-    let from_index = map.add_vertex_at(position.x, position.y);
-    let to_index = map.add_vertex_at(to.x, to.y);
-
-    // Create the linedef
-    let (linedef_id, sector_id) = map.create_linedef(from_index, to_index);
-
-    if let Some(linedef) = map.find_linedef_mut(linedef_id) {
-        linedef.texture = *DEFAULT_WALL_TEXTURE.read().unwrap();
-        linedef.wall_height = 2.0;
-    }
-
-    if let Some(sector_id) = sector_id {
-        if let Some(sector) = map.find_sector_mut(sector_id) {
-            sector.floor_texture = *DEFAULT_FLOOR_TEXTURE.read().unwrap();
-            sector.ceiling_texture = *DEFAULT_CEILING_TEXTURE.read().unwrap();
-        }
-    }
-
-    // Update the current position
-    *position = to;
-
-    Ok(())
-}
-
 pub struct MapScript {
     error: Option<ParseError>,
 }
@@ -163,16 +335,25 @@ impl MapScript {
         Self { error: None }
     }
 
-    /// Parse the source and return a valid map.
-    pub fn run(&mut self, source: String) -> Result<MapMeta, Vec<String>> {
+    /// Parse the source and return the new or transformed map.
+    pub fn transform(
+        &mut self,
+        source: String,
+        ctx_map: Option<Map>,
+        ctx_linedef: Option<u32>,
+        ctx_sector: Option<u32>,
+    ) -> Result<MapMeta, Vec<String>> {
         self.error = None;
-        *MAP.write().unwrap() = Map::default();
+        *MAP.write().unwrap() = ctx_map.unwrap_or_default();
         *TILES.write().unwrap() = FxHashMap::default();
         *POSITION.write().unwrap() = Vec2::zero();
         *ORIENTATION.write().unwrap() = Vec2::new(1.0, 0.0);
         *DEFAULT_WALL_TEXTURE.write().unwrap() = None;
         *DEFAULT_CEILING_TEXTURE.write().unwrap() = None;
         *DEFAULT_FLOOR_TEXTURE.write().unwrap() = None;
+
+        *LAST_WALL.write().unwrap() = ctx_linedef;
+        *LAST_SECTOR.write().unwrap() = ctx_sector;
 
         let interpreter = rustpython::InterpreterConfig::new()
             .init_stdlib()
@@ -182,25 +363,14 @@ impl MapScript {
             let scope = vm.new_scope_with_builtins();
 
             let _ = scope.globals.set_item(
-                "set_default_wall_texture",
-                vm.new_function("set_default_wall_texture", set_default_wall_texture)
-                    .into(),
+                "set_default",
+                vm.new_function("set_default", set_default).into(),
                 vm,
             );
 
-            let _ = scope.globals.set_item(
-                "set_default_floor_texture",
-                vm.new_function("set_default_floor_texture", set_default_floor_texture)
-                    .into(),
-                vm,
-            );
-
-            let _ = scope.globals.set_item(
-                "set_default_ceiling_texture",
-                vm.new_function("set_default_ceiling_texture", set_default_ceiling_texture)
-                    .into(),
-                vm,
-            );
+            let _ = scope
+                .globals
+                .set_item("set", vm.new_function("set", set).into(), vm);
 
             let _ = scope
                 .globals

@@ -59,6 +59,7 @@ pub use crate::{
     rect::Rect,
     scene::Scene,
     scenebuilder::{d2preview::D2PreviewBuilder, SceneBuilder},
+    script::mapscript::MapScript,
     shader::{grid::GridShader, vgradient::VGrayGradientShader, Shader},
     texture::{RepeatMode, SampleMode, Texture},
 };
@@ -69,10 +70,10 @@ pub mod prelude {
     pub use crate::scenebuilder::{
         d2preview::D2PreviewBuilder, d3builder::D3Builder, SceneBuilder,
     };
-    pub use crate::script::mapscript::MapScript;
     pub use crate::Edge;
     pub use crate::Entity;
     pub use crate::IntoDataInput;
+    pub use crate::MapScript;
     pub use crate::Rasterizer;
     pub use crate::Rect;
     pub use crate::{pixel_to_vec4, vec4_to_pixel};

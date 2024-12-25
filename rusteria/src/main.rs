@@ -227,7 +227,7 @@ fn main() -> Result<()> {
 fn compile_map(file_name: &str) -> Option<MapMeta> {
     if let Ok(source) = std::fs::read_to_string(file_name) {
         let mut mapscript = MapScript::new();
-        let result = mapscript.run(source);
+        let result = mapscript.transform(source, None, None, None);
 
         match result {
             Ok(meta) => {
