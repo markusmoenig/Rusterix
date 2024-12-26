@@ -69,9 +69,9 @@ impl TheTrait for Cube {
         true
     }
 
-    // Query if the widget needs a redraw
+    // Query if the widget needs a redraw, we redraw at max speed (which is not necessary)
     fn update(&mut self, _ctx: &mut TheContext) -> bool {
-        false
+        true
     }
 
     fn window_title(&self) -> String {

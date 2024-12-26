@@ -239,11 +239,20 @@ impl Batch<[f32; 3]> {
                 let v0 = self.projected_vertices[i0];
                 let v1 = self.projected_vertices[i1];
                 let v2 = self.projected_vertices[i2];
-                [
-                    Edge::new(&[v0[0], v0[1]], &[v1[0], v1[1]], true),
-                    Edge::new(&[v1[0], v1[1]], &[v2[0], v2[1]], true),
-                    Edge::new(&[v2[0], v2[1]], &[v0[0], v0[1]], true),
-                ]
+
+                crate::Edges::new(
+                    [
+                        [v0[0], v0[1]], // First edge start
+                        [v1[0], v1[1]], // Second edge start
+                        [v2[0], v2[1]], // Third edge start
+                    ],
+                    [
+                        [v1[0], v1[1]], // First edge end
+                        [v2[0], v2[1]], // Second edge end
+                        [v0[0], v0[1]], // Third edge end
+                    ],
+                    true,
+                )
             })
             .collect();
     }

@@ -166,39 +166,27 @@ impl Rasterizer {
                                 for tx in min_x..max_x {
                                     let p = [tx as f32 + 0.5, ty as f32 + 0.5];
 
-                                    // Edge function tests for triangle rasterization
-                                    let edge0 = edges[0].evaluate(p);
-                                    if edge0 >= 0.0 {
-                                        let edge1 = edges[1].evaluate(p);
-                                        if edge1 >= 0.0 {
-                                            let edge2 = edges[2].evaluate(p);
-                                            if edge2 >= 0.0 {
-                                                // Interpolate barycentric coordinates
-                                                let w =
-                                                    self.barycentric_weights_2d(&v0, &v1, &v2, &p);
+                                    // Evaluate the edges
+                                    if edges.visible && edges.evaluate(p) {
+                                        // Interpolate barycentric coordinates
+                                        let w = self.barycentric_weights_2d(&v0, &v1, &v2, &p);
 
-                                                // Interpolate UV coordinates
-                                                let u =
-                                                    uv0[0] * w[0] + uv1[0] * w[1] + uv2[0] * w[2];
-                                                let v =
-                                                    uv0[1] * w[0] + uv1[1] * w[1] + uv2[1] * w[2];
+                                        // Interpolate UV coordinates
+                                        let u = uv0[0] * w[0] + uv1[0] * w[1] + uv2[0] * w[2];
+                                        let v = uv0[1] * w[0] + uv1[1] * w[1] + uv2[1] * w[2];
 
-                                                // Sample the texture
-                                                let texel = textures[batch.texture_index].sample(
-                                                    u,
-                                                    v,
-                                                    batch.sample_mode,
-                                                    batch.repeat_mode,
-                                                );
-                                                // let texel = [(u * 255.0) as u8, (v * 255.0) as u8, 0, 255];
+                                        // Sample the texture
+                                        let texel = textures[batch.texture_index].sample(
+                                            u,
+                                            v,
+                                            batch.sample_mode,
+                                            batch.repeat_mode,
+                                        );
+                                        // let texel = [(u * 255.0) as u8, (v * 255.0) as u8, 0, 255];
 
-                                                // Write to framebuffer
-                                                let idx = ((ty - tile.y) * tile.width
-                                                    + (tx - tile.x))
-                                                    * 4;
-                                                buffer[idx..idx + 4].copy_from_slice(&texel);
-                                            }
-                                        }
+                                        // Write to framebuffer
+                                        let idx = ((ty - tile.y) * tile.width + (tx - tile.x)) * 4;
+                                        buffer[idx..idx + 4].copy_from_slice(&texel);
                                     }
                                 }
                             }
@@ -323,64 +311,51 @@ impl Rasterizer {
                                     let p = [tx as f32 + 0.5, ty as f32 + 0.5];
 
                                     // Evaluate the edges
-                                    let edge0 = edges[0].evaluate(p);
-                                    if edge0 >= 0.0 && edges[0].visible {
-                                        let edge1 = edges[1].evaluate(p);
-                                        if edge1 >= 0.0 && edges[1].visible {
-                                            let edge2 = edges[2].evaluate(p);
-                                            if edge2 >= 0.0 && edges[2].visible {
-                                                // Interpolate barycentric coordinates
-                                                let [alpha, beta, gamma] =
-                                                    self.barycentric_weights_3d(&v0, &v1, &v2, &p);
+                                    if edges.visible && edges.evaluate(p) {
+                                        // Interpolate barycentric coordinates
+                                        let [alpha, beta, gamma] =
+                                            self.barycentric_weights_3d(&v0, &v1, &v2, &p);
 
-                                                // Calculate Z-Buffer value
-                                                let one_over_z = 1.0 / v0[2] * alpha
-                                                    + 1.0 / v1[2] * beta
-                                                    + 1.0 / v2[2] * gamma;
-                                                let z = 1.0 / one_over_z;
+                                        // Calculate Z-Buffer value
+                                        let one_over_z = 1.0 / v0[2] * alpha
+                                            + 1.0 / v1[2] * beta
+                                            + 1.0 / v2[2] * gamma;
+                                        let z = 1.0 / one_over_z;
 
-                                                let zidx =
-                                                    (ty - tile.y) * tile.width + (tx - tile.x);
+                                        let zidx = (ty - tile.y) * tile.width + (tx - tile.x);
 
-                                                if z < z_buffer[zidx] {
-                                                    z_buffer[zidx] = z;
+                                        if z < z_buffer[zidx] {
+                                            z_buffer[zidx] = z;
 
-                                                    // Perform the interpolation of all U/w and V/w values using barycentric weights and a factor of 1/w
-                                                    let mut interpolated_u = (uv0[0] / v0[3])
-                                                        * alpha
-                                                        + (uv1[0] / v1[3]) * beta
-                                                        + (uv2[0] / v2[3]) * gamma;
-                                                    let mut interpolated_v = (uv0[1] / v0[3])
-                                                        * alpha
-                                                        + (uv1[1] / v1[3]) * beta
-                                                        + (uv2[1] / v2[3]) * gamma;
+                                            // Perform the interpolation of all U/w and V/w values using barycentric weights and a factor of 1/w
+                                            let mut interpolated_u = (uv0[0] / v0[3]) * alpha
+                                                + (uv1[0] / v1[3]) * beta
+                                                + (uv2[0] / v2[3]) * gamma;
+                                            let mut interpolated_v = (uv0[1] / v0[3]) * alpha
+                                                + (uv1[1] / v1[3]) * beta
+                                                + (uv2[1] / v2[3]) * gamma;
 
-                                                    // Interpolate reciprocal depth
-                                                    let interpolated_reciprocal_w = (1.0 / v0[3])
-                                                        * alpha
-                                                        + (1.0 / v1[3]) * beta
-                                                        + (1.0 / v2[3]) * gamma;
+                                            // Interpolate reciprocal depth
+                                            let interpolated_reciprocal_w = (1.0 / v0[3]) * alpha
+                                                + (1.0 / v1[3]) * beta
+                                                + (1.0 / v2[3]) * gamma;
 
-                                                    // Now we can divide back both interpolated values by 1/w
-                                                    interpolated_u /= interpolated_reciprocal_w;
-                                                    interpolated_v /= interpolated_reciprocal_w;
+                                            // Now we can divide back both interpolated values by 1/w
+                                            interpolated_u /= interpolated_reciprocal_w;
+                                            interpolated_v /= interpolated_reciprocal_w;
 
-                                                    // Sample the texture
-                                                    let texel = textures[batch.texture_index]
-                                                        .sample(
-                                                            interpolated_u,
-                                                            interpolated_v,
-                                                            batch.sample_mode,
-                                                            batch.repeat_mode,
-                                                        );
+                                            // Sample the texture
+                                            let texel = textures[batch.texture_index].sample(
+                                                interpolated_u,
+                                                interpolated_v,
+                                                batch.sample_mode,
+                                                batch.repeat_mode,
+                                            );
 
-                                                    // Write to framebuffer
-                                                    let idx = ((ty - tile.y) * tile.width
-                                                        + (tx - tile.x))
-                                                        * 4;
-                                                    buffer[idx..idx + 4].copy_from_slice(&texel);
-                                                }
-                                            }
+                                            // Write to framebuffer
+                                            let idx =
+                                                ((ty - tile.y) * tile.width + (tx - tile.x)) * 4;
+                                            buffer[idx..idx + 4].copy_from_slice(&texel);
                                         }
                                     }
                                 }

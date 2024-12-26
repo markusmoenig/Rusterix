@@ -394,11 +394,19 @@ impl Batch<[f32; 4]> {
                 let edge_visible =
                     edge_visibility.get(triangle_idx).copied().unwrap_or(true) && visible;
 
-                [
-                    Edge::new(&[v0[0], v0[1]], &[v1[0], v1[1]], edge_visible),
-                    Edge::new(&[v1[0], v1[1]], &[v2[0], v2[1]], edge_visible),
-                    Edge::new(&[v2[0], v2[1]], &[v0[0], v0[1]], edge_visible),
-                ]
+                crate::Edges::new(
+                    [
+                        [v0[0], v0[1]], // First edge start
+                        [v1[0], v1[1]], // Second edge start
+                        [v2[0], v2[1]], // Third edge start
+                    ],
+                    [
+                        [v1[0], v1[1]], // First edge end
+                        [v2[0], v2[1]], // Second edge end
+                        [v0[0], v0[1]], // Third edge end
+                    ],
+                    edge_visible,
+                )
             })
             .collect();
     }

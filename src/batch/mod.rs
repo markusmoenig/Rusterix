@@ -1,7 +1,7 @@
 pub mod batchd2;
 pub mod batchd3;
 
-use crate::{Edge, Pixel, Rect, RepeatMode, SampleMode};
+use crate::{Edges, Pixel, Rect, RepeatMode, SampleMode};
 
 /// The primitive mode. The rasterizer can draw triangles and lines.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -47,7 +47,7 @@ pub struct Batch<T> {
     pub bounding_box: Option<Rect>,
 
     /// Precomputed edges
-    pub edges: Vec<[Edge; 3]>,
+    pub edges: Vec<Edges>,
 
     /// Color, used for lines.
     pub color: Pixel,
