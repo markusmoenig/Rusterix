@@ -114,20 +114,16 @@ impl TheTrait for Editor {
 
                     let view_matrix = self.camera.view_matrix();
 
-                    let projection_matrix = self.camera.projection_matrix(
-                        75.0,
-                        ctx.width as f32,
-                        ctx.height as f32,
-                        0.01,
-                        100.0,
-                    );
+                    let projection_matrix = self
+                        .camera
+                        .projection_matrix(ctx.width as f32, ctx.height as f32);
 
                     Rasterizer {}.rasterize(
                         &mut self.scene,
                         pixels,
                         ctx.width,
                         ctx.height,
-                        80,
+                        300,
                         None,
                         view_matrix,
                         projection_matrix,

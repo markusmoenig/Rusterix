@@ -55,6 +55,8 @@ pub struct Map {
     pub linedefs: Vec<Linedef>,
     pub sectors: Vec<Sector>,
 
+    pub sky_texture: Option<Uuid>,
+
     // Camera Mode
     pub camera: MapCamera,
     #[serde(skip)]
@@ -90,6 +92,8 @@ impl Map {
             vertices: vec![],
             linedefs: vec![],
             sectors: vec![],
+
+            sky_texture: None,
 
             camera: MapCamera::TwoD,
             camera_xz: None,

@@ -18,16 +18,7 @@ pub trait D3Camera: Send + Sync {
         Mat4::identity()
     }
 
-    fn projection_matrix(
-        &self,
-        fov: f32,
-        width: f32,
-        height: f32,
-        near: f32,
-        far: f32,
-    ) -> Mat4<f32> {
-        Mat4::perspective_fov_lh_zo(fov.to_radians(), width, height, near, far)
-    }
+    fn projection_matrix(&self, width: f32, height: f32) -> Mat4<f32>;
 
     /// Set an f32 parameter.
     fn set_parameter_f32(&mut self, key: &str, value: f32) {}

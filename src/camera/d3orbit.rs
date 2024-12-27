@@ -8,6 +8,10 @@ pub struct D3OrbitCamera {
     pub azimuth: f32,
     pub elevation: f32,
     pub up: Vec3<f32>,
+
+    pub fov: f32,
+    pub near: f32,
+    pub far: f32,
 }
 
 impl D3Camera for D3OrbitCamera {
@@ -18,6 +22,10 @@ impl D3Camera for D3OrbitCamera {
             azimuth: std::f32::consts::PI / 2.0,
             elevation: 0.0,
             up: Vec3::unit_y(),
+
+            fov: 75.0,
+            near: 0.01,
+            far: 100.0,
         }
     }
 
@@ -34,6 +42,10 @@ impl D3Camera for D3OrbitCamera {
         let position = Vec3::new(x, y, z) + self.center;
 
         Mat4::look_at_lh(position, self.center, self.up)
+    }
+
+    fn projection_matrix(&self, width: f32, height: f32) -> Mat4<f32> {
+        vek::Mat4::perspective_fov_lh_zo(self.fov.to_radians(), width, height, self.near, self.far)
     }
 
     fn set_parameter_f32(&mut self, key: &str, value: f32) {

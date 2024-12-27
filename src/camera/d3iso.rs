@@ -24,14 +24,7 @@ impl D3Camera for D3IsoCamera {
         vek::Mat4::look_at_lh(self.position, self.center, up)
     }
 
-    fn projection_matrix(
-        &self,
-        _fov: f32,
-        width: f32,
-        height: f32,
-        _near: f32,
-        _far: f32,
-    ) -> Mat4<f32> {
+    fn projection_matrix(&self, width: f32, height: f32) -> Mat4<f32> {
         let scale = 2.0;
         let aspect_ratio = width / height;
         let left = -scale * aspect_ratio;

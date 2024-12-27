@@ -53,7 +53,7 @@ impl TheTrait for Cube {
             projection_matrix_2d,
             self.camera.view_matrix(),
             self.camera
-                .projection_matrix(75.0, ctx.width as f32, ctx.height as f32, 0.1, 100.0),
+                .projection_matrix(ctx.width as f32, ctx.height as f32),
         );
 
         let _stop = get_time();

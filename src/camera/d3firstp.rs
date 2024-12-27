@@ -5,6 +5,10 @@ use super::D3Camera;
 pub struct D3FirstPCamera {
     pub position: Vec3<f32>,
     pub center: Vec3<f32>,
+
+    pub fov: f32,
+    pub near: f32,
+    pub far: f32,
 }
 
 impl D3Camera for D3FirstPCamera {
@@ -12,6 +16,10 @@ impl D3Camera for D3FirstPCamera {
         Self {
             position: Vec3::zero(),
             center: Vec3::zero(),
+
+            fov: 75.0,
+            near: 0.01,
+            far: 100.0,
         }
     }
 
@@ -24,17 +32,24 @@ impl D3Camera for D3FirstPCamera {
         vek::Mat4::look_at_lh(self.position, self.center, up)
     }
 
-    /*
-    fn projection_matrix(
-        &self,
-        fov: f32,
-        width: f32,
-        height: f32,
-        near: f32,
-        far: f32,
-    ) -> Mat4<f32> {
-        vek::Mat4::perspective_fov_lh_no(fov, width, height, near, far)
-    }*/
+    fn projection_matrix(&self, width: f32, height: f32) -> Mat4<f32> {
+        vek::Mat4::perspective_fov_lh_zo(self.fov.to_radians(), width, height, self.near, self.far)
+    }
+
+    fn set_parameter_f32(&mut self, key: &str, value: f32) {
+        match key {
+            "fov" => {
+                self.fov = value;
+            }
+            "near" => {
+                self.near = value;
+            }
+            "far" => {
+                self.far = value;
+            }
+            _ => {}
+        }
+    }
 
     fn set_parameter_vec3(&mut self, key: &str, value: Vec3<f32>) {
         #[allow(clippy::single_match)]

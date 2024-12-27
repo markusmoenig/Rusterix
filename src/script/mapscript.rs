@@ -133,6 +133,19 @@ fn set(key: PyObjectRef, value: PyObjectRef, vm: &VirtualMachine) -> PyResult<()
     let key: String = String::try_from_object(vm, key)?;
 
     match key.as_str() {
+        "sky_texture" => {
+            if let Ok(val) = String::try_from_object(vm, value) {
+                if let Some(id) = get_texture(&val) {
+                    let mut map = MAP.write().unwrap();
+                    map.sky_texture = Some(id);
+                    Ok(())
+                } else {
+                    Err(vm.new_type_error(format!("Could not fnd texture {}", val).to_owned()))
+                }
+            } else {
+                Err(vm.new_type_error("Unsupported value type for 'floor_texture'".to_owned()))
+            }
+        }
         "floor_texture" => {
             if let Ok(val) = String::try_from_object(vm, value) {
                 if let Some(id) = get_texture(&val) {

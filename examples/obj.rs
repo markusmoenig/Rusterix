@@ -52,7 +52,7 @@ impl TheTrait for ObjDemo {
             projection_matrix_2d,
             self.camera.view_matrix() * Mat4::scaling_3d(Vec3::new(0.35, -0.35, 0.35)),
             self.camera
-                .projection_matrix(75.0, ctx.width as f32, ctx.height as f32, 0.1, 100.0),
+                .projection_matrix(ctx.width as f32, ctx.height as f32),
         );
 
         let _stop = get_time();

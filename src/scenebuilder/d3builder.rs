@@ -101,60 +101,19 @@ impl SceneBuilder for D3Builder {
                 // Generate wall geometry
                 for &linedef_id in &sector.linedefs {
                     if let Some(linedef) = map.linedefs.get(linedef_id as usize) {
-                        let start_vertex = map.find_vertex(linedef.start_vertex).unwrap();
-                        let end_vertex = map.find_vertex(linedef.end_vertex).unwrap();
-
-                        let wall_vertices = vec![
-                            [start_vertex.x, 0.0, start_vertex.y, 1.0],
-                            [start_vertex.x, linedef.wall_height, start_vertex.y, 1.0],
-                            [end_vertex.x, linedef.wall_height, end_vertex.y, 1.0],
-                            [end_vertex.x, 0.0, end_vertex.y, 1.0],
-                        ];
-
-                        if let Some(wall_texture_id) = &linedef.texture {
-                            if let Some(tile) = tiles.get(wall_texture_id) {
-                                let wall_uvs = if (end_vertex.x - start_vertex.x).abs()
-                                    > (end_vertex.y - start_vertex.y).abs()
-                                {
-                                    // Wall is mostly aligned along the X-axis
-                                    vec![
-                                        [start_vertex.x, linedef.wall_height],
-                                        [start_vertex.x, 0.0],
-                                        [end_vertex.x, 0.0],
-                                        [end_vertex.x, linedef.wall_height],
-                                    ]
-                                } else {
-                                    // Wall is mostly aligned along the Z-axis
-                                    vec![
-                                        [start_vertex.y, linedef.wall_height],
-                                        [start_vertex.y, 0.0],
-                                        [end_vertex.y, 0.0],
-                                        [end_vertex.y, linedef.wall_height],
-                                    ]
-                                };
-
-                                let wall_indices = vec![(0, 1, 2), (0, 2, 3)];
-
-                                if let Some(offset) = repeated_offsets.get(&tile.id) {
-                                    repeated_batches[*offset].add(
-                                        wall_vertices,
-                                        wall_indices,
-                                        wall_uvs,
+                        if let Some(start_vertex) = map.find_vertex(linedef.start_vertex) {
+                            if let Some(end_vertex) = map.find_vertex(linedef.end_vertex) {
+                                if let Some(wall_texture_id) = &linedef.texture {
+                                    Self::add_wall(
+                                        &start_vertex.as_vec2(),
+                                        &end_vertex.as_vec2(),
+                                        linedef.wall_height,
+                                        wall_texture_id,
+                                        tiles,
+                                        &mut repeated_offsets,
+                                        &mut repeated_batches,
+                                        &mut textures,
                                     );
-                                } else {
-                                    let texture_index = textures.len();
-
-                                    let mut batch = Batch::emptyd3()
-                                        .repeat_mode(crate::RepeatMode::RepeatXY)
-                                        .cull_mode(crate::CullMode::Off)
-                                        //.sample_mode(crate::SampleMode::Linear)
-                                        .texture_index(texture_index);
-
-                                    batch.add(wall_vertices, wall_indices, wall_uvs);
-
-                                    textures.push(tile.textures[0].clone());
-                                    repeated_offsets.insert(tile.id, repeated_batches.len());
-                                    repeated_batches.push(batch);
                                 }
                             }
                         }
@@ -163,62 +122,37 @@ impl SceneBuilder for D3Builder {
             }
         }
 
+        // Add standalone walls
         for linedef in &map.linedefs {
             if linedef.front_sector.is_none() && linedef.back_sector.is_none() {
-                let start_vertex = map.find_vertex(linedef.start_vertex).unwrap();
-                let end_vertex = map.find_vertex(linedef.end_vertex).unwrap();
-
-                let wall_vertices = vec![
-                    [start_vertex.x, 0.0, start_vertex.y, 1.0],
-                    [start_vertex.x, linedef.wall_height, start_vertex.y, 1.0],
-                    [end_vertex.x, linedef.wall_height, end_vertex.y, 1.0],
-                    [end_vertex.x, 0.0, end_vertex.y, 1.0],
-                ];
-
-                if let Some(wall_texture_id) = &linedef.texture {
-                    if let Some(tile) = tiles.get(wall_texture_id) {
-                        let wall_uvs = if (end_vertex.x - start_vertex.x).abs()
-                            > (end_vertex.y - start_vertex.y).abs()
-                        {
-                            // Wall is mostly aligned along the X-axis
-                            vec![
-                                [start_vertex.x, linedef.wall_height],
-                                [start_vertex.x, 0.0],
-                                [end_vertex.x, 0.0],
-                                [end_vertex.x, linedef.wall_height],
-                            ]
-                        } else {
-                            // Wall is mostly aligned along the Z-axis
-                            vec![
-                                [start_vertex.y, linedef.wall_height],
-                                [start_vertex.y, 0.0],
-                                [end_vertex.y, 0.0],
-                                [end_vertex.y, linedef.wall_height],
-                            ]
-                        };
-
-                        let wall_indices = vec![(0, 1, 2), (0, 2, 3)];
-
-                        if let Some(offset) = repeated_offsets.get(&tile.id) {
-                            repeated_batches[*offset].add(wall_vertices, wall_indices, wall_uvs);
-                        } else {
-                            let texture_index = textures.len();
-
-                            let mut batch = Batch::emptyd3()
-                                .repeat_mode(crate::RepeatMode::RepeatXY)
-                                .cull_mode(crate::CullMode::Off)
-                                .sample_mode(crate::SampleMode::Nearest)
-                                .texture_index(texture_index);
-
-                            batch.add(wall_vertices, wall_indices, wall_uvs);
-
-                            textures.push(tile.textures[0].clone());
-                            repeated_offsets.insert(tile.id, repeated_batches.len());
-                            repeated_batches.push(batch);
+                if let Some(start_vertex) = map.find_vertex(linedef.start_vertex) {
+                    if let Some(end_vertex) = map.find_vertex(linedef.end_vertex) {
+                        if let Some(wall_texture_id) = &linedef.texture {
+                            Self::add_wall(
+                                &start_vertex.as_vec2(),
+                                &end_vertex.as_vec2(),
+                                linedef.wall_height,
+                                wall_texture_id,
+                                tiles,
+                                &mut repeated_offsets,
+                                &mut repeated_batches,
+                                &mut textures,
+                            );
                         }
                     }
                 }
             }
+        }
+
+        // Add Sky
+        if let Some(sky_texture_id) = map.sky_texture {
+            Self::add_sky(
+                &sky_texture_id,
+                tiles,
+                &mut repeated_offsets,
+                &mut repeated_batches,
+                &mut textures,
+            );
         }
 
         // ---
@@ -229,5 +163,134 @@ impl SceneBuilder for D3Builder {
         scene.d3_static = batches;
         scene.textures = textures;
         scene
+    }
+}
+
+trait D3BuilderUtils {
+    #[allow(clippy::too_many_arguments)]
+    fn add_wall(
+        start_vertex: &Vec2<f32>,
+        end_vertex: &Vec2<f32>,
+        wall_height: f32,
+        wall_texture_id: &Uuid,
+        tiles: &FxHashMap<Uuid, Tile>,
+        repeated_offsets: &mut FxHashMap<Uuid, usize>,
+        repeated_batches: &mut Vec<Batch<[f32; 4]>>,
+        textures: &mut Vec<Texture>,
+    );
+
+    fn add_sky(
+        texture_id: &Uuid,
+        tiles: &FxHashMap<Uuid, Tile>,
+        repeated_offsets: &mut FxHashMap<Uuid, usize>,
+        repeated_batches: &mut Vec<Batch<[f32; 4]>>,
+        textures: &mut Vec<Texture>,
+    );
+}
+
+impl D3BuilderUtils for D3Builder {
+    /// Adds a wall to the appropriate batch
+    fn add_wall(
+        start_vertex: &Vec2<f32>,
+        end_vertex: &Vec2<f32>,
+        wall_height: f32,
+        wall_texture_id: &Uuid,
+        tiles: &FxHashMap<Uuid, Tile>,
+        repeated_offsets: &mut FxHashMap<Uuid, usize>,
+        repeated_batches: &mut Vec<Batch<[f32; 4]>>,
+        textures: &mut Vec<Texture>,
+    ) {
+        let wall_vertices = vec![
+            [start_vertex.x, 0.0, start_vertex.y, 1.0],
+            [start_vertex.x, wall_height, start_vertex.y, 1.0],
+            [end_vertex.x, wall_height, end_vertex.y, 1.0],
+            [end_vertex.x, 0.0, end_vertex.y, 1.0],
+        ];
+
+        if let Some(tile) = tiles.get(wall_texture_id) {
+            let wall_uvs =
+                if (end_vertex.x - start_vertex.x).abs() > (end_vertex.y - start_vertex.y).abs() {
+                    // Wall is mostly aligned along the X-axis
+                    vec![
+                        [start_vertex.x, wall_height],
+                        [start_vertex.x, 0.0],
+                        [end_vertex.x, 0.0],
+                        [end_vertex.x, wall_height],
+                    ]
+                } else {
+                    // Wall is mostly aligned along the Z-axis
+                    vec![
+                        [start_vertex.y, wall_height],
+                        [start_vertex.y, 0.0],
+                        [end_vertex.y, 0.0],
+                        [end_vertex.y, wall_height],
+                    ]
+                };
+
+            let wall_indices = vec![(0, 1, 2), (0, 2, 3)];
+
+            if let Some(offset) = repeated_offsets.get(&tile.id) {
+                repeated_batches[*offset].add(wall_vertices, wall_indices, wall_uvs);
+            } else {
+                let texture_index = textures.len();
+
+                let mut batch = Batch::emptyd3()
+                    .repeat_mode(crate::RepeatMode::RepeatXY)
+                    .cull_mode(crate::CullMode::Off)
+                    .sample_mode(crate::SampleMode::Nearest)
+                    .texture_index(texture_index);
+
+                batch.add(wall_vertices, wall_indices, wall_uvs);
+
+                textures.push(tile.textures[0].clone());
+                repeated_offsets.insert(tile.id, repeated_batches.len());
+                repeated_batches.push(batch);
+            }
+        }
+    }
+
+    /// Adds a skybox or skymap
+    fn add_sky(
+        texture_id: &Uuid,
+        tiles: &FxHashMap<Uuid, Tile>,
+        repeated_offsets: &mut FxHashMap<Uuid, usize>,
+        repeated_batches: &mut Vec<Batch<[f32; 4]>>,
+        textures: &mut Vec<Texture>,
+    ) {
+        // Define sky vertices
+        let sky_vertices = vec![
+            [-1000.0, 10.0, -1000.0, 1.0],
+            [1000.0, 10.0, -1000.0, 1.0],
+            [1000.0, 10.0, 1000.0, 1.0],
+            [-1000.0, 10.0, 1000.0, 1.0],
+        ];
+
+        // Define UV coordinates for the sky texture
+        let sky_uvs = vec![[0.0, 15.0], [15.0, 15.0], [15.0, 0.0], [0.0, 0.0]];
+
+        // Define indices for rendering the quad
+        let sky_indices = vec![(0, 1, 2), (0, 2, 3)];
+
+        if let Some(tile) = tiles.get(texture_id) {
+            if let Some(offset) = repeated_offsets.get(&tile.id) {
+                // Add to an existing batch if the texture is already used
+                repeated_batches[*offset].add(sky_vertices, sky_indices, sky_uvs);
+            } else {
+                // Create a new batch for the sky texture
+                let texture_index = textures.len();
+
+                let mut batch = Batch::emptyd3()
+                    .repeat_mode(crate::RepeatMode::RepeatXY)
+                    .cull_mode(crate::CullMode::Off)
+                    .sample_mode(crate::SampleMode::Nearest)
+                    .texture_index(texture_index);
+
+                batch.add(sky_vertices, sky_indices, sky_uvs);
+
+                textures.push(tile.textures[0].clone());
+                repeated_offsets.insert(tile.id, repeated_batches.len());
+                repeated_batches.push(batch);
+            }
+        }
     }
 }
