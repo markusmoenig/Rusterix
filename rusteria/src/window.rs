@@ -60,6 +60,7 @@ impl TheTrait for Editor {
                                 &meta.tiles,
                                 Texture::from_color(BLACK),
                                 vek::Vec2::new(ctx.width as f32, ctx.height as f32),
+                                &self.camera.id(),
                             );
                         }
                         Exit => {
@@ -85,6 +86,7 @@ impl TheTrait for Editor {
                         &meta.tiles,
                         Texture::from_color(BLACK),
                         vek::Vec2::new(ctx.width as f32, ctx.height as f32),
+                        &self.camera.id(),
                     );
 
                     Rasterizer {}.rasterize(

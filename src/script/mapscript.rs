@@ -35,6 +35,10 @@ impl MapCursorState {
 }
 
 static DEFAULT_WALL_TEXTURE: LazyLock<RwLock<Option<Uuid>>> = LazyLock::new(|| RwLock::new(None));
+static DEFAULT_WALL_TEXTURE_ROW2: LazyLock<RwLock<Option<Uuid>>> =
+    LazyLock::new(|| RwLock::new(None));
+static DEFAULT_WALL_TEXTURE_ROW3: LazyLock<RwLock<Option<Uuid>>> =
+    LazyLock::new(|| RwLock::new(None));
 static DEFAULT_FLOOR_TEXTURE: LazyLock<RwLock<Option<Uuid>>> = LazyLock::new(|| RwLock::new(None));
 static DEFAULT_CEILING_TEXTURE: LazyLock<RwLock<Option<Uuid>>> =
     LazyLock::new(|| RwLock::new(None));
@@ -64,7 +68,7 @@ fn set_default(key: PyObjectRef, value: PyObjectRef, vm: &VirtualMachine) -> PyR
     let key: String = String::try_from_object(vm, key)?;
 
     match key.as_str() {
-        "floor_texture" => {
+        "floor_tex" => {
             if let Ok(val) = String::try_from_object(vm, value) {
                 if let Some(id) = get_texture(&val) {
                     *DEFAULT_FLOOR_TEXTURE.write().unwrap() = Some(id);
@@ -76,10 +80,34 @@ fn set_default(key: PyObjectRef, value: PyObjectRef, vm: &VirtualMachine) -> PyR
                 Err(vm.new_type_error("Unsupported value type for 'floor_texture'".to_owned()))
             }
         }
-        "wall_texture" => {
+        "wall_tex" => {
             if let Ok(val) = String::try_from_object(vm, value) {
                 if let Some(id) = get_texture(&val) {
                     *DEFAULT_WALL_TEXTURE.write().unwrap() = Some(id);
+                    Ok(())
+                } else {
+                    Err(vm.new_type_error(format!("Could not fnd texture {}", val).to_owned()))
+                }
+            } else {
+                Err(vm.new_type_error("Unsupported value type for 'wall_texture'".to_owned()))
+            }
+        }
+        "wall_tex_row2" => {
+            if let Ok(val) = String::try_from_object(vm, value) {
+                if let Some(id) = get_texture(&val) {
+                    *DEFAULT_WALL_TEXTURE_ROW2.write().unwrap() = Some(id);
+                    Ok(())
+                } else {
+                    Err(vm.new_type_error(format!("Could not fnd texture {}", val).to_owned()))
+                }
+            } else {
+                Err(vm.new_type_error("Unsupported value type for 'wall_texture'".to_owned()))
+            }
+        }
+        "wall_tex_row3" => {
+            if let Ok(val) = String::try_from_object(vm, value) {
+                if let Some(id) = get_texture(&val) {
+                    *DEFAULT_WALL_TEXTURE_ROW3.write().unwrap() = Some(id);
                     Ok(())
                 } else {
                     Err(vm.new_type_error(format!("Could not fnd texture {}", val).to_owned()))
@@ -112,7 +140,7 @@ fn set_default(key: PyObjectRef, value: PyObjectRef, vm: &VirtualMachine) -> PyR
             };
             Ok(())
         }
-        "ceiling_texture" => {
+        "ceiling_tex" => {
             if let Ok(val) = String::try_from_object(vm, value) {
                 if let Some(id) = get_texture(&val) {
                     *DEFAULT_CEILING_TEXTURE.write().unwrap() = Some(id);
@@ -133,7 +161,7 @@ fn set(key: PyObjectRef, value: PyObjectRef, vm: &VirtualMachine) -> PyResult<()
     let key: String = String::try_from_object(vm, key)?;
 
     match key.as_str() {
-        "sky_texture" => {
+        "sky_tex" => {
             if let Ok(val) = String::try_from_object(vm, value) {
                 if let Some(id) = get_texture(&val) {
                     let mut map = MAP.write().unwrap();
@@ -146,7 +174,7 @@ fn set(key: PyObjectRef, value: PyObjectRef, vm: &VirtualMachine) -> PyResult<()
                 Err(vm.new_type_error("Unsupported value type for 'floor_texture'".to_owned()))
             }
         }
-        "floor_texture" => {
+        "floor_tex" => {
             if let Ok(val) = String::try_from_object(vm, value) {
                 if let Some(id) = get_texture(&val) {
                     if let Some(sectori_id) = CURSORSTATE.read().unwrap().last_sector {
@@ -165,13 +193,51 @@ fn set(key: PyObjectRef, value: PyObjectRef, vm: &VirtualMachine) -> PyResult<()
                 Err(vm.new_type_error("Unsupported value type for 'floor_texture'".to_owned()))
             }
         }
-        "wall_texture" => {
+        "wall_tex" => {
             if let Ok(val) = String::try_from_object(vm, value) {
                 if let Some(id) = get_texture(&val) {
                     if let Some(wall_id) = CURSORSTATE.read().unwrap().last_wall {
                         let mut map = MAP.write().unwrap();
                         if let Some(linedef) = map.find_linedef_mut(wall_id) {
                             linedef.texture = Some(id);
+                        }
+                        Ok(())
+                    } else {
+                        Err(vm.new_type_error("No wall available".to_owned()))
+                    }
+                } else {
+                    Err(vm.new_type_error(format!("Could not fnd texture {}", val).to_owned()))
+                }
+            } else {
+                Err(vm.new_type_error("Unsupported value type for 'wall_texture'".to_owned()))
+            }
+        }
+        "wall_tex_row2" => {
+            if let Ok(val) = String::try_from_object(vm, value) {
+                if let Some(id) = get_texture(&val) {
+                    if let Some(wall_id) = CURSORSTATE.read().unwrap().last_wall {
+                        let mut map = MAP.write().unwrap();
+                        if let Some(linedef) = map.find_linedef_mut(wall_id) {
+                            linedef.texture_row2 = Some(id);
+                        }
+                        Ok(())
+                    } else {
+                        Err(vm.new_type_error("No wall available".to_owned()))
+                    }
+                } else {
+                    Err(vm.new_type_error(format!("Could not fnd texture {}", val).to_owned()))
+                }
+            } else {
+                Err(vm.new_type_error("Unsupported value type for 'wall_texture'".to_owned()))
+            }
+        }
+        "wall_tex_row3" => {
+            if let Ok(val) = String::try_from_object(vm, value) {
+                if let Some(id) = get_texture(&val) {
+                    if let Some(wall_id) = CURSORSTATE.read().unwrap().last_wall {
+                        let mut map = MAP.write().unwrap();
+                        if let Some(linedef) = map.find_linedef_mut(wall_id) {
+                            linedef.texture_row3 = Some(id);
                         }
                         Ok(())
                     } else {
@@ -224,7 +290,7 @@ fn set(key: PyObjectRef, value: PyObjectRef, vm: &VirtualMachine) -> PyResult<()
                 Err(vm.new_type_error("No wall available".to_owned()))
             }
         }
-        "ceiling_texture" => {
+        "ceiling_tex" => {
             if let Ok(val) = String::try_from_object(vm, value) {
                 if let Some(id) = get_texture(&val) {
                     if let Some(sectori_id) = CURSORSTATE.read().unwrap().last_sector {
@@ -276,6 +342,8 @@ fn wall(value: PyObjectRef, vm: &VirtualMachine) -> PyResult<()> {
 
     if let Some(linedef) = map.find_linedef_mut(linedef_id) {
         linedef.texture = *DEFAULT_WALL_TEXTURE.read().unwrap();
+        linedef.texture_row2 = *DEFAULT_WALL_TEXTURE_ROW2.read().unwrap();
+        linedef.texture_row3 = *DEFAULT_WALL_TEXTURE_ROW3.read().unwrap();
         linedef.wall_height = *DEFAULT_WALL_HEIGHT.read().unwrap();
         state.last_wall = Some(linedef.id);
     }
@@ -420,6 +488,8 @@ impl MapScript {
         *MAP.write().unwrap() = ctx_map.unwrap_or_default();
         *TILES.write().unwrap() = FxHashMap::default();
         *DEFAULT_WALL_TEXTURE.write().unwrap() = None;
+        *DEFAULT_WALL_TEXTURE_ROW2.write().unwrap() = None;
+        *DEFAULT_WALL_TEXTURE_ROW3.write().unwrap() = None;
         *DEFAULT_CEILING_TEXTURE.write().unwrap() = None;
         *DEFAULT_FLOOR_TEXTURE.write().unwrap() = None;
 

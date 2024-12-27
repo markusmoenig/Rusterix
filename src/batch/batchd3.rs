@@ -352,7 +352,7 @@ impl Batch<[f32; 4]> {
                 let result = projection_matrix * Vec4::new(v[0], v[1], v[2], v[3]);
                 let w = result.w;
                 [
-                    ((result.x / w) * 0.5 + 0.5) * viewport_width,
+                    ((-result.x / w) * 0.5 + 0.5) * viewport_width,
                     ((-result.y / w) * 0.5 + 0.5) * viewport_height,
                     result.z / w,
                     result.w,

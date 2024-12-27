@@ -17,6 +17,7 @@ pub trait SceneBuilder: Send + Sync {
         tiles: &FxHashMap<Uuid, Tile>,
         atlas: Texture,
         screen_size: Vec2<f32>,
+        camera_id: &str,
     ) -> Scene;
 
     /// Convert a map grid position to screen coordinates

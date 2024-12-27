@@ -18,6 +18,7 @@ impl SceneBuilder for D3Builder {
         tiles: &FxHashMap<Uuid, Tile>,
         atlas: Texture,
         _screen_size: Vec2<f32>,
+        camera_id: &str,
     ) -> Scene {
         let mut scene = Scene::empty();
         // let atlas_size = atlas.width as f32;
@@ -104,11 +105,13 @@ impl SceneBuilder for D3Builder {
                         if let Some(start_vertex) = map.find_vertex(linedef.start_vertex) {
                             if let Some(end_vertex) = map.find_vertex(linedef.end_vertex) {
                                 if let Some(wall_texture_id) = &linedef.texture {
-                                    Self::add_wall(
+                                    Self::add_wall2(
                                         &start_vertex.as_vec2(),
                                         &end_vertex.as_vec2(),
                                         linedef.wall_height,
                                         wall_texture_id,
+                                        linedef.texture_row2,
+                                        linedef.texture_row3,
                                         tiles,
                                         &mut repeated_offsets,
                                         &mut repeated_batches,
@@ -144,15 +147,17 @@ impl SceneBuilder for D3Builder {
             }
         }
 
-        // Add Sky
-        if let Some(sky_texture_id) = map.sky_texture {
-            Self::add_sky(
-                &sky_texture_id,
-                tiles,
-                &mut repeated_offsets,
-                &mut repeated_batches,
-                &mut textures,
-            );
+        if camera_id != "iso" {
+            // Add Sky
+            if let Some(sky_texture_id) = map.sky_texture {
+                Self::add_sky(
+                    &sky_texture_id,
+                    tiles,
+                    &mut repeated_offsets,
+                    &mut repeated_batches,
+                    &mut textures,
+                );
+            }
         }
 
         // ---
@@ -173,6 +178,20 @@ trait D3BuilderUtils {
         end_vertex: &Vec2<f32>,
         wall_height: f32,
         wall_texture_id: &Uuid,
+        tiles: &FxHashMap<Uuid, Tile>,
+        repeated_offsets: &mut FxHashMap<Uuid, usize>,
+        repeated_batches: &mut Vec<Batch<[f32; 4]>>,
+        textures: &mut Vec<Texture>,
+    );
+
+    #[allow(clippy::too_many_arguments)]
+    fn add_wall2(
+        start_vertex: &Vec2<f32>,
+        end_vertex: &Vec2<f32>,
+        wall_height: f32,
+        wall_texture_id: &Uuid,
+        row2_texture_id: Option<Uuid>, // Optional texture for row 2
+        row3_texture_id: Option<Uuid>, // Optional texture for row 3
         tiles: &FxHashMap<Uuid, Tile>,
         repeated_offsets: &mut FxHashMap<Uuid, usize>,
         repeated_batches: &mut Vec<Batch<[f32; 4]>>,
@@ -246,6 +265,94 @@ impl D3BuilderUtils for D3Builder {
                 repeated_offsets.insert(tile.id, repeated_batches.len());
                 repeated_batches.push(batch);
             }
+        }
+    }
+
+    /// Adds a wall to the appropriate batch based on up to 3 input parameters
+    fn add_wall2(
+        start_vertex: &Vec2<f32>,
+        end_vertex: &Vec2<f32>,
+        wall_height: f32,
+        wall_texture_id: &Uuid,
+        row2_texture_id: Option<Uuid>, // Optional texture for row 2
+        row3_texture_id: Option<Uuid>, // Optional texture for row 3
+        tiles: &FxHashMap<Uuid, Tile>,
+        repeated_offsets: &mut FxHashMap<Uuid, usize>,
+        repeated_batches: &mut Vec<Batch<[f32; 4]>>,
+        textures: &mut Vec<Texture>,
+    ) {
+        let row_heights = [1.0, 2.0, wall_height]; // Define the heights for each row
+
+        // Function to add a row geometry
+        let mut add_row = |start_height: f32, end_height: f32, texture_id: &Uuid| {
+            let row_vertices = vec![
+                [start_vertex.x, start_height, start_vertex.y, 1.0],
+                [start_vertex.x, end_height, start_vertex.y, 1.0],
+                [end_vertex.x, end_height, end_vertex.y, 1.0],
+                [end_vertex.x, start_height, end_vertex.y, 1.0],
+            ];
+
+            let row_uvs =
+                if (end_vertex.x - start_vertex.x).abs() > (end_vertex.y - start_vertex.y).abs() {
+                    vec![
+                        [start_vertex.x, end_height],
+                        [start_vertex.x, start_height],
+                        [end_vertex.x, start_height],
+                        [end_vertex.x, end_height],
+                    ]
+                } else {
+                    vec![
+                        [start_vertex.y, end_height],
+                        [start_vertex.y, start_height],
+                        [end_vertex.y, start_height],
+                        [end_vertex.y, end_height],
+                    ]
+                };
+
+            let row_indices = vec![(0, 1, 2), (0, 2, 3)];
+
+            if let Some(tile) = tiles.get(texture_id) {
+                if let Some(offset) = repeated_offsets.get(&tile.id) {
+                    repeated_batches[*offset].add(row_vertices, row_indices, row_uvs);
+                } else {
+                    let texture_index = textures.len();
+
+                    let mut batch = Batch::emptyd3()
+                        .repeat_mode(crate::RepeatMode::RepeatXY)
+                        .cull_mode(crate::CullMode::Off)
+                        .sample_mode(crate::SampleMode::Nearest)
+                        .texture_index(texture_index);
+
+                    batch.add(row_vertices, row_indices, row_uvs);
+
+                    textures.push(tile.textures[0].clone());
+                    repeated_offsets.insert(tile.id, repeated_batches.len());
+                    repeated_batches.push(batch);
+                }
+            }
+        };
+
+        // Add rows based on available textures
+        if let Some(row2_id) = row2_texture_id {
+            if let Some(row3_id) = row3_texture_id {
+                // Row 1 (base texture)
+                add_row(0.0, row_heights[0], wall_texture_id);
+
+                // Row 2
+                add_row(row_heights[0], row_heights[1], &row2_id);
+
+                // Row 3
+                add_row(row_heights[1], row_heights[2], &row3_id);
+            } else {
+                // Row 1 (base texture)
+                add_row(0.0, row_heights[0], wall_texture_id);
+
+                // Row 2
+                add_row(row_heights[0], row_heights[2], &row2_id);
+            }
+        } else {
+            // Single texture for the entire wall
+            add_row(0.0, row_heights[2], wall_texture_id);
         }
     }
 

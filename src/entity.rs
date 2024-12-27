@@ -41,12 +41,12 @@ impl Entity {
 
     /// Rotates the entity to the left by a certain degree.
     pub fn turn_left(&mut self, degrees: f32) {
-        self.rotate_orientation(degrees.to_radians());
+        self.rotate_orientation(-degrees.to_radians());
     }
 
     /// Rotates the entity to the right by a certain degree.
     pub fn turn_right(&mut self, degrees: f32) {
-        self.rotate_orientation(-degrees.to_radians());
+        self.rotate_orientation(degrees.to_radians());
     }
 
     /// Moves the entity forward along its current orientation.
