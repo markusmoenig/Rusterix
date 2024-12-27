@@ -1,6 +1,6 @@
 use crate::{Batch, Pixel, PrimitiveMode, Scene, Texture};
 use rayon::prelude::*;
-use vek::{Mat3, Mat4, Vec2};
+use vek::{Mat3, Mat4, Vec2, Vec3};
 pub struct Rasterizer;
 
 /// Rasterizes batches of 2D and 3D meshes (and lines).
@@ -262,6 +262,10 @@ impl Rasterizer {
                     PrimitiveMode::Triangles => {
                         // Process each triangle in the batch
                         for (triangle_index, edges) in batch.edges.iter().enumerate() {
+                            if !edges.visible {
+                                continue;
+                            }
+
                             let (i0, i1, i2) = batch.clipped_indices[triangle_index];
                             let v0 = batch.projected_vertices[i0];
                             let v1 = batch.projected_vertices[i1];
@@ -269,11 +273,6 @@ impl Rasterizer {
                             let uv0 = batch.clipped_uvs[i0];
                             let uv1 = batch.clipped_uvs[i1];
                             let uv2 = batch.clipped_uvs[i2];
-
-                            // Check if all three vertices are behind the near clipping plane
-                            // if v0[2] < 0.0 && v1[2] < 0.0 && v2[2] < 0.0 {
-                            //     continue;
-                            // }
 
                             // Compute bounding box of the triangle
                             let min_x = [v0[0], v1[0], v2[0]]
@@ -311,11 +310,12 @@ impl Rasterizer {
                                     let p = [tx as f32 + 0.5, ty as f32 + 0.5];
 
                                     // Evaluate the edges
-                                    if edges.visible && edges.evaluate(p) {
+                                    if edges.evaluate(p) {
                                         // Interpolate barycentric coordinates
                                         let [alpha, beta, gamma] =
                                             self.barycentric_weights_3d(&v0, &v1, &v2, &p);
 
+                                        /*
                                         // Calculate Z-Buffer value
                                         let one_over_z = 1.0 / v0[2] * alpha
                                             + 1.0 / v1[2] * beta
@@ -338,7 +338,41 @@ impl Rasterizer {
                                             // Interpolate reciprocal depth
                                             let interpolated_reciprocal_w = (1.0 / v0[3]) * alpha
                                                 + (1.0 / v1[3]) * beta
-                                                + (1.0 / v2[3]) * gamma;
+                                                + (1.0 / v2[3]) * gamma;*/
+
+                                        let bary_weights = Vec3::new(alpha, beta, gamma);
+
+                                        // Precompute reciprocal depths (1/z and 1/w) for each vertex
+                                        let inv_z =
+                                            Vec3::new(1.0 / v0[2], 1.0 / v1[2], 1.0 / v2[2]);
+                                        let inv_w =
+                                            Vec3::new(1.0 / v0[3], 1.0 / v1[3], 1.0 / v2[3]);
+
+                                        // Compute Z-Buffer value
+                                        let one_over_z = inv_z.dot(bary_weights);
+                                        let z = 1.0 / one_over_z;
+
+                                        // Calculate tile index in the Z-buffer
+                                        let zidx = (ty - tile.y) * tile.width + (tx - tile.x);
+
+                                        if z < z_buffer[zidx] {
+                                            // Precompute UV divided by W for each vertex
+                                            let uv_w0 =
+                                                Vec3::new(uv0[0] / v0[3], uv0[1] / v0[3], inv_w.x);
+                                            let uv_w1 =
+                                                Vec3::new(uv1[0] / v1[3], uv1[1] / v1[3], inv_w.y);
+                                            let uv_w2 =
+                                                Vec3::new(uv2[0] / v2[3], uv2[1] / v2[3], inv_w.z);
+
+                                            // Interpolate (U/W, V/W, 1/W) using barycentric weights
+                                            let interpolated = uv_w0 * bary_weights.x
+                                                + uv_w1 * bary_weights.y
+                                                + uv_w2 * bary_weights.z;
+
+                                            // Extract interpolated U/W, V/W, and 1/W
+                                            let mut interpolated_u = interpolated.x;
+                                            let mut interpolated_v = interpolated.y;
+                                            let interpolated_reciprocal_w = interpolated.z;
 
                                             // Now we can divide back both interpolated values by 1/w
                                             interpolated_u /= interpolated_reciprocal_w;
@@ -352,10 +386,13 @@ impl Rasterizer {
                                                 batch.repeat_mode,
                                             );
 
-                                            // Write to framebuffer
-                                            let idx =
-                                                ((ty - tile.y) * tile.width + (tx - tile.x)) * 4;
-                                            buffer[idx..idx + 4].copy_from_slice(&texel);
+                                            if texel[3] == 255 {
+                                                let idx = ((ty - tile.y) * tile.width
+                                                    + (tx - tile.x))
+                                                    * 4;
+                                                buffer[idx..idx + 4].copy_from_slice(&texel);
+                                                z_buffer[zidx] = z;
+                                            }
                                         }
                                     }
                                 }

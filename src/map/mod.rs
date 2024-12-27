@@ -209,8 +209,12 @@ impl Map {
         self.possible_polygon.push(id);
 
         if let Some(sid) = self.create_sector_from_polygon() {
+            if let Some(linedef) = self.find_linedef_mut(id) {
+                linedef.front_sector = Some(sid);
+            }
             sector_id = Some(sid);
         }
+
         (id, sector_id)
     }
 

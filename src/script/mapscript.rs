@@ -7,6 +7,33 @@ use std::sync::{LazyLock, RwLock};
 use theframework::prelude::*;
 use vek::Vec2;
 
+#[derive(Clone, Copy)]
+struct MapCursorState {
+    pub position: Vec2<f32>,
+    pub orientation: Vec2<f32>,
+
+    pub last_wall: Option<u32>,
+    pub last_sector: Option<u32>,
+}
+
+impl Default for MapCursorState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl MapCursorState {
+    pub fn new() -> Self {
+        Self {
+            position: Vec2::zero(),
+            orientation: Vec2::new(1.0, 0.0),
+
+            last_wall: None,
+            last_sector: None,
+        }
+    }
+}
+
 static DEFAULT_WALL_TEXTURE: LazyLock<RwLock<Option<Uuid>>> = LazyLock::new(|| RwLock::new(None));
 static DEFAULT_FLOOR_TEXTURE: LazyLock<RwLock<Option<Uuid>>> = LazyLock::new(|| RwLock::new(None));
 static DEFAULT_CEILING_TEXTURE: LazyLock<RwLock<Option<Uuid>>> =
@@ -18,12 +45,20 @@ static DEFAULT_WALL_WIDTH: LazyLock<RwLock<f32>> = LazyLock::new(|| RwLock::new(
 static MAP: LazyLock<RwLock<Map>> = LazyLock::new(|| RwLock::new(Map::default()));
 static TILES: LazyLock<RwLock<FxHashMap<Uuid, Tile>>> =
     LazyLock::new(|| RwLock::new(FxHashMap::default()));
-static POSITION: LazyLock<RwLock<Vec2<f32>>> = LazyLock::new(|| RwLock::new(Vec2::zero()));
-static ORIENTATION: LazyLock<RwLock<Vec2<f32>>> =
-    LazyLock::new(|| RwLock::new(Vec2::new(1.0, 0.0))); // Default facing east
 
-static LAST_WALL: LazyLock<RwLock<Option<u32>>> = LazyLock::new(|| RwLock::new(None));
-static LAST_SECTOR: LazyLock<RwLock<Option<u32>>> = LazyLock::new(|| RwLock::new(None));
+static CURSORSTATE: LazyLock<RwLock<MapCursorState>> =
+    LazyLock::new(|| RwLock::new(MapCursorState::default()));
+
+static SAVEDSTATE: LazyLock<RwLock<MapCursorState>> =
+    LazyLock::new(|| RwLock::new(MapCursorState::default()));
+
+fn push() {
+    *SAVEDSTATE.write().unwrap() = *CURSORSTATE.read().unwrap()
+}
+
+fn pop() {
+    *CURSORSTATE.write().unwrap() = *SAVEDSTATE.read().unwrap()
+}
 
 fn set_default(key: PyObjectRef, value: PyObjectRef, vm: &VirtualMachine) -> PyResult<()> {
     let key: String = String::try_from_object(vm, key)?;
@@ -101,7 +136,7 @@ fn set(key: PyObjectRef, value: PyObjectRef, vm: &VirtualMachine) -> PyResult<()
         "floor_texture" => {
             if let Ok(val) = String::try_from_object(vm, value) {
                 if let Some(id) = get_texture(&val) {
-                    if let Some(sectori_id) = *LAST_SECTOR.read().unwrap() {
+                    if let Some(sectori_id) = CURSORSTATE.read().unwrap().last_sector {
                         let mut map = MAP.write().unwrap();
                         if let Some(sector) = map.find_sector_mut(sectori_id) {
                             sector.floor_texture = Some(id);
@@ -120,7 +155,7 @@ fn set(key: PyObjectRef, value: PyObjectRef, vm: &VirtualMachine) -> PyResult<()
         "wall_texture" => {
             if let Ok(val) = String::try_from_object(vm, value) {
                 if let Some(id) = get_texture(&val) {
-                    if let Some(wall_id) = *LAST_WALL.read().unwrap() {
+                    if let Some(wall_id) = CURSORSTATE.read().unwrap().last_wall {
                         let mut map = MAP.write().unwrap();
                         if let Some(linedef) = map.find_linedef_mut(wall_id) {
                             linedef.texture = Some(id);
@@ -137,7 +172,7 @@ fn set(key: PyObjectRef, value: PyObjectRef, vm: &VirtualMachine) -> PyResult<()
             }
         }
         "wall_height" => {
-            if let Some(wall_id) = *LAST_WALL.read().unwrap() {
+            if let Some(wall_id) = CURSORSTATE.read().unwrap().last_wall {
                 let mut map = MAP.write().unwrap();
                 if let Some(linedef) = map.find_linedef_mut(wall_id) {
                     let height = if value.class().is(vm.ctx.types.int_type) {
@@ -157,7 +192,7 @@ fn set(key: PyObjectRef, value: PyObjectRef, vm: &VirtualMachine) -> PyResult<()
             }
         }
         "wall_width" => {
-            if let Some(wall_id) = *LAST_WALL.read().unwrap() {
+            if let Some(wall_id) = CURSORSTATE.read().unwrap().last_wall {
                 let mut map = MAP.write().unwrap();
                 if let Some(linedef) = map.find_linedef_mut(wall_id) {
                     let height = if value.class().is(vm.ctx.types.int_type) {
@@ -179,7 +214,7 @@ fn set(key: PyObjectRef, value: PyObjectRef, vm: &VirtualMachine) -> PyResult<()
         "ceiling_texture" => {
             if let Ok(val) = String::try_from_object(vm, value) {
                 if let Some(id) = get_texture(&val) {
-                    if let Some(sectori_id) = *LAST_SECTOR.read().unwrap() {
+                    if let Some(sectori_id) = CURSORSTATE.read().unwrap().last_sector {
                         let mut map = MAP.write().unwrap();
                         if let Some(sector) = map.find_sector_mut(sectori_id) {
                             sector.ceiling_texture = Some(id);
@@ -212,14 +247,15 @@ fn wall(value: PyObjectRef, vm: &VirtualMachine) -> PyResult<()> {
     };
 
     let mut map = MAP.write().unwrap();
-    let mut position = POSITION.write().unwrap();
-    let orientation = ORIENTATION.read().unwrap();
+    let mut state = CURSORSTATE.write().unwrap();
+
+    let orientation = state.orientation;
 
     // Calculate the "to" position based on the current orientation
-    let to = *position + *orientation * length;
+    let to = state.position + orientation * length;
 
     // Add vertices to the map
-    let from_index = map.add_vertex_at(position.x, position.y);
+    let from_index = map.add_vertex_at(state.position.x, state.position.y);
     let to_index = map.add_vertex_at(to.x, to.y);
 
     // Create the linedef
@@ -228,7 +264,7 @@ fn wall(value: PyObjectRef, vm: &VirtualMachine) -> PyResult<()> {
     if let Some(linedef) = map.find_linedef_mut(linedef_id) {
         linedef.texture = *DEFAULT_WALL_TEXTURE.read().unwrap();
         linedef.wall_height = *DEFAULT_WALL_HEIGHT.read().unwrap();
-        *LAST_WALL.write().unwrap() = Some(linedef.id);
+        state.last_wall = Some(linedef.id);
     }
 
     if let Some(sector_id) = sector_id {
@@ -236,11 +272,11 @@ fn wall(value: PyObjectRef, vm: &VirtualMachine) -> PyResult<()> {
             sector.floor_texture = *DEFAULT_FLOOR_TEXTURE.read().unwrap();
             sector.ceiling_texture = *DEFAULT_CEILING_TEXTURE.read().unwrap();
         }
-        *LAST_SECTOR.write().unwrap() = Some(sector_id);
+        state.last_sector = Some(sector_id);
     }
 
     // Update the current position
-    *position = to;
+    state.position = to;
 
     Ok(())
 }
@@ -268,17 +304,41 @@ fn get_texture(texture_name: &str) -> Option<Uuid> {
 }
 
 fn move_forward(length: f32) -> PyResult<()> {
-    let mut position = POSITION.write().unwrap();
-    let orientation = ORIENTATION.read().unwrap();
+    let mut state = CURSORSTATE.write().unwrap();
+    let orientation = state.orientation;
 
     // Update the position based on the current orientation
-    *position += *orientation * length;
+    state.position += orientation * length;
+
+    Ok(())
+}
+
+fn move_to(x: PyObjectRef, y: PyObjectRef, vm: &VirtualMachine) -> PyResult<()> {
+    let x: f32 = if x.class().is(vm.ctx.types.int_type) {
+        x.try_into_value::<i32>(vm)? as f32
+    } else if x.class().is(vm.ctx.types.float_type) {
+        x.try_into_value::<f32>(vm)?
+    } else {
+        return Err(vm.new_type_error("Expected an integer or float for x".to_owned()));
+    };
+
+    let y: f32 = if y.class().is(vm.ctx.types.int_type) {
+        y.try_into_value::<i32>(vm)? as f32
+    } else if y.class().is(vm.ctx.types.float_type) {
+        y.try_into_value::<f32>(vm)?
+    } else {
+        return Err(vm.new_type_error("Expected an integer or float for y".to_owned()));
+    };
+
+    let mut state = CURSORSTATE.write().unwrap();
+    state.position = Vec2::new(x, y);
 
     Ok(())
 }
 
 fn rotate(angle: f32) -> PyResult<()> {
-    let mut orientation = ORIENTATION.write().unwrap();
+    let mut state = CURSORSTATE.write().unwrap();
+    let orientation = state.orientation;
 
     // Calculate the new orientation by rotating the vector
     let radians = angle.to_radians();
@@ -307,7 +367,7 @@ fn rotate(angle: f32) -> PyResult<()> {
         Vec2::new(x, y).normalized()
     }
 
-    *orientation = snap_orientation(new_orientation);
+    state.orientation = snap_orientation(new_orientation);
 
     Ok(())
 }
@@ -346,14 +406,18 @@ impl MapScript {
         self.error = None;
         *MAP.write().unwrap() = ctx_map.unwrap_or_default();
         *TILES.write().unwrap() = FxHashMap::default();
-        *POSITION.write().unwrap() = Vec2::zero();
-        *ORIENTATION.write().unwrap() = Vec2::new(1.0, 0.0);
         *DEFAULT_WALL_TEXTURE.write().unwrap() = None;
         *DEFAULT_CEILING_TEXTURE.write().unwrap() = None;
         *DEFAULT_FLOOR_TEXTURE.write().unwrap() = None;
 
-        *LAST_WALL.write().unwrap() = ctx_linedef;
-        *LAST_SECTOR.write().unwrap() = ctx_sector;
+        let state = MapCursorState {
+            last_wall: ctx_linedef,
+            last_sector: ctx_sector,
+            ..Default::default()
+        };
+
+        *CURSORSTATE.write().unwrap() = state;
+        *SAVEDSTATE.write().unwrap() = state;
 
         let interpreter = rustpython::InterpreterConfig::new()
             .init_stdlib()
@@ -361,6 +425,14 @@ impl MapScript {
 
         interpreter.enter(|vm| {
             let scope = vm.new_scope_with_builtins();
+
+            let _ = scope
+                .globals
+                .set_item("push", vm.new_function("push", push).into(), vm);
+
+            let _ = scope
+                .globals
+                .set_item("pop", vm.new_function("pop", pop).into(), vm);
 
             let _ = scope.globals.set_item(
                 "set_default",
@@ -381,6 +453,11 @@ impl MapScript {
                 vm.new_function("turn_left", move_forward).into(),
                 vm,
             );
+
+            let _ =
+                scope
+                    .globals
+                    .set_item("move_to", vm.new_function("move_to", move_to).into(), vm);
 
             let _ = scope.globals.set_item(
                 "turn_left",

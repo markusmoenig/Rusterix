@@ -26,6 +26,7 @@ pub struct Editor {
     entity: Entity,
     content: Content,
     preview_mode: PreviewMode,
+    scene: Scene,
 }
 
 impl TheTrait for Editor {
@@ -38,6 +39,7 @@ impl TheTrait for Editor {
             entity: Entity::default(),
             content: Off,
             preview_mode: D2,
+            scene: Scene::default(),
         }
     }
 
@@ -49,7 +51,17 @@ impl TheTrait for Editor {
             if let Ok(r) = rx.lock() {
                 while let Ok(command) = r.try_recv() {
                     match command {
-                        FocusMap(map) => self.content = MapPreview(map),
+                        FocusMap(meta) => {
+                            self.content = MapPreview(meta.clone());
+                            let builder = D3Builder::new();
+
+                            self.scene = builder.build(
+                                &meta.map,
+                                &meta.tiles,
+                                Texture::from_color(BLACK),
+                                vek::Vec2::new(ctx.width as f32, ctx.height as f32),
+                            );
+                        }
                         Exit => {
                             // TODO
                         }
@@ -87,15 +99,6 @@ impl TheTrait for Editor {
                     );
                 }
                 D3 => {
-                    let builder = D3Builder::new();
-
-                    let mut scene = builder.build(
-                        &meta.map,
-                        &meta.tiles,
-                        Texture::from_color(BLACK),
-                        vek::Vec2::new(ctx.width as f32, ctx.height as f32),
-                    );
-
                     self.entity.apply_to_camera(&mut self.camera);
 
                     if self.camera.id() == "iso" {
@@ -115,12 +118,12 @@ impl TheTrait for Editor {
                         75.0,
                         ctx.width as f32,
                         ctx.height as f32,
-                        0.1,
+                        0.01,
                         100.0,
                     );
 
                     Rasterizer {}.rasterize(
-                        &mut scene,
+                        &mut self.scene,
                         pixels,
                         ctx.width,
                         ctx.height,

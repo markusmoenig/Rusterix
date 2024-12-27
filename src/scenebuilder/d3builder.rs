@@ -163,6 +163,64 @@ impl SceneBuilder for D3Builder {
             }
         }
 
+        for linedef in &map.linedefs {
+            if linedef.front_sector.is_none() && linedef.back_sector.is_none() {
+                let start_vertex = map.find_vertex(linedef.start_vertex).unwrap();
+                let end_vertex = map.find_vertex(linedef.end_vertex).unwrap();
+
+                let wall_vertices = vec![
+                    [start_vertex.x, 0.0, start_vertex.y, 1.0],
+                    [start_vertex.x, linedef.wall_height, start_vertex.y, 1.0],
+                    [end_vertex.x, linedef.wall_height, end_vertex.y, 1.0],
+                    [end_vertex.x, 0.0, end_vertex.y, 1.0],
+                ];
+
+                if let Some(wall_texture_id) = &linedef.texture {
+                    if let Some(tile) = tiles.get(wall_texture_id) {
+                        let wall_uvs = if (end_vertex.x - start_vertex.x).abs()
+                            > (end_vertex.y - start_vertex.y).abs()
+                        {
+                            // Wall is mostly aligned along the X-axis
+                            vec![
+                                [start_vertex.x, linedef.wall_height],
+                                [start_vertex.x, 0.0],
+                                [end_vertex.x, 0.0],
+                                [end_vertex.x, linedef.wall_height],
+                            ]
+                        } else {
+                            // Wall is mostly aligned along the Z-axis
+                            vec![
+                                [start_vertex.y, linedef.wall_height],
+                                [start_vertex.y, 0.0],
+                                [end_vertex.y, 0.0],
+                                [end_vertex.y, linedef.wall_height],
+                            ]
+                        };
+
+                        let wall_indices = vec![(0, 1, 2), (0, 2, 3)];
+
+                        if let Some(offset) = repeated_offsets.get(&tile.id) {
+                            repeated_batches[*offset].add(wall_vertices, wall_indices, wall_uvs);
+                        } else {
+                            let texture_index = textures.len();
+
+                            let mut batch = Batch::emptyd3()
+                                .repeat_mode(crate::RepeatMode::RepeatXY)
+                                .cull_mode(crate::CullMode::Off)
+                                .sample_mode(crate::SampleMode::Nearest)
+                                .texture_index(texture_index);
+
+                            batch.add(wall_vertices, wall_indices, wall_uvs);
+
+                            textures.push(tile.textures[0].clone());
+                            repeated_offsets.insert(tile.id, repeated_batches.len());
+                            repeated_batches.push(batch);
+                        }
+                    }
+                }
+            }
+        }
+
         // ---
 
         let mut batches = repeated_batches;
