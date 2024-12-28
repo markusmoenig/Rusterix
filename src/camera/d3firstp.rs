@@ -28,12 +28,11 @@ impl D3Camera for D3FirstPCamera {
     }
 
     fn view_matrix(&self) -> Mat4<f32> {
-        let up = vek::Vec3::new(0.0, 1.0, 0.0);
-        vek::Mat4::look_at_lh(self.position, self.center, up)
+        vek::Mat4::look_at_rh(self.position, self.center, Vec3::unit_y())
     }
 
     fn projection_matrix(&self, width: f32, height: f32) -> Mat4<f32> {
-        vek::Mat4::perspective_fov_lh_zo(self.fov.to_radians(), width, height, self.near, self.far)
+        vek::Mat4::perspective_fov_rh_zo(self.fov.to_radians(), width, height, self.near, self.far)
     }
 
     fn set_parameter_f32(&mut self, key: &str, value: f32) {

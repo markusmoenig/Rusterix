@@ -7,7 +7,7 @@ use crate::{Cmd::*, FROM_WINDOW_TX, TO_WINDOW_RX};
 #[derive(Debug, Clone)]
 #[allow(dead_code, clippy::large_enum_variant)]
 enum Content {
-    Off,
+    NoContent,
     MapPreview(MapMeta),
 }
 
@@ -18,7 +18,18 @@ enum PreviewMode {
     D3,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+#[allow(dead_code)]
+enum Movement {
+    Off,
+    MoveForward,
+    MoveBackward,
+    TurnLeft,
+    TurnRight,
+}
+
 use Content::*;
+use Movement::*;
 use PreviewMode::*;
 
 pub struct Editor {
@@ -27,6 +38,7 @@ pub struct Editor {
     content: Content,
     preview_mode: PreviewMode,
     scene: Scene,
+    movement: Movement,
 }
 
 impl TheTrait for Editor {
@@ -37,9 +49,10 @@ impl TheTrait for Editor {
         Self {
             camera: Box::new(D3IsoCamera::new()),
             entity: Entity::default(),
-            content: Off,
+            content: NoContent,
             preview_mode: D2,
             scene: Scene::default(),
+            movement: Off,
         }
     }
 
@@ -101,6 +114,22 @@ impl TheTrait for Editor {
                     );
                 }
                 D3 => {
+                    match &self.movement {
+                        MoveForward => {
+                            self.entity.move_forward(0.05);
+                        }
+                        MoveBackward => {
+                            self.entity.move_backward(0.05);
+                        }
+                        TurnLeft => {
+                            self.entity.turn_left(0.5);
+                        }
+                        TurnRight => {
+                            self.entity.turn_right(0.5);
+                        }
+                        Off => {}
+                    }
+
                     self.entity.apply_to_camera(&mut self.camera);
 
                     if self.camera.id() == "iso" {
@@ -228,20 +257,67 @@ impl TheTrait for Editor {
                     self.preview_mode = D3;
                 }
                 'w' => {
-                    // Move forward
-                    self.entity.move_forward(0.5);
+                    self.movement = MoveForward;
                 }
                 's' => {
-                    // Move backward along the camera's forward direction
-                    self.entity.move_backward(0.5);
+                    self.movement = MoveBackward;
                 }
                 'a' => {
-                    // Turn left
-                    self.entity.turn_left(5.0);
+                    self.movement = TurnLeft;
                 }
                 'd' => {
-                    // Turn right
-                    self.entity.turn_right(5.0);
+                    self.movement = TurnRight;
+                }
+                _ => {}
+            }
+        }
+        //println!("pos {} look at {}", self.camera_pos, self.camera_look_at);
+        true
+    }
+
+    fn key_up(
+        &mut self,
+        char: Option<char>,
+        _key: Option<TheKeyCode>,
+        _ctx: &mut TheContext,
+    ) -> bool {
+        if let Some(char) = char {
+            match char {
+                'p' => {
+                    self.camera = Box::new(D3FirstPCamera::new());
+                    self.preview_mode = D2;
+                }
+                'f' => {
+                    self.camera = Box::new(D3FirstPCamera::new());
+                    self.preview_mode = D3;
+                }
+                'i' => {
+                    self.camera = Box::new(D3IsoCamera::new());
+                    self.preview_mode = D3;
+                }
+                'o' => {
+                    self.camera = Box::new(D3OrbitCamera::new());
+                    self.preview_mode = D3;
+                }
+                'w' => {
+                    if self.movement == MoveForward {
+                        self.movement = Off;
+                    }
+                }
+                's' => {
+                    if self.movement == MoveBackward {
+                        self.movement = Off;
+                    }
+                }
+                'a' => {
+                    if self.movement == TurnLeft {
+                        self.movement = Off;
+                    }
+                }
+                'd' => {
+                    if self.movement == TurnRight {
+                        self.movement = Off;
+                    }
                 }
                 _ => {}
             }

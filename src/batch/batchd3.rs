@@ -253,9 +253,9 @@ impl Batch<[f32; 4]> {
             let uv1 = self.uvs[i1];
             let uv2 = self.uvs[i2];
 
-            let is_v0_inside = v0[2] >= near_plane;
-            let is_v1_inside = v1[2] >= near_plane;
-            let is_v2_inside = v2[2] >= near_plane;
+            let is_v0_inside = v0[2] <= -near_plane;
+            let is_v1_inside = v1[2] <= -near_plane;
+            let is_v2_inside = v2[2] <= -near_plane;
 
             if is_v0_inside && is_v1_inside && is_v2_inside {
                 // All vertices are inside the near plane, keep the triangle
@@ -278,16 +278,16 @@ impl Batch<[f32; 4]> {
                 let (current, uv_current, _idx_current) = vertices[i];
                 let (next, uv_next, _idx_next) = vertices[(i + 1) % 3];
 
-                if current[2] >= near_plane {
+                if current[2] <= -near_plane {
                     new_vertices.push(current);
                     clipped_indices.push(self.vertices.len() + new_vertices.len() - 1);
                     new_uvs.push(uv_current);
                     new_edge_visibility.push(true);
                 }
 
-                if (current[2] >= near_plane) != (next[2] >= near_plane) {
+                if (current[2] <= -near_plane) != (next[2] <= -near_plane) {
                     // Edge intersects the near plane, calculate intersection
-                    let t = (near_plane - current[2]) / (next[2] - current[2]);
+                    let t = (-near_plane - current[2]) / (next[2] - current[2]);
                     let intersection = [
                         current[0] + t * (next[0] - current[0]),
                         current[1] + t * (next[1] - current[1]),

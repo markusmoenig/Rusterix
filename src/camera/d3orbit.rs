@@ -18,7 +18,7 @@ impl D3Camera for D3OrbitCamera {
     fn new() -> Self {
         Self {
             center: Vec3::zero(),
-            distance: -1.5,
+            distance: 1.5,
             azimuth: std::f32::consts::PI / 2.0,
             elevation: 0.0,
             up: Vec3::unit_y(),
@@ -41,11 +41,11 @@ impl D3Camera for D3OrbitCamera {
 
         let position = Vec3::new(x, y, z) + self.center;
 
-        Mat4::look_at_lh(position, self.center, self.up)
+        Mat4::look_at_rh(position, self.center, self.up)
     }
 
     fn projection_matrix(&self, width: f32, height: f32) -> Mat4<f32> {
-        vek::Mat4::perspective_fov_lh_zo(self.fov.to_radians(), width, height, self.near, self.far)
+        vek::Mat4::perspective_fov_rh_zo(self.fov.to_radians(), width, height, self.near, self.far)
     }
 
     fn set_parameter_f32(&mut self, key: &str, value: f32) {
