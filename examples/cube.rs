@@ -22,11 +22,12 @@ impl TheTrait for Cube {
     where
         Self: Sized,
     {
+        rusterix::entities::py_test();
         let scene = Scene::from_static(
             vec![Batch::from_rectangle(0.0, 0.0, 200.0, 200.0)],
             vec![Batch::from_box(-0.5, -0.5, -0.5, 1.0, 1.0, 1.0)
                 .sample_mode(SampleMode::Nearest)
-                .cull_mode(CullMode::Front)],
+                .cull_mode(CullMode::Off)],
         )
         .background(Box::new(VGrayGradientShader::new()))
         .textures(vec![Texture::from_image(Path::new("images/logo.png"))]);
@@ -79,7 +80,7 @@ impl TheTrait for Cube {
     }
 }
 
-pub fn get_time() -> u128 {
+fn get_time() -> u128 {
     #[cfg(target_arch = "wasm32")]
     {
         web_sys::window().unwrap().performance().unwrap().now() as u128

@@ -120,6 +120,8 @@ impl TheTrait for Editor {
                         .camera
                         .projection_matrix(ctx.width as f32, ctx.height as f32);
 
+                    let _start = get_time();
+
                     Rasterizer {}.rasterize(
                         &mut self.scene,
                         pixels,
@@ -130,33 +132,13 @@ impl TheTrait for Editor {
                         view_matrix,
                         projection_matrix,
                     );
+
+                    let _stop = get_time();
+                    // println!("Execution time: {:?} ms.", _stop - _start);
                 }
             },
             _ => {}
         }
-
-        /*
-        let projection_matrix_2d = None;
-
-        // Rasterize the batches
-        Rasterizer {}.rasterize(
-            &mut self.scene,
-            pixels,     // Destination buffer
-            ctx.width,  // Destination buffer width
-            ctx.height, // Destination buffer height
-            200,        // Tile size
-            projection_matrix_2d,
-            self.camera.view_projection_matrix(
-                75.0,
-                ctx.width as f32,
-                ctx.height as f32,
-                0.1,
-                100.0,
-            ),
-        );*/
-
-        //let _stop = get_time();
-        // println!("Execution time: {:?} ms.", _stop - _start);
     }
 
     // Hover event
@@ -310,5 +292,19 @@ pub fn local_to_map_grid(
         rounded + fractional.map(|x| (x / subdivision_size).round() * subdivision_size)
     } else {
         rounded
+    }
+}
+
+fn get_time() -> u128 {
+    #[cfg(target_arch = "wasm32")]
+    {
+        web_sys::window().unwrap().performance().unwrap().now() as u128
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let stop = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("Time went backwards");
+        stop.as_millis()
     }
 }

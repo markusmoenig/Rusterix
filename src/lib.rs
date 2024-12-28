@@ -4,6 +4,7 @@
 pub mod batch;
 pub mod camera;
 pub mod edge;
+pub mod entities;
 pub mod entity;
 pub mod intodata;
 pub mod map;
@@ -15,6 +16,13 @@ pub mod script;
 pub mod shader;
 pub mod texture;
 pub mod wavefront;
+
+use rust_embed::RustEmbed;
+#[derive(RustEmbed)]
+#[folder = "embedded/"]
+#[exclude = "*.txt"]
+#[exclude = "*.DS_Store"]
+pub struct Embedded;
 
 pub type Pixel = [u8; 4];
 
@@ -66,6 +74,7 @@ pub use crate::{
 
 // Prelude
 pub mod prelude {
+    pub use crate::entities::*;
     pub use crate::scene::Scene;
     pub use crate::scenebuilder::{
         d2preview::D2PreviewBuilder, d3builder::D3Builder, SceneBuilder,

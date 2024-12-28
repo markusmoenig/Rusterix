@@ -78,7 +78,7 @@ impl TheTrait for ObjDemo {
     }
 }
 
-pub fn get_time() -> u128 {
+fn get_time() -> u128 {
     #[cfg(target_arch = "wasm32")]
     {
         web_sys::window().unwrap().performance().unwrap().now() as u128

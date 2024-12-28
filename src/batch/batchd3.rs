@@ -144,29 +144,6 @@ impl Batch<[f32; 4]> {
         Batch::new_3d(vertices, indices, uvs)
     }
 
-    /// Adds a wall between two ground vertices with a specified height
-    pub fn add_wall(&mut self, v1: [f32; 3], v2: [f32; 3], height: f32) {
-        let base_index = self.vertices.len();
-
-        // Define the vertices for the wall
-        self.vertices.push([v1[0], v1[1], v1[2], 1.0]); // Bottom-left
-        self.vertices.push([v2[0], v2[1], v2[2], 1.0]); // Bottom-right
-        self.vertices.push([v2[0], v2[1] + height, v2[2], 1.0]); // Top-right
-        self.vertices.push([v1[0], v1[1] + height, v1[2], 1.0]); // Top-left
-
-        // Define the UVs for the wall
-        self.uvs.push([0.0, 0.0]);
-        self.uvs.push([1.0, 0.0]);
-        self.uvs.push([1.0, 1.0]);
-        self.uvs.push([0.0, 1.0]);
-
-        // Define the indices for the wall (two triangles)
-        self.indices
-            .push((base_index, base_index + 1, base_index + 2)); // Bottom-right triangle
-        self.indices
-            .push((base_index, base_index + 2, base_index + 3)); // Top-left triangle
-    }
-
     /// Add a set of geometry to the batch.
     pub fn add(
         &mut self,
@@ -352,7 +329,7 @@ impl Batch<[f32; 4]> {
                 let result = projection_matrix * Vec4::new(v[0], v[1], v[2], v[3]);
                 let w = result.w;
                 [
-                    ((-result.x / w) * 0.5 + 0.5) * viewport_width,
+                    ((result.x / w) * 0.5 + 0.5) * viewport_width,
                     ((-result.y / w) * 0.5 + 0.5) * viewport_height,
                     result.z / w,
                     result.w,
