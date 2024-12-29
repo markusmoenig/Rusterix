@@ -69,7 +69,12 @@ pub struct Batch<T> {
     pub clipped_indices: Vec<(usize, usize, usize)>,
     pub clipped_uvs: Vec<[f32; 2]>,
 
-    // Transform matrices for 2D and 3D
+    /// 2D Transform matrix
     pub transform_2d: Mat3<f32>,
+
+    /// 3D Transform matrix
     pub transform_3d: Mat4<f32>,
+
+    /// Indicates whether the batch receives lighting. True by default. Turn off for skybox etc.
+    pub receives_light: bool,
 }

@@ -1,6 +1,6 @@
 use super::load_texture;
 use crate::script::ParseError;
-use crate::{Map, MapMeta, Tile};
+use crate::{Light, Map, MapMeta, Tile};
 use rustpython::vm;
 use rustpython::vm::*;
 use std::sync::{LazyLock, RwLock};
@@ -62,6 +62,40 @@ fn push() {
 
 fn pop() {
     *CURSORSTATE.write().unwrap() = *SAVEDSTATE.read().unwrap()
+}
+
+/// Converts a hex color string  to an [f32; 3]
+fn hex_to_rgb_f32(hex: &str) -> [f32; 3] {
+    let hex = hex.trim_start_matches('#');
+
+    if hex.len() != 6 {
+        return [1.0, 1.0, 1.0]; // Return white for invalid input
+    }
+
+    match (
+        u8::from_str_radix(&hex[0..2], 16),
+        u8::from_str_radix(&hex[2..4], 16),
+        u8::from_str_radix(&hex[4..6], 16),
+    ) {
+        (Ok(r), Ok(g), Ok(b)) => [r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0],
+        _ => [1.0, 1.0, 1.0], // Return white for invalid input
+    }
+}
+
+fn add_point_light(color: String, intensity: f32, start_distance: f32, end_distance: f32) {
+    let state = CURSORSTATE.read().unwrap();
+    let mut map = MAP.write().unwrap();
+
+    let light = Light::PointLight {
+        position: Vec3::new(state.position.x, 0.5, state.position.y),
+        color: hex_to_rgb_f32(&color),
+        intensity,
+        start_distance,
+        end_distance,
+        flicker: None,
+    };
+
+    map.lights.push(light);
 }
 
 fn set_default(key: PyObjectRef, value: PyObjectRef, vm: &VirtualMachine) -> PyResult<()> {
@@ -508,6 +542,12 @@ impl MapScript {
 
         interpreter.enter(|vm| {
             let scope = vm.new_scope_with_builtins();
+
+            let _ = scope.globals.set_item(
+                "add_point_light",
+                vm.new_function("add_point_light", add_point_light).into(),
+                vm,
+            );
 
             let _ = scope
                 .globals

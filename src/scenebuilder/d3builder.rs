@@ -167,6 +167,7 @@ impl SceneBuilder for D3Builder {
 
         scene.d3_static = batches;
         scene.textures = textures;
+        scene.lights = map.lights.clone();
         scene
     }
 }
@@ -379,25 +380,21 @@ impl D3BuilderUtils for D3Builder {
         let sky_indices = vec![(0, 1, 2), (0, 2, 3)];
 
         if let Some(tile) = tiles.get(texture_id) {
-            if let Some(offset) = repeated_offsets.get(&tile.id) {
-                // Add to an existing batch if the texture is already used
-                repeated_batches[*offset].add(sky_vertices, sky_indices, sky_uvs);
-            } else {
-                // Create a new batch for the sky texture
-                let texture_index = textures.len();
+            // Create a new batch for the sky texture
+            let texture_index = textures.len();
 
-                let mut batch = Batch::emptyd3()
-                    .repeat_mode(crate::RepeatMode::RepeatXY)
-                    .cull_mode(crate::CullMode::Off)
-                    .sample_mode(crate::SampleMode::Nearest)
-                    .texture_index(texture_index);
+            let mut batch = Batch::emptyd3()
+                .repeat_mode(crate::RepeatMode::RepeatXY)
+                .cull_mode(crate::CullMode::Off)
+                .sample_mode(crate::SampleMode::Nearest)
+                .texture_index(texture_index)
+                .receives_light(false);
 
-                batch.add(sky_vertices, sky_indices, sky_uvs);
+            batch.add(sky_vertices, sky_indices, sky_uvs);
 
-                textures.push(tile.textures[0].clone());
-                repeated_offsets.insert(tile.id, repeated_batches.len());
-                repeated_batches.push(batch);
-            }
+            textures.push(tile.textures[0].clone());
+            repeated_offsets.insert(tile.id, repeated_batches.len());
+            repeated_batches.push(batch);
         }
     }
 }

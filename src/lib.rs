@@ -60,8 +60,8 @@ pub use crate::{
     entity::Entity,
     intodata::IntoDataInput,
     map::{
-        linedef::Linedef, meta::MapMeta, sector::Sector, tile::Tile, vertex::Vertex, Map,
-        MapToolType,
+        light::Light, linedef::Linedef, meta::MapMeta, sector::Sector, tile::Tile, vertex::Vertex,
+        Map, MapToolType,
     },
     rasterizer::Rasterizer,
     rect::Rect,
@@ -88,7 +88,7 @@ pub mod prelude {
     pub use crate::{Batch, CullMode, PrimitiveMode};
     pub use crate::{D3Camera, D3FirstPCamera, D3IsoCamera, D3OrbitCamera};
     pub use crate::{GridShader, Shader, VGrayGradientShader};
-    pub use crate::{Linedef, Map, MapMeta, MapToolType, Sector, Tile, Vertex};
+    pub use crate::{Light, Linedef, Map, MapMeta, MapToolType, Sector, Tile, Vertex};
     pub use crate::{Pixel, BLACK, TRANSPARENT, WHITE};
     pub use crate::{RepeatMode, SampleMode, Texture};
 }

@@ -1,3 +1,4 @@
+pub mod light;
 pub mod linedef;
 pub mod meta;
 pub mod sector;
@@ -11,6 +12,8 @@ use vek::{Vec2, Vec4};
 use linedef::*;
 use sector::*;
 use vertex::*;
+
+use crate::Light;
 
 #[derive(Serialize, Deserialize, PartialEq, Clone, Debug, Copy)]
 pub enum MapCamera {
@@ -28,7 +31,7 @@ pub enum MapToolType {
     Sector,
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Map {
     #[serde(default)]
     pub id: Uuid,
@@ -61,6 +64,9 @@ pub struct Map {
     pub camera: MapCamera,
     #[serde(skip)]
     pub camera_xz: Option<Vec2<f32>>,
+
+    // Lights
+    pub lights: Vec<Light>,
 
     // Selection
     pub selected_vertices: Vec<u32>,
@@ -97,6 +103,8 @@ impl Map {
 
             camera: MapCamera::TwoD,
             camera_xz: None,
+
+            lights: vec![],
 
             selected_vertices: vec![],
             selected_linedefs: vec![],

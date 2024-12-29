@@ -1,10 +1,11 @@
-use crate::{Batch, Shader, Texture};
+use crate::{Batch, Light, Shader, Texture};
 use rayon::prelude::*;
 use vek::{Mat3, Mat4};
 
 /// A scene of 2D and 3D batches which are passed to the rasterizer for rasterization.
 pub struct Scene {
     pub background: Option<Box<dyn Shader>>,
+    pub lights: Vec<Light>,
 
     /// 3D static batches which do not need to be changed, i.e. no animation for textures or the mesh itself.
     pub d3_static: Vec<Batch<[f32; 4]>>,
@@ -29,6 +30,7 @@ impl Scene {
     pub fn empty() -> Self {
         Self {
             background: None,
+            lights: vec![],
             d3_static: vec![],
             d3_dynamic: vec![],
             d2: vec![],
@@ -40,6 +42,7 @@ impl Scene {
     pub fn from_static(d2: Vec<Batch<[f32; 3]>>, d3: Vec<Batch<[f32; 4]>>) -> Self {
         Self {
             background: None,
+            lights: vec![],
             d3_static: d3,
             d3_dynamic: vec![],
             d2,
@@ -56,6 +59,12 @@ impl Scene {
     /// Sets the background shader using the builder pattern.
     pub fn textures(mut self, textures: Vec<Texture>) -> Self {
         self.textures = textures;
+        self
+    }
+
+    /// Sets the lights using the builder pattern.
+    pub fn lights(mut self, lights: Vec<Light>) -> Self {
+        self.lights = lights;
         self
     }
 

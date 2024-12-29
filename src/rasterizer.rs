@@ -1,4 +1,4 @@
-use crate::{Batch, Pixel, PrimitiveMode, Scene, Texture};
+use crate::{Batch, Light, Pixel, PrimitiveMode, Scene, Texture};
 use rayon::prelude::*;
 use vek::{Mat3, Mat4, Vec2, Vec3, Vec4};
 pub struct Rasterizer {
@@ -102,11 +102,25 @@ impl Rasterizer {
                 }
 
                 for batch in scene.d3_static.iter() {
-                    self.d3_rasterize(&mut buffer, &mut z_buffer, tile, batch, &scene.textures);
+                    self.d3_rasterize(
+                        &mut buffer,
+                        &mut z_buffer,
+                        tile,
+                        batch,
+                        &scene.textures,
+                        &scene.lights,
+                    );
                 }
 
                 for batch in scene.d3_dynamic.iter() {
-                    self.d3_rasterize(&mut buffer, &mut z_buffer, tile, batch, &scene.textures);
+                    self.d3_rasterize(
+                        &mut buffer,
+                        &mut z_buffer,
+                        tile,
+                        batch,
+                        &scene.textures,
+                        &scene.lights,
+                    );
                 }
 
                 // Render 2D geometry on top of the 3D geometry (UI)
@@ -287,6 +301,7 @@ impl Rasterizer {
         tile: &TileRect,
         batch: &Batch<[f32; 4]>,
         textures: &[Texture],
+        lights: &[Light],
     ) {
         // Bounding box check for the tile with the batch bbox
         if let Some(bbox) = batch.bounding_box {
@@ -391,42 +406,62 @@ impl Rasterizer {
                                             interpolated_v /= interpolated_reciprocal_w;
 
                                             // Get the screen coordinates of the hitpoint
-                                            let world = self.screen_to_world(
-                                                (tile.x + tx) as f32,
-                                                (tile.y + ty) as f32,
-                                                z,
-                                            );
+                                            let world = self.screen_to_world(p[0], p[1], z);
 
-                                            // Distance to camera
-                                            let distance = (world - self.camera_pos).magnitude();
+                                            if batch.receives_light {
+                                                // Distance based UV jittering to hide Moire patterns
+                                                // Distance to camera
+                                                let distance =
+                                                    (world - self.camera_pos).magnitude();
 
-                                            // TODO: Make this configurable
-                                            let start_distance = 4.0;
-                                            let ramp_distance = 3.0;
-                                            let jitter_scale = 0.028;
+                                                // TODO: Make this configurable
+                                                let start_distance = 5.0;
+                                                let ramp_distance = 3.0;
+                                                let jitter_scale = 0.028;
 
-                                            let mut t = ((distance - start_distance)
-                                                / ramp_distance)
-                                                .clamp(0.0, 1.0);
-                                            t = t * t * (3.0 - 2.0 * t);
+                                                let mut t = ((distance - start_distance)
+                                                    / ramp_distance)
+                                                    .clamp(0.0, 1.0);
+                                                t = t * t * (3.0 - 2.0 * t);
 
-                                            let jitter_x = self.hash_uv(tile.x + tx, tile.y + ty)
-                                                * t
-                                                * jitter_scale;
-                                            let jitter_y = self.hash_uv(tile.y + ty, tile.x + tx)
-                                                * t
-                                                * jitter_scale;
+                                                let jitter_x =
+                                                    self.hash_uv(tx, ty) * t * jitter_scale;
+                                                let jitter_y =
+                                                    self.hash_uv(ty, tx) * t * jitter_scale;
 
-                                            interpolated_u += jitter_x;
-                                            interpolated_v += jitter_y;
+                                                interpolated_u += jitter_x;
+                                                interpolated_v += jitter_y;
+                                            }
 
                                             // Sample the texture
-                                            let texel = textures[batch.texture_index].sample(
+                                            let mut texel = textures[batch.texture_index].sample(
                                                 interpolated_u,
                                                 interpolated_v,
                                                 batch.sample_mode,
                                                 batch.repeat_mode,
                                             );
+
+                                            if batch.receives_light {
+                                                // Calc Lights
+                                                for light in lights {
+                                                    let light_color = light.color_at(world, 0.0);
+                                                    texel[0] = ((texel[0] as f32 / 255.0)
+                                                        * light_color[0]
+                                                        * 255.0)
+                                                        .clamp(0.0, 255.0)
+                                                        as u8;
+                                                    texel[1] = ((texel[1] as f32 / 255.0)
+                                                        * light_color[1]
+                                                        * 255.0)
+                                                        .clamp(0.0, 255.0)
+                                                        as u8;
+                                                    texel[2] = ((texel[2] as f32 / 255.0)
+                                                        * light_color[2]
+                                                        * 255.0)
+                                                        .clamp(0.0, 255.0)
+                                                        as u8;
+                                                }
+                                            }
 
                                             if texel[3] == 255 {
                                                 /*
@@ -442,8 +477,7 @@ impl Rasterizer {
                                                     as u8;
                                                 texel[2] = (texel[2] as f32 * (1.0 - t)
                                                     + fog_color[2] as f32 * t)
-                                                    as u8;
-                                                    */
+                                                    as u8;*/
 
                                                 let idx = ((ty - tile.y) * tile.width
                                                     + (tx - tile.x))
