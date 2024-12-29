@@ -225,23 +225,20 @@ fn main() -> Result<()> {
 }
 
 fn compile_map(file_name: &str) -> Option<MapMeta> {
-    if let Ok(source) = std::fs::read_to_string(file_name) {
-        let mut mapscript = MapScript::new();
-        let result = mapscript.transform(source, None, None, None);
+    let mut mapscript = MapScript::new();
+    mapscript.load_map(file_name);
+    let result = mapscript.transform(None, None, None);
 
-        match result {
-            Ok(meta) => {
-                println!("{}", meta.map.info());
-                Some(meta)
-            }
-            Err(errors) => {
-                for err in errors {
-                    println!("{}", err);
-                }
-                None
-            }
+    match result {
+        Ok(meta) => {
+            println!("{}", meta.map.info());
+            Some(meta)
         }
-    } else {
-        None
+        Err(errors) => {
+            for err in errors {
+                println!("{}", err);
+            }
+            None
+        }
     }
 }

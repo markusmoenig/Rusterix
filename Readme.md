@@ -1,4 +1,4 @@
-![Logo](images/logo.png)
+![Logo](images/screenshot_map.png)
 
 
 Rusterix is a fast software renderer for 2D and 3D triangles and lines. Its goals are to provide an easy and portable alternative to hardware rasterization for retro and low-poly games.
@@ -47,12 +47,47 @@ Rasterizer::setup(
 );
 ```
 
+## Rusterix as a Game Engine (WiP)
+
+Rusterix has built in procedural map generation and entity management. The map for the above screenshot was built with the following script in the `minigame` folder. The game engine is not yet fully functional and is under development.
+
+```python
+set("sky_tex", "sky")
+
+set_default("wall_tex", "brickwall")
+set_default("floor_tex", "brickfloor")
+set_default("wall_height", 2.0)
+
+box_size = 15
+
+# big room
+wall(box_size)
+turn_right()
+wall(box_size)
+turn_right()
+wall(5)
+wall(1)
+set("wall_tex", "lightpanel")
+add_point_light("#ffffbb", 2.0, 2.0, 13.0)
+#set("light_source", 10)
+wall(9)
+turn_right()
+wall(box_size)
+
+# fenced area consisting of 2 walls
+set_default("wall_tex", "fence")
+move_to(6, box_size)
+wall(6)
+turn_left()
+wall(6)
+```
+
 ## Goals and Status
 
 Once finished, you will be able to use Rusterix in several different ways:
 
 * As a library to rasterize 2D and 3D meshes, WIP. See the `Cube` and `Obj` examples.
-* As a retro game engine with text driven editors for Doom like maps. Programmable in Rust and an inbuild scripting system (TBD).
+* As a retro game engine with text driven content, like Doom style map generation using Python based scripts.
 
 My goals for both of these use cases:
 
@@ -65,6 +100,9 @@ My goals for both of these use cases:
 * Fast software-based rendering.
 * Supports batches of 2D and 3D geometry, each with configurable parameters (e.g., DrawMode, SamplingMode, CullingMode, RepeatMode, TextureIndex, etc.).
 * Shaders can be applied to the screen or individual batches.
+* Optional distance based UV jittering for avoiding Moire patterns.
+* Point, Distance, Spot and Area lights.
+* Modular, trait based Orbit, Isometric and First Person cameras.
 
 ## Motivation
 
@@ -77,6 +115,8 @@ To execute an example just do something like ```cargo run --release --example cu
 * **cube** displays a textured cube. ![Cube](images/screenshot_cube.png)
 
 * **obj** demonstrates how to load and display an obj file. ![Logo](images/screenshot_obj.png)
+
+* **map** displays the map scene above. Walk around using the WASD keys.
 
 ## Disclaimer
 

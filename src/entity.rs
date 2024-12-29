@@ -7,9 +7,9 @@ use crate::prelude::*;
 #[derive(Serialize, Deserialize, PartialEq, Clone, Debug)]
 pub struct Entity {
     /// The XZ orientation
-    pub orientation: vek::Vec2<f32>,
+    pub orientation: Vec2<f32>,
     /// The position in the map
-    pub position: vek::Vec3<f32>,
+    pub position: Vec3<f32>,
     /// The vertical camera tilt, 0.0 means flat, no tilt.
     pub tilt: f32,
 }
@@ -80,9 +80,7 @@ impl Entity {
 
     /// Applies the camera's position and look-at parameters based on the entity's state.
     pub fn apply_to_camera(&self, camera: &mut Box<dyn D3Camera>) {
-        // println!("{} {}", self.position, self.camera_look_at());
-        // let mut position = self.position;
-        // position.z = -position.z;
+        // println!("{} {}", self.position, self.orientation);
         camera.set_parameter_vec3("position", self.position);
         camera.set_parameter_vec3("center", self.camera_look_at());
     }

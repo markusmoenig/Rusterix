@@ -34,6 +34,8 @@ impl MapCursorState {
     }
 }
 
+static PATH: LazyLock<RwLock<String>> = LazyLock::new(|| RwLock::new(String::new()));
+
 static DEFAULT_WALL_TEXTURE: LazyLock<RwLock<Option<Uuid>>> = LazyLock::new(|| RwLock::new(None));
 static DEFAULT_WALL_TEXTURE_ROW2: LazyLock<RwLock<Option<Uuid>>> =
     LazyLock::new(|| RwLock::new(None));
@@ -406,7 +408,7 @@ fn get_texture(texture_name: &str) -> Option<Uuid> {
         .map(|(uuid, _)| *uuid)
     {
         Some(id)
-    } else if let Some(tex) = load_texture(texture_name) {
+    } else if let Some(tex) = load_texture(texture_name, PATH.read().unwrap().clone()) {
         let tile = Tile::from_texture(texture_name, tex);
         let id = tile.id;
 
@@ -497,6 +499,8 @@ fn turn_right() -> PyResult<()> {
 
 pub struct MapScript {
     error: Option<ParseError>,
+    source: String,
+    path: String,
 }
 
 impl Default for MapScript {
@@ -507,18 +511,45 @@ impl Default for MapScript {
 
 impl MapScript {
     pub fn new() -> Self {
-        Self { error: None }
+        Self {
+            error: None,
+            source: "".to_string(),
+            path: ".".to_string(),
+        }
+    }
+
+    pub fn with_path(path: String) -> Self {
+        Self {
+            error: None,
+            source: "".to_string(),
+            path,
+        }
+    }
+
+    pub fn load_map(&mut self, name: &str) {
+        if let Ok(source) = std::fs::read_to_string(name) {
+            self.source = source;
+            return;
+        }
+
+        let path_name = format!("{}/{}", self.path, name);
+        if let Ok(source) = std::fs::read_to_string(path_name) {
+            self.source = source;
+            return;
+        }
+
+        println!("Map file {} not found!", name);
     }
 
     /// Parse the source and return the new or transformed map.
     pub fn transform(
         &mut self,
-        source: String,
         ctx_map: Option<Map>,
         ctx_linedef: Option<u32>,
         ctx_sector: Option<u32>,
     ) -> Result<MapMeta, Vec<String>> {
         self.error = None;
+        *PATH.write().unwrap() = self.path.clone();
         *MAP.write().unwrap() = ctx_map.unwrap_or_default();
         *TILES.write().unwrap() = FxHashMap::default();
         *DEFAULT_WALL_TEXTURE.write().unwrap() = None;
@@ -599,8 +630,12 @@ impl MapScript {
                 .set_item("rotate", vm.new_function("rotate", rotate).into(), vm);
 
             if let Ok(code_obj) = vm
-                .compile(&source, vm::compiler::Mode::Exec, "<embedded>".to_owned())
-                .map_err(|err| vm.new_syntax_error(&err, Some(&source)))
+                .compile(
+                    &self.source,
+                    vm::compiler::Mode::Exec,
+                    "<embedded>".to_owned(),
+                )
+                .map_err(|err| vm.new_syntax_error(&err, Some(&self.source)))
             {
                 if let Err(err) = vm.run_code_obj(code_obj, scope) {
                     let args = err.args();

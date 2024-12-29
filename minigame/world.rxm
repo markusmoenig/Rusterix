@@ -1,0 +1,29 @@
+set("sky_tex", "sky")
+
+set_default("wall_tex", "brickwall")
+set_default("floor_tex", "brickfloor")
+set_default("wall_height", 2.0)
+
+box_size = 15
+
+# big room
+wall(box_size)
+turn_right()
+wall(box_size)
+turn_right()
+wall(5)
+wall(1)
+set("wall_tex", "lightpanel")
+add_point_light("#ffffbb", 2.0, 2.0, 13.0)
+#set("light_source", 10)
+wall(9)
+turn_right()
+wall(box_size)
+
+# fenced area consisting of 2 walls
+set_default("wall_tex", "fence")
+move_to(6, box_size)
+wall(6)
+turn_left()
+wall(6)
+
