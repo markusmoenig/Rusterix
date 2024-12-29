@@ -1,7 +1,7 @@
 ![Logo](images/screenshot_map.png)
 
 
-Rusterix is a fast software renderer for 2D and 3D triangles and lines. Its goals are to provide an easy and portable alternative to hardware rasterization for retro and low-poly games.
+Rusterix is a fast software renderer and a retro game engine with support for procedural content.
 
 ---
 
@@ -69,7 +69,6 @@ wall(5)
 wall(1)
 set("wall_tex", "lightpanel")
 add_point_light("#ffffbb", 2.0, 2.0, 13.0)
-#set("light_source", 10)
 wall(9)
 turn_right()
 wall(box_size)
@@ -81,6 +80,8 @@ wall(6)
 turn_left()
 wall(6)
 ```
+
+Documentation for Rusterix will be provided soon at Rusterix.com.
 
 ## Goals and Status
 
