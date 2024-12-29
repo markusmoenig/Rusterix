@@ -2,17 +2,17 @@
 name = "rusterix"
 version = "0.2.0"
 edition = "2021"
-description = "Rusterix is a fast software renderer for 2D and 3D meshes and lines."
+description = "Rusterix is a fast software renderer and game engine."
 license = "Apache-2.0 AND MIT"
 repository = "https://github.com/markusmoenig/Rusterix"
 keywords = ["software", "rendering", "graphics", "game", "engine"]
 
 [workspace]
-members = [".", "rusteria", "shared"]
+members = [".", "rusteria"]
 
 [dependencies]
-theframework = { git = "https://github.com/markusmoenig/theframework" }
-#theframework = "0.1.30"
+# theframework = { version = "0.1.31", git = "https://github.com/markusmoenig/theframework" }
+theframework = "0.1.33"
 # theframework = { path = "../TheFramework" }
 rayon = "1.10"
 vek = { version = "0.17.1", default-features = true }
