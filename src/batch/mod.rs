@@ -2,6 +2,7 @@ pub mod batchd2;
 pub mod batchd3;
 
 use crate::{Edges, Pixel, Rect, RepeatMode, SampleMode};
+use vek::{Mat3, Mat4};
 
 /// The primitive mode. The rasterizer can draw triangles and lines.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -64,6 +65,11 @@ pub struct Batch<T> {
     /// Texture index. Specifies the texture index into the texture array during rasterization for this batch. Default is 0.
     pub texture_index: usize,
 
+    // Output after clipping and projection
     pub clipped_indices: Vec<(usize, usize, usize)>,
     pub clipped_uvs: Vec<[f32; 2]>,
+
+    // Transform matrices for 2D and 3D
+    pub transform_2d: Mat3<f32>,
+    pub transform_3d: Mat4<f32>,
 }

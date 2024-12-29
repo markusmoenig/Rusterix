@@ -1,26 +1,63 @@
 use crate::{Batch, Pixel, PrimitiveMode, Scene, Texture};
 use rayon::prelude::*;
-use vek::{Mat3, Mat4, Vec2, Vec3};
-pub struct Rasterizer;
+use vek::{Mat3, Mat4, Vec2, Vec3, Vec4};
+pub struct Rasterizer {
+    pub projection_matrix_2d: Option<Mat3<f32>>,
+
+    pub view_matrix: Mat4<f32>,
+    pub projection_matrix: Mat4<f32>,
+
+    pub inverse_view_matrix: Mat4<f32>,
+    pub inverse_projection_matrix: Mat4<f32>,
+    pub width: f32,
+    pub height: f32,
+    pub camera_pos: Vec3<f32>,
+}
 
 /// Rasterizes batches of 2D and 3D meshes (and lines).
 impl Rasterizer {
-    #[allow(clippy::too_many_arguments)]
+    pub fn setup(
+        projection_matrix_2d: Option<Mat3<f32>>,
+        view_matrix: Mat4<f32>,
+        projection_matrix: Mat4<f32>,
+    ) -> Self {
+        let inverse_view_matrix = view_matrix.inverted();
+        let camera_pos = Vec3::new(
+            inverse_view_matrix.cols[3].x,
+            inverse_view_matrix.cols[3].y,
+            inverse_view_matrix.cols[3].z,
+        );
+
+        Self {
+            inverse_view_matrix,
+            inverse_projection_matrix: projection_matrix.inverted(),
+
+            projection_matrix_2d,
+            view_matrix,
+            projection_matrix,
+
+            width: 0.0,
+            height: 0.0,
+
+            camera_pos,
+        }
+    }
+
     pub fn rasterize(
-        &self,
+        &mut self,
         scene: &mut Scene,
         pixels: &mut [u8],
         width: usize,
         height: usize,
         tile_size: usize,
-        projection_matrix_2d: Option<Mat3<f32>>,
-        view_matrix_3d: Mat4<f32>,
-        projection_matrix_3d: Mat4<f32>,
     ) {
+        self.width = width as f32;
+        self.height = height as f32;
+
         scene.project(
-            projection_matrix_2d,
-            view_matrix_3d,
-            projection_matrix_3d,
+            self.projection_matrix_2d,
+            self.view_matrix,
+            self.projection_matrix,
             width,
             height,
         );
@@ -315,31 +352,6 @@ impl Rasterizer {
                                         let [alpha, beta, gamma] =
                                             self.barycentric_weights_3d(&v0, &v1, &v2, &p);
 
-                                        /*
-                                        // Calculate Z-Buffer value
-                                        let one_over_z = 1.0 / v0[2] * alpha
-                                            + 1.0 / v1[2] * beta
-                                            + 1.0 / v2[2] * gamma;
-                                        let z = 1.0 / one_over_z;
-
-                                        let zidx = (ty - tile.y) * tile.width + (tx - tile.x);
-
-                                        if z < z_buffer[zidx] {
-                                            z_buffer[zidx] = z;
-
-                                            // Perform the interpolation of all U/w and V/w values using barycentric weights and a factor of 1/w
-                                            let mut interpolated_u = (uv0[0] / v0[3]) * alpha
-                                                + (uv1[0] / v1[3]) * beta
-                                                + (uv2[0] / v2[3]) * gamma;
-                                            let mut interpolated_v = (uv0[1] / v0[3]) * alpha
-                                                + (uv1[1] / v1[3]) * beta
-                                                + (uv2[1] / v2[3]) * gamma;
-
-                                            // Interpolate reciprocal depth
-                                            let interpolated_reciprocal_w = (1.0 / v0[3]) * alpha
-                                                + (1.0 / v1[3]) * beta
-                                                + (1.0 / v2[3]) * gamma;*/
-
                                         let bary_weights = Vec3::new(alpha, beta, gamma);
 
                                         // Precompute reciprocal depths (1/z and 1/w) for each vertex
@@ -378,6 +390,36 @@ impl Rasterizer {
                                             interpolated_u /= interpolated_reciprocal_w;
                                             interpolated_v /= interpolated_reciprocal_w;
 
+                                            // Get the screen coordinates of the hitpoint
+                                            let world = self.screen_to_world(
+                                                (tile.x + tx) as f32,
+                                                (tile.y + ty) as f32,
+                                                z,
+                                            );
+
+                                            // Distance to camera
+                                            let distance = (world - self.camera_pos).magnitude();
+
+                                            // TODO: Make this configurable
+                                            let start_distance = 4.0;
+                                            let ramp_distance = 3.0;
+                                            let jitter_scale = 0.028;
+
+                                            let mut t = ((distance - start_distance)
+                                                / ramp_distance)
+                                                .clamp(0.0, 1.0);
+                                            t = t * t * (3.0 - 2.0 * t);
+
+                                            let jitter_x = self.hash_uv(tile.x + tx, tile.y + ty)
+                                                * t
+                                                * jitter_scale;
+                                            let jitter_y = self.hash_uv(tile.y + ty, tile.x + tx)
+                                                * t
+                                                * jitter_scale;
+
+                                            interpolated_u += jitter_x;
+                                            interpolated_v += jitter_y;
+
                                             // Sample the texture
                                             let texel = textures[batch.texture_index].sample(
                                                 interpolated_u,
@@ -387,6 +429,22 @@ impl Rasterizer {
                                             );
 
                                             if texel[3] == 255 {
+                                                /*
+                                                let fog_color = WHITE;
+                                                let fog_intensity = 0.4;
+                                                t *= fog_intensity;
+
+                                                texel[0] = (texel[0] as f32 * (1.0 - t)
+                                                    + fog_color[0] as f32 * t)
+                                                    as u8;
+                                                texel[1] = (texel[1] as f32 * (1.0 - t)
+                                                    + fog_color[1] as f32 * t)
+                                                    as u8;
+                                                texel[2] = (texel[2] as f32 * (1.0 - t)
+                                                    + fog_color[2] as f32 * t)
+                                                    as u8;
+                                                    */
+
                                                 let idx = ((ty - tile.y) * tile.width
                                                     + (tx - tile.x))
                                                     * 4;
@@ -446,6 +504,42 @@ impl Rasterizer {
                 }
             }
         }
+    }
+
+    /// A simple hash for creating noise to hide Moire patterns while moving
+    #[inline(always)]
+    fn hash_uv(&self, x: usize, y: usize) -> f32 {
+        // Simple hash function for UV jittering, returning a value between -0.5 and 0.5
+        let seed = 0x9E3779B9; // Arbitrary prime constant
+        let mut hash = x as u32;
+        hash = hash.wrapping_mul(seed).wrapping_add(y as u32);
+        hash = hash ^ (hash >> 16);
+        hash = hash.wrapping_mul(seed);
+        ((hash & 0xFF) as f32 / 255.0) - 0.5
+    }
+
+    /// Convert screen coordinate to world coordinate
+    #[inline(always)]
+    fn screen_to_world(
+        &self,
+        x: f32,     // Screen-space x
+        y: f32,     // Screen-space y
+        z_ndc: f32, // Z-value
+    ) -> Vec3<f32> {
+        // Step 1: Convert screen space to NDC
+        let x_ndc = 2.0 * (x / self.width) - 1.0;
+        let y_ndc = 1.0 - 2.0 * (y / self.height); // Flip Y-axis
+        let ndc = Vec4::new(x_ndc, y_ndc, z_ndc, 1.0);
+
+        // Step 2: Transform from NDC to View Space
+        let view_space: Vec4<f32> = self.inverse_projection_matrix * ndc; // Ensure ndc is Vec4
+        let view_space = view_space / view_space.w; // Perspective division
+
+        // Step 3: Transform from View Space to World Space
+        let world_space: Vec4<f32> = self.inverse_view_matrix * view_space;
+
+        // Return the world-space coordinates (drop the W component)
+        Vec3::new(world_space.x, world_space.y, world_space.z)
     }
 
     /// Compute the barycentric weights for a Vec2

@@ -1,5 +1,5 @@
 use crate::prelude::*;
-use vek::{Mat3, Vec2, Vec3};
+use vek::{Mat3, Mat4, Vec2, Vec3};
 
 use CullMode::*;
 use PrimitiveMode::*;
@@ -31,6 +31,8 @@ impl Batch<[f32; 3]> {
             texture_index: 0,
             clipped_indices: vec![],
             clipped_uvs: vec![],
+            transform_2d: Mat3::identity(),
+            transform_3d: Mat4::identity(),
         }
     }
 
@@ -55,6 +57,8 @@ impl Batch<[f32; 3]> {
             texture_index: 0,
             clipped_indices: vec![],
             clipped_uvs: vec![],
+            transform_2d: Mat3::identity(),
+            transform_3d: Mat4::identity(),
         }
     }
 
@@ -210,6 +214,12 @@ impl Batch<[f32; 3]> {
     /// Set the texture index into the texture array for the batch using the builder pattern.
     pub fn texture_index(mut self, texture_index: usize) -> Self {
         self.texture_index = texture_index;
+        self
+    }
+
+    /// Set the 3D transform matrix for this batch
+    pub fn transform(mut self, transform: Mat3<f32>) -> Self {
+        self.transform_2d = transform;
         self
     }
 

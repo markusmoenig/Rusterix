@@ -26,7 +26,8 @@ impl TheTrait for ObjDemo {
             vec![Batch::from_rectangle(0.0, 0.0, 200.0, 200.0)],
             vec![Batch::from_obj(Path::new("examples/teapot.obj"))
                 .sample_mode(SampleMode::Linear)
-                .repeat_mode(RepeatMode::RepeatXY)],
+                .repeat_mode(RepeatMode::RepeatXY)
+                .transform(Mat4::scaling_3d(Vec3::new(0.35, -0.35, 0.35)))],
         )
         .background(Box::new(VGrayGradientShader::new()))
         .textures(vec![Texture::from_image(Path::new("images/logo.png"))]);
@@ -42,17 +43,19 @@ impl TheTrait for ObjDemo {
 
         let projection_matrix_2d = None;
 
-        // Rasterize the batches
-        Rasterizer {}.rasterize(
+        // Set it up
+        Rasterizer::setup(
+            projection_matrix_2d,
+            self.camera.view_matrix(),
+            self.camera
+                .projection_matrix(ctx.width as f32, ctx.height as f32),
+        )
+        .rasterize(
             &mut self.scene,
             pixels,     // Destination buffer
             ctx.width,  // Destination buffer width
             ctx.height, // Destination buffer height
-            80,         // Tile size
-            projection_matrix_2d,
-            self.camera.view_matrix() * Mat4::scaling_3d(Vec3::new(0.35, -0.35, 0.35)),
-            self.camera
-                .projection_matrix(ctx.width as f32, ctx.height as f32),
+            200,        // Tile size
         );
 
         let _stop = get_time();

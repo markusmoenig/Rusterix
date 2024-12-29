@@ -31,24 +31,19 @@ let width = 800;
 let height = 600;
 let mut pixels = vec![0; width * height * 4];
 
-// Create the view projection camera matrix
-let projection_matrix_3d = camera.view_projection_matrix(
-    75.0, // Fov
-    width as f32,
-    height as f32,
-    0.1, // Near plane
-    100.0, // Far plane
-);
-
 // Rasterize the scene
-Rasterizer {}.rasterize(
-    &mut scene,
-    pixels,
+Rasterizer::setup(
+    None, // No 2D projection matrix
+    self.camera.view_matrix(),
+    self.camera
+        .projection_matrix(ctx.width as f32, ctx.height as f32),
+)
+.rasterize(
+    &mut self.scene,
+    pixels,  // Destination buffer
     width,
     height,
-    80, // Tile size for parallelization
-    None, // No 2D projection matrix
-    projection_matrix_3d,
+    200,     // Tile size used per thread
 );
 ```
 

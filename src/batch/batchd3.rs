@@ -1,6 +1,6 @@
 use crate::prelude::*;
 use crate::wavefront::Wavefront;
-use vek::{Mat4, Vec4};
+use vek::{Mat3, Mat4, Vec4};
 
 use CullMode::*;
 use PrimitiveMode::*;
@@ -26,6 +26,8 @@ impl Batch<[f32; 4]> {
             texture_index: 0,
             clipped_indices: vec![],
             clipped_uvs: vec![],
+            transform_2d: Mat3::identity(),
+            transform_3d: Mat4::identity(),
         }
     }
 
@@ -49,6 +51,8 @@ impl Batch<[f32; 4]> {
             texture_index: 0,
             clipped_indices: vec![],
             clipped_uvs: vec![],
+            transform_2d: Mat3::identity(),
+            transform_3d: Mat4::identity(),
         }
     }
 
@@ -213,6 +217,12 @@ impl Batch<[f32; 4]> {
         self
     }
 
+    /// Set the 3D transform matrix for this batch
+    pub fn transform(mut self, transform: Mat4<f32>) -> Self {
+        self.transform_3d = transform;
+        self
+    }
+
     /// Project 3D vertices using a Mat4 transformation matrix
     pub fn clip_and_project(
         &mut self,
@@ -225,7 +235,7 @@ impl Batch<[f32; 4]> {
             .vertices
             .iter()
             .map(|&v| {
-                let v = view_matrix * Vec4::new(v[0], v[1], v[2], v[3]);
+                let v = view_matrix * self.transform_3d * Vec4::new(v[0], v[1], v[2], v[3]);
                 [v.x, v.y, v.z, v.w]
             })
             .collect();

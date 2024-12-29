@@ -102,16 +102,8 @@ impl TheTrait for Editor {
                         &self.camera.id(),
                     );
 
-                    Rasterizer {}.rasterize(
-                        &mut scene,
-                        pixels,
-                        ctx.width,
-                        ctx.height,
-                        100,
-                        None,
-                        vek::Mat4::identity(),
-                        vek::Mat4::identity(),
-                    );
+                    Rasterizer::setup(None, vek::Mat4::identity(), vek::Mat4::identity())
+                        .rasterize(&mut scene, pixels, ctx.width, ctx.height, 100);
                 }
                 D3 => {
                     match &self.movement {
@@ -122,10 +114,10 @@ impl TheTrait for Editor {
                             self.entity.move_backward(0.05);
                         }
                         TurnLeft => {
-                            self.entity.turn_left(0.5);
+                            self.entity.turn_left(1.0);
                         }
                         TurnRight => {
-                            self.entity.turn_right(0.5);
+                            self.entity.turn_right(1.0);
                         }
                         Off => {}
                     }
@@ -151,15 +143,13 @@ impl TheTrait for Editor {
 
                     let _start = get_time();
 
-                    Rasterizer {}.rasterize(
+                    // Set it up
+                    Rasterizer::setup(None, view_matrix, projection_matrix).rasterize(
                         &mut self.scene,
                         pixels,
                         ctx.width,
                         ctx.height,
-                        300,
-                        None,
-                        view_matrix,
-                        projection_matrix,
+                        200,
                     );
 
                     let _stop = get_time();

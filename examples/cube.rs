@@ -44,17 +44,19 @@ impl TheTrait for Cube {
 
         let projection_matrix_2d = None;
 
-        // Rasterize the batches
-        Rasterizer {}.rasterize(
+        // Set it up
+        Rasterizer::setup(
+            projection_matrix_2d,
+            self.camera.view_matrix(),
+            self.camera
+                .projection_matrix(ctx.width as f32, ctx.height as f32),
+        )
+        .rasterize(
             &mut self.scene,
             pixels,     // Destination buffer
             ctx.width,  // Destination buffer width
             ctx.height, // Destination buffer height
             200,        // Tile size
-            projection_matrix_2d,
-            self.camera.view_matrix(),
-            self.camera
-                .projection_matrix(ctx.width as f32, ctx.height as f32),
         );
 
         let _stop = get_time();
