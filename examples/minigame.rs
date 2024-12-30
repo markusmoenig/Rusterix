@@ -1,4 +1,4 @@
-use rusterix::prelude::*;
+use rusterix::{prelude::*, rusterix::Rusterix};
 use std::path::Path;
 use theframework::*;
 use vek::{Vec2, Vec3};
@@ -16,27 +16,29 @@ enum Movement {
 use Movement::*;
 
 fn main() {
-    let cube = Map::new();
+    let game = MiniGame::new();
     let mut app = TheApp::new();
 
-    () = app.run(Box::new(cube));
+    () = app.run(Box::new(game));
 }
 
-// This example loads a .rxm map file (of the minigame) and draws it directly
-// It does not use the Rusterix game API.
+// This example executes the minigame in the Rusterix game API.
 
-pub struct Map {
+pub struct MiniGame {
     camera: Box<dyn D3Camera>,
     scene: Scene,
     entity: Entity,
     movement: Movement,
 }
 
-impl TheTrait for Map {
+impl TheTrait for MiniGame {
     fn new() -> Self
     where
         Self: Sized,
     {
+        let mut rusterix = Rusterix::default();
+        rusterix.from_directory("minigame".to_string());
+
         let camera = Box::new(D3FirstPCamera::new());
         let mut scene = Scene::default();
 
@@ -111,7 +113,7 @@ impl TheTrait for Map {
             pixels,     // Destination buffer
             ctx.width,  // Destination buffer width
             ctx.height, // Destination buffer height
-            30,         // Tile size
+            200,        // Tile size
         );
 
         let _stop = get_time();

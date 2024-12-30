@@ -4,7 +4,10 @@ use vek::{Mat3, Mat4};
 
 /// A scene of 2D and 3D batches which are passed to the rasterizer for rasterization.
 pub struct Scene {
+    /// Background shader
     pub background: Option<Box<dyn Shader>>,
+
+    /// The lights in the scene
     pub lights: Vec<Light>,
 
     /// 3D static batches which do not need to be changed, i.e. no animation for textures or the mesh itself.

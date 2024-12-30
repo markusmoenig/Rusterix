@@ -1,12 +1,18 @@
 use rustpython::vm::{Interpreter, PyResult};
 use std::sync::{Arc, Mutex};
 
-struct RegionInstance {
+pub struct Region {
     interp: Interpreter,
     scope: Arc<Mutex<rustpython_vm::scope::Scope>>,
 }
 
-impl RegionInstance {
+impl Default for Region {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Region {
     pub fn new() -> Self {
         let interp = rustpython::InterpreterConfig::new()
             .init_stdlib()
@@ -62,7 +68,7 @@ pub fn get_error(&self, error: PyRef<PyBaseException>) -> String {
 }*/
 
 pub fn py_test() {
-    let mut inst = RegionInstance::new();
+    let mut inst = Region::new();
     inst.init();
     inst.add_entity("Markus".to_string());
     let _ = inst.execute("manager.debug()");

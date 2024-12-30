@@ -28,6 +28,8 @@ rustpython = { version = "0.4.0", features = [
     "freeze-stdlib",
 ], default-features = true }
 rustpython-vm = { version = "0.4.0" }
+walkdir = "2.5.0"
+smallvec = "1.13.2"
 
 rust-embed = { version = "8.5", default-features = true, features = [
     "include-exclude",
@@ -42,3 +44,10 @@ features = [
     "serde",
     "js",
 ]
+
+[dev-dependencies]
+criterion = { version = "0.5.1", features = ["html_reports"] }
+
+[[bench]]
+name = "rasterize_map"
+harness = false

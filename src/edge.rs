@@ -1,3 +1,40 @@
+#[derive(Debug, Clone, Copy)]
+pub struct Edges {
+    a: [f32; 3], // Stores the A coefficients for each edge
+    b: [f32; 3], // Stores the B coefficients for each edge
+    c: [f32; 3], // Stores the C coefficients for each edge
+    pub visible: bool,
+}
+
+impl Edges {
+    /// Create edges from three pairs of vertices
+    pub fn new(v0: [[f32; 2]; 3], v1: [[f32; 2]; 3], visible: bool) -> Self {
+        let mut a = [0.0; 3];
+        let mut b = [0.0; 3];
+        let mut c = [0.0; 3];
+
+        for i in 0..3 {
+            a[i] = v1[i][1] - v0[i][1]; // dy
+            b[i] = v0[i][0] - v1[i][0]; // -dx
+            c[i] = v1[i][0] * v0[i][1] - v1[i][1] * v0[i][0]; // x1*y0 - y1*x0
+        }
+
+        Edges { a, b, c, visible }
+    }
+
+    /// Evaluate all edges for a point and return true if the point is inside the triangle.
+    pub fn evaluate(&self, p: [f32; 2]) -> bool {
+        for i in 0..3 {
+            let result = self.a[i] * p[0] + self.b[i] * p[1] + self.c[i];
+            if result < 0.0 {
+                return false;
+            }
+        }
+        true
+    }
+}
+
+/*
 use vek::Vec3;
 
 #[derive(Debug, Clone, Copy)]
@@ -36,3 +73,4 @@ impl Edges {
         results.map(|v| v >= 0.0).reduce(|a, b| a && b)
     }
 }
+*/
