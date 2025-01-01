@@ -21,6 +21,18 @@ class EntityManager:
         else:
             raise KeyError(f"Entity with ID {entity_id} does not exist.")
 
+    def get_entity_position(self, entity_id):
+        """Gets the position of an entity."""
+        if entity_id not in self.entities:
+            raise KeyError(f"Entity with ID {entity_id} does not exist.")
+        return self.entities[entity_id].position
+
+    def set_entity_position(self, entity_id, position):
+        """Sets the position of an entity."""
+        if entity_id not in self.entities:
+            raise KeyError(f"Entity with ID {entity_id} does not exist.")
+        self.entities[entity_id].position = position
+
     def update_attribute(self, entity_id, key, value):
         """Updates or adds an attribute for a specific entity."""
         if entity_id not in self.entities:

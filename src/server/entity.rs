@@ -7,6 +7,9 @@ use crate::prelude::*;
 /// instantiation (to avoid unnecessary Python look ups for common attributes). The class gets synced with the Python side.
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Entity {
+    /// The id of the entity in the enitity manager
+    pub id: i32,
+
     /// The name of the entity.
     pub name: String,
 
@@ -33,6 +36,8 @@ impl Default for Entity {
 impl Entity {
     pub fn new() -> Self {
         Self {
+            id: -1,
+
             name: "Unnamed".to_string(),
             class_name: String::new(),
             level: 1,

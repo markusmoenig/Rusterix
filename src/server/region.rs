@@ -3,6 +3,8 @@ use rustpython::vm::{Interpreter, PyObjectRef};
 use std::sync::{Arc, Mutex};
 use theframework::prelude::FxHashMap;
 
+use vek::Vec3;
+
 pub struct Region {
     interp: Interpreter,
     scope: Arc<Mutex<rustpython_vm::scope::Scope>>,
@@ -65,23 +67,24 @@ impl Region {
             }
         }
 
+        let entities = self.map.entities.clone();
+
         // Installing Entity Instances
-        for entity in &self.map.entities.clone() {
+        for (index, entity) in entities.iter().enumerate() {
             let cmd = format!(
-                "entity = {}(None, None, None); result = manager.add_entity(entity);",
-                entity.class_name
+                "manager.add_entity({}([{}, {}, {}], None, None))",
+                entity.class_name, entity.position.x, entity.position.y, entity.position.z,
             );
             match self.execute(&cmd) {
-                Ok(_obj) => {
+                Ok(obj) => {
                     self.interp.enter(|vm| {
-                        if let Ok(result) =
-                            self.scope.lock().unwrap().globals.get_item("result", vm)
-                        {
-                            if let Ok(value) = result.try_into_value::<i32>(vm) {
-                                println!(
-                                    "Initialized {}/{} ({}) to '{}': Ok",
-                                    entity.name, entity.class_name, value, self.name
-                                );
+                        if let Ok(value) = obj.try_into_value::<i32>(vm) {
+                            println!(
+                                "Initialized {}/{} ({}) to '{}': Ok",
+                                entity.name, entity.class_name, value, self.name
+                            );
+                            if let Some(e) = self.map.entities.get_mut(index) {
+                                e.id = value;
                             }
                         }
                     });
@@ -89,6 +92,44 @@ impl Region {
                 Err(err) => {
                     println!("Error for {}/{}: {}", entity.name, entity.class_name, err);
                 }
+            }
+        }
+
+        for entity in &self.map.entities.clone() {
+            self.set_entity_position(entity.id, Vec3::new(1.0, 2.0, 3.0));
+
+            println!("d {:?}", self.get_entity_position(entity.id));
+        }
+    }
+
+    /// Get the position of the entity of the given id.
+    pub fn get_entity_position(&self, id: i32) -> Option<[f32; 3]> {
+        let cmd = format!("manager.get_entity_position({})", id);
+        match self.execute(&cmd) {
+            Ok(obj) => self.interp.enter(|vm| {
+                if let Ok(value) = obj.try_into_value::<Vec<f32>>(vm) {
+                    Some([value[0], value[1], value[2]])
+                } else {
+                    None
+                }
+            }),
+            Err(err) => {
+                println!("Error getting entity ({}) position: {}", id, err);
+                None
+            }
+        }
+    }
+
+    /// Get the position of the entity of the given id.
+    pub fn set_entity_position(&self, id: i32, position: Vec3<f32>) {
+        let cmd = format!(
+            "manager.set_entity_position({}, [{:.3}, {:.3}, {:.3}])",
+            id, position.x, position.y, position.z
+        );
+        match self.execute(&cmd) {
+            Ok(_obj) => {}
+            Err(err) => {
+                println!("Error setting entity ({}) position: {}", id, err);
             }
         }
     }
@@ -102,11 +143,11 @@ impl Region {
         let _ = self.execute(&cmd);
     }
 
-    pub fn execute(&mut self, source: &str) -> Result<PyObjectRef, String> {
+    pub fn execute(&self, source: &str) -> Result<PyObjectRef, String> {
         let scope = self.scope.lock().unwrap();
 
         self.interp.enter(|vm| {
-            let rc = vm.run_code_string(scope.clone(), source, "".to_string());
+            let rc = vm.run_block_expr(scope.clone(), source);
             match rc {
                 Ok(obj) => Ok(obj),
                 Err(error) => {
