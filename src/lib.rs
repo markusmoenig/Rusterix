@@ -67,8 +67,7 @@ pub use crate::{
     scene::Scene,
     scenebuilder::{d2preview::D2PreviewBuilder, SceneBuilder},
     script::mapscript::MapScript,
-    server::Server,
-    server::{entity::Entity, region::Region},
+    server::{assets::Assets, entity::Entity, region::Region, Server},
     shader::{grid::GridShader, vgradient::VGrayGradientShader, Shader},
     texture::{RepeatMode, SampleMode, Texture},
 };
@@ -83,11 +82,10 @@ pub mod prelude {
     pub use crate::MapScript;
     pub use crate::Rasterizer;
     pub use crate::Rect;
-    pub use crate::Server;
     pub use crate::{pixel_to_vec4, vec4_to_pixel};
+    pub use crate::{Assets, Entity, Region, Server};
     pub use crate::{Batch, CullMode, PrimitiveMode};
     pub use crate::{D3Camera, D3FirstPCamera, D3IsoCamera, D3OrbitCamera};
-    pub use crate::{Entity, Region};
     pub use crate::{GridShader, Shader, VGrayGradientShader};
     pub use crate::{Light, Linedef, Map, MapMeta, MapToolType, Sector, Tile, Vertex};
     pub use crate::{Pixel, BLACK, TRANSPARENT, WHITE};

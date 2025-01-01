@@ -225,20 +225,14 @@ fn main() -> Result<()> {
 }
 
 fn compile_map(file_name: &str) -> Option<MapMeta> {
-    let mut mapscript = MapScript::new();
-    mapscript.load_map(file_name);
-    let result = mapscript.transform(None, None, None);
+    let mut assets = Assets::default();
+    assets.collect_from_directory(".".into());
+    let _ = assets.compile_source_map(file_name.into());
 
-    match result {
-        Ok(meta) => {
-            println!("{}", meta.map.info());
-            Some(meta)
-        }
-        Err(errors) => {
-            for err in errors {
-                println!("{}", err);
-            }
-            None
-        }
-    }
+    // if let Some(map) = assets.get_map(file_name) {
+    //     //Some(map)
+    // } else {
+    //     None
+    // }
+    None
 }

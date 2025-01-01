@@ -8,21 +8,24 @@ fn rasterize_map(c: &mut Criterion) {
     let mut camera: Box<dyn D3Camera> = Box::new(D3FirstPCamera::new());
     let mut scene = Scene::default();
 
-    // Build the map from the script
-    let mut mapscript = MapScript::with_path("minigame".into());
-    mapscript.load_map("world.rxm");
+    let mut assets = Assets::default();
+    assets.collect_from_directory("minigame".into());
+    let _ = assets.compile_source_map("world".into());
 
-    if let Ok(meta) = mapscript.transform(None, None, None) {
-        // Build the 3D scene from the map meta data
+    if let Some(map) = assets.get_map("world") {
         let builder = D3Builder::new();
         scene = builder.build(
-            &meta.map,
-            &meta.tiles,
+            map,
+            &assets.tiles,
             Texture::from_color(BLACK),
             Vec2::zero(), // Only needed for 2D builders
             &camera.id(),
         );
     }
+
+    // if let Ok(meta) = mapscript.transform(None, None, None) {
+    //     // Build the 3D scene from the map meta data
+    // }
 
     // Create an entity with a default position / orientation.
     let entity = rusterix::Entity {

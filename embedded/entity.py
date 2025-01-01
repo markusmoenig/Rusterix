@@ -2,12 +2,15 @@ import pickle
 import array
 
 class Entity:
-    def __init__(self, position=None, attributes=None):
+    def __init__(self, position=None, orientation=None, attributes=None, level=1):
         """Initializes an entity with attributes."""
 
-        self.position = array.array('f', position if position is not None else [0.0, 0.0, 0.0])
-        self.orientation = array.array('f', position if position is not None else [1.0, 0.0])
+        self.position = array('f', position if position is not None else [0.0, 0.0, 0.0])
+        self.orientation = array('f', position if position is not None else [1.0, 0.0])
+        # self.position = array('f', [1.0, 2.0, 3.0])
+
         self.attributes = attributes or {}
+        self.level = level
 
     def update_attribute(self, key, value):
         """Updates or adds an attribute."""

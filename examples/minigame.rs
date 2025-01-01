@@ -36,22 +36,23 @@ impl TheTrait for MiniGame {
     where
         Self: Sized,
     {
+        let mut assets = Assets::default();
+        assets.collect_from_directory("minigame".to_string());
+        assets.compile_source_maps();
+
         let mut rusterix = Rusterix::default();
-        rusterix.from_directory("minigame".to_string());
+        rusterix.set_assets(assets);
+        rusterix.create_regions();
 
         let camera = Box::new(D3FirstPCamera::new());
         let mut scene = Scene::default();
 
-        // Build the map from the script
-        let mut mapscript = MapScript::with_path("minigame".into());
-        mapscript.load_map("world.rxm");
-
-        if let Ok(meta) = mapscript.transform(None, None, None) {
+        if let Some(map) = rusterix.assets.get_map("world") {
             // Build the 3D scene from the map meta data
             let builder = D3Builder::new();
             scene = builder.build(
-                &meta.map,
-                &meta.tiles,
+                map,
+                &rusterix.assets.tiles,
                 Texture::from_color(BLACK),
                 Vec2::zero(), // Only needed for 2D builders
                 &camera.id(),

@@ -3,9 +3,19 @@ use vek::{Vec2, Vec3};
 
 use crate::prelude::*;
 
-/// A game character.
-#[derive(Serialize, Deserialize, PartialEq, Clone, Debug)]
+/// The Rust representation of an Entity. The real entity class lives in Python, this class is the Rust side
+/// instantiation (to avoid unnecessary Python look ups for common attributes). The class gets synced with the Python side.
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Entity {
+    /// The name of the entity.
+    pub name: String,
+
+    /// The Python class name of the Entity
+    pub class_name: String,
+
+    /// The level of the entity.
+    pub level: i32,
+
     /// The XZ orientation
     pub orientation: Vec2<f32>,
     /// The position in the map
@@ -23,6 +33,10 @@ impl Default for Entity {
 impl Entity {
     pub fn new() -> Self {
         Self {
+            name: "Unnamed".to_string(),
+            class_name: String::new(),
+            level: 1,
+
             orientation: Vec2::new(1.0, 0.0),
             position: Vec3::new(0.0, 0.5, 0.0),
             tilt: 0.0,

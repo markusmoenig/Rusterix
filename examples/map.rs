@@ -40,23 +40,24 @@ impl TheTrait for Map {
         let camera = Box::new(D3FirstPCamera::new());
         let mut scene = Scene::default();
 
-        // Build the map from the script
-        let mut mapscript = MapScript::with_path("minigame".into());
-        mapscript.load_map("world.rxm");
+        // Collect the assets and compile the world map.
+        let mut assets = Assets::default();
+        assets.collect_from_directory("minigame".into());
+        let _ = assets.compile_source_map("world".into());
 
-        if let Ok(meta) = mapscript.transform(None, None, None) {
-            // Build the 3D scene from the map meta data
+        if let Some(map) = assets.get_map("world") {
+            // Build 3D scene from the world map.
             let builder = D3Builder::new();
             scene = builder.build(
-                &meta.map,
-                &meta.tiles,
+                map,
+                &assets.tiles,
                 Texture::from_color(BLACK),
                 Vec2::zero(), // Only needed for 2D builders
                 &camera.id(),
             );
         }
 
-        // Create an entity with a default position / orientation.
+        // Create an entity with a default position / orientation which serves as the camera.
         let entity = rusterix::Entity {
             position: Vec3::new(6.0600824, 1.0, 4.5524735),
             orientation: Vec2::new(0.03489969, 0.99939084),

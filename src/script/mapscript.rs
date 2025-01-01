@@ -1,6 +1,5 @@
-use super::load_texture;
 use crate::script::ParseError;
-use crate::{Light, Map, MapMeta, Tile};
+use crate::{Entity, Light, Map, MapMeta, Texture, Tile};
 use rustpython::vm;
 use rustpython::vm::*;
 use std::sync::{LazyLock, RwLock};
@@ -34,8 +33,6 @@ impl MapCursorState {
     }
 }
 
-static PATH: LazyLock<RwLock<String>> = LazyLock::new(|| RwLock::new(String::new()));
-
 static DEFAULT_WALL_TEXTURE: LazyLock<RwLock<Option<Uuid>>> = LazyLock::new(|| RwLock::new(None));
 static DEFAULT_WALL_TEXTURE_ROW2: LazyLock<RwLock<Option<Uuid>>> =
     LazyLock::new(|| RwLock::new(None));
@@ -49,6 +46,8 @@ static DEFAULT_WALL_HEIGHT: LazyLock<RwLock<f32>> = LazyLock::new(|| RwLock::new
 static DEFAULT_WALL_WIDTH: LazyLock<RwLock<f32>> = LazyLock::new(|| RwLock::new(0.0));
 
 static MAP: LazyLock<RwLock<Map>> = LazyLock::new(|| RwLock::new(Map::default()));
+static TEXTURES: LazyLock<RwLock<FxHashMap<String, Texture>>> =
+    LazyLock::new(|| RwLock::new(FxHashMap::default()));
 static TILES: LazyLock<RwLock<FxHashMap<Uuid, Tile>>> =
     LazyLock::new(|| RwLock::new(FxHashMap::default()));
 
@@ -82,6 +81,21 @@ fn hex_to_rgb_f32(hex: &str) -> [f32; 3] {
         (Ok(r), Ok(g), Ok(b)) => [r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0],
         _ => [1.0, 1.0, 1.0], // Return white for invalid input
     }
+}
+
+fn add_entity(name: String, class_name: String, level: i32) {
+    let state = CURSORSTATE.read().unwrap();
+
+    let entity = Entity {
+        name,
+        class_name,
+        level,
+        position: Vec3::new(state.position.x, 0.0, state.position.y),
+        ..Default::default()
+    };
+
+    let mut map = MAP.write().unwrap();
+    map.entities.push(entity);
 }
 
 fn add_point_light(color: String, intensity: f32, start_distance: f32, end_distance: f32) {
@@ -401,7 +415,18 @@ fn wall(value: PyObjectRef, vm: &VirtualMachine) -> PyResult<()> {
 /// Gets or add the texture of the given name and returns its id
 fn get_texture(texture_name: &str) -> Option<Uuid> {
     let mut tiles = TILES.write().unwrap();
+    let textures = TEXTURES.read().unwrap();
 
+    if let Some(tex) = textures.get(texture_name) {
+        let tile = Tile::from_texture(texture_name, tex.clone());
+        let id = tile.id;
+        tiles.insert(id, tile);
+        Some(id)
+    } else {
+        None
+    }
+
+    /*
     if let Some(id) = tiles
         .iter()
         .find(|(_, tile)| tile.name == texture_name)
@@ -417,7 +442,7 @@ fn get_texture(texture_name: &str) -> Option<Uuid> {
         Some(id)
     } else {
         None
-    }
+    }*/
 }
 
 fn move_forward(length: f32) -> PyResult<()> {
@@ -467,24 +492,7 @@ fn rotate(angle: f32) -> PyResult<()> {
         orientation.x * sin + orientation.y * cos,
     );
 
-    fn snap_orientation(orientation: Vec2<f32>) -> Vec2<f32> {
-        const EPSILON: f32 = 1e-5;
-
-        let x = if orientation.x.abs() < EPSILON {
-            0.0
-        } else {
-            orientation.x
-        };
-        let y = if orientation.y.abs() < EPSILON {
-            0.0
-        } else {
-            orientation.y
-        };
-
-        Vec2::new(x, y).normalized()
-    }
-
-    state.orientation = snap_orientation(new_orientation);
+    state.orientation = new_orientation;
 
     Ok(())
 }
@@ -499,8 +507,6 @@ fn turn_right() -> PyResult<()> {
 
 pub struct MapScript {
     error: Option<ParseError>,
-    source: String,
-    path: String,
 }
 
 impl Default for MapScript {
@@ -511,47 +517,22 @@ impl Default for MapScript {
 
 impl MapScript {
     pub fn new() -> Self {
-        Self {
-            error: None,
-            source: "".to_string(),
-            path: ".".to_string(),
-        }
+        Self { error: None }
     }
 
-    pub fn with_path(path: String) -> Self {
-        Self {
-            error: None,
-            source: "".to_string(),
-            path,
-        }
-    }
-
-    pub fn load_map(&mut self, name: &str) {
-        if let Ok(source) = std::fs::read_to_string(name) {
-            self.source = source;
-            return;
-        }
-
-        let path_name = format!("{}/{}", self.path, name);
-        if let Ok(source) = std::fs::read_to_string(path_name) {
-            self.source = source;
-            return;
-        }
-
-        println!("Map file {} not found!", name);
-    }
-
-    /// Parse the source and return the new or transformed map.
-    pub fn transform(
+    /// Parse the source and return the new or compiled map.
+    pub fn compile(
         &mut self,
+        source: &str,
+        textures: &FxHashMap<String, Texture>,
         ctx_map: Option<Map>,
         ctx_linedef: Option<u32>,
         ctx_sector: Option<u32>,
     ) -> Result<MapMeta, Vec<String>> {
         self.error = None;
-        *PATH.write().unwrap() = self.path.clone();
         *MAP.write().unwrap() = ctx_map.unwrap_or_default();
         *TILES.write().unwrap() = FxHashMap::default();
+        *TEXTURES.write().unwrap() = textures.clone();
         *DEFAULT_WALL_TEXTURE.write().unwrap() = None;
         *DEFAULT_WALL_TEXTURE_ROW2.write().unwrap() = None;
         *DEFAULT_WALL_TEXTURE_ROW3.write().unwrap() = None;
@@ -573,6 +554,12 @@ impl MapScript {
 
         interpreter.enter(|vm| {
             let scope = vm.new_scope_with_builtins();
+
+            let _ = scope.globals.set_item(
+                "add_entity",
+                vm.new_function("add_entity", add_entity).into(),
+                vm,
+            );
 
             let _ = scope.globals.set_item(
                 "add_point_light",
@@ -630,12 +617,8 @@ impl MapScript {
                 .set_item("rotate", vm.new_function("rotate", rotate).into(), vm);
 
             if let Ok(code_obj) = vm
-                .compile(
-                    &self.source,
-                    vm::compiler::Mode::Exec,
-                    "<embedded>".to_owned(),
-                )
-                .map_err(|err| vm.new_syntax_error(&err, Some(&self.source)))
+                .compile(source, vm::compiler::Mode::Exec, "<embedded>".to_owned())
+                .map_err(|err| vm.new_syntax_error(&err, Some(source)))
             {
                 if let Err(err) = vm.run_code_obj(code_obj, scope) {
                     let args = err.args();

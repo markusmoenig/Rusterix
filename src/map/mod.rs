@@ -13,7 +13,7 @@ use linedef::*;
 use sector::*;
 use vertex::*;
 
-use crate::Light;
+use crate::{Entity, Light};
 
 #[derive(Serialize, Deserialize, PartialEq, Clone, Debug, Copy)]
 pub enum MapCamera {
@@ -68,6 +68,9 @@ pub struct Map {
     // Lights
     pub lights: Vec<Light>,
 
+    // Entities
+    pub entities: Vec<Entity>,
+
     // Selection
     pub selected_vertices: Vec<u32>,
     pub selected_linedefs: Vec<u32>,
@@ -84,7 +87,7 @@ impl Map {
     pub fn new() -> Self {
         Self {
             id: Uuid::new_v4(),
-            name: "New Model".to_string(),
+            name: "New Map".to_string(),
 
             offset: Vec2::zero(),
             grid_size: 30.0,
@@ -105,6 +108,7 @@ impl Map {
             camera_xz: None,
 
             lights: vec![],
+            entities: vec![],
 
             selected_vertices: vec![],
             selected_linedefs: vec![],
