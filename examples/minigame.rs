@@ -29,6 +29,7 @@ pub struct MiniGame {
     scene: Scene,
     entity: Entity,
     movement: Movement,
+    rusterix: Rusterix,
 }
 
 impl TheTrait for MiniGame {
@@ -78,6 +79,7 @@ impl TheTrait for MiniGame {
             scene,
             entity,
             movement: Off,
+            rusterix,
         }
     }
 
@@ -150,6 +152,9 @@ impl TheTrait for MiniGame {
         _ctx: &mut TheContext,
     ) -> bool {
         if let Some(char) = char {
+            self.rusterix
+                .server
+                .local_player_event("key_down".into(), Value::Str(char.to_string()));
             match char {
                 'p' => {
                     self.camera = Box::new(D3FirstPCamera::new());

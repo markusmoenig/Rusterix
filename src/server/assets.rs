@@ -45,17 +45,7 @@ impl Assets {
             if file_path.is_file() {
                 if let Some(extension) = file_path.extension().and_then(|ext| ext.to_str()) {
                     match extension {
-                        // "png" => self.handle_png(file_path),
-                        // "json" => self.handle_json(file_path),
-                        "py" => {
-                            if let Ok(source) = std::fs::read_to_string(file_path) {
-                                if let Some(base_name) =
-                                    file_path.file_stem().and_then(|stem| stem.to_str())
-                                {
-                                    self.entities.insert(base_name.to_string(), source);
-                                }
-                            }
-                        }
+                        // Texture
                         "png" | "PNG" => {
                             if let Some(tex) = Texture::from_image_safe(file_path) {
                                 if let Some(base_name) =
@@ -65,6 +55,17 @@ impl Assets {
                                 }
                             }
                         }
+                        // Entity
+                        "rxe" => {
+                            if let Ok(source) = std::fs::read_to_string(file_path) {
+                                if let Some(base_name) =
+                                    file_path.file_stem().and_then(|stem| stem.to_str())
+                                {
+                                    self.entities.insert(base_name.to_string(), source);
+                                }
+                            }
+                        }
+                        // Map
                         "rxm" => {
                             if let Ok(source) = std::fs::read_to_string(file_path) {
                                 if let Some(base_name) =

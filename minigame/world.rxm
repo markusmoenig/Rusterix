@@ -27,3 +27,7 @@ move_to(6, box_size)
 wall(6)
 turn_left()
 wall(6)
+
+# Set player
+move_to(6, 6)
+add_entity("Shabby", "Player", 1)

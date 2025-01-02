@@ -1,9 +1,11 @@
 from array import array
 
-class Monster(Entity):
+class Player(Entity):
     def __init__(self, position=None, orientation=None, attributes=None, level=1):
-        """Initializes a Monster."""
+        """Initializes the Player."""
         super().__init__(position, orientation, attributes)
+
+        self.type = EntityType.PLAYER
 
     def attack(self, target):
         """Attacks another fighter, reducing its health."""
@@ -20,6 +22,13 @@ class Monster(Entity):
         print(f"{self} took {amount} damage, health is now {self.health}")
         if self.health <= 0:
             print(f"{self} has been defeated!")
+
+    def update(self):
+        """Update"""
+        pass
+
+    def event(self, event, value):
+        print("Player Event", event, value)
 
     def debug(self):
         """Prints the fighter's specific attributes along with inherited ones."""

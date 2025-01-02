@@ -12,6 +12,11 @@ class Entity:
         self.attributes = attributes or {}
         self.level = level
 
+        self.id = 0
+        self.manager_id = 0
+
+        self.type = EntityType.NPC
+
     def update_attribute(self, key, value):
         """Updates or adds an attribute."""
         self.attributes[key] = value
@@ -36,3 +41,11 @@ class Entity:
         print("Entity attributes:")
         for key, value in self.attributes.items():
             print(f" - {key}: {value}")
+
+    def update(self):
+        """Update"""
+        pass
+
+    def event(self, event, value):
+        """Event"""
+        pass

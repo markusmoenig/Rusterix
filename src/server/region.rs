@@ -1,16 +1,28 @@
+use crate::server::register_player;
 use crate::Map;
 use rustpython::vm::{Interpreter, PyObjectRef};
+use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use theframework::prelude::FxHashMap;
 
 use vek::Vec3;
+use ServerMessage::*;
+
+use super::ServerMessage;
 
 pub struct Region {
+    pub id: u32,
+
     interp: Interpreter,
     scope: Arc<Mutex<rustpython_vm::scope::Scope>>,
 
     name: String,
     map: Map,
+
+    /// Send messages to this region
+    pub to_sender: Sender<ServerMessage>,
+    /// Local receiver
+    to_receiver: Receiver<ServerMessage>,
 }
 
 impl Default for Region {
@@ -26,12 +38,30 @@ impl Region {
             .interpreter();
 
         let scope = Arc::new(Mutex::new(interp.enter(|vm| vm.new_scope_with_builtins())));
+
+        interp.enter(|vm| {
+            let scope = scope.lock().unwrap();
+
+            let _ = scope.globals.set_item(
+                "register_player",
+                vm.new_function("register_player", register_player).into(),
+                vm,
+            );
+        });
+
+        let (to_sender, to_receiver) = mpsc::channel::<ServerMessage>();
+
         Self {
+            id: 0,
+
             interp,
             scope,
 
             name: String::new(),
             map: Map::default(),
+
+            to_receiver,
+            to_sender,
         }
     }
 
@@ -53,7 +83,7 @@ impl Region {
         }
 
         // Create the manager
-        let _ = self.execute("manager = EntityManager()");
+        let _ = self.execute(&format!("manager = EntityManager({})", self.id));
 
         // Installing Entity Class
         for (name, entity_source) in entities {
@@ -100,6 +130,30 @@ impl Region {
 
             println!("d {:?}", self.get_entity_position(entity.id));
         }
+    }
+
+    pub fn run(self) {
+        std::thread::spawn(move || {
+            while let Ok(message) = self.to_receiver.recv() {
+                match message {
+                    RegisterPlayer(entity_id) => {
+                        println!(
+                            "Region {} ({}): Registering player {}",
+                            self.name, self.id, entity_id
+                        );
+                    }
+                    Event(entity_id, event, value) => {
+                        let cmd = format!("manager.event({}, '{}', {})", entity_id, event, value);
+                        match self.execute(&cmd) {
+                            Ok(_) => {}
+                            Err(err) => {
+                                println!("Event error: {} in {}", err, cmd);
+                            }
+                        }
+                    }
+                }
+            }
+        });
     }
 
     /// Get the position of the entity of the given id.

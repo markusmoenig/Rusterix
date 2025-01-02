@@ -1,7 +1,13 @@
 import pickle
+from enum import Enum
+
+class EntityType(Enum):
+    NPC = 1
+    PLAYER = 2
 
 class EntityManager:
-    def __init__(self):
+    def __init__(self, id):
+        self.id = id
         self.entities = {}  # Dictionary to store entities by integer ID
         self.next_id = 0    # Counter for generating unique IDs
 
@@ -9,10 +15,22 @@ class EntityManager:
         """Adds an entity and assigns it a unique integer ID."""
         if not isinstance(entity, Entity):
             raise TypeError("Only Entity instances can be added.")
+
         entity_id = self.next_id
         self.next_id += 1
+
+        entity.id = entity_id
+        entity.manager_id = self.id
+
+        if entity.type == EntityType.PLAYER:
+            register_player(self.id, entity_id)
+
         self.entities[entity_id] = entity
         return entity_id
+
+    def event(self, entity_id, event, value):
+        """Event"""
+        self.entities[entity_id].event(event, value)
 
     def delete_entity(self, entity_id):
         """Deletes an entity by its ID."""
