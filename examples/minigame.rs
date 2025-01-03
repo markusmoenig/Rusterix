@@ -1,5 +1,6 @@
 use rusterix::{prelude::*, rusterix::Rusterix};
 use std::path::Path;
+use std::time::{Duration, Instant};
 use theframework::*;
 use vek::{Vec2, Vec3};
 
@@ -30,6 +31,8 @@ pub struct MiniGame {
     entity: Entity,
     movement: Movement,
     rusterix: Rusterix,
+
+    last_redraw_update: Instant,
 }
 
 impl TheTrait for MiniGame {
@@ -80,6 +83,7 @@ impl TheTrait for MiniGame {
             entity,
             movement: Off,
             rusterix,
+            last_redraw_update: Instant::now(),
         }
     }
 
@@ -87,22 +91,25 @@ impl TheTrait for MiniGame {
     fn draw(&mut self, pixels: &mut [u8], ctx: &mut TheContext) {
         let _start = get_time();
 
-        match &self.movement {
-            MoveForward => {
-                self.entity.move_forward(0.05);
-            }
-            MoveBackward => {
-                self.entity.move_backward(0.05);
-            }
-            TurnLeft => {
-                self.entity.turn_left(1.0);
-            }
-            TurnRight => {
-                self.entity.turn_right(1.0);
-            }
-            Off => {}
-        }
-        self.entity.apply_to_camera(&mut self.camera);
+        self.rusterix
+            .server
+            .apply_entity_to_camera(&mut self.camera);
+        // match &self.movement {
+        //     MoveForward => {
+        //         self.entity.move_forward(0.05);
+        //     }
+        //     MoveBackward => {
+        //         self.entity.move_backward(0.05);
+        //     }
+        //     TurnLeft => {
+        //         self.entity.turn_left(1.0);
+        //     }
+        //     TurnRight => {
+        //         self.entity.turn_right(1.0);
+        //     }
+        //     Off => {}
+        // }
+        // self.entity.apply_to_camera(&mut self.camera);
 
         // Set it up
         Rasterizer::setup(
@@ -123,9 +130,17 @@ impl TheTrait for MiniGame {
         // println!("Execution time: {:?} ms.", _stop - _start);
     }
 
-    // Query if the widget needs a redraw, we redraw at max speed (which is not necessary)
+    // Query if the widget needs a redraw, limit redraws to 30fps
     fn update(&mut self, _ctx: &mut TheContext) -> bool {
-        true
+        let target_fps = 60;
+        let mut redraw_update = false;
+
+        if self.last_redraw_update.elapsed() >= Duration::from_millis(1000 / target_fps) {
+            self.last_redraw_update = Instant::now();
+            redraw_update = true;
+        }
+
+        redraw_update
     }
 
     fn window_title(&self) -> String {
@@ -193,6 +208,9 @@ impl TheTrait for MiniGame {
         _ctx: &mut TheContext,
     ) -> bool {
         if let Some(char) = char {
+            self.rusterix
+                .server
+                .local_player_event("key_up".into(), Value::Str(char.to_string()));
             match char {
                 // 'p' => {
                 //     self.camera = Box::new(D3FirstPCamera::new());

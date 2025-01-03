@@ -1,14 +1,15 @@
-use crate::server::register_player;
-use crate::Map;
+use crate::server::{player_action, register_player};
+use crate::{Entity, EntityAction, Map};
+use crossbeam_channel::{select, tick, unbounded, Receiver, Sender};
 use rustpython::vm::{Interpreter, PyObjectRef};
-use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use theframework::prelude::FxHashMap;
 
+use super::RegionMessage;
 use vek::Vec3;
-use ServerMessage::*;
+// use EntityAction::*;
 
-use super::ServerMessage;
+use RegionMessage::*;
 
 pub struct Region {
     pub id: u32,
@@ -19,10 +20,18 @@ pub struct Region {
     name: String,
     map: Map,
 
+    /// The registered, local player for this entity
+    player_id: Option<u32>,
+
     /// Send messages to this region
-    pub to_sender: Sender<ServerMessage>,
+    pub to_sender: Sender<RegionMessage>,
     /// Local receiver
-    to_receiver: Receiver<ServerMessage>,
+    to_receiver: Receiver<RegionMessage>,
+
+    /// Send messages from this region
+    from_sender: Sender<RegionMessage>,
+    /// Local receiver
+    pub from_receiver: Receiver<RegionMessage>,
 }
 
 impl Default for Region {
@@ -47,9 +56,16 @@ impl Region {
                 vm.new_function("register_player", register_player).into(),
                 vm,
             );
+
+            let _ = scope.globals.set_item(
+                "action",
+                vm.new_function("action", player_action).into(),
+                vm,
+            );
         });
 
-        let (to_sender, to_receiver) = mpsc::channel::<ServerMessage>();
+        let (to_sender, to_receiver) = unbounded::<RegionMessage>();
+        let (from_sender, from_receiver) = unbounded::<RegionMessage>();
 
         Self {
             id: 0,
@@ -60,8 +76,12 @@ impl Region {
             name: String::new(),
             map: Map::default(),
 
+            player_id: None,
+
             to_receiver,
             to_sender,
+            from_receiver,
+            from_sender,
         }
     }
 
@@ -114,7 +134,7 @@ impl Region {
                                 entity.name, entity.class_name, value, self.name
                             );
                             if let Some(e) = self.map.entities.get_mut(index) {
-                                e.id = value;
+                                e.id = value as u32;
                             }
                         }
                     });
@@ -125,29 +145,81 @@ impl Region {
             }
         }
 
-        for entity in &self.map.entities.clone() {
-            self.set_entity_position(entity.id, Vec3::new(1.0, 2.0, 3.0));
-
-            println!("d {:?}", self.get_entity_position(entity.id));
-        }
+        // for entity in &self.map.entities.clone() {
+        //     self.set_entity_position(entity.id, Vec3::new(1.0, 2.0, 3.0));
+        // }
     }
 
-    pub fn run(self) {
+    pub fn run(mut self) {
+        //let ticker = tick(std::time::Duration::from_millis(250));
+        let ticker = tick(std::time::Duration::from_millis(16));
+
         std::thread::spawn(move || {
-            while let Ok(message) = self.to_receiver.recv() {
-                match message {
-                    RegisterPlayer(entity_id) => {
-                        println!(
-                            "Region {} ({}): Registering player {}",
-                            self.name, self.id, entity_id
-                        );
-                    }
-                    Event(entity_id, event, value) => {
-                        let cmd = format!("manager.event({}, '{}', {})", entity_id, event, value);
-                        match self.execute(&cmd) {
-                            Ok(_) => {}
-                            Err(err) => {
-                                println!("Event error: {} in {}", err, cmd);
+            loop {
+                select! {
+                    recv(ticker) -> _ => {
+                        //_ = self.tick()
+                        for entity in &mut self.map.entities {
+                            if Some(entity.id) == self.player_id {
+                                match entity.action {
+                                    EntityAction::North => {
+                                        entity.move_forward(0.05 * 2.0);
+                                        self.from_sender.send(RegionMessage::Entity(entity.clone())).unwrap();
+                                    }
+                                    EntityAction::West => {
+                                        entity.turn_left(2.0);
+                                        self.from_sender.send(RegionMessage::Entity(entity.clone())).unwrap();
+                                    }
+                                    EntityAction::East => {
+                                        entity.turn_right(2.0);
+                                        self.from_sender.send(RegionMessage::Entity(entity.clone())).unwrap();
+                                    }
+                                    EntityAction::South => {
+                                        entity.move_backward(0.05 * 2.0);
+                                        self.from_sender.send(RegionMessage::Entity(entity.clone())).unwrap();
+                                    }
+                                    _ => {}
+                                }
+                            }
+                        }
+                    },
+                    recv(self.to_receiver) -> mess => {
+                        if let Ok(message) = mess {
+                            match message {
+                                RegisterPlayer(entity_id) => {
+                                    println!(
+                                        "Region {} ({}): Registering player {}",
+                                        self.name, self.id, entity_id
+                                    );
+                                    if let Some(entity) = self.map.entities.get(entity_id as usize) {
+                                        self.from_sender.send(RegionMessage::Entity(entity.clone())).unwrap();
+                                    }
+                                    self.player_id = Some(entity_id);
+                                }
+                                Event(entity_id, event, value) => {
+                                    let cmd = format!("manager.event({}, '{}', {})", entity_id, event, value);
+                                    match self.execute(&cmd) {
+                                        Ok(_) => {}
+                                        Err(err) => {
+                                            println!("Event error: {} in {}", err, cmd);
+                                        }
+                                    }
+                                }
+                                UserEvent(entity_id, event, value) => {
+                                    let cmd = format!("manager.user_event({}, '{}', {})", entity_id, event, value);
+                                    match self.execute(&cmd) {
+                                        Ok(_) => {}
+                                        Err(err) => {
+                                            println!("User event error: {} in {}", err, cmd);
+                                        }
+                                    }
+                                }
+                                UserAction(entity_id, action) => {
+                                    if let Some(entity) = self.get_entity_mut(entity_id) {
+                                        entity.action = action;
+                                    }
+                                }
+                                _ => {}
                             }
                         }
                     }
@@ -156,8 +228,18 @@ impl Region {
         });
     }
 
+    /// Return the Rust side of the Entity for the given Id
+    pub fn get_entity(&self, id: u32) -> Option<&Entity> {
+        self.map.entities.iter().find(|e| e.id == id)
+    }
+
+    /// Return the Rust mut side of the Entity for the given Id
+    pub fn get_entity_mut(&mut self, id: u32) -> Option<&mut Entity> {
+        self.map.entities.iter_mut().find(|e| e.id == id)
+    }
+
     /// Get the position of the entity of the given id.
-    pub fn get_entity_position(&self, id: i32) -> Option<[f32; 3]> {
+    pub fn get_entity_position(&self, id: u32) -> Option<[f32; 3]> {
         let cmd = format!("manager.get_entity_position({})", id);
         match self.execute(&cmd) {
             Ok(obj) => self.interp.enter(|vm| {
@@ -175,7 +257,7 @@ impl Region {
     }
 
     /// Get the position of the entity of the given id.
-    pub fn set_entity_position(&self, id: i32, position: Vec3<f32>) {
+    pub fn set_entity_position(&self, id: u32, position: Vec3<f32>) {
         let cmd = format!(
             "manager.set_entity_position({}, [{:.3}, {:.3}, {:.3}])",
             id, position.x, position.y, position.z

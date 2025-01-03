@@ -49,3 +49,6 @@ class Entity:
     def event(self, event, value):
         """Event"""
         pass
+
+    def user_event(self, event, value):
+        """User event. Only send to EntityType.PLAYER"""

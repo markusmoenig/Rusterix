@@ -5,6 +5,17 @@ class EntityType(Enum):
     NPC = 1
     PLAYER = 2
 
+class EntityAction(Enum):
+    NONE = 0
+    WEST = 1
+    NORTH = 2
+    EAST = 3
+    SOUTH = 4
+
+    def to_int(self):
+        """Convert the Enum to its integer value."""
+        return self.value
+
 class EntityManager:
     def __init__(self, id):
         self.id = id
@@ -31,6 +42,10 @@ class EntityManager:
     def event(self, entity_id, event, value):
         """Event"""
         self.entities[entity_id].event(event, value)
+
+    def user_event(self, entity_id, event, value):
+        """User based event"""
+        self.entities[entity_id].user_event(event, value)
 
     def delete_entity(self, entity_id):
         """Deletes an entity by its ID."""

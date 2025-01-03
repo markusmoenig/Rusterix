@@ -90,7 +90,7 @@ fn add_entity(name: String, class_name: String, level: i32) {
         name,
         class_name,
         level,
-        position: Vec3::new(state.position.x, 0.0, state.position.y),
+        position: Vec3::new(state.position.x, 1.0, state.position.y),
         ..Default::default()
     };
 

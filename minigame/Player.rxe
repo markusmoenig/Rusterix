@@ -28,13 +28,27 @@ class Player(Entity):
         pass
 
     def event(self, event, value):
-        print("Player Event", event, value)
+        pass
+        # print("Player Event", event, value)
 
-    def debug(self):
-        """Prints the fighter's specific attributes along with inherited ones."""
-        super().debug()  # Call the parent class's debug method
-        print(f"Health: {self.health}")
-        print(f"Damage: {self.damage}")
+    def user_event(self, event, value):
+        # print("Player User Event", event, value)
+        if event == 'key_down':
+            if value == 'w':
+                action(self.manager_id, self.id, EntityAction.NORTH.to_int())
+            if value == 'a':
+                action(self.manager_id, self.id, EntityAction.WEST.to_int())
+            if value == 'd':
+                action(self.manager_id, self.id, EntityAction.EAST.to_int())
+            if value == 's':
+                action(self.manager_id, self.id, EntityAction.SOUTH.to_int())
+        if event == 'key_up':
+                action(self.manager_id, self.id, EntityAction.NONE.to_int())
+
+        # match event:
+        #    case "a":
+        #        action(self.id, self.manager_id, EntityAction.NORTH)
+
 
     def __str__(self):
         """String representation of the fighter."""
