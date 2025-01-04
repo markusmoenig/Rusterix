@@ -1,7 +1,7 @@
 pub mod d2preview;
 pub mod d3builder;
 
-use crate::{Map, MapToolType, Scene, Texture, Tile};
+use crate::{D3Camera, Entity, Map, MapToolType, Scene, Texture, Tile};
 use theframework::prelude::*;
 use vek::Vec2;
 
@@ -11,6 +11,7 @@ pub trait SceneBuilder: Send + Sync {
     where
         Self: Sized;
 
+    /// Build the static elements of a Scene and return it.
     fn build(
         &self,
         map: &Map,
@@ -19,6 +20,16 @@ pub trait SceneBuilder: Send + Sync {
         screen_size: Vec2<f32>,
         camera_id: &str,
     ) -> Scene;
+
+    /// Apply dynamic elements to the scene.
+    fn build_entities_d3(
+        &self,
+        entities: &[Entity],
+        camera: &dyn D3Camera,
+        tiles: &FxHashMap<Uuid, Tile>,
+        scene: &mut Scene,
+    ) {
+    }
 
     /// Convert a map grid position to screen coordinates
     fn map_grid_to_local(

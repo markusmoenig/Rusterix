@@ -20,6 +20,9 @@ pub struct Scene {
 
     /// The list of textures which the batches index into.
     pub textures: Vec<Texture>,
+
+    /// The list of textures which the d3_dynamic batches index into.
+    pub dynamic_textures: Vec<Texture>,
 }
 
 impl Default for Scene {
@@ -38,6 +41,7 @@ impl Scene {
             d3_dynamic: vec![],
             d2: vec![],
             textures: vec![],
+            dynamic_textures: vec![],
         }
     }
 
@@ -50,6 +54,7 @@ impl Scene {
             d3_dynamic: vec![],
             d2,
             textures: vec![],
+            dynamic_textures: vec![],
         }
     }
 

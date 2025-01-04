@@ -118,7 +118,7 @@ impl Rasterizer {
                         &mut z_buffer,
                         tile,
                         batch,
-                        &scene.textures,
+                        &scene.dynamic_textures,
                         &scene.lights,
                     );
                 }

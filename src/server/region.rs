@@ -1,5 +1,5 @@
 use crate::server::register_player;
-use crate::{EntityAction, Map};
+use crate::{EntityAction, EntityUpdate, Map, Value};
 use crossbeam_channel::{select, tick, unbounded, Receiver, Sender};
 use ref_thread_local::{ref_thread_local, RefThreadLocal};
 use rustpython::vm::{Interpreter, PyObjectRef};
@@ -128,9 +128,13 @@ impl Region {
 
         // Installing Entity Instances
         for (index, entity) in entities.iter().enumerate() {
+            let class_name = match entity.attributes.get("class_name") {
+                Some(value) => value,
+                None => &Value::Str("unknown".into()),
+            };
             let cmd = format!(
                 "manager.add_entity({}([{}, {}, {}], None, None))",
-                entity.class_name, entity.position.x, entity.position.y, entity.position.z,
+                class_name, entity.position.x, entity.position.y, entity.position.z,
             );
             match self.execute(&cmd) {
                 Ok(obj) => {
@@ -138,7 +142,10 @@ impl Region {
                         if let Ok(value) = obj.try_into_value::<i32>(vm) {
                             println!(
                                 "Initialized {}/{} ({}) to '{}': Ok",
-                                entity.name, entity.class_name, value, self.name
+                                entity.get_attr_string("name").unwrap(),
+                                entity.get_attr_string("class_name").unwrap(),
+                                value,
+                                self.name
                             );
                             if let Some(e) = map.entities.get_mut(index) {
                                 e.id = value as u32;
@@ -147,7 +154,12 @@ impl Region {
                     });
                 }
                 Err(err) => {
-                    println!("Error for {}/{}: {}", entity.name, entity.class_name, err);
+                    println!(
+                        "Error for {}/{}: {}",
+                        entity.get_attr_string("name").unwrap(),
+                        entity.get_attr_string("class_name").unwrap(),
+                        err
+                    );
                 }
             }
         }
@@ -174,34 +186,48 @@ impl Region {
             *REGION.borrow_mut() = self;
             *MAP.borrow_mut() = map;
 
+            // Send the entities on startup
+            REGION
+                .borrow()
+                .from_sender
+                .send(RegionMessage::Entities(MAP.borrow().entities.clone()))
+                .unwrap();
+
             loop {
                 select! {
                     recv(ticker) -> _ => {
                         let region_mut = REGION.borrow_mut();
                         let player_id = region_mut.player_id;
 
+                        let mut updates: Vec<EntityUpdate> = vec![];
+
                         for entity in &mut MAP.borrow_mut().entities {
                             if Some(entity.id) == player_id {
                                 match entity.action {
                                     EntityAction::North => {
                                         entity.move_forward(0.05 * 2.0);
-                                        FROM_SENDER.borrow().get().unwrap().send(RegionMessage::Entity(entity.clone())).unwrap();
                                     }
                                     EntityAction::West => {
                                         entity.turn_left(2.0);
-                                        FROM_SENDER.borrow().get().unwrap().send(RegionMessage::Entity(entity.clone())).unwrap();
                                     }
                                     EntityAction::East => {
                                         entity.turn_right(2.0);
-                                        FROM_SENDER.borrow().get().unwrap().send(RegionMessage::Entity(entity.clone())).unwrap();
                                     }
                                     EntityAction::South => {
                                         entity.move_backward(0.05 * 2.0);
-                                        FROM_SENDER.borrow().get().unwrap().send(RegionMessage::Entity(entity.clone())).unwrap();
                                     }
                                     _ => {}
                                 }
                             }
+                            if entity.is_dirty() {
+                                updates.push(entity.get_update());
+                                entity.clear_dirty();
+                            }
+                        }
+
+                        // Send the updates if non empty
+                        if !updates.is_empty() {
+                            FROM_SENDER.borrow().get().unwrap().send(RegionMessage::EntitiesUpdate(updates)).unwrap();
                         }
                     },
                     recv(TO_RECEIVER.borrow().get().unwrap()) -> mess => {
@@ -212,8 +238,8 @@ impl Region {
                                         "Region {} ({}): Registering player {}",
                                         REGION.borrow().name, REGION.borrow().id, entity_id
                                     );
-                                    if let Some(entity) = MAP.borrow().entities.get(entity_id as usize) {
-                                        REGION.borrow().from_sender.send(RegionMessage::Entity(entity.clone())).unwrap();
+                                    if let Some(entity) = MAP.borrow_mut().entities.get_mut(entity_id as usize) {
+                                        entity.set_attribute("is_player".into(), Value::Bool(true));
                                     }
                                     REGION.borrow_mut().player_id = Some(entity_id);
                                 }
@@ -227,7 +253,7 @@ impl Region {
                                     }
                                 }
                                 UserEvent(entity_id, event, value) => {
-                                    let cmd = format!("manager.user_event({}, '{}', {})", entity_id, event, value);
+                                    let cmd = format!("manager.user_event({}, '{}', '{}')", entity_id, event, value);
                                     match REGION.borrow().execute(&cmd) {
                                         Ok(_) => {}
                                         Err(err) => {
@@ -243,17 +269,6 @@ impl Region {
             }
         });
     }
-
-    /*
-    /// Return the Rust side of the Entity for the given Id
-    pub fn get_entity(&self, id: u32) -> Option<&Entity> {
-        self.map.entities.iter().find(|e| e.id == id)
-    }
-
-    /// Return the Rust mut side of the Entity for the given Id
-    pub fn get_entity_mut(&mut self, id: u32) -> Option<&mut Entity> {
-        self.map.entities.iter_mut().find(|e| e.id == id)
-    }*/
 
     /// Get the position of the entity of the given id.
     pub fn get_entity_position(&self, id: u32) -> Option<[f32; 3]> {

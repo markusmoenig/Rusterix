@@ -31,6 +31,8 @@ pub struct MiniGame {
     entity: Entity,
     movement: Movement,
     rusterix: Rusterix,
+    builder: D3Builder,
+    last_entities: Vec<Entity>,
 
     last_redraw_update: Instant,
 }
@@ -51,9 +53,9 @@ impl TheTrait for MiniGame {
         let camera = Box::new(D3FirstPCamera::new());
         let mut scene = Scene::default();
 
+        let builder = D3Builder::new();
         if let Some(map) = rusterix.assets.get_map("world") {
             // Build the 3D scene from the map meta data
-            let builder = D3Builder::new();
             scene = builder.build(
                 map,
                 &rusterix.assets.tiles,
@@ -83,6 +85,9 @@ impl TheTrait for MiniGame {
             entity,
             movement: Off,
             rusterix,
+            builder,
+            last_entities: vec![],
+
             last_redraw_update: Instant::now(),
         }
     }
@@ -91,25 +96,23 @@ impl TheTrait for MiniGame {
     fn draw(&mut self, pixels: &mut [u8], ctx: &mut TheContext) {
         let _start = get_time();
 
+        // Get the entities and build their scene representation
         self.rusterix
             .server
-            .apply_entity_to_camera(&mut self.camera);
-        // match &self.movement {
-        //     MoveForward => {
-        //         self.entity.move_forward(0.05);
-        //     }
-        //     MoveBackward => {
-        //         self.entity.move_backward(0.05);
-        //     }
-        //     TurnLeft => {
-        //         self.entity.turn_left(1.0);
-        //     }
-        //     TurnRight => {
-        //         self.entity.turn_right(1.0);
-        //     }
-        //     Off => {}
-        // }
-        // self.entity.apply_to_camera(&mut self.camera);
+            .update_entities(&mut self.last_entities);
+
+        for entity in &self.last_entities {
+            if entity.is_player() {
+                entity.apply_to_camera(&mut self.camera);
+            }
+        }
+
+        self.builder.build_entities_d3(
+            &self.last_entities,
+            self.camera.as_ref(),
+            &self.rusterix.assets.tiles,
+            &mut self.scene,
+        );
 
         // Set it up
         Rasterizer::setup(

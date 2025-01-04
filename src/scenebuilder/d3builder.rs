@@ -1,7 +1,7 @@
 // use crate::PrimitiveMode::*;
 use crate::SceneBuilder;
 use crate::Texture;
-use crate::{Batch, Map, Scene, Tile};
+use crate::{Batch, D3Camera, Entity, Map, Scene, Tile};
 use theframework::prelude::*;
 use vek::Vec2;
 
@@ -169,6 +169,68 @@ impl SceneBuilder for D3Builder {
         scene.textures = textures;
         scene.lights = map.lights.clone();
         scene
+    }
+
+    fn build_entities_d3(
+        &self,
+        entities: &[Entity],
+        camera: &dyn D3Camera,
+        tiles: &FxHashMap<Uuid, Tile>,
+        scene: &mut Scene,
+    ) {
+        let mut textures = vec![];
+        let mut batches = vec![];
+
+        fn add_entity_billboard(
+            start_vertex: &Vec2<f32>,
+            end_vertex: &Vec2<f32>,
+            wall_height: f32,
+            batch: &mut Batch<[f32; 4]>,
+        ) {
+            let wall_vertices = vec![
+                [start_vertex.x, 0.0, start_vertex.y, 1.0],
+                [start_vertex.x, wall_height, start_vertex.y, 1.0],
+                [end_vertex.x, wall_height, end_vertex.y, 1.0],
+                [end_vertex.x, 0.0, end_vertex.y, 1.0],
+            ];
+
+            let wall_uvs = vec![[0.0, 1.0], [0.0, 0.0], [1.0, 0.0], [1.0, 1.0]];
+
+            let wall_indices = vec![(0, 1, 2), (0, 2, 3)];
+            batch.add(wall_vertices, wall_indices, wall_uvs);
+        }
+
+        let mut index = 0;
+        for entity in entities {
+            if !entity.is_player() {
+                let entity_pos = Vec2::new(entity.position.x, entity.position.z);
+                let camera_pos = Vec2::new(camera.position().x, camera.position().z);
+                let direction_to_camera = (camera_pos - entity_pos).normalized();
+
+                // Calculate perpendicular vector on the XZ plane
+                let perpendicular = Vec2::new(-direction_to_camera.y, direction_to_camera.x);
+                let start = entity_pos + perpendicular * 0.5;
+                let end = entity_pos - perpendicular * 0.5;
+
+                let mut batch = Batch::emptyd3()
+                    .texture_index(index)
+                    .repeat_mode(crate::RepeatMode::RepeatXY);
+
+                add_entity_billboard(&start, &end, 2.0, &mut batch);
+
+                if let Some(id) = entity.get_attr_uuid("tile_id") {
+                    if let Some(tile) = tiles.get(&id) {
+                        textures.push(tile.textures[0].clone());
+                    }
+                }
+
+                batches.push(batch);
+                index += 1;
+            }
+        }
+
+        scene.d3_dynamic = batches;
+        scene.dynamic_textures = textures;
     }
 }
 

@@ -11,12 +11,15 @@ pub enum RegionMessage {
     UserEvent(u32, String, Value),
     /// A user action
     UserAction(u32, EntityAction),
-    /// Entity
-    Entity(Entity),
+    /// Entities of a given region
+    Entities(Vec<Entity>),
+    /// Entities of a given region
+    EntitiesUpdate(Vec<EntityUpdate>),
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum EntityAction {
+    #[default]
     Off,
     West,
     North,
@@ -39,6 +42,8 @@ impl EntityAction {
 }
 
 use std::convert::TryFrom;
+
+use super::entity::EntityUpdate;
 
 impl TryFrom<i32> for EntityAction {
     type Error = &'static str;

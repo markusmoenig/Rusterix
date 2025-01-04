@@ -15,7 +15,6 @@ wall(5)
 wall(1)
 set("wall_tex", "lightpanel")
 add_point_light("#ffffbb", 2.0, 2.0, 13.0)
-add_entity("Orc", "Monster", 1)
 #set("light_source", 10)
 wall(9)
 turn_right()
@@ -28,6 +27,10 @@ wall(6)
 turn_left()
 wall(6)
 
+# Monster
+move_to(10, 10.5)
+add_entity("Orc", "Monster", 1, "brickwall")
+
 # Set player
 move_to(6, 4.5)
-add_entity("Shabby", "Player", 1)
+add_entity("Shabby", "Player", 1, "brickwall")

@@ -72,10 +72,50 @@ impl Server {
         region.run(map);
     }
 
-    pub fn apply_entity_to_camera(&self, camera: &mut Box<dyn D3Camera>) {
+    /// Returns the entities for the region.
+    pub fn update_entities(&self, entities: &mut Vec<Entity>) {
         for receiver in &self.from_region {
-            while let Ok(RegionMessage::Entity(entity)) = receiver.try_recv() {
-                entity.apply_to_camera(camera);
+            while let Ok(message) = receiver.try_recv() {
+                match message {
+                    RegionMessage::Entities(ent) => {
+                        *entities = ent;
+                    }
+                    RegionMessage::EntitiesUpdate(updates) => {
+                        self.process_entity_updates(entities, updates);
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+
+    /// Update existing entities or create new ones
+    pub fn process_entity_updates(&self, entities: &mut Vec<Entity>, updates: Vec<EntityUpdate>) {
+        // Create a mapping from entity ID to index for efficient lookup
+        let mut entity_map: FxHashMap<u32, usize> = entities
+            .iter()
+            .enumerate()
+            .map(|(index, entity)| (entity.id, index))
+            .collect();
+
+        for update in updates {
+            if let Some(&index) = entity_map.get(&update.id) {
+                // Entity exists, apply the update
+                entities[index].apply_update(update);
+            } else {
+                // Entity does not exist, create a new one
+                let mut new_entity = Entity {
+                    id: update.id,
+                    ..Default::default()
+                };
+                new_entity.apply_update(update);
+
+                // Add to the entity list
+                let new_entity_id = new_entity.id; // Copy or borrow the ID
+                entities.push(new_entity);
+
+                // Update the map with the new entity's ID
+                entity_map.insert(new_entity_id, entities.len() - 1);
             }
         }
     }
