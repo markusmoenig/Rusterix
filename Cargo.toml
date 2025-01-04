@@ -30,6 +30,7 @@ rustpython = { version = "0.4.0", features = [
 rustpython-vm = { version = "0.4.0" }
 walkdir = "2.5.0"
 crossbeam-channel = "0.5.14"
+ref_thread_local = "0.1.1"
 
 rust-embed = { version = "8.5", default-features = true, features = [
     "include-exclude",

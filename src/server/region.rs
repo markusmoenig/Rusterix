@@ -1,9 +1,19 @@
-use crate::server::{player_action, register_player};
-use crate::{Entity, EntityAction, Map};
+use crate::server::register_player;
+use crate::{EntityAction, Map};
 use crossbeam_channel::{select, tick, unbounded, Receiver, Sender};
+use ref_thread_local::{ref_thread_local, RefThreadLocal};
 use rustpython::vm::{Interpreter, PyObjectRef};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 use theframework::prelude::FxHashMap;
+
+// Local thread global data for the Region
+ref_thread_local! {
+    pub static managed REGION: Region = Region::default();
+    pub static managed MAP: Map = Map::default();
+
+    pub static managed TO_RECEIVER: OnceLock<Receiver<RegionMessage>> = OnceLock::new();
+    pub static managed FROM_SENDER: OnceLock<Sender<RegionMessage>> = OnceLock::new();
+}
 
 use super::RegionMessage;
 use vek::Vec3;
@@ -18,7 +28,6 @@ pub struct Region {
     scope: Arc<Mutex<rustpython_vm::scope::Scope>>,
 
     name: String,
-    map: Map,
 
     /// The registered, local player for this entity
     player_id: Option<u32>,
@@ -74,7 +83,6 @@ impl Region {
             scope,
 
             name: String::new(),
-            map: Map::default(),
 
             player_id: None,
 
@@ -86,9 +94,8 @@ impl Region {
     }
 
     /// Initializes the Python bases classes, sets the map and applies entities
-    pub fn init(&mut self, name: String, map: Map, entities: &FxHashMap<String, String>) {
+    pub fn init(&mut self, name: String, map: &mut Map, entities: &FxHashMap<String, String>) {
         self.name = name;
-        self.map = map;
 
         // Apply the base classes
         if let Some(bytes) = crate::Embedded::get("entity.py") {
@@ -117,7 +124,7 @@ impl Region {
             }
         }
 
-        let entities = self.map.entities.clone();
+        let entities = map.entities.clone();
 
         // Installing Entity Instances
         for (index, entity) in entities.iter().enumerate() {
@@ -133,7 +140,7 @@ impl Region {
                                 "Initialized {}/{} ({}) to '{}': Ok",
                                 entity.name, entity.class_name, value, self.name
                             );
-                            if let Some(e) = self.map.entities.get_mut(index) {
+                            if let Some(e) = map.entities.get_mut(index) {
                                 e.id = value as u32;
                             }
                         }
@@ -150,55 +157,69 @@ impl Region {
         // }
     }
 
-    pub fn run(mut self) {
+    pub fn run(self, map: Map) {
         //let ticker = tick(std::time::Duration::from_millis(250));
         let ticker = tick(std::time::Duration::from_millis(16));
 
         std::thread::spawn(move || {
+            // Initialize the local thread global storage
+            FROM_SENDER
+                .borrow_mut()
+                .set(self.from_sender.clone())
+                .unwrap();
+            TO_RECEIVER
+                .borrow_mut()
+                .set(self.to_receiver.clone())
+                .unwrap();
+            *REGION.borrow_mut() = self;
+            *MAP.borrow_mut() = map;
+
             loop {
                 select! {
                     recv(ticker) -> _ => {
-                        //_ = self.tick()
-                        for entity in &mut self.map.entities {
-                            if Some(entity.id) == self.player_id {
+                        let region_mut = REGION.borrow_mut();
+                        let player_id = region_mut.player_id;
+
+                        for entity in &mut MAP.borrow_mut().entities {
+                            if Some(entity.id) == player_id {
                                 match entity.action {
                                     EntityAction::North => {
                                         entity.move_forward(0.05 * 2.0);
-                                        self.from_sender.send(RegionMessage::Entity(entity.clone())).unwrap();
+                                        FROM_SENDER.borrow().get().unwrap().send(RegionMessage::Entity(entity.clone())).unwrap();
                                     }
                                     EntityAction::West => {
                                         entity.turn_left(2.0);
-                                        self.from_sender.send(RegionMessage::Entity(entity.clone())).unwrap();
+                                        FROM_SENDER.borrow().get().unwrap().send(RegionMessage::Entity(entity.clone())).unwrap();
                                     }
                                     EntityAction::East => {
                                         entity.turn_right(2.0);
-                                        self.from_sender.send(RegionMessage::Entity(entity.clone())).unwrap();
+                                        FROM_SENDER.borrow().get().unwrap().send(RegionMessage::Entity(entity.clone())).unwrap();
                                     }
                                     EntityAction::South => {
                                         entity.move_backward(0.05 * 2.0);
-                                        self.from_sender.send(RegionMessage::Entity(entity.clone())).unwrap();
+                                        FROM_SENDER.borrow().get().unwrap().send(RegionMessage::Entity(entity.clone())).unwrap();
                                     }
                                     _ => {}
                                 }
                             }
                         }
                     },
-                    recv(self.to_receiver) -> mess => {
+                    recv(TO_RECEIVER.borrow().get().unwrap()) -> mess => {
                         if let Ok(message) = mess {
                             match message {
                                 RegisterPlayer(entity_id) => {
                                     println!(
                                         "Region {} ({}): Registering player {}",
-                                        self.name, self.id, entity_id
+                                        REGION.borrow().name, REGION.borrow().id, entity_id
                                     );
-                                    if let Some(entity) = self.map.entities.get(entity_id as usize) {
-                                        self.from_sender.send(RegionMessage::Entity(entity.clone())).unwrap();
+                                    if let Some(entity) = MAP.borrow().entities.get(entity_id as usize) {
+                                        REGION.borrow().from_sender.send(RegionMessage::Entity(entity.clone())).unwrap();
                                     }
-                                    self.player_id = Some(entity_id);
+                                    REGION.borrow_mut().player_id = Some(entity_id);
                                 }
                                 Event(entity_id, event, value) => {
                                     let cmd = format!("manager.event({}, '{}', {})", entity_id, event, value);
-                                    match self.execute(&cmd) {
+                                    match REGION.borrow().execute(&cmd) {
                                         Ok(_) => {}
                                         Err(err) => {
                                             println!("Event error: {} in {}", err, cmd);
@@ -207,16 +228,11 @@ impl Region {
                                 }
                                 UserEvent(entity_id, event, value) => {
                                     let cmd = format!("manager.user_event({}, '{}', {})", entity_id, event, value);
-                                    match self.execute(&cmd) {
+                                    match REGION.borrow().execute(&cmd) {
                                         Ok(_) => {}
                                         Err(err) => {
                                             println!("User event error: {} in {}", err, cmd);
                                         }
-                                    }
-                                }
-                                UserAction(entity_id, action) => {
-                                    if let Some(entity) = self.get_entity_mut(entity_id) {
-                                        entity.action = action;
                                     }
                                 }
                                 _ => {}
@@ -228,6 +244,7 @@ impl Region {
         });
     }
 
+    /*
     /// Return the Rust side of the Entity for the given Id
     pub fn get_entity(&self, id: u32) -> Option<&Entity> {
         self.map.entities.iter().find(|e| e.id == id)
@@ -236,7 +253,7 @@ impl Region {
     /// Return the Rust mut side of the Entity for the given Id
     pub fn get_entity_mut(&mut self, id: u32) -> Option<&mut Entity> {
         self.map.entities.iter_mut().find(|e| e.id == id)
-    }
+    }*/
 
     /// Get the position of the entity of the given id.
     pub fn get_entity_position(&self, id: u32) -> Option<[f32; 3]> {
@@ -299,23 +316,12 @@ impl Region {
             }
         })
     }
-
-    // pub fn get_error(&self, error: PyRef<PyBaseException>) -> String {
-    //     let args = error.args();
-
-    //     if let Some(err) = args.first() {
-    //         if let Ok(msg) = err.str(vm) {
-    //             return msg.to_string();
-    //         }
-    //     }
-
-    //     return "".into();
-    // }
 }
-
-// pub fn py_test() {
-//     let mut inst = Region::new();
-//     inst.init();
-//     inst.add_entity("Markus".to_string());
-//     let _ = inst.execute("manager.debug()");
-// }
+/// Send from a player script (either locally or remotely) to perform the given action.
+fn player_action(entity_id: u32, action: i32) {
+    if let Some(action) = EntityAction::from_i32(action) {
+        if let Some(entity) = MAP.borrow_mut().entities.get_mut(entity_id as usize) {
+            entity.action = action;
+        }
+    }
+}

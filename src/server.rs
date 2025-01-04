@@ -3,7 +3,6 @@ pub mod entity;
 pub mod message;
 pub mod region;
 
-use crate::EntityAction;
 use crossbeam_channel::{Receiver, Sender};
 
 use std::sync::{Arc, LazyLock, RwLock};
@@ -34,19 +33,6 @@ fn register_player(region_id: u32, entity_id: u32) {
     }
 }
 
-/// Send from a player script (either locally or remotely) to perform the given action.
-fn player_action(region_id: u32, entity_id: u32, action: i32) {
-    if let Some(action) = EntityAction::from_i32(action) {
-        if let Ok(pipes) = REGIONPIPE.read() {
-            if let Some(sender) = pipes.get(&region_id) {
-                sender
-                    .send(RegionMessage::UserAction(entity_id, action))
-                    .unwrap();
-            }
-        }
-    }
-}
-
 pub struct Server {
     pub id_gen: u32,
     from_region: Vec<Receiver<RegionMessage>>,
@@ -67,7 +53,12 @@ impl Server {
     }
 
     /// Create the given region.
-    pub fn create_region(&mut self, name: String, map: Map, entities: &FxHashMap<String, String>) {
+    pub fn create_region(
+        &mut self,
+        name: String,
+        mut map: Map,
+        entities: &FxHashMap<String, String>,
+    ) {
         let mut region = Region::default();
         region.id = self.get_next_id();
 
@@ -77,8 +68,8 @@ impl Server {
 
         self.from_region.push(region.from_receiver.clone());
 
-        region.init(name, map, entities);
-        region.run();
+        region.init(name, &mut map, entities);
+        region.run(map);
     }
 
     pub fn apply_entity_to_camera(&self, camera: &mut Box<dyn D3Camera>) {
