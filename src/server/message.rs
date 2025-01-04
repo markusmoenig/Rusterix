@@ -1,4 +1,4 @@
-use crate::{Entity, Value};
+use crate::Value;
 use theframework::prelude::*;
 
 /// Messages to the Region
@@ -11,10 +11,8 @@ pub enum RegionMessage {
     UserEvent(u32, String, Value),
     /// A user action
     UserAction(u32, EntityAction),
-    /// Entities of a given region
-    Entities(Vec<Entity>),
     /// Entity updates for a given region
-    EntitiesUpdate(Vec<EntityUpdate>),
+    EntitiesUpdate(Vec<Vec<u8>>),
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -42,8 +40,6 @@ impl EntityAction {
 }
 
 use std::convert::TryFrom;
-
-use super::entity::EntityUpdate;
 
 impl TryFrom<i32> for EntityAction {
     type Error = &'static str;

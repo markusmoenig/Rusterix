@@ -76,11 +76,13 @@ impl Server {
     pub fn update_entities(&self, entities: &mut Vec<Entity>) {
         for receiver in &self.from_region {
             while let Ok(message) = receiver.try_recv() {
+                #[allow(clippy::single_match)]
                 match message {
-                    RegionMessage::Entities(ent) => {
-                        *entities = ent;
-                    }
-                    RegionMessage::EntitiesUpdate(updates) => {
+                    RegionMessage::EntitiesUpdate(serialized_updates) => {
+                        let updates: Vec<EntityUpdate> = serialized_updates
+                            .into_iter()
+                            .map(|data| EntityUpdate::unpack(&data))
+                            .collect();
                         self.process_entity_updates(entities, updates);
                     }
                     _ => {}

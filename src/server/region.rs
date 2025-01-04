@@ -1,5 +1,5 @@
 use crate::server::register_player;
-use crate::{EntityAction, EntityUpdate, Map, Value};
+use crate::{EntityAction, Map, Value};
 use crossbeam_channel::{select, tick, unbounded, Receiver, Sender};
 use ref_thread_local::{ref_thread_local, RefThreadLocal};
 use rustpython::vm::{Interpreter, PyObjectRef};
@@ -192,7 +192,7 @@ impl Region {
                         let region_mut = REGION.borrow_mut();
                         let player_id = region_mut.player_id;
 
-                        let mut updates: Vec<EntityUpdate> = vec![];
+                        let mut updates: Vec<Vec<u8>> = vec![];
 
                         for entity in &mut MAP.borrow_mut().entities {
                             if Some(entity.id) == player_id {
@@ -213,7 +213,7 @@ impl Region {
                                 }
                             }
                             if entity.is_dirty() {
-                                updates.push(entity.get_update());
+                                updates.push(entity.get_update().pack());
                                 entity.clear_dirty();
                             }
                         }

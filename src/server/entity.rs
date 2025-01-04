@@ -271,3 +271,21 @@ pub struct EntityUpdate {
     pub tilt: Option<f32>,
     pub attributes: FxHashMap<String, Value>,
 }
+
+impl EntityUpdate {
+    /// Serialize (pack) an `EntityUpdate` into a `Vec<u8>` using bincode, discarding errors
+    pub fn pack(&self) -> Vec<u8> {
+        bincode::serialize(self).unwrap_or_else(|_| Vec::new())
+    }
+
+    /// Deserialize (unpack) a `Vec<u8>` into an `EntityUpdate` using bincode, discarding errors
+    pub fn unpack(data: &[u8]) -> Self {
+        bincode::deserialize(data).unwrap_or_else(|_| Self {
+            id: 0,
+            position: None,
+            orientation: None,
+            tilt: None,
+            attributes: FxHashMap::default(),
+        })
+    }
+}
