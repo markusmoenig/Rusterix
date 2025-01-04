@@ -13,7 +13,7 @@ pub enum RegionMessage {
     UserAction(u32, EntityAction),
     /// Entities of a given region
     Entities(Vec<Entity>),
-    /// Entities of a given region
+    /// Entity updates for a given region
     EntitiesUpdate(Vec<EntityUpdate>),
 }
 

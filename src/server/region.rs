@@ -186,13 +186,6 @@ impl Region {
             *REGION.borrow_mut() = self;
             *MAP.borrow_mut() = map;
 
-            // Send the entities on startup
-            REGION
-                .borrow()
-                .from_sender
-                .send(RegionMessage::Entities(MAP.borrow().entities.clone()))
-                .unwrap();
-
             loop {
                 select! {
                     recv(ticker) -> _ => {
