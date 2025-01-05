@@ -35,7 +35,6 @@ pub enum MapToolType {
 pub struct Map {
     #[serde(default)]
     pub id: Uuid,
-    #[serde(default)]
     pub name: String,
 
     pub offset: Vec2<f32>,

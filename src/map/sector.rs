@@ -5,6 +5,8 @@ use theframework::prelude::*;
 #[derive(Serialize, Deserialize, PartialEq, Clone, Debug)]
 pub struct Sector {
     pub id: u32,
+    #[serde(default)]
+    pub name: String,
     pub linedefs: Vec<u32>,
     pub floor_height: f32,
     pub ceiling_height: f32,
@@ -19,6 +21,7 @@ impl Sector {
     pub fn new(id: u32, linedefs: Vec<u32>) -> Self {
         Self {
             id,
+            name: String::new(),
             linedefs,
             floor_height: 0.0,
             ceiling_height: 0.0,

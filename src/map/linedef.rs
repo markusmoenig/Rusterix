@@ -4,6 +4,8 @@ use theframework::prelude::*;
 #[derive(Serialize, Deserialize, PartialEq, Clone, Debug)]
 pub struct Linedef {
     pub id: u32,
+    #[serde(default)]
+    pub name: String,
     pub start_vertex: u32,
     pub end_vertex: u32,
     pub front_sector: Option<u32>,
@@ -20,6 +22,7 @@ impl Linedef {
     pub fn new(id: u32, start_vertex: u32, end_vertex: u32) -> Self {
         Self {
             id,
+            name: String::new(),
             start_vertex,
             end_vertex,
             front_sector: None,

@@ -59,7 +59,7 @@ impl Server {
         mut map: Map,
         entities: &FxHashMap<String, String>,
     ) {
-        let mut region = Region::default();
+        let mut region = RegionInstance::default();
         region.id = self.get_next_id();
 
         if let Ok(mut pipes) = REGIONPIPE.write() {

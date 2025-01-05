@@ -8,7 +8,7 @@ use theframework::prelude::FxHashMap;
 
 // Local thread global data for the Region
 ref_thread_local! {
-    pub static managed REGION: Region = Region::default();
+    pub static managed REGION: RegionInstance = RegionInstance::default();
     pub static managed MAP: Map = Map::default();
 
     pub static managed TO_RECEIVER: OnceLock<Receiver<RegionMessage>> = OnceLock::new();
@@ -21,7 +21,7 @@ use vek::Vec3;
 
 use RegionMessage::*;
 
-pub struct Region {
+pub struct RegionInstance {
     pub id: u32,
 
     interp: Interpreter,
@@ -43,13 +43,13 @@ pub struct Region {
     pub from_receiver: Receiver<RegionMessage>,
 }
 
-impl Default for Region {
+impl Default for RegionInstance {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl Region {
+impl RegionInstance {
     pub fn new() -> Self {
         let interp = rustpython::InterpreterConfig::new()
             .init_stdlib()

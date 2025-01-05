@@ -70,7 +70,7 @@ pub use crate::{
     script::mapscript::MapScript,
     server::{
         assets::Assets, entity::Entity, entity::EntityUpdate, message::EntityAction,
-        message::RegionMessage, region::Region, Server,
+        message::RegionMessage, region::RegionInstance, Server,
     },
     shader::{grid::GridShader, vgradient::VGrayGradientShader, Shader},
     texture::{RepeatMode, SampleMode, Texture},
@@ -86,7 +86,7 @@ pub mod prelude {
     pub use crate::MapScript;
     pub use crate::Rasterizer;
     pub use crate::{pixel_to_vec4, vec4_to_pixel};
-    pub use crate::{Assets, Entity, EntityUpdate, Region, RegionMessage, Server};
+    pub use crate::{Assets, Entity, EntityUpdate, RegionInstance, RegionMessage, Server};
     pub use crate::{Batch, CullMode, PrimitiveMode};
     pub use crate::{D3Camera, D3FirstPCamera, D3IsoCamera, D3OrbitCamera};
     pub use crate::{GridShader, Shader, VGrayGradientShader};
