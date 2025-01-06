@@ -1,10 +1,21 @@
 use crate::prelude::*;
-use rustc_hash::FxHashMap;
+use vek::Vec2;
+
+pub enum ClientDrawMode {
+    D2,
+    D3,
+}
+
+use ClientDrawMode::*;
 
 /// Rusterix can server as a server or client or both for solo games.
 pub struct Rusterix {
     pub assets: Assets,
     pub server: Server,
+    pub client: Client,
+
+    pub is_dirty: bool,
+    pub draw_mode: ClientDrawMode,
 }
 
 impl Default for Rusterix {
@@ -18,7 +29,26 @@ impl Rusterix {
         Self {
             assets: Assets::default(),
             server: Server::default(),
+            client: Client::default(),
+
+            is_dirty: true,
+            draw_mode: ClientDrawMode::D3,
         }
+    }
+
+    /// Set to 2D mode.
+    pub fn set_d2(&mut self) {
+        self.draw_mode = D2;
+    }
+
+    /// Set to 3D mode.
+    pub fn set_d3(&mut self) {
+        self.draw_mode = D3;
+    }
+
+    /// Set the dirty flag, i.e. scene needs to be rebuild.
+    pub fn set_dirty(&mut self) {
+        self.is_dirty = true;
     }
 
     /// Set the assets
@@ -30,37 +60,33 @@ impl Rusterix {
     pub fn create_regions(&mut self) {
         for (name, map) in &self.assets.maps {
             self.server
-                .create_region(name.clone(), map.clone(), &self.assets.entities);
+                .create_region_instance(name.clone(), map.clone(), &self.assets.entities);
         }
     }
 
-    /// Update existing entities or create new ones
-    pub fn process_entity_updates(&self, entities: &mut Vec<Entity>, updates: Vec<EntityUpdate>) {
-        // Create a mapping from entity ID to index for efficient lookup
-        let mut entity_map: FxHashMap<u32, usize> = entities
-            .iter()
-            .enumerate()
-            .map(|(index, entity)| (entity.id, index))
-            .collect();
+    /// Build the client scene.
+    pub fn build_scene(&mut self, screen_size: Vec2<f32>, map: &Map) {
+        if self.is_dirty {
+            match self.draw_mode {
+                D2 => {
+                    self.client.build_scene_d2(screen_size, map, &self.assets);
+                }
+                D3 => {
+                    self.client.build_scene_d3(map, &self.assets);
+                }
+            }
+        }
+        self.is_dirty = false;
+    }
 
-        for update in updates {
-            if let Some(&index) = entity_map.get(&update.id) {
-                // Entity exists, apply the update
-                entities[index].apply_update(update);
-            } else {
-                // Entity does not exist, create a new one
-                let mut new_entity = Entity {
-                    id: update.id,
-                    ..Default::default()
-                };
-                new_entity.apply_update(update);
-
-                // Add to the entity list
-                let new_entity_id = new_entity.id; // Copy or borrow the ID
-                entities.push(new_entity);
-
-                // Update the map with the new entity's ID
-                entity_map.insert(new_entity_id, entities.len() - 1);
+    /// Draw the client scene.
+    pub fn draw_scene(&mut self, pixels: &mut [u8], width: usize, height: usize) {
+        match self.draw_mode {
+            D2 => {
+                self.client.draw_d2(pixels, width, height);
+            }
+            D3 => {
+                self.client.draw_d3(pixels, width, height);
             }
         }
     }

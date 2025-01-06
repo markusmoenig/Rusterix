@@ -5,10 +5,9 @@ pub mod region;
 
 use crossbeam_channel::{Receiver, Sender};
 
-use std::sync::{Arc, LazyLock, RwLock};
-use theframework::prelude::FxHashMap;
-
 use crate::prelude::*;
+use std::sync::{Arc, LazyLock, RwLock};
+use theframework::prelude::*;
 
 // Pipes to the regions
 type RegionRegistry = Arc<RwLock<FxHashMap<u32, Sender<RegionMessage>>>>;
@@ -35,7 +34,11 @@ fn register_player(region_id: u32, entity_id: u32) {
 
 pub struct Server {
     pub id_gen: u32,
+
+    pub region_id_map: FxHashMap<Uuid, u32>,
     from_region: Vec<Receiver<RegionMessage>>,
+
+    pub entities: FxHashMap<u32, Vec<Entity>>,
 }
 
 impl Default for Server {
@@ -48,42 +51,64 @@ impl Server {
     pub fn new() -> Self {
         Self {
             id_gen: 0,
+
+            region_id_map: FxHashMap::default(),
             from_region: vec![],
+
+            entities: FxHashMap::default(),
         }
     }
 
-    /// Create the given region.
-    pub fn create_region(
+    /// Create the given region instance.
+    pub fn create_region_instance(
         &mut self,
         name: String,
         mut map: Map,
         entities: &FxHashMap<String, String>,
     ) {
-        let mut region = RegionInstance::default();
-        region.id = self.get_next_id();
+        let mut region_instance = RegionInstance::default();
+        region_instance.id = self.get_next_id();
+
+        self.region_id_map.insert(map.id, region_instance.id);
 
         if let Ok(mut pipes) = REGIONPIPE.write() {
-            pipes.insert(region.id, region.to_sender.clone());
+            pipes.insert(region_instance.id, region_instance.to_sender.clone());
         }
 
-        self.from_region.push(region.from_receiver.clone());
+        self.from_region.push(region_instance.from_receiver.clone());
 
-        region.init(name, &mut map, entities);
-        region.run(map);
+        region_instance.init(name, &mut map, entities);
+        region_instance.run(map);
     }
 
-    /// Returns the entities for the region.
-    pub fn update_entities(&self, entities: &mut Vec<Entity>) {
+    /// Get entities for a given region.
+    pub fn get_entities(&self, region_id: &Uuid) -> Option<&Vec<Entity>> {
+        if let Some(region_id) = self.region_id_map.get(region_id) {
+            self.entities.get(region_id)
+        } else {
+            None
+        }
+    }
+
+    /// Updates the entities from the regions.
+    pub fn update_entities(&mut self) {
         for receiver in &self.from_region {
             while let Ok(message) = receiver.try_recv() {
                 #[allow(clippy::single_match)]
                 match message {
-                    RegionMessage::EntitiesUpdate(serialized_updates) => {
+                    RegionMessage::EntitiesUpdate(id, serialized_updates) => {
                         let updates: Vec<EntityUpdate> = serialized_updates
                             .into_iter()
                             .map(|data| EntityUpdate::unpack(&data))
                             .collect();
-                        self.process_entity_updates(entities, updates);
+
+                        if let Some(entities) = self.entities.get_mut(&id) {
+                            Self::process_entity_updates(entities, updates);
+                        } else {
+                            let mut entities = vec![];
+                            Self::process_entity_updates(&mut entities, updates);
+                            self.entities.insert(id, entities);
+                        }
                     }
                     _ => {}
                 }
@@ -91,8 +116,8 @@ impl Server {
         }
     }
 
-    /// Update existing entities or create new ones
-    pub fn process_entity_updates(&self, entities: &mut Vec<Entity>, updates: Vec<EntityUpdate>) {
+    /// Update existing entities (or create new ones if they do not exist).
+    pub fn process_entity_updates(entities: &mut Vec<Entity>, updates: Vec<EntityUpdate>) {
         // Create a mapping from entity ID to index for efficient lookup
         let mut entity_map: FxHashMap<u32, usize> = entities
             .iter()

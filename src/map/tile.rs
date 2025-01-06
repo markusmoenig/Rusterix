@@ -7,9 +7,6 @@ pub struct Tile {
     pub name: String,
     pub uvs: Vec<vek::Vec4<i32>>,
     pub textures: Vec<Texture>,
-    pub role: u8,
-    pub blocking: bool,
-    pub billboard: bool,
 }
 
 impl Tile {
@@ -20,9 +17,6 @@ impl Tile {
             name: name.to_string(),
             uvs: vec![uv],
             textures: vec![texture],
-            role: 0,
-            blocking: false,
-            billboard: false,
         }
     }
 }

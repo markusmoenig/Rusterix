@@ -1115,7 +1115,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "33d852cb9b869c2a9b3df2f71a3074817f01e1844f839a144f5fcef059a4eb5d"
 dependencies = [
  "libc",
- "windows-sys 0.59.0",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -3299,7 +3299,7 @@ dependencies = [
  "rusterix",
  "rustpython",
  "rustyline 15.0.0",
- "theframework 0.1.32",
+ "theframework",
  "vek",
 ]
 
@@ -3321,7 +3321,7 @@ dependencies = [
  "rustpython-vm",
  "serde",
  "serde_json",
- "theframework 0.1.33",
+ "theframework",
  "uuid",
  "vek",
  "walkdir",
@@ -3337,7 +3337,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.59.0",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -4184,8 +4184,8 @@ checksum = "b7b3e525a49ec206798b40326a44121291b530c963cfb01018f63e135bac543d"
 
 [[package]]
 name = "theframework"
-version = "0.1.32"
-source = "git+https://github.com/markusmoenig/theframework#a3e5a40bcf35b04d48ad5029bd512f19244c488e"
+version = "0.1.34"
+source = "git+https://github.com/markusmoenig/theframework#af9a3e2d679407b1db8ee2ce90b38ae80279701f"
 dependencies = [
  "aict",
  "arboard",
@@ -4194,46 +4194,7 @@ dependencies = [
  "console_log",
  "env_logger 0.11.6",
  "flags",
- "fontdue",
- "futures",
- "half 2.4.1",
- "indexmap",
- "itertools 0.13.0",
- "lazy_static",
- "log",
- "maths-rs",
- "png",
- "rand",
- "rust-embed",
- "rustc-hash 1.1.0",
- "serde",
- "serde_json",
- "syntect",
- "unicode-segmentation",
- "uuid",
- "vectorize",
- "vek",
- "wasm-bindgen",
- "wasm-bindgen-futures",
- "web-sys",
- "wgpu",
- "winit",
- "winit_input_helper",
-]
-
-[[package]]
-name = "theframework"
-version = "0.1.33"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5a1935d3fd67f8e858497bc338841686038031829d2c13c553c8f17126c4b912"
-dependencies = [
- "aict",
- "arboard",
- "bytemuck",
- "console_error_panic_hook",
- "console_log",
- "env_logger 0.11.6",
- "flags",
+ "flate2",
  "fontdue",
  "futures",
  "half 2.4.1",
@@ -5142,7 +5103,7 @@ version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf221c93e13a30d793f7645a0e7762c55d169dbb0a49671918a2319d289b10bb"
 dependencies = [
- "windows-sys 0.59.0",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]

@@ -220,7 +220,7 @@ impl RegionInstance {
 
                         // Send the updates if non empty
                         if !updates.is_empty() {
-                            FROM_SENDER.borrow().get().unwrap().send(RegionMessage::EntitiesUpdate(updates)).unwrap();
+                            FROM_SENDER.borrow().get().unwrap().send(RegionMessage::EntitiesUpdate(region_mut.id, updates)).unwrap();
                         }
                     },
                     recv(TO_RECEIVER.borrow().get().unwrap()) -> mess => {

@@ -11,8 +11,8 @@ pub enum RegionMessage {
     UserEvent(u32, String, Value),
     /// A user action
     UserAction(u32, EntityAction),
-    /// Entity updates for a given region
-    EntitiesUpdate(Vec<Vec<u8>>),
+    /// Entity updates for a given region instance
+    EntitiesUpdate(u32, Vec<Vec<u8>>),
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Default)]
