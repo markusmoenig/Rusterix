@@ -14,6 +14,12 @@ pub struct Sector {
     pub ceiling_texture: Option<Uuid>,
     pub floor_material: Option<u8>,
     pub ceiling_material: Option<u8>,
+    pub texture_row1: Option<Uuid>,
+    pub texture_row2: Option<Uuid>,
+    pub texture_row3: Option<Uuid>,
+    pub material_row1: Option<u8>,
+    pub material_row2: Option<u8>,
+    pub material_row3: Option<u8>,
     pub neighbours: Vec<u32>,
 }
 
@@ -29,6 +35,12 @@ impl Sector {
             ceiling_texture: None,
             floor_material: None,
             ceiling_material: None,
+            texture_row1: None,
+            texture_row2: None,
+            texture_row3: None,
+            material_row1: None,
+            material_row2: None,
+            material_row3: None,
             neighbours: vec![],
         }
     }

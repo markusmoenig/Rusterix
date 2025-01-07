@@ -252,7 +252,7 @@ fn set(key: PyObjectRef, value: PyObjectRef, vm: &VirtualMachine) -> PyResult<()
                     if let Some(wall_id) = CURSORSTATE.read().unwrap().last_wall {
                         let mut map = MAP.write().unwrap();
                         if let Some(linedef) = map.find_linedef_mut(wall_id) {
-                            linedef.texture = Some(id);
+                            linedef.texture_row1 = Some(id);
                         }
                         Ok(())
                     } else {
@@ -394,7 +394,7 @@ fn wall(value: PyObjectRef, vm: &VirtualMachine) -> PyResult<()> {
     let (linedef_id, sector_id) = map.create_linedef(from_index, to_index);
 
     if let Some(linedef) = map.find_linedef_mut(linedef_id) {
-        linedef.texture = *DEFAULT_WALL_TEXTURE.read().unwrap();
+        linedef.texture_row1 = *DEFAULT_WALL_TEXTURE.read().unwrap();
         linedef.texture_row2 = *DEFAULT_WALL_TEXTURE_ROW2.read().unwrap();
         linedef.texture_row3 = *DEFAULT_WALL_TEXTURE_ROW3.read().unwrap();
         linedef.wall_height = *DEFAULT_WALL_HEIGHT.read().unwrap();

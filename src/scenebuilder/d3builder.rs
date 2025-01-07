@@ -104,7 +104,7 @@ impl SceneBuilder for D3Builder {
                     if let Some(linedef) = map.linedefs.get(linedef_id as usize) {
                         if let Some(start_vertex) = map.find_vertex(linedef.start_vertex) {
                             if let Some(end_vertex) = map.find_vertex(linedef.end_vertex) {
-                                if let Some(wall_texture_id) = &linedef.texture {
+                                if let Some(wall_texture_id) = &linedef.texture_row1 {
                                     Self::add_wall2(
                                         &start_vertex.as_vec2(),
                                         &end_vertex.as_vec2(),
@@ -112,6 +112,19 @@ impl SceneBuilder for D3Builder {
                                         wall_texture_id,
                                         linedef.texture_row2,
                                         linedef.texture_row3,
+                                        tiles,
+                                        &mut repeated_offsets,
+                                        &mut repeated_batches,
+                                        &mut textures,
+                                    );
+                                } else if let Some(wall_texture_id) = &sector.texture_row1 {
+                                    Self::add_wall2(
+                                        &start_vertex.as_vec2(),
+                                        &end_vertex.as_vec2(),
+                                        linedef.wall_height,
+                                        wall_texture_id,
+                                        sector.texture_row2,
+                                        sector.texture_row3,
                                         tiles,
                                         &mut repeated_offsets,
                                         &mut repeated_batches,
@@ -130,12 +143,14 @@ impl SceneBuilder for D3Builder {
             if linedef.front_sector.is_none() && linedef.back_sector.is_none() {
                 if let Some(start_vertex) = map.find_vertex(linedef.start_vertex) {
                     if let Some(end_vertex) = map.find_vertex(linedef.end_vertex) {
-                        if let Some(wall_texture_id) = &linedef.texture {
-                            Self::add_wall(
+                        if let Some(wall_texture_id) = &linedef.texture_row1 {
+                            Self::add_wall2(
                                 &start_vertex.as_vec2(),
                                 &end_vertex.as_vec2(),
                                 linedef.wall_height,
                                 wall_texture_id,
+                                linedef.texture_row2,
+                                linedef.texture_row3,
                                 tiles,
                                 &mut repeated_offsets,
                                 &mut repeated_batches,
@@ -236,6 +251,7 @@ impl SceneBuilder for D3Builder {
 
 trait D3BuilderUtils {
     #[allow(clippy::too_many_arguments)]
+    #[allow(dead_code)]
     fn add_wall(
         start_vertex: &Vec2<f32>,
         end_vertex: &Vec2<f32>,

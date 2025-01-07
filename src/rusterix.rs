@@ -1,4 +1,5 @@
 use crate::prelude::*;
+use crate::MapCamera;
 use vek::Vec2;
 
 pub enum ClientDrawMode {
@@ -14,7 +15,8 @@ pub struct Rusterix {
     pub server: Server,
     pub client: Client,
 
-    pub is_dirty: bool,
+    pub is_dirty_d2: bool,
+    pub is_dirty_d3: bool,
     pub draw_mode: ClientDrawMode,
 }
 
@@ -31,7 +33,8 @@ impl Rusterix {
             server: Server::default(),
             client: Client::default(),
 
-            is_dirty: true,
+            is_dirty_d2: true,
+            is_dirty_d3: true,
             draw_mode: ClientDrawMode::D3,
         }
     }
@@ -48,7 +51,8 @@ impl Rusterix {
 
     /// Set the dirty flag, i.e. scene needs to be rebuild.
     pub fn set_dirty(&mut self) {
-        self.is_dirty = true;
+        self.is_dirty_d2 = true;
+        self.is_dirty_d3 = true;
     }
 
     /// Set the assets
@@ -66,17 +70,19 @@ impl Rusterix {
 
     /// Build the client scene.
     pub fn build_scene(&mut self, screen_size: Vec2<f32>, map: &Map) {
-        if self.is_dirty {
-            match self.draw_mode {
-                D2 => {
-                    self.client.build_scene_d2(screen_size, map, &self.assets);
-                }
-                D3 => {
-                    self.client.build_scene_d3(map, &self.assets);
-                }
+        if map.camera == MapCamera::TwoD {
+            if self.is_dirty_d2 {
+                self.client.build_scene_d2(screen_size, map, &self.assets);
+                self.is_dirty_d2 = false;
             }
+            self.set_d2();
+        } else {
+            if self.is_dirty_d3 {
+                self.client.build_scene_d3(map, &self.assets);
+                self.is_dirty_d3 = false;
+            }
+            self.set_d3();
         }
-        self.is_dirty = false;
     }
 
     /// Draw the client scene.

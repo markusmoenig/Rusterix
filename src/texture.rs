@@ -238,4 +238,29 @@ impl Texture {
 
         result
     }
+
+    /// Returns a new Texture resized to the specified width and height using nearest-neighbor sampling.
+    pub fn resized(&self, new_width: usize, new_height: usize) -> Self {
+        let mut new_data = vec![0; new_width * new_height * 4];
+        let scale_x = self.width as f32 / new_width as f32;
+        let scale_y = self.height as f32 / new_height as f32;
+
+        for y in 0..new_height {
+            for x in 0..new_width {
+                let src_x = (x as f32 * scale_x).round() as usize;
+                let src_y = (y as f32 * scale_y).round() as usize;
+
+                let src_idx = (src_y * self.width + src_x) * 4;
+                let dst_idx = (y * new_width + x) * 4;
+
+                new_data[dst_idx..dst_idx + 4].copy_from_slice(&self.data[src_idx..src_idx + 4]);
+            }
+        }
+
+        Texture {
+            data: new_data,
+            width: new_width,
+            height: new_height,
+        }
+    }
 }

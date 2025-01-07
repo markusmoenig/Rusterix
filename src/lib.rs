@@ -63,7 +63,7 @@ pub use crate::{
     intodata::IntoDataInput,
     map::{
         light::Light, linedef::Linedef, meta::MapMeta, sector::Sector, tile::Tile, vertex::Vertex,
-        Map, MapToolType,
+        Map, MapCamera, MapToolType,
     },
     rasterizer::Rasterizer,
     rect::Rect,
