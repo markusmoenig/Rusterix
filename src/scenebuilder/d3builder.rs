@@ -1,7 +1,7 @@
 // use crate::PrimitiveMode::*;
 use crate::SceneBuilder;
 use crate::Texture;
-use crate::{Batch, D3Camera, Entity, Map, Scene, Tile};
+use crate::{Batch, D3Camera, Entity, Map, PixelSource, Scene, Tile, Value};
 use theframework::prelude::*;
 use vek::Vec2;
 
@@ -35,11 +35,20 @@ impl SceneBuilder for D3Builder {
         for sector in &map.sectors {
             if let Some((vertices, indices)) = sector.generate_geometry(map) {
                 // Generate floor geometry
-                if let Some(floor_texture_id) = &sector.floor_texture {
-                    if let Some(tile) = tiles.get(floor_texture_id) {
+                if let Some(Value::Source(PixelSource::TileId(id))) =
+                    &sector.properties.get("floor_source")
+                {
+                    if let Some(tile) = tiles.get(id) {
                         let floor_vertices = vertices
                             .iter()
-                            .map(|&v| [v[0], sector.floor_height, v[1], 1.0])
+                            .map(|&v| {
+                                [
+                                    v[0],
+                                    sector.properties.get_float_default("floor_height", 0.0),
+                                    v[1],
+                                    1.0,
+                                ]
+                            })
                             .collect();
 
                         let floor_uvs = vertices.iter().map(|&v| [v[0], v[1]]).collect();
@@ -104,27 +113,56 @@ impl SceneBuilder for D3Builder {
                     if let Some(linedef) = map.linedefs.get(linedef_id as usize) {
                         if let Some(start_vertex) = map.find_vertex(linedef.start_vertex) {
                             if let Some(end_vertex) = map.find_vertex(linedef.end_vertex) {
-                                if let Some(wall_texture_id) = &linedef.texture_row1 {
+                                if let Some(Value::Source(PixelSource::TileId(wall_texture_id))) =
+                                    &sector.properties.get("row1_source")
+                                {
                                     Self::add_wall2(
                                         &start_vertex.as_vec2(),
                                         &end_vertex.as_vec2(),
-                                        linedef.wall_height,
+                                        linedef.properties.get_float_default("wall_height", 0.0),
                                         wall_texture_id,
-                                        linedef.texture_row2,
-                                        linedef.texture_row3,
+                                        if let Some(Value::Source(PixelSource::TileId(id))) =
+                                            linedef.properties.get("row2_source")
+                                        {
+                                            Some(*id)
+                                        } else {
+                                            None
+                                        },
+                                        if let Some(Value::Source(PixelSource::TileId(id))) =
+                                            linedef.properties.get("row3_source")
+                                        {
+                                            Some(*id)
+                                        } else {
+                                            None
+                                        },
                                         tiles,
                                         &mut repeated_offsets,
                                         &mut repeated_batches,
                                         &mut textures,
                                     );
-                                } else if let Some(wall_texture_id) = &sector.texture_row1 {
+                                } else if let Some(Value::Source(PixelSource::TileId(
+                                    wall_texture_id,
+                                ))) = &sector.properties.get("row1_source")
+                                {
                                     Self::add_wall2(
                                         &start_vertex.as_vec2(),
                                         &end_vertex.as_vec2(),
-                                        linedef.wall_height,
+                                        linedef.properties.get_float_default("wall_height", 0.0),
                                         wall_texture_id,
-                                        sector.texture_row2,
-                                        sector.texture_row3,
+                                        if let Some(Value::Source(PixelSource::TileId(id))) =
+                                            sector.properties.get("row2_source")
+                                        {
+                                            Some(*id)
+                                        } else {
+                                            None
+                                        },
+                                        if let Some(Value::Source(PixelSource::TileId(id))) =
+                                            sector.properties.get("row3_source")
+                                        {
+                                            Some(*id)
+                                        } else {
+                                            None
+                                        },
                                         tiles,
                                         &mut repeated_offsets,
                                         &mut repeated_batches,
@@ -143,14 +181,28 @@ impl SceneBuilder for D3Builder {
             if linedef.front_sector.is_none() && linedef.back_sector.is_none() {
                 if let Some(start_vertex) = map.find_vertex(linedef.start_vertex) {
                     if let Some(end_vertex) = map.find_vertex(linedef.end_vertex) {
-                        if let Some(wall_texture_id) = &linedef.texture_row1 {
+                        if let Some(Value::Source(PixelSource::TileId(wall_texture_id))) =
+                            &linedef.properties.get("row1_source")
+                        {
                             Self::add_wall2(
                                 &start_vertex.as_vec2(),
                                 &end_vertex.as_vec2(),
-                                linedef.wall_height,
+                                linedef.properties.get_float_default("wall_height", 0.0),
                                 wall_texture_id,
-                                linedef.texture_row2,
-                                linedef.texture_row3,
+                                if let Some(Value::Source(PixelSource::TileId(id))) =
+                                    linedef.properties.get("row2_source")
+                                {
+                                    Some(*id)
+                                } else {
+                                    None
+                                },
+                                if let Some(Value::Source(PixelSource::TileId(id))) =
+                                    linedef.properties.get("row3_source")
+                                {
+                                    Some(*id)
+                                } else {
+                                    None
+                                },
                                 tiles,
                                 &mut repeated_offsets,
                                 &mut repeated_batches,

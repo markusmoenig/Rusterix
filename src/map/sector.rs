@@ -1,46 +1,38 @@
-use crate::Map;
+use crate::{Map, Value, ValueContainer};
 use earcutr::earcut;
 use theframework::prelude::*;
 
-#[derive(Serialize, Deserialize, PartialEq, Clone, Debug)]
+use super::pixelsource::PixelSource;
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Sector {
     pub id: u32,
     #[serde(default)]
     pub name: String,
     pub linedefs: Vec<u32>,
-    pub floor_height: f32,
-    pub ceiling_height: f32,
-    pub floor_texture: Option<Uuid>,
-    pub ceiling_texture: Option<Uuid>,
-    pub floor_material: Option<u8>,
-    pub ceiling_material: Option<u8>,
-    pub texture_row1: Option<Uuid>,
-    pub texture_row2: Option<Uuid>,
-    pub texture_row3: Option<Uuid>,
-    pub material_row1: Option<u8>,
-    pub material_row2: Option<u8>,
-    pub material_row3: Option<u8>,
+
+    #[serde(default)]
+    pub properties: ValueContainer,
+
     pub neighbours: Vec<u32>,
 }
 
 impl Sector {
     pub fn new(id: u32, linedefs: Vec<u32>) -> Self {
+        let mut properties = ValueContainer::default();
+        properties.set("floor_height", Value::Float(0.0));
+        properties.set("ceiling_height", Value::Float(0.0));
+        properties.set("floor_source", Value::Source(PixelSource::Off));
+        properties.set("ceiling_source", Value::Source(PixelSource::Off));
+        properties.set("row1_source", Value::Source(PixelSource::Off));
+        properties.set("row2_source", Value::Source(PixelSource::Off));
+        properties.set("row3_source", Value::Source(PixelSource::Off));
+
         Self {
             id,
             name: String::new(),
             linedefs,
-            floor_height: 0.0,
-            ceiling_height: 0.0,
-            floor_texture: None,
-            ceiling_texture: None,
-            floor_material: None,
-            ceiling_material: None,
-            texture_row1: None,
-            texture_row2: None,
-            texture_row3: None,
-            material_row1: None,
-            material_row2: None,
-            material_row3: None,
+            properties,
             neighbours: vec![],
         }
     }
@@ -77,12 +69,13 @@ impl Sector {
     }
 
     /// Sets the wall height for all linedefs in the sector.
-    pub fn set_wall_height(&self, map: &mut Map, height: f32) {
-        for &linedef_id in &self.linedefs {
-            if let Some(linedef) = map.linedefs.iter_mut().find(|l| l.id == linedef_id) {
-                linedef.wall_height = height;
-            }
-        }
+    pub fn set_wall_height(&mut self, _map: &mut Map, height: f32) {
+        self.properties.set("wall_height", Value::Float(height));
+        // for &linedef_id in &self.linedefs {
+        //     if let Some(linedef) = map.linedefs.iter_mut().find(|l| l.id == linedef_id) {
+        //         linedef.wall_height = height;
+        //     }
+        // }
     }
 
     /// Generate geometry (vertices and indices) for the polygon using earcutr

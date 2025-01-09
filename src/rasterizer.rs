@@ -215,7 +215,20 @@ impl Rasterizer {
                             // Rasterize the triangle within its bounding box
                             for ty in min_y..max_y {
                                 for tx in min_x..max_x {
-                                    let p = [tx as f32 + 0.5, ty as f32 + 0.5];
+                                    let mut p = [tx as f32 + 0.5, ty as f32 + 0.5];
+
+                                    // Wrap coordinates if they are out of bounds
+                                    if p[0] >= (tile.x + tile.width) as f32 {
+                                        p[0] -= tile.width as f32;
+                                    } else if p[0] < tile.x as f32 {
+                                        p[0] += tile.width as f32;
+                                    }
+
+                                    if p[1] >= (tile.y + tile.height) as f32 {
+                                        p[1] -= tile.height as f32;
+                                    } else if p[1] < tile.y as f32 {
+                                        p[1] += tile.height as f32;
+                                    }
 
                                     // Evaluate the edges
                                     if edges.visible && edges.evaluate(p) {

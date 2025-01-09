@@ -1,3 +1,4 @@
+pub mod d2material;
 pub mod d2preview;
 pub mod d3builder;
 
@@ -19,7 +20,9 @@ pub trait SceneBuilder: Send + Sync {
         atlas: Texture,
         screen_size: Vec2<f32>,
         camera_id: &str,
-    ) -> Scene;
+    ) -> Scene {
+        Scene::default()
+    }
 
     /// Apply dynamic elements to the scene.
     fn build_entities_d3(
@@ -30,6 +33,9 @@ pub trait SceneBuilder: Send + Sync {
         scene: &mut Scene,
     ) {
     }
+
+    /// Build the (material) map into a texture
+    fn build_texture(&self, map: &Map, tiles: &FxHashMap<Uuid, Tile>, texture: &mut Texture) {}
 
     /// Convert a map grid position to screen coordinates
     fn map_grid_to_local(

@@ -130,6 +130,64 @@ impl Batch<[f32; 3]> {
         }
     }
 
+    /// Add a set of geometry to the batch with wrapping (to create tilable textures).
+    pub fn add_wrapped(
+        &mut self,
+        vertices: Vec<[f32; 3]>,
+        indices: Vec<(usize, usize, usize)>,
+        uvs: Vec<[f32; 2]>,
+        wrap_size: f32,
+    ) {
+        // Helper function to wrap a vertex
+        let wrap_vertex = |v: [f32; 3], offset: [f32; 2]| -> [f32; 3] {
+            [
+                v[0] + offset[0] * wrap_size,
+                v[1] + offset[1] * wrap_size,
+                v[2], // Keep z-coordinate unchanged
+            ]
+        };
+
+        // Offsets for wrapping in 2D space
+        let offsets = [
+            [0.0, 0.0],   // Original polygon
+            [1.0, 0.0],   // Wrap to the right
+            [-1.0, 0.0],  // Wrap to the left
+            [0.0, 1.0],   // Wrap to the top
+            [0.0, -1.0],  // Wrap to the bottom
+            [1.0, 1.0],   // Wrap top-right
+            [-1.0, 1.0],  // Wrap top-left
+            [1.0, -1.0],  // Wrap bottom-right
+            [-1.0, -1.0], // Wrap bottom-left
+        ];
+
+        let mut all_wrapped_vertices = vec![];
+        let mut all_wrapped_uvs = vec![];
+        let mut all_wrapped_indices = vec![];
+
+        for offset in offsets.iter() {
+            // Wrap vertices for the current offset
+            let wrapped_vertices: Vec<[f32; 3]> =
+                vertices.iter().map(|&v| wrap_vertex(v, *offset)).collect();
+
+            // Offset indices for the current set of wrapped vertices
+            let base_index = all_wrapped_vertices.len();
+            let wrapped_indices: Vec<(usize, usize, usize)> = indices
+                .iter()
+                .map(|&(i0, i1, i2)| (i0 + base_index, i1 + base_index, i2 + base_index))
+                .collect();
+
+            // Collect all wrapped data
+            all_wrapped_vertices.extend(wrapped_vertices);
+            all_wrapped_uvs.extend(uvs.clone());
+            all_wrapped_indices.extend(wrapped_indices);
+        }
+
+        // Add all wrapped vertices, UVs, and indices to the batch
+        self.vertices.extend(all_wrapped_vertices);
+        self.uvs.extend(all_wrapped_uvs);
+        self.indices.extend(all_wrapped_indices);
+    }
+
     /// Append a line to the existing batch
     pub fn add_line(&mut self, start: Vec2<f32>, end: Vec2<f32>, thickness: f32) {
         let start = [start.x, start.y];
@@ -180,6 +238,41 @@ impl Batch<[f32; 3]> {
                 (base_index, base_index + 1, base_index + 2),
                 (base_index, base_index + 2, base_index + 3),
             ]);
+        }
+    }
+
+    pub fn add_wrapped_line(
+        &mut self,
+        start: Vec2<f32>,
+        end: Vec2<f32>,
+        thickness: f32,
+        wrap_size: f32,
+    ) {
+        // Helper function to wrap a point
+        let wrap_point = |p: Vec2<f32>, offset: [f32; 2]| -> Vec2<f32> {
+            Vec2::new(p.x + offset[0] * wrap_size, p.y + offset[1] * wrap_size)
+        };
+
+        // Offsets for wrapping in 2D space
+        let offsets = [
+            [0.0, 0.0],   // Original line
+            [1.0, 0.0],   // Wrap to the right
+            [-1.0, 0.0],  // Wrap to the left
+            [0.0, 1.0],   // Wrap to the top
+            [0.0, -1.0],  // Wrap to the bottom
+            [1.0, 1.0],   // Wrap top-right
+            [-1.0, 1.0],  // Wrap top-left
+            [1.0, -1.0],  // Wrap bottom-right
+            [-1.0, -1.0], // Wrap bottom-left
+        ];
+
+        for offset in offsets.iter() {
+            // Wrap start and end points
+            let wrapped_start = wrap_point(start, *offset);
+            let wrapped_end = wrap_point(end, *offset);
+
+            // Add the wrapped line using the standard add_line logic
+            self.add_line(wrapped_start, wrapped_end, thickness);
         }
     }
 

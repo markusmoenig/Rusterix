@@ -1,7 +1,9 @@
 // use crate::PrimitiveMode::*;
 use crate::SceneBuilder;
 use crate::Texture;
-use crate::{Batch, GridShader, Map, MapToolType, Pixel, Scene, Shader, Tile, WHITE};
+use crate::{
+    Batch, GridShader, Map, MapToolType, Pixel, PixelSource, Scene, Shader, Tile, Value, WHITE,
+};
 use theframework::prelude::*;
 use vek::Vec2;
 
@@ -87,8 +89,10 @@ impl SceneBuilder for D2PreviewBuilder {
 
                     let repeat = true;
 
-                    if let Some(floor_texture_id) = &sector.floor_texture {
-                        if let Some(tile) = tiles.get(floor_texture_id) {
+                    if let Some(Value::Source(PixelSource::TileId(id))) =
+                        &sector.properties.get("floor_source")
+                    {
+                        if let Some(tile) = tiles.get(id) {
                             for vertex in &geo.0 {
                                 let local = self.map_grid_to_local(
                                     screen_size,

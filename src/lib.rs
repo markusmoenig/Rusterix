@@ -62,14 +62,14 @@ pub use crate::{
     edge::Edges,
     intodata::IntoDataInput,
     map::{
-        light::Light, linedef::Linedef, meta::MapMeta, sector::Sector, tile::Tile, vertex::Vertex,
-        Map, MapCamera, MapToolType,
+        light::Light, linedef::Linedef, meta::MapMeta, pixelsource::PixelSource, sector::Sector,
+        tile::Tile, vertex::Vertex, Map, MapCamera, MapToolType,
     },
     rasterizer::Rasterizer,
     rect::Rect,
     rusterix::Rusterix,
     scene::Scene,
-    scenebuilder::{d2preview::D2PreviewBuilder, SceneBuilder},
+    scenebuilder::{d2material::D2MaterialBuilder, d2preview::D2PreviewBuilder, SceneBuilder},
     script::mapscript::MapScript,
     server::{
         assets::Assets, entity::Entity, entity::EntityUpdate, message::EntityAction,
@@ -77,13 +77,14 @@ pub use crate::{
     },
     shader::{grid::GridShader, vgradient::VGrayGradientShader, Shader},
     texture::{RepeatMode, SampleMode, Texture},
-    value::Value,
+    value::{Value, ValueContainer},
 };
 
 // Prelude
 pub mod prelude {
     pub use crate::scenebuilder::{
-        d2preview::D2PreviewBuilder, d3builder::D3Builder, SceneBuilder,
+        d2material::D2MaterialBuilder, d2preview::D2PreviewBuilder, d3builder::D3Builder,
+        SceneBuilder,
     };
     pub use crate::Client;
     pub use crate::IntoDataInput;
@@ -94,8 +95,8 @@ pub mod prelude {
     pub use crate::{Batch, CullMode, PrimitiveMode};
     pub use crate::{D3Camera, D3FirstPCamera, D3IsoCamera, D3OrbitCamera};
     pub use crate::{GridShader, Shader, VGrayGradientShader};
-    pub use crate::{Light, Linedef, Map, MapMeta, MapToolType, Sector, Tile, Vertex};
+    pub use crate::{Light, Linedef, Map, MapMeta, MapToolType, PixelSource, Sector, Tile, Vertex};
     pub use crate::{Pixel, BLACK, TRANSPARENT, WHITE};
-    pub use crate::{Rect, Scene, Value};
+    pub use crate::{Rect, Scene, Value, ValueContainer};
     pub use crate::{RepeatMode, SampleMode, Texture};
 }

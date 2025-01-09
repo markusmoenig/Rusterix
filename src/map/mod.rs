@@ -1,6 +1,7 @@
 pub mod light;
 pub mod linedef;
 pub mod meta;
+pub mod pixelsource;
 pub mod sector;
 pub mod tile;
 pub mod vertex;

@@ -68,7 +68,7 @@ impl Rusterix {
         }
     }
 
-    /// Build the client scene.
+    /// Build the client scene based on the maps camera mode.
     pub fn build_scene(&mut self, screen_size: Vec2<f32>, map: &Map) {
         if map.camera == MapCamera::TwoD {
             if self.is_dirty_d2 {
@@ -83,6 +83,15 @@ impl Rusterix {
             }
             self.set_d3();
         }
+    }
+
+    /// Build the client scene in D3.
+    pub fn build_scene_d3(&mut self, map: &Map) {
+        if self.is_dirty_d3 {
+            self.client.build_scene_d3(map, &self.assets);
+            self.is_dirty_d3 = false;
+        }
+        self.set_d3();
     }
 
     /// Draw the client scene.

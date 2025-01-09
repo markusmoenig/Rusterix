@@ -1,5 +1,5 @@
 use crate::script::ParseError;
-use crate::{Entity, Light, Map, MapMeta, Texture, Tile, Value};
+use crate::{Entity, Light, Map, MapMeta, PixelSource, Texture, Tile, Value};
 use rustpython::vm;
 use rustpython::vm::*;
 use std::sync::{LazyLock, RwLock};
@@ -233,7 +233,9 @@ fn set(key: PyObjectRef, value: PyObjectRef, vm: &VirtualMachine) -> PyResult<()
                     if let Some(sectori_id) = CURSORSTATE.read().unwrap().last_sector {
                         let mut map = MAP.write().unwrap();
                         if let Some(sector) = map.find_sector_mut(sectori_id) {
-                            sector.floor_texture = Some(id);
+                            sector
+                                .properties
+                                .set("floor_source", Value::Source(PixelSource::TileId(id)));
                         }
                         Ok(())
                     } else {
@@ -252,7 +254,9 @@ fn set(key: PyObjectRef, value: PyObjectRef, vm: &VirtualMachine) -> PyResult<()
                     if let Some(wall_id) = CURSORSTATE.read().unwrap().last_wall {
                         let mut map = MAP.write().unwrap();
                         if let Some(linedef) = map.find_linedef_mut(wall_id) {
-                            linedef.texture_row1 = Some(id);
+                            linedef
+                                .properties
+                                .set("row1_source", Value::Source(PixelSource::TileId(id)));
                         }
                         Ok(())
                     } else {
@@ -271,7 +275,9 @@ fn set(key: PyObjectRef, value: PyObjectRef, vm: &VirtualMachine) -> PyResult<()
                     if let Some(wall_id) = CURSORSTATE.read().unwrap().last_wall {
                         let mut map = MAP.write().unwrap();
                         if let Some(linedef) = map.find_linedef_mut(wall_id) {
-                            linedef.texture_row2 = Some(id);
+                            linedef
+                                .properties
+                                .set("row2_source", Value::Source(PixelSource::TileId(id)));
                         }
                         Ok(())
                     } else {
@@ -290,7 +296,9 @@ fn set(key: PyObjectRef, value: PyObjectRef, vm: &VirtualMachine) -> PyResult<()
                     if let Some(wall_id) = CURSORSTATE.read().unwrap().last_wall {
                         let mut map = MAP.write().unwrap();
                         if let Some(linedef) = map.find_linedef_mut(wall_id) {
-                            linedef.texture_row3 = Some(id);
+                            linedef
+                                .properties
+                                .set("row3_source", Value::Source(PixelSource::TileId(id)));
                         }
                         Ok(())
                     } else {
@@ -316,7 +324,7 @@ fn set(key: PyObjectRef, value: PyObjectRef, vm: &VirtualMachine) -> PyResult<()
                     } else {
                         0.0
                     };
-                    linedef.wall_height = height;
+                    linedef.properties.set("wall_height", Value::Float(height));
                 }
                 Ok(())
             } else {
@@ -336,7 +344,7 @@ fn set(key: PyObjectRef, value: PyObjectRef, vm: &VirtualMachine) -> PyResult<()
                     } else {
                         0.0
                     };
-                    linedef.wall_width = height;
+                    linedef.properties.set("wall_width", Value::Float(height));
                 }
                 Ok(())
             } else {
@@ -349,7 +357,9 @@ fn set(key: PyObjectRef, value: PyObjectRef, vm: &VirtualMachine) -> PyResult<()
                     if let Some(sectori_id) = CURSORSTATE.read().unwrap().last_sector {
                         let mut map = MAP.write().unwrap();
                         if let Some(sector) = map.find_sector_mut(sectori_id) {
-                            sector.ceiling_texture = Some(id);
+                            sector
+                                .properties
+                                .set("ceiling_source", Value::Source(PixelSource::TileId(id)));
                         }
                         Ok(())
                     } else {
@@ -394,17 +404,87 @@ fn wall(value: PyObjectRef, vm: &VirtualMachine) -> PyResult<()> {
     let (linedef_id, sector_id) = map.create_linedef(from_index, to_index);
 
     if let Some(linedef) = map.find_linedef_mut(linedef_id) {
-        linedef.texture_row1 = *DEFAULT_WALL_TEXTURE.read().unwrap();
-        linedef.texture_row2 = *DEFAULT_WALL_TEXTURE_ROW2.read().unwrap();
-        linedef.texture_row3 = *DEFAULT_WALL_TEXTURE_ROW3.read().unwrap();
-        linedef.wall_height = *DEFAULT_WALL_HEIGHT.read().unwrap();
+        linedef.properties.set(
+            "row1_source",
+            Value::Source(if let Some(id) = *DEFAULT_WALL_TEXTURE.read().unwrap() {
+                PixelSource::TileId(id)
+            } else {
+                PixelSource::Off
+            }),
+        );
+        linedef.properties.set(
+            "row2_source",
+            Value::Source(
+                if let Some(id) = *DEFAULT_WALL_TEXTURE_ROW2.read().unwrap() {
+                    PixelSource::TileId(id)
+                } else {
+                    PixelSource::Off
+                },
+            ),
+        );
+        linedef.properties.set(
+            "row3_source",
+            Value::Source(
+                if let Some(id) = *DEFAULT_WALL_TEXTURE_ROW3.read().unwrap() {
+                    PixelSource::TileId(id)
+                } else {
+                    PixelSource::Off
+                },
+            ),
+        );
+        linedef.properties.set(
+            "wall_height",
+            Value::Float(*DEFAULT_WALL_HEIGHT.read().unwrap()),
+        );
         state.last_wall = Some(linedef.id);
     }
 
     if let Some(sector_id) = sector_id {
         if let Some(sector) = map.find_sector_mut(sector_id) {
-            sector.floor_texture = *DEFAULT_FLOOR_TEXTURE.read().unwrap();
-            sector.ceiling_texture = *DEFAULT_CEILING_TEXTURE.read().unwrap();
+            sector.properties.set(
+                "floor_source",
+                Value::Source(if let Some(id) = *DEFAULT_FLOOR_TEXTURE.read().unwrap() {
+                    PixelSource::TileId(id)
+                } else {
+                    PixelSource::Off
+                }),
+            );
+            sector.properties.set(
+                "ceiling_source",
+                Value::Source(if let Some(id) = *DEFAULT_CEILING_TEXTURE.read().unwrap() {
+                    PixelSource::TileId(id)
+                } else {
+                    PixelSource::Off
+                }),
+            );
+            sector.properties.set(
+                "row1_source",
+                Value::Source(if let Some(id) = *DEFAULT_WALL_TEXTURE.read().unwrap() {
+                    PixelSource::TileId(id)
+                } else {
+                    PixelSource::Off
+                }),
+            );
+            sector.properties.set(
+                "row2_source",
+                Value::Source(
+                    if let Some(id) = *DEFAULT_WALL_TEXTURE_ROW2.read().unwrap() {
+                        PixelSource::TileId(id)
+                    } else {
+                        PixelSource::Off
+                    },
+                ),
+            );
+            sector.properties.set(
+                "row3_source",
+                Value::Source(
+                    if let Some(id) = *DEFAULT_WALL_TEXTURE_ROW3.read().unwrap() {
+                        PixelSource::TileId(id)
+                    } else {
+                        PixelSource::Off
+                    },
+                ),
+            );
         }
         state.last_sector = Some(sector_id);
     }

@@ -1,7 +1,7 @@
-use crate::Map;
+use crate::{Map, PixelSource, Value, ValueContainer};
 use theframework::prelude::*;
 
-#[derive(Serialize, Deserialize, PartialEq, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Linedef {
     pub id: u32,
     #[serde(default)]
@@ -10,18 +10,19 @@ pub struct Linedef {
     pub end_vertex: u32,
     pub front_sector: Option<u32>,
     pub back_sector: Option<u32>,
-    pub texture_row1: Option<Uuid>,
-    pub texture_row2: Option<Uuid>,
-    pub texture_row3: Option<Uuid>,
-    pub material_row1: Option<u8>,
-    pub material_row2: Option<u8>,
-    pub material_row3: Option<u8>,
-    pub wall_width: f32,
-    pub wall_height: f32,
+
+    #[serde(default)]
+    pub properties: ValueContainer,
 }
 
 impl Linedef {
     pub fn new(id: u32, start_vertex: u32, end_vertex: u32) -> Self {
+        let mut properties = ValueContainer::default();
+        properties.set("wall_width", Value::Float(0.0));
+        properties.set("wall_height", Value::Float(0.0));
+        properties.set("row1_source", Value::Source(PixelSource::Off));
+        properties.set("row2_source", Value::Source(PixelSource::Off));
+        properties.set("row3_source", Value::Source(PixelSource::Off));
         Self {
             id,
             name: String::new(),
@@ -29,14 +30,8 @@ impl Linedef {
             end_vertex,
             front_sector: None,
             back_sector: None,
-            texture_row1: None,
-            texture_row2: None,
-            texture_row3: None,
-            material_row1: None,
-            material_row2: None,
-            material_row3: None,
-            wall_width: 0.0,
-            wall_height: 0.0,
+
+            properties,
         }
     }
 
@@ -146,9 +141,11 @@ impl Linedef {
         let dir_x = dx / length;
         let dir_y = dy / length;
 
+        let wall_width = self.properties.get_float_default("wall_width", 0.0);
+
         // Perpendicular vector (for wall width offset)
-        let perp_x = -dir_y * self.wall_width * 0.5;
-        let perp_y = dir_x * self.wall_width * 0.5;
+        let perp_x = -dir_y * wall_width * 0.5;
+        let perp_y = dir_x * wall_width * 0.5;
 
         // Compute the four corners of the 2D wall rectangle
         let bottom_left = [start_vertex.x + perp_x, start_vertex.y + perp_y, 0.0];
@@ -161,10 +158,10 @@ impl Linedef {
 
         // Generate UVs for texture mapping (proportional to the wall dimensions)
         let uvs: Vec<Vec2<f32>> = vec![
-            Vec2::new(0.0, 0.0),                // bottom_left
-            Vec2::new(0.0, self.wall_width),    // top_left
-            Vec2::new(length, 0.0),             // bottom_right
-            Vec2::new(length, self.wall_width), // top_right
+            Vec2::new(0.0, 0.0),           // bottom_left
+            Vec2::new(0.0, wall_width),    // top_left
+            Vec2::new(length, 0.0),        // bottom_right
+            Vec2::new(length, wall_width), // top_right
         ];
 
         // Indices for the two triangles forming the rectangle
