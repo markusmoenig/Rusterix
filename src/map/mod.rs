@@ -159,10 +159,12 @@ impl Map {
         Some(Vec4::new(min_x, min_y, width, height))
     }
 
-    //
+    // Add the vertex (and snap it to the subdivsion grid)
     pub fn add_vertex_at(&mut self, mut x: f32, mut y: f32) -> u32 {
-        x = (x / self.subdivisions).round() * self.subdivisions;
-        y = (y / self.subdivisions).round() * self.subdivisions;
+        let subdivisions = 1.0 / self.subdivisions;
+
+        x = (x / subdivisions).round() * subdivisions;
+        y = (y / subdivisions).round() * subdivisions;
 
         // Check if the vertex already exists
         if let Some(id) = self.find_vertex_at(x, y) {

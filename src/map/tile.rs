@@ -11,7 +11,7 @@ pub struct Tile {
 
 impl Tile {
     pub fn from_texture(name: &str, texture: Texture) -> Self {
-        let uv = vek::Vec4::new(0, 0, texture.width as i32, texture.height as i32);
+        let uv = Vec4::new(0, 0, texture.width as i32, texture.height as i32);
         Self {
             id: Uuid::new_v4(),
             name: name.to_string(),

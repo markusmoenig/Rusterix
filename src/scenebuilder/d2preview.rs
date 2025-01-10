@@ -16,9 +16,12 @@ pub struct D2PreviewBuilder {
     pub hover: (Option<u32>, Option<u32>, Option<u32>),
     /// The current grid hover position
     pub hover_cursor: Option<Vec2<f32>>,
-    /// Camera
+    /// Camera Position
     pub camera_pos: Option<vek::Vec3<f32>>,
+    /// Camera Center
     pub look_at: vek::Vec3<f32>,
+    /// Material Mode
+    pub material_mode: bool,
 }
 
 impl SceneBuilder for D2PreviewBuilder {
@@ -32,6 +35,8 @@ impl SceneBuilder for D2PreviewBuilder {
 
             camera_pos: None,
             look_at: vek::Vec3::zero(),
+
+            material_mode: false,
         }
     }
 
@@ -46,6 +51,17 @@ impl SceneBuilder for D2PreviewBuilder {
         let mut scene = Scene::empty();
         let mut grid_shader = GridShader::new();
         let atlas_size = atlas.width as f32;
+
+        let get_tile = |value: Option<&Value>| -> Option<Tile> {
+            match value {
+                Some(Value::Source(PixelSource::TileId(id))) => tiles.get(id).cloned(),
+                Some(Value::Source(PixelSource::Color(color))) => {
+                    let texture = Texture::from_color(color.to_u8_array());
+                    Some(Tile::from_texture("", texture))
+                }
+                _ => None,
+            }
+        };
 
         let mut textures = vec![
             atlas,
@@ -64,6 +80,22 @@ impl SceneBuilder for D2PreviewBuilder {
         let mut yellow_batch = Batch::emptyd2().texture_index(3);
         let mut red_batch = Batch::emptyd2().texture_index(4);
         let mut gray_batch = Batch::emptyd2().texture_index(5);
+        let mut gray_batch_lines = Batch::emptyd2()
+            .texture_index(5)
+            .color([128, 128, 128, 255])
+            .mode(crate::PrimitiveMode::Lines);
+
+        // Add the material clipping area
+        if self.material_mode {
+            let tl = self.map_grid_to_local(screen_size, Vec2::new(-5.0, -5.0), map);
+            let tr = self.map_grid_to_local(screen_size, Vec2::new(5.0, -5.0), map);
+            let bl = self.map_grid_to_local(screen_size, Vec2::new(-5.0, 5.0), map);
+            let br = self.map_grid_to_local(screen_size, Vec2::new(5.0, 5.0), map);
+            gray_batch_lines.add_line(tl, tr, 1.0);
+            gray_batch_lines.add_line(tl, bl, 1.0);
+            gray_batch_lines.add_line(tr, br, 1.0);
+            gray_batch_lines.add_line(bl, br, 1.0);
+        }
 
         // Repeated tile textures have their own batches
         let mut repeated_batches: Vec<Batch<[f32; 3]>> = vec![];
@@ -89,61 +121,58 @@ impl SceneBuilder for D2PreviewBuilder {
 
                     let repeat = true;
 
-                    if let Some(Value::Source(PixelSource::TileId(id))) =
-                        &sector.properties.get("floor_source")
-                    {
-                        if let Some(tile) = tiles.get(id) {
-                            for vertex in &geo.0 {
-                                let local = self.map_grid_to_local(
-                                    screen_size,
-                                    Vec2::new(vertex[0], vertex[1]),
-                                    map,
-                                );
+                    let tile: Option<Tile> = get_tile(sector.properties.get("floor_source"));
+                    if let Some(tile) = tile {
+                        for vertex in &geo.0 {
+                            let local = self.map_grid_to_local(
+                                screen_size,
+                                Vec2::new(vertex[0], vertex[1]),
+                                map,
+                            );
 
-                                let index = 0;
+                            let index = 0;
 
-                                if !repeat {
-                                    let uv = [
-                                        (tile.uvs[index].x as f32
-                                            + ((vertex[0] - bbox.0.x) / (bbox.1.x - bbox.0.x)
-                                                * tile.uvs[index].z as f32))
-                                            / atlas_size,
-                                        ((tile.uvs[index].y as f32
-                                            + (vertex[1] - bbox.0.y) / (bbox.1.y - bbox.0.y)
-                                                * tile.uvs[index].w as f32)
-                                            / atlas_size),
-                                    ];
-                                    uvs.push(uv);
-                                } else {
-                                    let texture_scale = 1.0;
-                                    let uv = [
-                                        (vertex[0] - bbox.0.x) / texture_scale,
-                                        (vertex[1] - bbox.0.y) / texture_scale,
-                                    ];
-                                    uvs.push(uv);
-                                }
-                                vertices.push([local.x, local.y, 1.0]);
-                            }
-
-                            if repeat {
-                                if let Some(offset) = repeated_offsets.get(&tile.id) {
-                                    repeated_batches[*offset].add(vertices, geo.1, uvs);
-                                } else {
-                                    let texture_index = textures.len();
-
-                                    let mut batch = Batch::emptyd2()
-                                        .repeat_mode(crate::RepeatMode::RepeatXY)
-                                        .texture_index(texture_index);
-
-                                    batch.add(vertices, geo.1, uvs);
-
-                                    textures.push(tile.textures[0].clone());
-                                    repeated_offsets.insert(tile.id, repeated_batches.len());
-                                    repeated_batches.push(batch);
-                                }
+                            if !repeat {
+                                let uv = [
+                                    (tile.uvs[index].x as f32
+                                        + ((vertex[0] - bbox.0.x) / (bbox.1.x - bbox.0.x)
+                                            * tile.uvs[index].z as f32))
+                                        / atlas_size,
+                                    ((tile.uvs[index].y as f32
+                                        + (vertex[1] - bbox.0.y) / (bbox.1.y - bbox.0.y)
+                                            * tile.uvs[index].w as f32)
+                                        / atlas_size),
+                                ];
+                                uvs.push(uv);
                             } else {
-                                atlas_batch.add(vertices, geo.1, uvs);
+                                let texture_scale = 1.0;
+                                let uv = [
+                                    (vertex[0] - bbox.0.x) / texture_scale,
+                                    (vertex[1] - bbox.0.y) / texture_scale,
+                                ];
+                                uvs.push(uv);
                             }
+                            vertices.push([local.x, local.y, 1.0]);
+                        }
+
+                        if repeat {
+                            if let Some(offset) = repeated_offsets.get(&tile.id) {
+                                repeated_batches[*offset].add(vertices, geo.1, uvs);
+                            } else {
+                                let texture_index = textures.len();
+
+                                let mut batch = Batch::emptyd2()
+                                    .repeat_mode(crate::RepeatMode::RepeatXY)
+                                    .texture_index(texture_index);
+
+                                batch.add(vertices, geo.1, uvs);
+
+                                textures.push(tile.textures[0].clone());
+                                repeated_offsets.insert(tile.id, repeated_batches.len());
+                                repeated_batches.push(batch);
+                            }
+                        } else {
+                            atlas_batch.add(vertices, geo.1, uvs);
                         }
                     }
                 }
@@ -254,6 +283,7 @@ impl SceneBuilder for D2PreviewBuilder {
             yellow_batch,
             red_batch,
             gray_batch,
+            gray_batch_lines,
         ]);
 
         scene.d2 = batches;
@@ -277,5 +307,9 @@ impl SceneBuilder for D2PreviewBuilder {
     fn set_camera_info(&mut self, pos: Option<vek::Vec3<f32>>, look_at: vek::Vec3<f32>) {
         self.camera_pos = pos;
         self.look_at = look_at;
+    }
+
+    fn set_material_mode(&mut self, material_mode: bool) {
+        self.material_mode = material_mode;
     }
 }

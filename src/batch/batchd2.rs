@@ -138,26 +138,24 @@ impl Batch<[f32; 3]> {
         uvs: Vec<[f32; 2]>,
         wrap_size: f32,
     ) {
-        // Helper function to wrap a vertex
         let wrap_vertex = |v: [f32; 3], offset: [f32; 2]| -> [f32; 3] {
             [
                 v[0] + offset[0] * wrap_size,
                 v[1] + offset[1] * wrap_size,
-                v[2], // Keep z-coordinate unchanged
+                v[2],
             ]
         };
 
-        // Offsets for wrapping in 2D space
         let offsets = [
-            [0.0, 0.0],   // Original polygon
-            [1.0, 0.0],   // Wrap to the right
-            [-1.0, 0.0],  // Wrap to the left
-            [0.0, 1.0],   // Wrap to the top
-            [0.0, -1.0],  // Wrap to the bottom
-            [1.0, 1.0],   // Wrap top-right
-            [-1.0, 1.0],  // Wrap top-left
-            [1.0, -1.0],  // Wrap bottom-right
-            [-1.0, -1.0], // Wrap bottom-left
+            [0.0, 0.0],
+            [1.0, 0.0],
+            [-1.0, 0.0],
+            [0.0, 1.0],
+            [0.0, -1.0],
+            [1.0, 1.0],
+            [-1.0, 1.0],
+            [1.0, -1.0],
+            [-1.0, -1.0],
         ];
 
         let mut all_wrapped_vertices = vec![];
@@ -165,7 +163,6 @@ impl Batch<[f32; 3]> {
         let mut all_wrapped_indices = vec![];
 
         for offset in offsets.iter() {
-            // Wrap vertices for the current offset
             let wrapped_vertices: Vec<[f32; 3]> =
                 vertices.iter().map(|&v| wrap_vertex(v, *offset)).collect();
 
@@ -241,6 +238,7 @@ impl Batch<[f32; 3]> {
         }
     }
 
+    /// Add a line which wraps around the wrap_size parameter
     pub fn add_wrapped_line(
         &mut self,
         start: Vec2<f32>,
@@ -248,22 +246,20 @@ impl Batch<[f32; 3]> {
         thickness: f32,
         wrap_size: f32,
     ) {
-        // Helper function to wrap a point
         let wrap_point = |p: Vec2<f32>, offset: [f32; 2]| -> Vec2<f32> {
             Vec2::new(p.x + offset[0] * wrap_size, p.y + offset[1] * wrap_size)
         };
 
-        // Offsets for wrapping in 2D space
         let offsets = [
-            [0.0, 0.0],   // Original line
-            [1.0, 0.0],   // Wrap to the right
-            [-1.0, 0.0],  // Wrap to the left
-            [0.0, 1.0],   // Wrap to the top
-            [0.0, -1.0],  // Wrap to the bottom
-            [1.0, 1.0],   // Wrap top-right
-            [-1.0, 1.0],  // Wrap top-left
-            [1.0, -1.0],  // Wrap bottom-right
-            [-1.0, -1.0], // Wrap bottom-left
+            [0.0, 0.0],
+            [1.0, 0.0],
+            [-1.0, 0.0],
+            [0.0, 1.0],
+            [0.0, -1.0],
+            [1.0, 1.0],
+            [-1.0, 1.0],
+            [1.0, -1.0],
+            [-1.0, -1.0],
         ];
 
         for offset in offsets.iter() {

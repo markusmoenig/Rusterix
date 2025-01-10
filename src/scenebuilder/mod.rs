@@ -61,4 +61,7 @@ pub trait SceneBuilder: Send + Sync {
 
     /// Set the camera info, only needed for previews of visual editors. Used by D2PreviewBuilder.
     fn set_camera_info(&mut self, pos: Option<vek::Vec3<f32>>, look_at: vek::Vec3<f32>) {}
+
+    /// Set material mode
+    fn set_material_mode(&mut self, material_mode: bool) {}
 }
