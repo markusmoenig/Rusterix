@@ -1,6 +1,7 @@
-use crate::{Batch, Light, Pixel, PrimitiveMode, Scene, Texture};
+use crate::{Batch, Pixel, PrimitiveMode, Scene};
 use rayon::prelude::*;
 use vek::{Mat3, Mat4, Vec2, Vec3, Vec4};
+
 pub struct Rasterizer {
     pub projection_matrix_2d: Option<Mat3<f32>>,
 
@@ -102,30 +103,16 @@ impl Rasterizer {
                 }
 
                 for batch in scene.d3_static.iter() {
-                    self.d3_rasterize(
-                        &mut buffer,
-                        &mut z_buffer,
-                        tile,
-                        batch,
-                        &scene.textures,
-                        &scene.lights,
-                    );
+                    self.d3_rasterize(&mut buffer, &mut z_buffer, tile, batch, scene, false);
                 }
 
                 for batch in scene.d3_dynamic.iter() {
-                    self.d3_rasterize(
-                        &mut buffer,
-                        &mut z_buffer,
-                        tile,
-                        batch,
-                        &scene.dynamic_textures,
-                        &scene.lights,
-                    );
+                    self.d3_rasterize(&mut buffer, &mut z_buffer, tile, batch, scene, true);
                 }
 
                 // Render 2D geometry on top of the 3D geometry (UI)
                 for batch in scene.d2.iter() {
-                    self.d2_rasterize(&mut buffer, tile, batch, &scene.textures);
+                    self.d2_rasterize(&mut buffer, tile, batch, scene);
                 }
 
                 buffer
@@ -162,7 +149,7 @@ impl Rasterizer {
         buffer: &mut [u8],
         tile: &TileRect,
         batch: &Batch<[f32; 3]>,
-        textures: &[Texture],
+        scene: &Scene,
     ) {
         if let Some(bbox) = batch.bounding_box {
             if bbox.x < (tile.x + tile.width) as f32
@@ -240,7 +227,11 @@ impl Rasterizer {
                                         let v = uv0[1] * w[0] + uv1[1] * w[1] + uv2[1] * w[2];
 
                                         // Sample the texture
-                                        let texel = textures[batch.texture_index].sample(
+
+                                        let t = &scene.textures[batch.texture_index];
+                                        let index = t.textures.len() % scene.animation_frame;
+
+                                        let texel = t.textures[index].sample(
                                             u,
                                             v,
                                             batch.sample_mode,
@@ -313,8 +304,8 @@ impl Rasterizer {
         z_buffer: &mut [f32],
         tile: &TileRect,
         batch: &Batch<[f32; 4]>,
-        textures: &[Texture],
-        lights: &[Light],
+        scene: &Scene,
+        dynamic: bool,
     ) {
         // Bounding box check for the tile with the batch bbox
         if let Some(bbox) = batch.bounding_box {
@@ -436,7 +427,17 @@ impl Rasterizer {
                                             }
 
                                             // Sample the texture
-                                            let mut texel = textures[batch.texture_index].sample(
+
+                                            let textures = if dynamic {
+                                                &scene.dynamic_textures
+                                            } else {
+                                                &scene.textures
+                                            };
+
+                                            let t = &textures[batch.texture_index];
+                                            let index = t.textures.len() % scene.animation_frame;
+
+                                            let mut texel = t.textures[index].sample(
                                                 interpolated_u,
                                                 interpolated_v,
                                                 batch.sample_mode,
@@ -445,7 +446,7 @@ impl Rasterizer {
 
                                             if batch.receives_light {
                                                 // Calc Lights
-                                                for light in lights {
+                                                for light in &scene.lights {
                                                     let light_color = light.color_at(world, 0.0);
                                                     texel[0] = ((texel[0] as f32 / 255.0)
                                                         * light_color[0]

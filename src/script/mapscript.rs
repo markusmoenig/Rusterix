@@ -501,7 +501,7 @@ fn get_texture(texture_name: &str) -> Option<Uuid> {
     let textures = TEXTURES.read().unwrap();
 
     if let Some(tex) = textures.get(texture_name) {
-        let tile = Tile::from_texture(texture_name, tex.clone());
+        let tile = Tile::from_texture(tex.clone());
         let id = tile.id;
         tiles.insert(id, tile);
         Some(id)

@@ -30,7 +30,9 @@ impl TheTrait for ObjDemo {
                 .transform(Mat4::scaling_3d(Vec3::new(0.35, -0.35, 0.35)))],
         )
         .background(Box::new(VGrayGradientShader::new()))
-        .textures(vec![Texture::from_image(Path::new("images/logo.png"))]);
+        .textures(vec![Tile::from_texture(Texture::from_image(Path::new(
+            "images/logo.png",
+        )))]);
 
         Self {
             camera: D3OrbitCamera::new(),

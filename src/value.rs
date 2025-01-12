@@ -15,6 +15,15 @@ pub enum Value {
     Source(PixelSource),
 }
 
+impl Value {
+    pub fn to_source(&self) -> Option<&PixelSource> {
+        match self {
+            Value::Source(source) => Some(source),
+            _ => None,
+        }
+    }
+}
+
 // Implement Display for Python-compatible string representation
 impl fmt::Display for Value {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -80,6 +89,13 @@ impl ValueContainer {
                 None
             }
         })
+    }
+
+    pub fn get_int_default(&self, key: &str, def: i32) -> i32 {
+        self.values
+            .get(key)
+            .map(|v| if let Value::Int(val) = v { *val } else { def })
+            .unwrap_or(def)
     }
 
     pub fn get_float(&self, key: &str) -> Option<f32> {

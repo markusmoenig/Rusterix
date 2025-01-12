@@ -4184,8 +4184,8 @@ checksum = "b7b3e525a49ec206798b40326a44121291b530c963cfb01018f63e135bac543d"
 
 [[package]]
 name = "theframework"
-version = "0.1.35"
-source = "git+https://github.com/markusmoenig/theframework#2f4cbe958588f921e4e57a7b36ed89f0587a8dcf"
+version = "0.1.37"
+source = "git+https://github.com/markusmoenig/theframework#339199f5e6d9836d9e21be7f6110d16f5256d96e"
 dependencies = [
  "aict",
  "arboard",

@@ -63,7 +63,6 @@ impl Assets {
             }
             let tile = Tile {
                 id: t.id,
-                name: t.name.clone(),
                 uvs: array.clone(),
                 textures: texture_array.clone(),
             };

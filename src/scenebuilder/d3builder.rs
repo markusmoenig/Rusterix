@@ -23,7 +23,7 @@ impl SceneBuilder for D3Builder {
         let mut scene = Scene::empty();
         // let atlas_size = atlas.width as f32;
 
-        let mut textures = vec![atlas];
+        let mut textures = vec![Tile::from_texture(atlas)];
 
         let atlas_batch = Batch::emptyd3();
 
@@ -65,7 +65,7 @@ impl SceneBuilder for D3Builder {
 
                             batch.add(floor_vertices, indices, floor_uvs);
 
-                            textures.push(tile.textures[0].clone());
+                            textures.push(tile.clone());
                             repeated_offsets.insert(tile.id, repeated_batches.len());
                             repeated_batches.push(batch);
                         }
@@ -287,7 +287,7 @@ impl SceneBuilder for D3Builder {
 
                 if let Some(id) = entity.get_attr_uuid("tile_id") {
                     if let Some(tile) = tiles.get(&id) {
-                        textures.push(tile.textures[0].clone());
+                        textures.push(tile.clone());
                     }
                 }
 
@@ -312,7 +312,7 @@ trait D3BuilderUtils {
         tiles: &FxHashMap<Uuid, Tile>,
         repeated_offsets: &mut FxHashMap<Uuid, usize>,
         repeated_batches: &mut Vec<Batch<[f32; 4]>>,
-        textures: &mut Vec<Texture>,
+        textures: &mut Vec<Tile>,
     );
 
     #[allow(clippy::too_many_arguments)]
@@ -326,7 +326,7 @@ trait D3BuilderUtils {
         tiles: &FxHashMap<Uuid, Tile>,
         repeated_offsets: &mut FxHashMap<Uuid, usize>,
         repeated_batches: &mut Vec<Batch<[f32; 4]>>,
-        textures: &mut Vec<Texture>,
+        textures: &mut Vec<Tile>,
     );
 
     fn add_sky(
@@ -334,7 +334,7 @@ trait D3BuilderUtils {
         tiles: &FxHashMap<Uuid, Tile>,
         repeated_offsets: &mut FxHashMap<Uuid, usize>,
         repeated_batches: &mut Vec<Batch<[f32; 4]>>,
-        textures: &mut Vec<Texture>,
+        textures: &mut Vec<Tile>,
     );
 }
 
@@ -348,7 +348,7 @@ impl D3BuilderUtils for D3Builder {
         tiles: &FxHashMap<Uuid, Tile>,
         repeated_offsets: &mut FxHashMap<Uuid, usize>,
         repeated_batches: &mut Vec<Batch<[f32; 4]>>,
-        textures: &mut Vec<Texture>,
+        textures: &mut Vec<Tile>,
     ) {
         let wall_vertices = vec![
             [start_vertex.x, 0.0, start_vertex.y, 1.0],
@@ -392,7 +392,7 @@ impl D3BuilderUtils for D3Builder {
 
                 batch.add(wall_vertices, wall_indices, wall_uvs);
 
-                textures.push(tile.textures[0].clone());
+                textures.push(tile.clone());
                 repeated_offsets.insert(tile.id, repeated_batches.len());
                 repeated_batches.push(batch);
             }
@@ -410,7 +410,7 @@ impl D3BuilderUtils for D3Builder {
         tiles: &FxHashMap<Uuid, Tile>,
         repeated_offsets: &mut FxHashMap<Uuid, usize>,
         repeated_batches: &mut Vec<Batch<[f32; 4]>>,
-        textures: &mut Vec<Texture>,
+        textures: &mut Vec<Tile>,
     ) {
         let row_heights = [1.0, 2.0, wall_height]; // Define the heights for each row
 
@@ -456,7 +456,7 @@ impl D3BuilderUtils for D3Builder {
 
                     batch.add(row_vertices, row_indices, row_uvs);
 
-                    textures.push(tile.textures[0].clone());
+                    textures.push(tile.clone());
                     repeated_offsets.insert(tile.id, repeated_batches.len());
                     repeated_batches.push(batch);
                 }
@@ -493,7 +493,7 @@ impl D3BuilderUtils for D3Builder {
         tiles: &FxHashMap<Uuid, Tile>,
         repeated_offsets: &mut FxHashMap<Uuid, usize>,
         repeated_batches: &mut Vec<Batch<[f32; 4]>>,
-        textures: &mut Vec<Texture>,
+        textures: &mut Vec<Tile>,
     ) {
         // Define sky vertices
         let sky_vertices = vec![
@@ -522,7 +522,7 @@ impl D3BuilderUtils for D3Builder {
 
             batch.add(sky_vertices, sky_indices, sky_uvs);
 
-            textures.push(tile.textures[0].clone());
+            textures.push(tile.clone());
             repeated_offsets.insert(tile.id, repeated_batches.len());
             repeated_batches.push(batch);
         }

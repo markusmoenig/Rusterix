@@ -11,7 +11,9 @@ fn rasterize_cube(c: &mut Criterion) {
             .cull_mode(CullMode::Off)],
     )
     .background(Box::new(VGrayGradientShader::new()))
-    .textures(vec![Texture::from_image(Path::new("images/logo.png"))]);
+    .textures(vec![Tile::from_texture(Texture::from_image(Path::new(
+        "images/logo.png",
+    )))]);
 
     let width = 2000_usize;
     let height = 2000_usize;

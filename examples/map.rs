@@ -69,7 +69,9 @@ impl TheTrait for Map {
             vec![Batch::from_rectangle(0.0, 0.0, 200.0, 200.0).texture_index(scene.textures.len())];
         scene
             .textures
-            .push(Texture::from_image(Path::new("images/logo.png")));
+            .push(Tile::from_texture(Texture::from_image(Path::new(
+                "images/logo.png",
+            ))));
 
         Self {
             camera,

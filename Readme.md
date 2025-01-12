@@ -22,7 +22,7 @@ let scene = Scene::from_static(
     vec![Batch::from_box(-0.5, -0.5, -0.5, 1.0, 1.0, 1.0).sample_mode(SampleMode::Nearest)],
 )
 .background(Box::new(VGrayGradientShader::new())) // Apply a background shader
-.textures(vec![Texture::from_image(Path::new("images/logo.png"))]); // And add a texture
+.textures(vec![Tile::from_texture(Texture::from_image(Path::new("images/logo.png")))]); // And add a tile with one texture
 
 // Create a camera
 let camera = D3OrbitCamera::new();

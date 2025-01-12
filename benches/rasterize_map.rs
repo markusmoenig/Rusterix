@@ -39,7 +39,9 @@ fn rasterize_map(c: &mut Criterion) {
         vec![Batch::from_rectangle(0.0, 0.0, 200.0, 200.0).texture_index(scene.textures.len())];
     scene
         .textures
-        .push(Texture::from_image(Path::new("images/logo.png")));
+        .push(Tile::from_texture(Texture::from_image(Path::new(
+            "images/logo.png",
+        ))));
 
     let width = 2000_usize;
     let height = 2000_usize;

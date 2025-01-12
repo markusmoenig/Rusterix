@@ -29,7 +29,9 @@ impl TheTrait for Cube {
                 .cull_mode(CullMode::Off)],
         )
         .background(Box::new(VGrayGradientShader::new()))
-        .textures(vec![Texture::from_image(Path::new("images/logo.png"))]);
+        .textures(vec![Tile::from_texture(Texture::from_image(Path::new(
+            "images/logo.png",
+        )))]);
 
         Self {
             camera: D3OrbitCamera::new(),

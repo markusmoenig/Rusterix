@@ -1,4 +1,4 @@
-use crate::{Batch, Light, Shader, Texture};
+use crate::{Batch, Light, Shader, Tile};
 use rayon::prelude::*;
 use vek::{Mat3, Mat4};
 
@@ -19,10 +19,13 @@ pub struct Scene {
     pub d2: Vec<Batch<[f32; 3]>>,
 
     /// The list of textures which the batches index into.
-    pub textures: Vec<Texture>,
+    pub textures: Vec<Tile>,
 
     /// The list of textures which the d3_dynamic batches index into.
-    pub dynamic_textures: Vec<Texture>,
+    pub dynamic_textures: Vec<Tile>,
+
+    /// The current animation frame
+    pub animation_frame: usize,
 }
 
 impl Default for Scene {
@@ -42,6 +45,8 @@ impl Scene {
             d2: vec![],
             textures: vec![],
             dynamic_textures: vec![],
+
+            animation_frame: 1,
         }
     }
 
@@ -55,6 +60,8 @@ impl Scene {
             d2,
             textures: vec![],
             dynamic_textures: vec![],
+
+            animation_frame: 1,
         }
     }
 
@@ -65,7 +72,7 @@ impl Scene {
     }
 
     /// Sets the background shader using the builder pattern.
-    pub fn textures(mut self, textures: Vec<Texture>) -> Self {
+    pub fn textures(mut self, textures: Vec<Tile>) -> Self {
         self.textures = textures;
         self
     }
@@ -74,6 +81,11 @@ impl Scene {
     pub fn lights(mut self, lights: Vec<Light>) -> Self {
         self.lights = lights;
         self
+    }
+
+    /// Increase the animation frame counter.
+    pub fn anim_tick(&mut self) {
+        self.animation_frame = self.animation_frame.wrapping_add(1);
     }
 
     /// Project the batches using the given matrices (which represent the global camera).

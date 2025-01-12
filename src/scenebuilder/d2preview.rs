@@ -1,9 +1,7 @@
 // use crate::PrimitiveMode::*;
 use crate::SceneBuilder;
 use crate::Texture;
-use crate::{
-    Batch, GridShader, Map, MapToolType, Pixel, PixelSource, Scene, Shader, Tile, Value, WHITE,
-};
+use crate::{Batch, GridShader, Map, MapToolType, Pixel, Scene, Shader, Tile, Value, WHITE};
 use theframework::prelude::*;
 use vek::Vec2;
 
@@ -52,24 +50,13 @@ impl SceneBuilder for D2PreviewBuilder {
         let mut grid_shader = GridShader::new();
         let atlas_size = atlas.width as f32;
 
-        let get_tile = |value: Option<&Value>| -> Option<Tile> {
-            match value {
-                Some(Value::Source(PixelSource::TileId(id))) => tiles.get(id).cloned(),
-                Some(Value::Source(PixelSource::Color(color))) => {
-                    let texture = Texture::from_color(color.to_u8_array());
-                    Some(Tile::from_texture("", texture))
-                }
-                _ => None,
-            }
-        };
-
         let mut textures = vec![
-            atlas,
-            Texture::from_color(WHITE),
-            Texture::from_color(self.selection_color),
-            Texture::from_color(vek::Rgba::yellow().into_array()),
-            Texture::from_color(vek::Rgba::red().into_array()),
-            Texture::from_color([128, 128, 128, 255]),
+            Tile::from_texture(atlas),
+            Tile::from_texture(Texture::from_color(WHITE)),
+            Tile::from_texture(Texture::from_color(self.selection_color)),
+            Tile::from_texture(Texture::from_color(vek::Rgba::yellow().into_array())),
+            Tile::from_texture(Texture::from_color(vek::Rgba::red().into_array())),
+            Tile::from_texture(Texture::from_color([128, 128, 128, 255])),
         ];
 
         let mut atlas_batch = Batch::emptyd2();
@@ -120,59 +107,64 @@ impl SceneBuilder for D2PreviewBuilder {
                     let bbox = sector.bounding_box(map);
 
                     let repeat = true;
+                    let tile_size = 100;
 
-                    let tile: Option<Tile> = get_tile(sector.properties.get("floor_source"));
-                    if let Some(tile) = tile {
-                        for vertex in &geo.0 {
-                            let local = self.map_grid_to_local(
-                                screen_size,
-                                Vec2::new(vertex[0], vertex[1]),
-                                map,
-                            );
+                    if let Some(Value::Source(pixelsource)) = sector.properties.get("floor_source")
+                    {
+                        if let Some(tile) =
+                            pixelsource.to_tile(tiles, tile_size, &sector.properties)
+                        {
+                            for vertex in &geo.0 {
+                                let local = self.map_grid_to_local(
+                                    screen_size,
+                                    Vec2::new(vertex[0], vertex[1]),
+                                    map,
+                                );
 
-                            let index = 0;
+                                let index = 0;
 
-                            if !repeat {
-                                let uv = [
-                                    (tile.uvs[index].x as f32
-                                        + ((vertex[0] - bbox.0.x) / (bbox.1.x - bbox.0.x)
-                                            * tile.uvs[index].z as f32))
-                                        / atlas_size,
-                                    ((tile.uvs[index].y as f32
-                                        + (vertex[1] - bbox.0.y) / (bbox.1.y - bbox.0.y)
-                                            * tile.uvs[index].w as f32)
-                                        / atlas_size),
-                                ];
-                                uvs.push(uv);
-                            } else {
-                                let texture_scale = 1.0;
-                                let uv = [
-                                    (vertex[0] - bbox.0.x) / texture_scale,
-                                    (vertex[1] - bbox.0.y) / texture_scale,
-                                ];
-                                uvs.push(uv);
+                                if !repeat {
+                                    let uv = [
+                                        (tile.uvs[index].x as f32
+                                            + ((vertex[0] - bbox.0.x) / (bbox.1.x - bbox.0.x)
+                                                * tile.uvs[index].z as f32))
+                                            / atlas_size,
+                                        ((tile.uvs[index].y as f32
+                                            + (vertex[1] - bbox.0.y) / (bbox.1.y - bbox.0.y)
+                                                * tile.uvs[index].w as f32)
+                                            / atlas_size),
+                                    ];
+                                    uvs.push(uv);
+                                } else {
+                                    let texture_scale = 1.0;
+                                    let uv = [
+                                        (vertex[0] - bbox.0.x) / texture_scale,
+                                        (vertex[1] - bbox.0.y) / texture_scale,
+                                    ];
+                                    uvs.push(uv);
+                                }
+                                vertices.push([local.x, local.y, 1.0]);
                             }
-                            vertices.push([local.x, local.y, 1.0]);
-                        }
 
-                        if repeat {
-                            if let Some(offset) = repeated_offsets.get(&tile.id) {
-                                repeated_batches[*offset].add(vertices, geo.1, uvs);
+                            if repeat {
+                                if let Some(offset) = repeated_offsets.get(&tile.id) {
+                                    repeated_batches[*offset].add(vertices, geo.1, uvs);
+                                } else {
+                                    let texture_index = textures.len();
+
+                                    let mut batch = Batch::emptyd2()
+                                        .repeat_mode(crate::RepeatMode::RepeatXY)
+                                        .texture_index(texture_index);
+
+                                    batch.add(vertices, geo.1, uvs);
+
+                                    textures.push(tile.clone());
+                                    repeated_offsets.insert(tile.id, repeated_batches.len());
+                                    repeated_batches.push(batch);
+                                }
                             } else {
-                                let texture_index = textures.len();
-
-                                let mut batch = Batch::emptyd2()
-                                    .repeat_mode(crate::RepeatMode::RepeatXY)
-                                    .texture_index(texture_index);
-
-                                batch.add(vertices, geo.1, uvs);
-
-                                textures.push(tile.textures[0].clone());
-                                repeated_offsets.insert(tile.id, repeated_batches.len());
-                                repeated_batches.push(batch);
+                                atlas_batch.add(vertices, geo.1, uvs);
                             }
-                        } else {
-                            atlas_batch.add(vertices, geo.1, uvs);
                         }
                     }
                 }

@@ -46,7 +46,9 @@ impl TheTrait for MiniGame {
             .client
             .scene_d3
             .textures
-            .push(Texture::from_image(Path::new("images/logo.png")));
+            .push(Tile::from_texture(Texture::from_image(Path::new(
+                "images/logo.png",
+            ))));
 
         Self {
             rusterix,
