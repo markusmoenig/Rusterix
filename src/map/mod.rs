@@ -13,7 +13,7 @@ use linedef::*;
 use sector::*;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
-use vek::Vec2;
+use vek::{Vec2, Vec4};
 use vertex::*;
 
 use crate::{Entity, Light};
@@ -131,7 +131,6 @@ impl Map {
         self.curr_rectangle = None;
     }
 
-    /*
     /// Generate a bounding box for all vertices in the map
     pub fn bounding_box(&self) -> Option<Vec4<f32>> {
         if self.vertices.is_empty() {
@@ -166,10 +165,10 @@ impl Map {
 
         // Return the bounding box as Vec4f (x, y, width, height)
         Some(Vec4::new(min_x, min_y, width, height))
-    }*/
+    }
 
     /// Generate a bounding box for the sector, applying animation states
-    pub fn bounding_box(&self, map: &Map) -> Option<(Vec2<f32>, Vec2<f32>)> {
+    pub fn bounding_box_animated(&self, map: &Map) -> Option<(Vec2<f32>, Vec2<f32>)> {
         let mut vertices = Vec::new();
 
         for linedef in &self.linedefs {
