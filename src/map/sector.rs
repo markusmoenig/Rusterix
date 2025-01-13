@@ -78,6 +78,27 @@ impl Sector {
         // }
     }
 
+    /// Calculate the area of the sector (for sorting).
+    pub fn area(&self, map: &Map) -> f32 {
+        // Generate geometry for the sector
+        if let Some((vertices, indices)) = self.generate_geometry(map) {
+            // Calculate the area by summing up the areas of individual triangles
+            indices.iter().fold(0.0, |acc, &(i1, i2, i3)| {
+                let v1 = vertices[i1];
+                let v2 = vertices[i2];
+                let v3 = vertices[i3];
+
+                // Calculate the area of the triangle using the shoelace formula
+                acc + 0.5
+                    * ((v1[0] * v2[1] + v2[0] * v3[1] + v3[0] * v1[1])
+                        - (v1[1] * v2[0] + v2[1] * v3[0] + v3[1] * v1[0]))
+                        .abs()
+            })
+        } else {
+            0.0 // Return 0 if the geometry couldn't be generated
+        }
+    }
+
     /// Generate geometry (vertices and indices) for the polygon using earcutr
     #[allow(clippy::type_complexity)]
     pub fn generate_geometry(

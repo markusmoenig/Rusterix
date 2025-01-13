@@ -23,13 +23,8 @@ impl SceneBuilder for D2MaterialBuilder {
             Vec2::new(tx, ty)
         };
 
-        let mut used_linedefs = vec![];
-
-        for sector in &map.sectors {
-            for l in &sector.linedefs {
-                used_linedefs.push(*l);
-            }
-
+        let sorted_sectors = map.sorted_sectors_by_area();
+        for sector in &sorted_sectors {
             if let Some(geo) = sector.generate_geometry(map) {
                 let mut vertices: Vec<[f32; 3]> = vec![];
                 let mut uvs: Vec<[f32; 2]> = vec![];
@@ -82,21 +77,26 @@ impl SceneBuilder for D2MaterialBuilder {
 
         // Add Lines
         for linedef in &map.linedefs {
-            if !used_linedefs.contains(&linedef.id) {
-                if let Some(start_vertex) = map.find_vertex(linedef.start_vertex) {
-                    let start_pos = to_local(&[start_vertex.x, start_vertex.y]);
-                    if let Some(end_vertex) = map.find_vertex(linedef.end_vertex) {
-                        let end_pos = to_local(&[end_vertex.x, end_vertex.y]);
+            if linedef.front_sector.is_none() && linedef.back_sector.is_none() {
+                if let Some(Value::Source(pixelsource)) = linedef.properties.get("row1_source") {
+                    if let Some(tile) = pixelsource.to_tile(tiles, size, &linedef.properties) {
+                        if let Some(start_vertex) = map.find_vertex(linedef.start_vertex) {
+                            let start_pos = to_local(&[start_vertex.x, start_vertex.y]);
+                            if let Some(end_vertex) = map.find_vertex(linedef.end_vertex) {
+                                let end_pos = to_local(&[end_vertex.x, end_vertex.y]);
 
-                        let texture_index = textures.len();
-                        let texture = Tile::from_texture(Texture::from_color([128, 128, 128, 255]));
+                                let texture_index = textures.len();
+                                let width =
+                                    linedef.properties.get_float_default("material_width", 1.0);
 
-                        let mut batch = Batch::emptyd2()
-                            .repeat_mode(crate::RepeatMode::RepeatXY)
-                            .texture_index(texture_index);
-                        batch.add_wrapped_line(start_pos, end_pos, 10.0, size as f32);
-                        batches.push(batch);
-                        textures.push(texture);
+                                let mut batch = Batch::emptyd2()
+                                    .repeat_mode(crate::RepeatMode::RepeatXY)
+                                    .texture_index(texture_index);
+                                batch.add_wrapped_line(start_pos, end_pos, width, size as f32);
+                                batches.push(batch);
+                                textures.push(tile);
+                            }
+                        }
                     }
                 }
             }

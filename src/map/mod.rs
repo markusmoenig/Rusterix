@@ -3,15 +3,17 @@ pub mod linedef;
 pub mod meta;
 pub mod pixelsource;
 pub mod sector;
+pub mod state;
 pub mod tile;
 pub mod vertex;
 
-use serde::{Deserialize, Serialize};
-use uuid::Uuid;
-use vek::{Vec2, Vec4};
+use crate::VertexAnimationSystem;
 
 use linedef::*;
 use sector::*;
+use serde::{Deserialize, Serialize};
+use uuid::Uuid;
+use vek::Vec2;
 use vertex::*;
 
 use crate::{Entity, Light};
@@ -75,6 +77,10 @@ pub struct Map {
     pub selected_vertices: Vec<u32>,
     pub selected_linedefs: Vec<u32>,
     pub selected_sectors: Vec<u32>,
+
+    // Animation
+    #[serde(default)]
+    pub animation: VertexAnimationSystem,
 }
 
 impl Default for Map {
@@ -113,6 +119,8 @@ impl Map {
             selected_vertices: vec![],
             selected_linedefs: vec![],
             selected_sectors: vec![],
+
+            animation: VertexAnimationSystem::default(),
         }
     }
 
@@ -123,6 +131,7 @@ impl Map {
         self.curr_rectangle = None;
     }
 
+    /*
     /// Generate a bounding box for all vertices in the map
     pub fn bounding_box(&self) -> Option<Vec4<f32>> {
         if self.vertices.is_empty() {
@@ -157,6 +166,63 @@ impl Map {
 
         // Return the bounding box as Vec4f (x, y, width, height)
         Some(Vec4::new(min_x, min_y, width, height))
+    }*/
+
+    /// Generate a bounding box for the sector, applying animation states
+    pub fn bounding_box(&self, map: &Map) -> Option<(Vec2<f32>, Vec2<f32>)> {
+        let mut vertices = Vec::new();
+
+        for linedef in &self.linedefs {
+            if let Some(start_vertex) = map.get_vertex(linedef.start_vertex) {
+                vertices.push(start_vertex);
+            }
+            if let Some(end_vertex) = map.get_vertex(linedef.end_vertex) {
+                vertices.push(end_vertex);
+            }
+        }
+
+        if vertices.is_empty() {
+            return None;
+        }
+
+        // Calculate bounding box
+        let min_x = vertices.iter().map(|v| v.x).fold(f32::INFINITY, f32::min);
+        let max_x = vertices
+            .iter()
+            .map(|v| v.x)
+            .fold(f32::NEG_INFINITY, f32::max);
+        let min_y = vertices.iter().map(|v| v.y).fold(f32::INFINITY, f32::min);
+        let max_y = vertices
+            .iter()
+            .map(|v| v.y)
+            .fold(f32::NEG_INFINITY, f32::max);
+
+        Some((Vec2::new(min_x, min_y), Vec2::new(max_x, max_y)))
+    }
+
+    /// Update the animation system
+    pub fn tick(&mut self, delta_time: f32) {
+        self.animation.update(delta_time, &mut self.vertices);
+    }
+
+    /// Get the current position of a vertex, applying the animation state if available
+    pub fn get_vertex(&self, vertex_id: u32) -> Option<Vec2<f32>> {
+        // Check if the vertex is animated in the current state
+        if let Some(current_state) = self.animation.current_state {
+            if let Some(animated_vertex) = self.animation.states[current_state]
+                .vertices
+                .iter()
+                .find(|v| v.id == vertex_id)
+            {
+                return Some(animated_vertex.position);
+            }
+        }
+
+        // Fall back to the base vertex position
+        self.vertices
+            .iter()
+            .find(|v| v.id == vertex_id)
+            .map(|v| Vec2::new(v.x, v.y))
     }
 
     // Add the vertex (and snap it to the subdivsion grid)
@@ -417,6 +483,38 @@ impl Map {
         }
         for s in &sectors {
             self.selected_sectors.retain(|&selected| selected != *s);
+        }
+    }
+
+    /// Returns the sectors sorted from largest to smallest by area
+    pub fn sorted_sectors_by_area(&self) -> Vec<&Sector> {
+        let mut sectors_with_areas: Vec<(&Sector, f32)> = self
+            .sectors
+            .iter()
+            .map(|sector| (sector, sector.area(self))) // Calculate the area for each sector
+            .collect();
+
+        // Sort by area in descending order
+        sectors_with_areas
+            .sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+
+        // Return the sorted sectors
+        sectors_with_areas
+            .into_iter()
+            .map(|(sector, _)| sector)
+            .collect()
+    }
+
+    /// Debug: Print all vertices with their current animated positions
+    pub fn debug_print_vertices(&self) {
+        for vertex in &self.vertices {
+            let current_position = self
+                .get_vertex(vertex.id)
+                .unwrap_or(Vec2::new(vertex.x, vertex.y));
+            println!(
+                "Vertex ID: {}, Base: ({}, {}), Animated: ({}, {})",
+                vertex.id, vertex.x, vertex.y, current_position.x, current_position.y
+            );
         }
     }
 
