@@ -63,8 +63,9 @@ pub use crate::{
     intodata::IntoDataInput,
     map::{
         light::Light, linedef::Linedef, meta::MapMeta, pixelsource::NoiseTarget,
-        pixelsource::PixelSource, sector::Sector, state::InterpolationType,
-        state::VertexAnimationSystem, tile::Tile, vertex::Vertex, Map, MapCamera, MapToolType,
+        pixelsource::PixelSource, sector::Sector, state::AnimationVertexState,
+        state::InterpolationType, state::VertexAnimationSystem, state::VertexState, tile::Tile,
+        vertex::Vertex, Map, MapCamera, MapToolType,
     },
     rasterizer::Rasterizer,
     rect::Rect,
@@ -92,13 +93,14 @@ pub mod prelude {
     pub use crate::MapScript;
     pub use crate::Rasterizer;
     pub use crate::{pixel_to_vec4, vec4_to_pixel};
+    pub use crate::{
+        AnimationVertexState, Light, Linedef, Map, MapMeta, MapToolType, NoiseTarget, PixelSource,
+        Sector, Tile, Vertex, VertexAnimationSystem, VertexState,
+    };
     pub use crate::{Assets, Entity, EntityUpdate, RegionInstance, RegionMessage, Server};
     pub use crate::{Batch, CullMode, PrimitiveMode};
     pub use crate::{D3Camera, D3FirstPCamera, D3IsoCamera, D3OrbitCamera};
     pub use crate::{GridShader, Shader, VGrayGradientShader};
-    pub use crate::{
-        Light, Linedef, Map, MapMeta, MapToolType, NoiseTarget, PixelSource, Sector, Tile, Vertex,
-    };
     pub use crate::{Pixel, BLACK, TRANSPARENT, WHITE};
     pub use crate::{Rect, Scene, Value, ValueContainer};
     pub use crate::{RepeatMode, SampleMode, Texture};

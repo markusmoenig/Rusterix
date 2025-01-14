@@ -11,6 +11,31 @@ pub enum InterpolationType {
     Step,
 }
 
+impl InterpolationType {
+    /// Adjusts progress based on the interpolation type
+    pub fn adjust_progress(&self, progress: f32) -> f32 {
+        match self {
+            InterpolationType::Linear => progress,
+            InterpolationType::EaseIn => progress * progress,
+            InterpolationType::EaseOut => progress * (2.0 - progress),
+            InterpolationType::EaseInOut => {
+                if progress < 0.5 {
+                    2.0 * progress * progress
+                } else {
+                    -1.0 + (4.0 - 2.0 * progress) * progress
+                }
+            }
+            InterpolationType::Step => {
+                if progress >= 1.0 {
+                    1.0
+                } else {
+                    0.0
+                }
+            }
+        }
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct VertexState {
     pub id: u32,
@@ -81,12 +106,13 @@ impl VertexAnimationSystem {
         state_name: &str,
         vertices: Vec<VertexState>,
         interpolation: InterpolationType,
-    ) {
+    ) -> usize {
         self.states.push(AnimationVertexState {
             state_name: state_name.to_string(),
             vertices,
             interpolation,
         });
+        self.states.len() - 1
     }
 
     /// Updates or adds a vertex to the specified animation state
@@ -138,6 +164,18 @@ impl VertexAnimationSystem {
                     self.transition_progress = 1.0;
                 }
 
+                // If transitioning from the base map to a state
+                if self.current_state.is_none() {
+                    let blended_state = self.interpolate_with_base(
+                        &self.states[next_index],
+                        self.transition_progress,
+                        base_vertices,
+                    );
+                    self.apply_state_to_base(&blended_state, base_vertices);
+                    return;
+                }
+
+                // If transitioning between two animation states
                 let blended_state = self.interpolate_states(
                     &self.states[current_index],
                     &self.states[next_index],
@@ -208,6 +246,37 @@ impl VertexAnimationSystem {
             state_name: format!("Blended: {} -> {}", from.state_name, to.state_name),
             vertices: blended_vertices,
             interpolation: to.interpolation.clone(), // Preserve the interpolation type
+        }
+    }
+
+    /// Interpolates between the base map and a target animation state
+    fn interpolate_with_base(
+        &self,
+        to: &AnimationVertexState,
+        progress: f32,
+        base_vertices: &[Vertex],
+    ) -> AnimationVertexState {
+        let mut blended_vertices = Vec::new();
+
+        for to_vertex in &to.vertices {
+            // Find the corresponding vertex in the base map
+            if let Some(base_vertex) = base_vertices.iter().find(|v| v.id == to_vertex.id) {
+                let base_position = Vec2::new(base_vertex.x, base_vertex.y);
+
+                blended_vertices.push(VertexState {
+                    id: to_vertex.id,
+                    position: Vec2::lerp(base_position, to_vertex.position, progress),
+                });
+            } else {
+                // If no matching vertex in the base map, use the animation state's position
+                blended_vertices.push(to_vertex.clone());
+            }
+        }
+
+        AnimationVertexState {
+            state_name: format!("Blended: Base -> {}", to.state_name),
+            vertices: blended_vertices,
+            interpolation: to.interpolation.clone(),
         }
     }
 

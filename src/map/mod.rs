@@ -204,10 +204,72 @@ impl Map {
         self.animation.update(delta_time, &mut self.vertices);
     }
 
-    /// Get the current position of a vertex, applying the animation state if available
+    /// Get the current position of a vertex, applying the animation state and interpolation if available
     pub fn get_vertex(&self, vertex_id: u32) -> Option<Vec2<f32>> {
-        // Check if the vertex is animated in the current state
+        // If there is a next state but no current state, interpolate with the base map
+        if self.animation.current_state.is_none() {
+            if let Some(next_state) = self.animation.next_state {
+                let progress = self.animation.transition_progress;
+                let adjusted_progress = self.animation.states[next_state]
+                    .interpolation
+                    .adjust_progress(progress);
+
+                // Find the vertex in the base map
+                let base_position = self
+                    .vertices
+                    .iter()
+                    .find(|v| v.id == vertex_id)
+                    .map(|v| Vec2::new(v.x, v.y));
+
+                // Find the vertex in the next state
+                let next_position = self.animation.states[next_state]
+                    .vertices
+                    .iter()
+                    .find(|v| v.id == vertex_id)
+                    .map(|v| v.position);
+
+                // Interpolate between base and next state
+                if let (Some(base_pos), Some(next_pos)) = (base_position, next_position) {
+                    return Some(Vec2::lerp(base_pos, next_pos, adjusted_progress));
+                }
+
+                // Fallback to the next state if the vertex is not in the base map
+                return next_position;
+            }
+        }
+
+        // If both current and next states are set, interpolate between them
         if let Some(current_state) = self.animation.current_state {
+            if let Some(next_state) = self.animation.next_state {
+                let progress = self.animation.transition_progress;
+                let adjusted_progress = self.animation.states[next_state]
+                    .interpolation
+                    .adjust_progress(progress);
+
+                // Find the vertex in the current state
+                let current_position = self.animation.states[current_state]
+                    .vertices
+                    .iter()
+                    .find(|v| v.id == vertex_id)
+                    .map(|v| v.position);
+
+                // Find the vertex in the next state
+                let next_position = self.animation.states[next_state]
+                    .vertices
+                    .iter()
+                    .find(|v| v.id == vertex_id)
+                    .map(|v| v.position);
+
+                // Interpolate between the current and next state
+                if let (Some(current_pos), Some(next_pos)) = (current_position, next_position) {
+                    return Some(Vec2::lerp(current_pos, next_pos, adjusted_progress));
+                }
+
+                // Fallback to the current or next state
+                return current_position.or(next_position);
+            }
+
+            // If only the current state is set, return its position
             if let Some(animated_vertex) = self.animation.states[current_state]
                 .vertices
                 .iter()
@@ -217,11 +279,26 @@ impl Map {
             }
         }
 
-        // Fall back to the base vertex position
+        // Fallback to the base vertex position
         self.vertices
             .iter()
             .find(|v| v.id == vertex_id)
             .map(|v| Vec2::new(v.x, v.y))
+    }
+
+    /// Update a vertex in the map, considering the animation state
+    pub fn update_vertex(&mut self, vertex_id: u32, new_position: Vec2<f32>) {
+        if let Some(current_state_index) = self.animation.current_state {
+            // Update the vertex in the current animation state
+            let current_state = &mut self.animation.states[current_state_index];
+            current_state.update_or_add(vertex_id, new_position);
+        } else {
+            // Update the base vertex directly
+            if let Some(base_vertex) = self.vertices.iter_mut().find(|v| v.id == vertex_id) {
+                base_vertex.x = new_position.x;
+                base_vertex.y = new_position.y;
+            }
+        }
     }
 
     // Add the vertex (and snap it to the subdivsion grid)

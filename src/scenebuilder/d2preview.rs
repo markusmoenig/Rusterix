@@ -175,18 +175,26 @@ impl SceneBuilder for D2PreviewBuilder {
         if self.map_tool_type == MapToolType::Selection || self.map_tool_type == MapToolType::Vertex
         {
             for vertex in &map.vertices {
-                let pos = self.map_grid_to_local(screen_size, vertex.as_vec2(), map);
+                if let Some(vertex_pos) = map.get_vertex(vertex.id) {
+                    let pos = self.map_grid_to_local(screen_size, vertex_pos, map);
 
-                let size = 4.0;
-                if self.hover.0 == Some(vertex.id) || map.selected_vertices.contains(&vertex.id) {
-                    selected_batch.add_rectangle(
-                        pos.x - size,
-                        pos.y - size,
-                        size * 2.0,
-                        size * 2.0,
-                    );
-                } else {
-                    gray_batch.add_rectangle(pos.x - size, pos.y - size, size * 2.0, size * 2.0);
+                    let size = 4.0;
+                    if self.hover.0 == Some(vertex.id) || map.selected_vertices.contains(&vertex.id)
+                    {
+                        selected_batch.add_rectangle(
+                            pos.x - size,
+                            pos.y - size,
+                            size * 2.0,
+                            size * 2.0,
+                        );
+                    } else {
+                        gray_batch.add_rectangle(
+                            pos.x - size,
+                            pos.y - size,
+                            size * 2.0,
+                            size * 2.0,
+                        );
+                    }
                 }
             }
         }
@@ -197,12 +205,10 @@ impl SceneBuilder for D2PreviewBuilder {
             || self.map_tool_type == MapToolType::Sector
         {
             for linedef in &map.linedefs {
-                if let Some(start_vertex) = map.find_vertex(linedef.start_vertex) {
-                    let start_pos =
-                        self.map_grid_to_local(screen_size, start_vertex.as_vec2(), map);
-                    if let Some(end_vertex) = map.find_vertex(linedef.end_vertex) {
-                        let end_pos =
-                            self.map_grid_to_local(screen_size, end_vertex.as_vec2(), map);
+                if let Some(start_vertex) = map.get_vertex(linedef.start_vertex) {
+                    let start_pos = self.map_grid_to_local(screen_size, start_vertex, map);
+                    if let Some(end_vertex) = map.get_vertex(linedef.end_vertex) {
+                        let end_pos = self.map_grid_to_local(screen_size, end_vertex, map);
 
                         let mut selected = false;
                         if self.hover.1 == Some(linedef.id)

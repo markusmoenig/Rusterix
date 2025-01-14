@@ -109,7 +109,7 @@ impl Sector {
         let mut vertices = Vec::new();
         for &linedef_id in self.linedefs.iter() {
             let linedef = map.linedefs.get(linedef_id as usize)?;
-            let start_vertex = map.vertices.get(linedef.start_vertex as usize)?;
+            let start_vertex = map.get_vertex(linedef.start_vertex)?;
             let vertex = [start_vertex.x, start_vertex.y];
 
             // Add the vertex to the list if it isn't already there
