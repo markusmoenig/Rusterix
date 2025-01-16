@@ -22,6 +22,7 @@ impl SceneBuilder for D3Builder {
     ) -> Scene {
         let mut scene = Scene::empty();
         // let atlas_size = atlas.width as f32;
+        let tile_size = 100;
 
         let mut textures = vec![Tile::from_texture(atlas)];
 
@@ -34,11 +35,12 @@ impl SceneBuilder for D3Builder {
         // Create sectors
         for sector in &map.sectors {
             if let Some((vertices, indices)) = sector.generate_geometry(map) {
+                let sector_elevation = sector.properties.get_float_default("floor_height", 0.0);
+
                 // Generate floor geometry
-                if let Some(Value::Source(PixelSource::TileId(id))) =
-                    &sector.properties.get("floor_source")
-                {
-                    if let Some(tile) = tiles.get(id) {
+
+                if let Some(Value::Source(pixelsource)) = sector.properties.get("floor_source") {
+                    if let Some(tile) = pixelsource.to_tile(tiles, tile_size, &sector.properties) {
                         let floor_vertices = vertices
                             .iter()
                             .map(|&v| {
@@ -54,7 +56,11 @@ impl SceneBuilder for D3Builder {
                         let floor_uvs = vertices.iter().map(|&v| [v[0], v[1]]).collect();
 
                         if let Some(offset) = repeated_offsets.get(&tile.id) {
-                            repeated_batches[*offset].add(floor_vertices, indices, floor_uvs);
+                            repeated_batches[*offset].add(
+                                floor_vertices,
+                                indices.clone(),
+                                floor_uvs,
+                            );
                         } else {
                             let texture_index = textures.len();
 
@@ -63,7 +69,7 @@ impl SceneBuilder for D3Builder {
                                 .sample_mode(crate::SampleMode::Nearest)
                                 .texture_index(texture_index);
 
-                            batch.add(floor_vertices, indices, floor_uvs);
+                            batch.add(floor_vertices, indices.clone(), floor_uvs);
 
                             textures.push(tile.clone());
                             repeated_offsets.insert(tile.id, repeated_batches.len());
@@ -72,103 +78,92 @@ impl SceneBuilder for D3Builder {
                     }
                 }
 
-                /*
                 // Generate ceiling geometry
-                if let Some(ceiling_texture_id) = &sector.ceiling_texture {
-                    //if let Some(el) = atlas_elements.get(ceiling_texture_id) {
-                    let ceiling_vertices = floor_geo
-                        .0
-                        .iter()
-                        .map(|&v| vec3f(v[0], sector.ceiling_height, v[1]))
-                        .collect::<Vec<Vec3f>>();
 
-                    /*
-                    let ceiling_uvs = floor_geo
-                        .0
-                        .iter()
-                        .map(|&v| {
-                            let uv = vec2f(
-                                el[0].x as f32
-                                    + ((v[0] - bbox.0.x) / (bbox.1.x - bbox.0.x) * el[0].z as f32),
-                                el[0].y as f32
-                                    + ((v[1] - bbox.0.y) / (bbox.1.y - bbox.0.y) * el[0].w as f32),
-                            );
-                            uv / atlas_size
-                        })
-                        .collect::<Vec<Vec2f>>();*/
-                    let ceiling_uvs = floor_geo
-                        .0
-                        .iter()
-                        .map(|&v| vec2f(v[0], v[1]))
-                        .collect::<Vec<Vec2f>>();
+                let mut create_ceiling = true;
+                if camera_id == "iso" && sector.properties.get_int_default("ceiling_in_iso", 0) == 1
+                {
+                    create_ceiling = false;
+                }
 
-                    // let geometry =
-                    //     Geometry::new(ceiling_vertices, floor_geo.1.clone(), ceiling_uvs);
-                    // geometry_map.add(*ceiling_texture_id, geometry);
-                    //}
-                }*/
+                if create_ceiling {
+                    if let Some(Value::Source(PixelSource::TileId(id))) =
+                        &sector.properties.get("ceiling_source")
+                    {
+                        if let Some(tile) = tiles.get(id) {
+                            let ceiling_vertices = vertices
+                                .iter()
+                                .map(|&v| {
+                                    [
+                                        v[0],
+                                        sector.properties.get_float_default("ceiling_height", 0.0),
+                                        v[1],
+                                        1.0,
+                                    ]
+                                })
+                                .collect();
+
+                            let floor_uvs = vertices.iter().map(|&v| [v[0], v[1]]).collect();
+
+                            if let Some(offset) = repeated_offsets.get(&tile.id) {
+                                repeated_batches[*offset].add(ceiling_vertices, indices, floor_uvs);
+                            } else {
+                                let texture_index = textures.len();
+
+                                let mut batch = Batch::emptyd3()
+                                    .repeat_mode(crate::RepeatMode::RepeatXY)
+                                    .sample_mode(crate::SampleMode::Nearest)
+                                    .texture_index(texture_index);
+
+                                batch.add(ceiling_vertices, indices, floor_uvs);
+
+                                textures.push(tile.clone());
+                                repeated_offsets.insert(tile.id, repeated_batches.len());
+                                repeated_batches.push(batch);
+                            }
+                        }
+                    }
+                }
 
                 // Generate wall geometry
                 for &linedef_id in &sector.linedefs {
                     if let Some(linedef) = map.linedefs.get(linedef_id as usize) {
                         if let Some(start_vertex) = map.find_vertex(linedef.start_vertex) {
                             if let Some(end_vertex) = map.find_vertex(linedef.end_vertex) {
-                                if let Some(Value::Source(PixelSource::TileId(wall_texture_id))) =
-                                    &sector.properties.get("row1_source")
-                                {
-                                    Self::add_wall2(
-                                        &start_vertex.as_vec2(),
-                                        &end_vertex.as_vec2(),
-                                        linedef.properties.get_float_default("wall_height", 0.0),
-                                        wall_texture_id,
-                                        if let Some(Value::Source(PixelSource::TileId(id))) =
-                                            linedef.properties.get("row2_source")
-                                        {
-                                            Some(*id)
-                                        } else {
-                                            None
-                                        },
-                                        if let Some(Value::Source(PixelSource::TileId(id))) =
-                                            linedef.properties.get("row3_source")
-                                        {
-                                            Some(*id)
-                                        } else {
-                                            None
-                                        },
-                                        tiles,
-                                        &mut repeated_offsets,
-                                        &mut repeated_batches,
-                                        &mut textures,
-                                    );
-                                } else if let Some(Value::Source(PixelSource::TileId(
-                                    wall_texture_id,
-                                ))) = &sector.properties.get("row1_source")
-                                {
-                                    Self::add_wall2(
-                                        &start_vertex.as_vec2(),
-                                        &end_vertex.as_vec2(),
-                                        linedef.properties.get_float_default("wall_height", 0.0),
-                                        wall_texture_id,
-                                        if let Some(Value::Source(PixelSource::TileId(id))) =
-                                            sector.properties.get("row2_source")
-                                        {
-                                            Some(*id)
-                                        } else {
-                                            None
-                                        },
-                                        if let Some(Value::Source(PixelSource::TileId(id))) =
-                                            sector.properties.get("row3_source")
-                                        {
-                                            Some(*id)
-                                        } else {
-                                            None
-                                        },
-                                        tiles,
-                                        &mut repeated_offsets,
-                                        &mut repeated_batches,
-                                        &mut textures,
-                                    );
-                                }
+                                let repeat_sources =
+                                    linedef.properties.get_int_default("source_repeat", 0) == 0;
+                                Self::add_wall2(
+                                    sector_elevation,
+                                    &start_vertex.as_vec2(),
+                                    &end_vertex.as_vec2(),
+                                    linedef.properties.get_float_default("wall_height", 0.0),
+                                    if let Some(Value::Source(PixelSource::TileId(id))) =
+                                        linedef.properties.get("row1_source")
+                                    {
+                                        Some(*id)
+                                    } else {
+                                        None
+                                    },
+                                    if let Some(Value::Source(PixelSource::TileId(id))) =
+                                        linedef.properties.get("row2_source")
+                                    {
+                                        Some(*id)
+                                    } else {
+                                        None
+                                    },
+                                    if let Some(Value::Source(PixelSource::TileId(id))) =
+                                        linedef.properties.get("row3_source")
+                                    {
+                                        Some(*id)
+                                    } else {
+                                        None
+                                    },
+                                    repeat_sources,
+                                    tiles,
+                                    &mut repeated_offsets,
+                                    &mut repeated_batches,
+                                    &mut textures,
+                                );
                             }
                         }
                     }
@@ -181,34 +176,40 @@ impl SceneBuilder for D3Builder {
             if linedef.front_sector.is_none() && linedef.back_sector.is_none() {
                 if let Some(start_vertex) = map.find_vertex(linedef.start_vertex) {
                     if let Some(end_vertex) = map.find_vertex(linedef.end_vertex) {
-                        if let Some(Value::Source(PixelSource::TileId(wall_texture_id))) =
-                            &linedef.properties.get("row1_source")
-                        {
-                            Self::add_wall2(
-                                &start_vertex.as_vec2(),
-                                &end_vertex.as_vec2(),
-                                linedef.properties.get_float_default("wall_height", 0.0),
-                                wall_texture_id,
-                                if let Some(Value::Source(PixelSource::TileId(id))) =
-                                    linedef.properties.get("row2_source")
-                                {
-                                    Some(*id)
-                                } else {
-                                    None
-                                },
-                                if let Some(Value::Source(PixelSource::TileId(id))) =
-                                    linedef.properties.get("row3_source")
-                                {
-                                    Some(*id)
-                                } else {
-                                    None
-                                },
-                                tiles,
-                                &mut repeated_offsets,
-                                &mut repeated_batches,
-                                &mut textures,
-                            );
-                        }
+                        let repeat_sources =
+                            linedef.properties.get_int_default("source_repeat", 0) == 0;
+                        Self::add_wall2(
+                            0.0,
+                            &start_vertex.as_vec2(),
+                            &end_vertex.as_vec2(),
+                            linedef.properties.get_float_default("wall_height", 0.0),
+                            if let Some(Value::Source(PixelSource::TileId(id))) =
+                                linedef.properties.get("row1_source")
+                            {
+                                Some(*id)
+                            } else {
+                                None
+                            },
+                            if let Some(Value::Source(PixelSource::TileId(id))) =
+                                linedef.properties.get("row2_source")
+                            {
+                                Some(*id)
+                            } else {
+                                None
+                            },
+                            if let Some(Value::Source(PixelSource::TileId(id))) =
+                                linedef.properties.get("row3_source")
+                            {
+                                Some(*id)
+                            } else {
+                                None
+                            },
+                            repeat_sources,
+                            tiles,
+                            &mut repeated_offsets,
+                            &mut repeated_batches,
+                            &mut textures,
+                        );
                     }
                 }
             }
@@ -317,12 +318,14 @@ trait D3BuilderUtils {
 
     #[allow(clippy::too_many_arguments)]
     fn add_wall2(
+        sector_elevation: f32,
         start_vertex: &Vec2<f32>,
         end_vertex: &Vec2<f32>,
         wall_height: f32,
-        wall_texture_id: &Uuid,
+        wall_texture_id: Option<Uuid>,
         row2_texture_id: Option<Uuid>, // Optional texture for row 2
         row3_texture_id: Option<Uuid>, // Optional texture for row 3
+        repeat_last_row: bool,
         tiles: &FxHashMap<Uuid, Tile>,
         repeated_offsets: &mut FxHashMap<Uuid, usize>,
         repeated_batches: &mut Vec<Batch<[f32; 4]>>,
@@ -399,20 +402,29 @@ impl D3BuilderUtils for D3Builder {
         }
     }
 
-    /// Adds a wall to the appropriate batch based on up to 3 input parameters
+    /// Adds a wall to the appropriate batch based on up to 3 input textures.
     fn add_wall2(
+        sector_elevation: f32,
         start_vertex: &Vec2<f32>,
         end_vertex: &Vec2<f32>,
         wall_height: f32,
-        wall_texture_id: &Uuid,
+        wall_texture_id: Option<Uuid>, // Optional texture for row 1
         row2_texture_id: Option<Uuid>, // Optional texture for row 2
         row3_texture_id: Option<Uuid>, // Optional texture for row 3
+        repeat_last_row: bool,         // If true, repeat the last defined row's texture
         tiles: &FxHashMap<Uuid, Tile>,
         repeated_offsets: &mut FxHashMap<Uuid, usize>,
         repeated_batches: &mut Vec<Batch<[f32; 4]>>,
         textures: &mut Vec<Tile>,
     ) {
-        let row_heights = [1.0, 2.0, wall_height]; // Define the heights for each row
+        // Calculate dynamic row heights based on wall_height
+        let row_heights = if wall_height <= 1.0 {
+            vec![wall_height] // Only row 1 fits
+        } else if wall_height <= 2.0 {
+            vec![1.0, wall_height - 1.0] // Row 1 + Row 2
+        } else {
+            vec![1.0, 1.0, wall_height - 2.0] // Row 1 + Row 2 + Row 3
+        };
 
         // Function to add a row geometry
         let mut add_row = |start_height: f32, end_height: f32, texture_id: &Uuid| {
@@ -463,27 +475,81 @@ impl D3BuilderUtils for D3Builder {
             }
         };
 
-        // Add rows based on available textures
-        if let Some(row2_id) = row2_texture_id {
-            if let Some(row3_id) = row3_texture_id {
-                // Row 1 (base texture)
-                add_row(0.0, row_heights[0], wall_texture_id);
+        // Generate rows based on available textures and dynamic row heights
+        let mut current_height = 0.0;
+        let mut last_texture_id = if repeat_last_row {
+            wall_texture_id
+        } else {
+            None
+        };
 
-                // Row 2
-                add_row(row_heights[0], row_heights[1], &row2_id);
-
-                // Row 3
-                add_row(row_heights[1], row_heights[2], &row3_id);
-            } else {
-                // Row 1 (base texture)
-                add_row(0.0, row_heights[0], wall_texture_id);
-
-                // Row 2
-                add_row(row_heights[0], row_heights[2], &row2_id);
+        if let Some(wall_id) = wall_texture_id {
+            let next_height = (current_height + row_heights[0]).min(wall_height);
+            add_row(
+                sector_elevation + current_height,
+                sector_elevation + next_height,
+                &wall_id,
+            );
+            current_height = next_height;
+            if repeat_last_row {
+                last_texture_id = Some(wall_id);
             }
         } else {
-            // Single texture for the entire wall
-            add_row(0.0, row_heights[2], wall_texture_id);
+            current_height = row_heights[0]; // Skip row 1's height
+        }
+
+        if current_height < wall_height {
+            if let Some(row2_id) = row2_texture_id.or(if repeat_last_row {
+                last_texture_id
+            } else {
+                None
+            }) {
+                let next_height =
+                    (current_height + row_heights.get(1).cloned().unwrap_or(0.0)).min(wall_height);
+                add_row(
+                    sector_elevation + current_height,
+                    sector_elevation + next_height,
+                    &row2_id,
+                );
+                current_height = next_height;
+                if repeat_last_row {
+                    last_texture_id = Some(row2_id);
+                }
+            } else {
+                current_height += row_heights.get(1).cloned().unwrap_or(0.0); // Skip row 2's height
+            }
+        }
+
+        if current_height < wall_height {
+            if let Some(row3_id) = row3_texture_id.or(if repeat_last_row {
+                last_texture_id
+            } else {
+                None
+            }) {
+                let next_height =
+                    (current_height + row_heights.get(2).cloned().unwrap_or(0.0)).min(wall_height);
+                add_row(
+                    sector_elevation + current_height,
+                    sector_elevation + next_height,
+                    &row3_id,
+                );
+                current_height = next_height;
+            }
+        }
+
+        if repeat_last_row && current_height < wall_height {
+            // Repeat the last row's texture until the wall height is filled
+            if let Some(last_id) = last_texture_id {
+                while current_height < wall_height {
+                    let next_height = (current_height + 1.0).min(wall_height); // Use 1.0 as a default segment height
+                    add_row(
+                        sector_elevation + current_height,
+                        sector_elevation + next_height,
+                        &last_id,
+                    );
+                    current_height = next_height;
+                }
+            }
         }
     }
 

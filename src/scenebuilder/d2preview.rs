@@ -250,6 +250,30 @@ impl SceneBuilder for D2PreviewBuilder {
             }
         }
 
+        // For rectangle selection preview
+        if let Some(rect) = map.curr_rectangle {
+            white_batch.add_line(
+                Vec2::new(rect.0.x, rect.0.y),
+                Vec2::new(rect.1.x, rect.0.y),
+                1.0,
+            );
+            white_batch.add_line(
+                Vec2::new(rect.0.x, rect.0.y),
+                Vec2::new(rect.0.x, rect.1.y),
+                1.0,
+            );
+            white_batch.add_line(
+                Vec2::new(rect.1.x, rect.1.y),
+                Vec2::new(rect.1.x, rect.0.y),
+                1.0,
+            );
+            white_batch.add_line(
+                Vec2::new(rect.1.x, rect.1.y),
+                Vec2::new(rect.0.x, rect.1.y),
+                1.0,
+            );
+        }
+
         // For line action previews
         if let Some(grid_pos) = map.curr_grid_pos {
             let local = self.map_grid_to_local(screen_size, grid_pos, map);

@@ -581,6 +581,59 @@ impl Map {
             .collect()
     }
 
+    /// Adds a midpoint to a specified linedef, updates the geometry, and returns the new vertex ID.
+    pub fn add_midpoint(&mut self, linedef_id: u32) -> Option<u32> {
+        // Step 1: Find the linedef
+        let linedef = self.find_linedef(linedef_id)?.clone(); // Clone to avoid borrow issues
+        let start_vertex = self.find_vertex(linedef.start_vertex)?.clone();
+        let end_vertex = self.find_vertex(linedef.end_vertex)?.clone();
+
+        // Step 2: Calculate the midpoint
+        let midpoint = Vec2::new(
+            (start_vertex.x + end_vertex.x) / 2.0,
+            (start_vertex.y + end_vertex.y) / 2.0,
+        );
+
+        // Step 3: Add the midpoint as a new vertex
+        let new_vertex_id = self.add_vertex_at(midpoint.x, midpoint.y);
+
+        // Step 4: Create new linedefs
+        let mut new_linedef_1 = Linedef::new(
+            linedef_id, // Use the same ID as the old linedef for the first new linedef
+            linedef.start_vertex,
+            new_vertex_id,
+        );
+        let mut new_linedef_2 = Linedef::new(
+            self.linedefs.len() as u32, // New unique ID for the second linedef
+            new_vertex_id,
+            linedef.end_vertex,
+        );
+
+        // Assign the old properties of the linedef to the two new ones.
+        new_linedef_1.properties = linedef.properties.clone();
+        new_linedef_2.properties = linedef.properties.clone();
+
+        // Step 5: Replace the old linedef in all sectors
+        for sector in self.sectors.iter_mut() {
+            if let Some(position) = sector.linedefs.iter().position(|&id| id == linedef_id) {
+                // Replace the old linedef with the new ones in the correct order
+                sector.linedefs.splice(
+                    position..=position, // Replace the single linedef
+                    [new_linedef_1.id, new_linedef_2.id].iter().cloned(), // Insert the new linedefs
+                );
+            }
+        }
+
+        // Step 6: Update the global linedef list
+        if let Some(index) = self.linedefs.iter().position(|l| l.id == linedef_id) {
+            self.linedefs[index] = new_linedef_1; // Replace the old linedef with the first new one
+        }
+        self.linedefs.push(new_linedef_2); // Add the second new linedef at the end
+
+        // Return the ID of the new vertex
+        Some(new_vertex_id)
+    }
+
     /// Debug: Print all vertices with their current animated positions
     pub fn debug_print_vertices(&self) {
         for vertex in &self.vertices {

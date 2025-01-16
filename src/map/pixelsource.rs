@@ -65,6 +65,7 @@ impl PixelSource {
                                         as u8;
                                 }
                                 color = TheColor::from_u8_array(rgb);
+                                color.a = 1.0;
                             }
                             NoiseTarget::Hue => {
                                 let hsl = color.as_hsl();

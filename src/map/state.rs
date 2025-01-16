@@ -155,38 +155,41 @@ impl VertexAnimationSystem {
 
     /// Updates the animation system and applies changes to the base vertices
     pub fn update(&mut self, delta_time: f32, base_vertices: &mut [Vertex]) {
-        if let Some(current_index) = self.current_state {
-            if let Some(next_index) = self.next_state {
-                self.transition_progress += delta_time / self.transition_duration;
-                if self.transition_progress >= 1.0 {
-                    self.current_state = Some(next_index);
-                    self.next_state = None;
-                    self.transition_progress = 1.0;
-                }
+        // Handle transitions
+        if let Some(next_index) = self.next_state {
+            self.transition_progress += delta_time / self.transition_duration;
 
-                // If transitioning from the base map to a state
-                if self.current_state.is_none() {
-                    let blended_state = self.interpolate_with_base(
-                        &self.states[next_index],
-                        self.transition_progress,
-                        base_vertices,
-                    );
-                    self.apply_state_to_base(&blended_state, base_vertices);
-                    return;
-                }
+            if self.transition_progress >= 1.0 {
+                // Transition complete
+                self.current_state = Some(next_index);
+                self.next_state = None;
+                self.transition_progress = 1.0;
+            }
 
-                // If transitioning between two animation states
+            // If transitioning from the base map to a state
+            if self.current_state.is_none() {
+                let blended_state = self.interpolate_with_base(
+                    &self.states[next_index],
+                    self.transition_progress,
+                    base_vertices,
+                );
+                self.apply_state_to_base(&blended_state, base_vertices);
+                return;
+            }
+
+            // If transitioning between two animation states
+            if let Some(current_index) = self.current_state {
                 let blended_state = self.interpolate_states(
                     &self.states[current_index],
                     &self.states[next_index],
                     self.transition_progress,
                 );
-
                 self.apply_state_to_base(&blended_state, base_vertices);
                 return;
             }
         }
 
+        // Handle looping states
         if !self.loop_states.is_empty() {
             self.loop_elapsed_time += delta_time;
             if self.loop_elapsed_time >= self.loop_duration / self.loop_states.len() as f32 {
@@ -196,8 +199,11 @@ impl VertexAnimationSystem {
             }
         }
 
+        // Apply the current state if no transition is happening
         if let Some(current_index) = self.current_state {
-            self.apply_state_to_base(&self.states[current_index], base_vertices);
+            if current_index < self.states.len() {
+                self.apply_state_to_base(&self.states[current_index], base_vertices);
+            }
         }
     }
 

@@ -24,9 +24,6 @@ impl Sector {
         properties.set("ceiling_height", Value::Float(0.0));
         properties.set("floor_source", Value::Source(PixelSource::Off));
         properties.set("ceiling_source", Value::Source(PixelSource::Off));
-        properties.set("row1_source", Value::Source(PixelSource::Off));
-        properties.set("row2_source", Value::Source(PixelSource::Off));
-        properties.set("row3_source", Value::Source(PixelSource::Off));
 
         Self {
             id,

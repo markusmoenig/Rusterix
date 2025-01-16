@@ -457,6 +457,7 @@ fn wall(value: PyObjectRef, vm: &VirtualMachine) -> PyResult<()> {
                     PixelSource::Off
                 }),
             );
+            /*
             sector.properties.set(
                 "row1_source",
                 Value::Source(if let Some(id) = *DEFAULT_WALL_TEXTURE.read().unwrap() {
@@ -484,7 +485,7 @@ fn wall(value: PyObjectRef, vm: &VirtualMachine) -> PyResult<()> {
                         PixelSource::Off
                     },
                 ),
-            );
+            );*/
         }
         state.last_sector = Some(sector_id);
     }
