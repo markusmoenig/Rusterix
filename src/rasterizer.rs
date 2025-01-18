@@ -237,11 +237,23 @@ impl Rasterizer {
                                             batch.sample_mode,
                                             batch.repeat_mode,
                                         );
-                                        // let texel = [(u * 255.0) as u8, (v * 255.0) as u8, 0, 255];
 
-                                        // Write to framebuffer
+                                        // Copy or blend to framebuffer
                                         let idx = ((ty - tile.y) * tile.width + (tx - tile.x)) * 4;
-                                        buffer[idx..idx + 4].copy_from_slice(&texel);
+
+                                        if texel[3] == 255 {
+                                            buffer[idx..idx + 4].copy_from_slice(&texel);
+                                        } else {
+                                            let src_alpha = texel[3] as f32 / 255.0;
+                                            let dst_alpha = 1.0 - src_alpha;
+
+                                            for i in 0..3 {
+                                                buffer[idx + i] = ((texel[i] as f32 * src_alpha)
+                                                    + (buffer[idx + i] as f32 * dst_alpha))
+                                                    as u8;
+                                            }
+                                            buffer[idx + 3] = 255;
+                                        }
                                     }
                                 }
                             }

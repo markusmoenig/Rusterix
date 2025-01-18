@@ -20,6 +20,7 @@ fn rasterize_map(c: &mut Criterion) {
             Texture::from_color(BLACK),
             Vec2::zero(), // Only needed for 2D builders
             &camera.id(),
+            &ValueContainer::default(),
         );
     }
 

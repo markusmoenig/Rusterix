@@ -46,7 +46,13 @@ impl Client {
     }
 
     /// Build the 2D scene from the map.
-    pub fn build_scene_d2(&mut self, screen_size: Vec2<f32>, map: &Map, assets: &Assets) {
+    pub fn build_scene_d2(
+        &mut self,
+        screen_size: Vec2<f32>,
+        map: &Map,
+        assets: &Assets,
+        values: &ValueContainer,
+    ) {
         self.curr_map_id = map.id;
         self.scene_d2 = self.builder_d2.build(
             map,
@@ -54,11 +60,12 @@ impl Client {
             Texture::from_color(crate::BLACK),
             screen_size,
             &self.camera_d3.id(),
+            values,
         );
     }
 
     /// Build the 3D scene from the map.
-    pub fn build_scene_d3(&mut self, map: &Map, assets: &Assets) {
+    pub fn build_scene_d3(&mut self, map: &Map, assets: &Assets, values: &ValueContainer) {
         self.curr_map_id = map.id;
         self.scene_d3 = self.builder_d3.build(
             map,
@@ -66,6 +73,7 @@ impl Client {
             Texture::from_color(crate::BLACK),
             Vec2::zero(), // Only needed for 2D builders
             &self.camera_d3.id(),
+            values,
         );
     }
 

@@ -1,7 +1,9 @@
 // use crate::PrimitiveMode::*;
 use crate::SceneBuilder;
 use crate::Texture;
-use crate::{Batch, GridShader, Map, MapToolType, Pixel, Scene, Shader, Tile, Value, WHITE};
+use crate::{
+    Batch, GridShader, Map, MapToolType, Pixel, Scene, Shader, Tile, Value, ValueContainer, WHITE,
+};
 use theframework::prelude::*;
 use vek::Vec2;
 
@@ -45,6 +47,7 @@ impl SceneBuilder for D2PreviewBuilder {
         atlas: Texture,
         screen_size: Vec2<f32>,
         _camera_id: &str,
+        properties: &ValueContainer,
     ) -> Scene {
         let mut scene = Scene::empty();
         let mut grid_shader = GridShader::new();
@@ -59,6 +62,20 @@ impl SceneBuilder for D2PreviewBuilder {
             Tile::from_texture(Texture::from_color([128, 128, 128, 255])),
         ];
 
+        if self.map_tool_type == MapToolType::Effects {
+            if let Some(Value::Texture(tex)) = properties.get("light_on") {
+                textures.push(Tile::from_texture(tex.clone()));
+            } else {
+                textures.push(Tile::from_texture(Texture::white()));
+            }
+
+            if let Some(Value::Texture(tex)) = properties.get("light_off") {
+                textures.push(Tile::from_texture(tex.clone()));
+            } else {
+                textures.push(Tile::from_texture(Texture::black()));
+            }
+        }
+
         let mut atlas_batch = Batch::emptyd2();
         let mut white_batch = Batch::emptyd2()
             .texture_index(1)
@@ -71,6 +88,9 @@ impl SceneBuilder for D2PreviewBuilder {
             .texture_index(5)
             .color([128, 128, 128, 255])
             .mode(crate::PrimitiveMode::Lines);
+
+        let mut light_on_batch = Batch::emptyd2().texture_index(6);
+        let mut light_off_batch = Batch::emptyd2().texture_index(7);
 
         // Add the material clipping area
         if self.material_mode {
@@ -99,6 +119,7 @@ impl SceneBuilder for D2PreviewBuilder {
         if self.map_tool_type == MapToolType::General
             || self.map_tool_type == MapToolType::Selection
             || self.map_tool_type == MapToolType::Sector
+            || self.map_tool_type == MapToolType::Effects
         {
             for sector in &map.sectors {
                 if let Some(geo) = sector.generate_geometry(map) {
@@ -203,6 +224,7 @@ impl SceneBuilder for D2PreviewBuilder {
         if self.map_tool_type == MapToolType::Selection
             || self.map_tool_type == MapToolType::Linedef
             || self.map_tool_type == MapToolType::Sector
+            || self.map_tool_type == MapToolType::Effects
         {
             for linedef in &map.linedefs {
                 if let Some(start_vertex) = map.get_vertex(linedef.start_vertex) {
@@ -274,6 +296,22 @@ impl SceneBuilder for D2PreviewBuilder {
             );
         }
 
+        // Lights
+        if self.map_tool_type == MapToolType::Effects {
+            for (index, l) in map.lights.iter().enumerate() {
+                let position = l.position();
+                let pos =
+                    self.map_grid_to_local(screen_size, Vec2::new(position.x, position.z), map);
+                let size = map.grid_size;
+                let hsize = map.grid_size / 2.0;
+                if Some(index as u32) == map.selected_light {
+                    light_on_batch.add_rectangle(pos.x - hsize, pos.y - hsize, size, size);
+                } else {
+                    light_off_batch.add_rectangle(pos.x - hsize, pos.y - hsize, size, size);
+                }
+            }
+        }
+
         // For line action previews
         if let Some(grid_pos) = map.curr_grid_pos {
             let local = self.map_grid_to_local(screen_size, grid_pos, map);
@@ -306,6 +344,8 @@ impl SceneBuilder for D2PreviewBuilder {
             red_batch,
             gray_batch,
             gray_batch_lines,
+            light_on_batch,
+            light_off_batch,
         ]);
 
         scene.d2 = batches;

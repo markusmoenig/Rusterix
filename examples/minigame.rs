@@ -36,7 +36,9 @@ impl TheTrait for MiniGame {
 
         if let Some(map) = rusterix.assets.get_map("world") {
             // Build the 3D scene from the map meta data
-            rusterix.client.build_scene_d3(map, &rusterix.assets);
+            rusterix
+                .client
+                .build_scene_d3(map, &rusterix.assets, &ValueContainer::default());
         }
 
         // Add logo on top of the scene

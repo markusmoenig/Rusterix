@@ -54,6 +54,7 @@ impl TheTrait for Map {
                 Texture::from_color(BLACK),
                 Vec2::zero(), // Only needed for 2D builders
                 &camera.id(),
+                &ValueContainer::default(),
             );
         }
 

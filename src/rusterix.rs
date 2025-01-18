@@ -69,16 +69,17 @@ impl Rusterix {
     }
 
     /// Build the client scene based on the maps camera mode.
-    pub fn build_scene(&mut self, screen_size: Vec2<f32>, map: &Map) {
+    pub fn build_scene(&mut self, screen_size: Vec2<f32>, map: &Map, values: &ValueContainer) {
         if map.camera == MapCamera::TwoD {
             if self.is_dirty_d2 {
-                self.client.build_scene_d2(screen_size, map, &self.assets);
+                self.client
+                    .build_scene_d2(screen_size, map, &self.assets, values);
                 self.is_dirty_d2 = false;
             }
             self.set_d2();
         } else {
             if self.is_dirty_d3 {
-                self.client.build_scene_d3(map, &self.assets);
+                self.client.build_scene_d3(map, &self.assets, values);
                 self.is_dirty_d3 = false;
             }
             self.set_d3();
@@ -88,7 +89,8 @@ impl Rusterix {
     /// Build the client scene in D3.
     pub fn build_scene_d3(&mut self, map: &Map) {
         if self.is_dirty_d3 {
-            self.client.build_scene_d3(map, &self.assets);
+            self.client
+                .build_scene_d3(map, &self.assets, &ValueContainer::default());
             self.is_dirty_d3 = false;
         }
         self.set_d3();

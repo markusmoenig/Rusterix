@@ -94,6 +94,23 @@ impl Texture {
         }
     }
 
+    /// Creates a texture filled with a black color (1x1 texture)
+    pub fn black() -> Self {
+        Texture {
+            data: vec![0, 0, 0, 255],
+            width: 1,
+            height: 1,
+        }
+    }
+
+    pub fn from_rgbabuffer(buffer: &TheRGBABuffer) -> Self {
+        Texture {
+            data: buffer.pixels().to_vec(),
+            width: buffer.dim().width as usize,
+            height: buffer.dim().height as usize,
+        }
+    }
+
     /// Loads a texture from an image file at the given path.
     pub fn from_image(input: impl IntoDataInput) -> Self {
         // Load the image from the input source

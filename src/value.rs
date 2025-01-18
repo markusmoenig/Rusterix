@@ -1,4 +1,4 @@
-use crate::PixelSource;
+use crate::{PixelSource, Texture};
 use std::fmt;
 use theframework::prelude::*;
 
@@ -13,6 +13,7 @@ pub enum Value {
     Str(String),
     Id(Uuid),
     Source(PixelSource),
+    Texture(Texture),
 }
 
 impl Value {
@@ -37,6 +38,9 @@ impl fmt::Display for Value {
             Value::Str(val) => write!(f, "{}", val.replace("'", "\\'")), // Escape single quotes
             Value::Id(val) => write!(f, "{}", val),
             Value::Source(val) => write!(f, "{:?}", val),
+            Value::Texture(val) => {
+                write!(f, "Texture: {}, {}", val.width, val.height)
+            }
         }
     }
 }

@@ -74,6 +74,7 @@ impl TheTrait for Editor {
                                 Texture::from_color(BLACK),
                                 vek::Vec2::new(ctx.width as f32, ctx.height as f32),
                                 &self.camera.id(),
+                                &ValueContainer::default(),
                             );
                         }
                         Exit => {
@@ -100,6 +101,7 @@ impl TheTrait for Editor {
                         Texture::from_color(BLACK),
                         vek::Vec2::new(ctx.width as f32, ctx.height as f32),
                         &self.camera.id(),
+                        &ValueContainer::default(),
                     );
 
                     Rasterizer::setup(None, vek::Mat4::identity(), vek::Mat4::identity())

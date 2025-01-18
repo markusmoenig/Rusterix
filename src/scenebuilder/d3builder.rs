@@ -1,7 +1,7 @@
 // use crate::PrimitiveMode::*;
 use crate::SceneBuilder;
 use crate::Texture;
-use crate::{Batch, D3Camera, Entity, Map, PixelSource, Scene, Tile, Value};
+use crate::{Batch, D3Camera, Entity, Map, PixelSource, Scene, Tile, Value, ValueContainer};
 use theframework::prelude::*;
 use vek::Vec2;
 
@@ -19,6 +19,7 @@ impl SceneBuilder for D3Builder {
         atlas: Texture,
         _screen_size: Vec2<f32>,
         camera_id: &str,
+        _properties: &ValueContainer,
     ) -> Scene {
         let mut scene = Scene::empty();
         // let atlas_size = atlas.width as f32;
@@ -158,6 +159,13 @@ impl SceneBuilder for D3Builder {
                                     } else {
                                         None
                                     },
+                                    if let Some(Value::Source(PixelSource::TileId(id))) =
+                                        linedef.properties.get("row4_source")
+                                    {
+                                        Some(*id)
+                                    } else {
+                                        None
+                                    },
                                     repeat_sources,
                                     tiles,
                                     &mut repeated_offsets,
@@ -199,6 +207,13 @@ impl SceneBuilder for D3Builder {
                             },
                             if let Some(Value::Source(PixelSource::TileId(id))) =
                                 linedef.properties.get("row3_source")
+                            {
+                                Some(*id)
+                            } else {
+                                None
+                            },
+                            if let Some(Value::Source(PixelSource::TileId(id))) =
+                                linedef.properties.get("row4_source")
                             {
                                 Some(*id)
                             } else {
@@ -323,8 +338,9 @@ trait D3BuilderUtils {
         end_vertex: &Vec2<f32>,
         wall_height: f32,
         wall_texture_id: Option<Uuid>,
-        row2_texture_id: Option<Uuid>, // Optional texture for row 2
-        row3_texture_id: Option<Uuid>, // Optional texture for row 3
+        row2_texture_id: Option<Uuid>,
+        row3_texture_id: Option<Uuid>,
+        row4_texture_id: Option<Uuid>,
         repeat_last_row: bool,
         tiles: &FxHashMap<Uuid, Tile>,
         repeated_offsets: &mut FxHashMap<Uuid, usize>,
@@ -408,9 +424,10 @@ impl D3BuilderUtils for D3Builder {
         start_vertex: &Vec2<f32>,
         end_vertex: &Vec2<f32>,
         wall_height: f32,
-        wall_texture_id: Option<Uuid>, // Optional texture for row 1
+        row1_texture_id: Option<Uuid>, // Optional texture for row 1
         row2_texture_id: Option<Uuid>, // Optional texture for row 2
         row3_texture_id: Option<Uuid>, // Optional texture for row 3
+        row4_texture_id: Option<Uuid>, // Optional texture for row 4
         repeat_last_row: bool,         // If true, repeat the last defined row's texture
         tiles: &FxHashMap<Uuid, Tile>,
         repeated_offsets: &mut FxHashMap<Uuid, usize>,
@@ -422,8 +439,10 @@ impl D3BuilderUtils for D3Builder {
             vec![wall_height] // Only row 1 fits
         } else if wall_height <= 2.0 {
             vec![1.0, wall_height - 1.0] // Row 1 + Row 2
-        } else {
+        } else if wall_height <= 3.0 {
             vec![1.0, 1.0, wall_height - 2.0] // Row 1 + Row 2 + Row 3
+        } else {
+            vec![1.0, 1.0, 1.0, wall_height - 3.0] // Row 1 + Row 2 + Row 3 + Row 4
         };
 
         // Function to add a row geometry
@@ -478,26 +497,28 @@ impl D3BuilderUtils for D3Builder {
         // Generate rows based on available textures and dynamic row heights
         let mut current_height = 0.0;
         let mut last_texture_id = if repeat_last_row {
-            wall_texture_id
+            row1_texture_id
         } else {
             None
         };
 
-        if let Some(wall_id) = wall_texture_id {
+        // Row 1
+        if let Some(row1_id) = row1_texture_id {
             let next_height = (current_height + row_heights[0]).min(wall_height);
             add_row(
                 sector_elevation + current_height,
                 sector_elevation + next_height,
-                &wall_id,
+                &row1_id,
             );
             current_height = next_height;
             if repeat_last_row {
-                last_texture_id = Some(wall_id);
+                last_texture_id = Some(row1_id);
             }
         } else {
             current_height = row_heights[0]; // Skip row 1's height
         }
 
+        // Row 2
         if current_height < wall_height {
             if let Some(row2_id) = row2_texture_id.or(if repeat_last_row {
                 last_texture_id
@@ -520,6 +541,7 @@ impl D3BuilderUtils for D3Builder {
             }
         }
 
+        // Row 3
         if current_height < wall_height {
             if let Some(row3_id) = row3_texture_id.or(if repeat_last_row {
                 last_texture_id
@@ -534,11 +556,34 @@ impl D3BuilderUtils for D3Builder {
                     &row3_id,
                 );
                 current_height = next_height;
+                if repeat_last_row {
+                    last_texture_id = Some(row3_id);
+                }
+            } else {
+                current_height += row_heights.get(2).cloned().unwrap_or(0.0); // Skip row 3's height
             }
         }
 
+        // Row 4
+        if current_height < wall_height {
+            if let Some(row4_id) = row4_texture_id.or(if repeat_last_row {
+                last_texture_id
+            } else {
+                None
+            }) {
+                let next_height =
+                    (current_height + row_heights.get(3).cloned().unwrap_or(0.0)).min(wall_height);
+                add_row(
+                    sector_elevation + current_height,
+                    sector_elevation + next_height,
+                    &row4_id,
+                );
+                current_height = next_height;
+            }
+        }
+
+        // Repeat the last row's texture until the wall height is filled
         if repeat_last_row && current_height < wall_height {
-            // Repeat the last row's texture until the wall height is filled
             if let Some(last_id) = last_texture_id {
                 while current_height < wall_height {
                     let next_height = (current_height + 1.0).min(wall_height); // Use 1.0 as a default segment height

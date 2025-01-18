@@ -10,8 +10,8 @@ pub enum Light {
         end_distance: f32,
         flicker: Option<Flicker>, // Optional flickering
     },
-    DirectionalLight {
-        direction: Vec3<f32>,
+    AmbientLight {
+        position: Vec3<f32>,
         color: [f32; 3],
         intensity: f32,
     },
@@ -43,6 +43,16 @@ pub struct Flicker {
 }
 
 impl Light {
+    /// Returns the position of the light, if applicable
+    pub fn position(&self) -> Vec3<f32> {
+        match *self {
+            Light::PointLight { position, .. } => position,
+            Light::Spotlight { position, .. } => position,
+            Light::AreaLight { position, .. } => position,
+            Light::AmbientLight { position, .. } => position,
+        }
+    }
+
     /// Calculates the light's intensity and color at a given point
     pub fn color_at(&self, point: Vec3<f32>, time: f32) -> [f32; 3] {
         match *self {
@@ -68,10 +78,10 @@ impl Light {
                 let adjusted_intensity = intensity * attenuation;
                 apply_flicker(color, adjusted_intensity, flicker, time)
             }
-            Light::DirectionalLight {
+            Light::AmbientLight {
                 color, intensity, ..
             } => {
-                // Directional light doesn't attenuate
+                // Ambient light doesn't attenuate
                 apply_flicker(color, intensity, None, time)
             }
             Light::Spotlight {
@@ -140,6 +150,34 @@ impl Light {
                     color[2] * attenuation,
                 ]
             }
+        }
+    }
+
+    /// Sets the intensity of the light
+    pub fn set_intensity(&mut self, new_intensity: f32) {
+        match self {
+            Light::PointLight { intensity, .. } => *intensity = new_intensity,
+            Light::AmbientLight { intensity, .. } => *intensity = new_intensity,
+            Light::Spotlight { intensity, .. } => *intensity = new_intensity,
+            Light::AreaLight { intensity, .. } => *intensity = new_intensity,
+        }
+    }
+
+    /// Sets the start distance of the light for applicable light types
+    pub fn set_start_distance(&mut self, new_start_distance: f32) {
+        match self {
+            Light::PointLight { start_distance, .. } => *start_distance = new_start_distance,
+            Light::Spotlight { start_distance, .. } => *start_distance = new_start_distance,
+            _ => {}
+        }
+    }
+
+    /// Sets the end distance of the light for applicable light types
+    pub fn set_end_distance(&mut self, new_end_distance: f32) {
+        match self {
+            Light::PointLight { end_distance, .. } => *end_distance = new_end_distance,
+            Light::Spotlight { end_distance, .. } => *end_distance = new_end_distance,
+            _ => {}
         }
     }
 }

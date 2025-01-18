@@ -32,6 +32,7 @@ pub enum MapToolType {
     Vertex,
     Linedef,
     Sector,
+    Effects,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -77,6 +78,7 @@ pub struct Map {
     pub selected_vertices: Vec<u32>,
     pub selected_linedefs: Vec<u32>,
     pub selected_sectors: Vec<u32>,
+    pub selected_light: Option<u32>,
 
     // Animation
     #[serde(default)]
@@ -119,6 +121,7 @@ impl Map {
             selected_vertices: vec![],
             selected_linedefs: vec![],
             selected_sectors: vec![],
+            selected_light: None,
 
             animation: VertexAnimationSystem::default(),
         }
@@ -129,6 +132,7 @@ impl Map {
         self.possible_polygon = vec![];
         self.curr_grid_pos = None;
         self.curr_rectangle = None;
+        self.selected_light = None;
     }
 
     /// Generate a bounding box for all vertices in the map

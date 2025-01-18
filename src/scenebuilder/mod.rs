@@ -2,7 +2,7 @@ pub mod d2material;
 pub mod d2preview;
 pub mod d3builder;
 
-use crate::{D3Camera, Entity, Map, MapToolType, Scene, Texture, Tile};
+use crate::{D3Camera, Entity, Map, MapToolType, Scene, Texture, Tile, ValueContainer};
 use theframework::prelude::*;
 use vek::Vec2;
 
@@ -20,6 +20,7 @@ pub trait SceneBuilder: Send + Sync {
         atlas: Texture,
         screen_size: Vec2<f32>,
         camera_id: &str,
+        properties: &ValueContainer,
     ) -> Scene {
         Scene::default()
     }
