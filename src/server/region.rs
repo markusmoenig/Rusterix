@@ -93,10 +93,8 @@ impl RegionInstance {
         }
     }
 
-    /// Initializes the Python bases classes, sets the map and applies entities
-    pub fn init(&mut self, name: String, map: &mut Map, entities: &FxHashMap<String, String>) {
-        self.name = name;
-
+    /// Apply the base classes to the Python subsystem.
+    pub fn apply_base_classes(&mut self) {
         // Apply the base classes
         if let Some(bytes) = crate::Embedded::get("entity.py") {
             if let Ok(source) = std::str::from_utf8(bytes.data.as_ref()) {
@@ -108,6 +106,13 @@ impl RegionInstance {
                 let _ = self.execute(source);
             }
         }
+    }
+
+    /// Initializes the Python bases classes, sets the map and applies entities
+    pub fn init(&mut self, name: String, map: &mut Map, entities: &FxHashMap<String, String>) {
+        self.name = name;
+
+        self.apply_base_classes();
 
         // Create the manager
         let _ = self.execute(&format!("manager = EntityManager({})", self.id));
@@ -304,6 +309,7 @@ impl RegionInstance {
         let _ = self.execute(&cmd);
     }
 
+    /// Execute a script.
     pub fn execute(&self, source: &str) -> Result<PyObjectRef, String> {
         let scope = self.scope.lock().unwrap();
 
@@ -312,12 +318,25 @@ impl RegionInstance {
             match rc {
                 Ok(obj) => Ok(obj),
                 Err(error) => {
-                    let args = error.args();
+                    let mut err_line: Option<u32> = None;
+
+                    if let Some(tb) = error.traceback() {
+                        // let file_name = tb.frame.code.source_path.as_str();
+                        let instruction_index =
+                            tb.frame.lasti.load(std::sync::atomic::Ordering::Relaxed);
+                        err_line = Some(instruction_index / 2);
+                        // let function_name = tb.frame.code.obj_name.as_str();
+                    }
+
                     let mut err_string = String::new();
-                    if let Some(err) = args.first() {
+                    if let Some(err) = error.args().first() {
                         if let Ok(msg) = err.str(vm) {
                             err_string = msg.to_string();
                         }
+                    }
+
+                    if let Some(err_line) = err_line {
+                        err_string = format!("{} at line {}.", err_string, err_line);
                     }
                     Err(err_string)
                 }
@@ -325,6 +344,7 @@ impl RegionInstance {
         })
     }
 }
+
 /// Send from a player script (either locally or remotely) to perform the given action.
 fn player_action(entity_id: u32, action: i32) {
     if let Some(action) = EntityAction::from_i32(action) {

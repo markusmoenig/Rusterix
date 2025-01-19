@@ -153,6 +153,16 @@ impl Light {
         }
     }
 
+    /// Sets the color of the light
+    pub fn set_color(&mut self, new_color: [f32; 3]) {
+        match self {
+            Light::PointLight { color, .. } => *color = new_color,
+            Light::AmbientLight { color, .. } => *color = new_color,
+            Light::Spotlight { color, .. } => *color = new_color,
+            Light::AreaLight { color, .. } => *color = new_color,
+        }
+    }
+
     /// Sets the intensity of the light
     pub fn set_intensity(&mut self, new_intensity: f32) {
         match self {

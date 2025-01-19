@@ -11,7 +11,7 @@ keywords = ["software", "rendering", "graphics", "game", "engine"]
 members = [".", "rusteria"]
 
 [dependencies]
-theframework = { version = "0.1.37", git = "https://github.com/markusmoenig/theframework" }
+theframework = { version = "0.1.38", git = "https://github.com/markusmoenig/theframework" }
 # theframework = "0.1.33"
 # theframework = { path = "../TheFramework" }
 rayon = "1.10"

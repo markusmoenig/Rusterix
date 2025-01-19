@@ -456,26 +456,41 @@ impl Rasterizer {
                                                 batch.repeat_mode,
                                             );
 
-                                            if batch.receives_light {
-                                                // Calc Lights
+                                            if batch.receives_light && !scene.lights.is_empty() {
+                                                let mut accumulated_light = [0.0, 0.0, 0.0];
+
+                                                // Accumulate light contributions
                                                 for light in &scene.lights {
                                                     let light_color = light.color_at(world, 0.0);
-                                                    texel[0] = ((texel[0] as f32 / 255.0)
-                                                        * light_color[0]
-                                                        * 255.0)
-                                                        .clamp(0.0, 255.0)
-                                                        as u8;
-                                                    texel[1] = ((texel[1] as f32 / 255.0)
-                                                        * light_color[1]
-                                                        * 255.0)
-                                                        .clamp(0.0, 255.0)
-                                                        as u8;
-                                                    texel[2] = ((texel[2] as f32 / 255.0)
-                                                        * light_color[2]
-                                                        * 255.0)
-                                                        .clamp(0.0, 255.0)
-                                                        as u8;
+                                                    accumulated_light[0] += light_color[0];
+                                                    accumulated_light[1] += light_color[1];
+                                                    accumulated_light[2] += light_color[2];
                                                 }
+
+                                                // Clamp accumulated light to prevent overexposure
+                                                accumulated_light[0] =
+                                                    accumulated_light[0].clamp(0.0, 1.0);
+                                                accumulated_light[1] =
+                                                    accumulated_light[1].clamp(0.0, 1.0);
+                                                accumulated_light[2] =
+                                                    accumulated_light[2].clamp(0.0, 1.0);
+
+                                                // Apply accumulated light to the texel
+                                                texel[0] = ((texel[0] as f32 / 255.0)
+                                                    * accumulated_light[0]
+                                                    * 255.0)
+                                                    .clamp(0.0, 255.0)
+                                                    as u8;
+                                                texel[1] = ((texel[1] as f32 / 255.0)
+                                                    * accumulated_light[1]
+                                                    * 255.0)
+                                                    .clamp(0.0, 255.0)
+                                                    as u8;
+                                                texel[2] = ((texel[2] as f32 / 255.0)
+                                                    * accumulated_light[2]
+                                                    * 255.0)
+                                                    .clamp(0.0, 255.0)
+                                                    as u8;
                                             }
 
                                             if texel[3] == 255 {
