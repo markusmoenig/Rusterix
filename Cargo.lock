@@ -1103,7 +1103,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "33d852cb9b869c2a9b3df2f71a3074817f01e1844f839a144f5fcef059a4eb5d"
 dependencies = [
  "libc",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -3210,7 +3210,7 @@ dependencies = [
 
 [[package]]
 name = "rusterix"
-version = "0.2.3"
+version = "0.2.4"
 dependencies = [
  "bincode",
  "criterion",
@@ -3242,7 +3242,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -4090,8 +4090,8 @@ checksum = "b7b3e525a49ec206798b40326a44121291b530c963cfb01018f63e135bac543d"
 
 [[package]]
 name = "theframework"
-version = "0.1.38"
-source = "git+https://github.com/markusmoenig/theframework#66ffb32d0c7e624f64570f103c7df219b4528d68"
+version = "0.1.39"
+source = "git+https://github.com/markusmoenig/theframework#3ca4fbb4a93011d2a941e34e962192ccefa22c2e"
 dependencies = [
  "aict",
  "bytemuck",
@@ -5009,7 +5009,7 @@ version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf221c93e13a30d793f7645a0e7762c55d169dbb0a49671918a2319d289b10bb"
 dependencies = [
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]

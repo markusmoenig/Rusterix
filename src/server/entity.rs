@@ -11,6 +11,9 @@ pub struct Entity {
     /// The id of the entity in the entity manager
     pub id: u32,
 
+    /// Maps the entity to a creator id
+    pub creator_id: Uuid,
+
     /// The XZ orientation
     pub orientation: Vec2<f32>,
     /// The position in the map
@@ -23,7 +26,7 @@ pub struct Entity {
     pub action: EntityAction,
 
     /// Attributes
-    pub attributes: FxHashMap<String, Value>,
+    pub attributes: ValueContainer,
 
     /// Dirty static atrributes
     pub dirty_flags: u8,
@@ -42,6 +45,7 @@ impl Entity {
     pub fn new() -> Self {
         Self {
             id: 0,
+            creator_id: Uuid::new_v4(),
 
             orientation: Vec2::new(1.0, 0.0),
             position: Vec3::new(0.0, 1.0, 0.0),
@@ -49,7 +53,7 @@ impl Entity {
 
             action: EntityAction::Off,
 
-            attributes: FxHashMap::default(),
+            attributes: ValueContainer::default(),
 
             dirty_flags: 0,
             dirty_attributes: FxHashSet::default(),
@@ -142,7 +146,7 @@ impl Entity {
 
     /// Set a dynamic attribute and mark it as dirty
     pub fn set_attribute(&mut self, key: String, value: Value) {
-        self.attributes.insert(key.clone(), value);
+        self.attributes.set(&key, value);
         self.mark_dirty_attribute(&key);
     }
 
@@ -256,7 +260,7 @@ impl Entity {
 
         // Update dynamic attributes
         for (key, value) in update.attributes {
-            self.attributes.insert(key.clone(), value.clone());
+            self.attributes.set(&key, value.clone());
             self.mark_dirty_attribute(&key);
         }
     }

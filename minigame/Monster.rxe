@@ -1,9 +1,9 @@
 from array import array
 
 class Monster(Entity):
-    def __init__(self, position=None, orientation=None, attributes=None, level=1):
+    def __init__(self):
         """Initializes a Monster."""
-        super().__init__(position, orientation, attributes)
+        super().__init__()
 
     def attack(self, target):
         """Attacks another fighter, reducing its health."""

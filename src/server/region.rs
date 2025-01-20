@@ -4,7 +4,7 @@ use crossbeam_channel::{select, tick, unbounded, Receiver, Sender};
 use ref_thread_local::{ref_thread_local, RefThreadLocal};
 use rustpython::vm::{Interpreter, PyObjectRef};
 use std::sync::{Arc, Mutex, OnceLock};
-use theframework::prelude::FxHashMap;
+use theframework::prelude::{FxHashMap, Uuid};
 
 // Local thread global data for the Region
 ref_thread_local! {
@@ -71,6 +71,12 @@ impl RegionInstance {
                 vm.new_function("action", player_action).into(),
                 vm,
             );
+
+            let _ = scope.globals.set_item(
+                "set_tile",
+                vm.new_function("set_tile", set_tile).into(),
+                vm,
+            );
         });
 
         let (to_sender, to_receiver) = unbounded::<RegionMessage>();
@@ -109,9 +115,10 @@ impl RegionInstance {
     }
 
     /// Initializes the Python bases classes, sets the map and applies entities
-    pub fn init(&mut self, name: String, map: &mut Map, entities: &FxHashMap<String, String>) {
+    pub fn init(&mut self, name: String, map: Map, entities: &FxHashMap<String, String>) {
         self.name = name;
 
+        *MAP.borrow_mut() = map;
         self.apply_base_classes();
 
         // Create the manager
@@ -129,7 +136,7 @@ impl RegionInstance {
             }
         }
 
-        let entities = map.entities.clone();
+        let entities = MAP.borrow().entities.clone();
 
         // Installing Entity Instances
         for (index, entity) in entities.iter().enumerate() {
@@ -137,10 +144,8 @@ impl RegionInstance {
                 Some(value) => value,
                 None => &Value::Str("unknown".into()),
             };
-            let cmd = format!(
-                "manager.add_entity({}([{}, {}, {}], None, None))",
-                class_name, entity.position.x, entity.position.y, entity.position.z,
-            );
+            let cmd = format!("manager.add_entity({}())", class_name);
+            let mut entity_id = 0;
             match self.execute(&cmd) {
                 Ok(obj) => {
                     self.interp.enter(|vm| {
@@ -152,8 +157,9 @@ impl RegionInstance {
                                 value,
                                 self.name
                             );
-                            if let Some(e) = map.entities.get_mut(index) {
+                            if let Some(e) = MAP.borrow_mut().entities.get_mut(index) {
                                 e.id = value as u32;
+                                entity_id = value as u32;
                             }
                         }
                     });
@@ -167,16 +173,80 @@ impl RegionInstance {
                     );
                 }
             }
-        }
 
-        // for entity in &self.map.entities.clone() {
-        //     self.set_entity_position(entity.id, Vec3::new(1.0, 2.0, 3.0));
-        // }
+            // Running init of the class on the entity instance
+            match self.execute(&format!("manager.get_entity({}).init()", entity_id)) {
+                Ok(_) => {
+                    println!(
+                        "Executing Init {}/{} ({}) to '{}': Ok",
+                        entity.get_attr_string("name").unwrap(),
+                        entity.get_attr_string("class_name").unwrap(),
+                        entity_id,
+                        self.name
+                    );
+                }
+                Err(err) => {
+                    println!(
+                        "Executing Init {} Character to '{}': {}",
+                        entity.get_attr_string("name").unwrap(),
+                        self.name,
+                        err
+                    );
+                }
+            }
+
+            // Running the setup script for the class instance
+            if let Some(setup) = entity.get_attr_string("setup") {
+                match self.execute(&setup) {
+                    Ok(_) => {
+                        println!(
+                            "Setup {}/{} ({}) to '{}': Ok",
+                            entity.get_attr_string("name").unwrap(),
+                            entity.get_attr_string("class_name").unwrap(),
+                            entity_id,
+                            self.name
+                        );
+                    }
+                    Err(err) => {
+                        println!(
+                            "Setup {} Character to '{}': {}",
+                            entity.get_attr_string("name").unwrap(),
+                            self.name,
+                            err
+                        );
+                    }
+                }
+
+                match self.execute(&format!("setup(manager.get_entity({}))", entity_id)) {
+                    Ok(_) => {
+                        println!(
+                            "Executing Setup {}/{} ({}) to '{}': Ok",
+                            entity.get_attr_string("name").unwrap(),
+                            entity.get_attr_string("class_name").unwrap(),
+                            entity_id,
+                            self.name
+                        );
+                    }
+                    Err(err) => {
+                        println!(
+                            "Executing Setup {} Character to '{}': {}",
+                            entity.get_attr_string("name").unwrap(),
+                            self.name,
+                            err
+                        );
+                    }
+                }
+            }
+        }
     }
 
-    pub fn run(self, map: Map) {
+    /// Run this instance
+    pub fn run(self) {
         //let ticker = tick(std::time::Duration::from_millis(250));
         let ticker = tick(std::time::Duration::from_millis(16));
+
+        // We have to reassign map inside the thread
+        let map = MAP.borrow_mut().clone();
 
         std::thread::spawn(move || {
             // Initialize the local thread global storage
@@ -345,11 +415,20 @@ impl RegionInstance {
     }
 }
 
-/// Send from a player script (either locally or remotely) to perform the given action.
+/// Perform the given action on the next update().
 fn player_action(entity_id: u32, action: i32) {
     if let Some(action) = EntityAction::from_i32(action) {
         if let Some(entity) = MAP.borrow_mut().entities.get_mut(entity_id as usize) {
             entity.action = action;
+        }
+    }
+}
+
+/// Set the tile_id of the entity.
+fn set_tile(entity_id: u32, id: String) {
+    if let Ok(uuid) = Uuid::try_parse(&id) {
+        if let Some(entity) = MAP.borrow_mut().entities.get_mut(entity_id as usize) {
+            entity.set_attribute("tile_id".into(), Value::Id(uuid));
         }
     }
 }

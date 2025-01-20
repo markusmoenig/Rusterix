@@ -63,7 +63,7 @@ impl Server {
     pub fn create_region_instance(
         &mut self,
         name: String,
-        mut map: Map,
+        map: Map,
         entities: &FxHashMap<String, String>,
     ) {
         let mut region_instance = RegionInstance::default();
@@ -77,8 +77,8 @@ impl Server {
 
         self.from_region.push(region_instance.from_receiver.clone());
 
-        region_instance.init(name, &mut map, entities);
-        region_instance.run(map);
+        region_instance.init(name, map, entities);
+        region_instance.run();
     }
 
     /// Get entities for a given region.

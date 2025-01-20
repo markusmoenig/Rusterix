@@ -83,7 +83,7 @@ fn hex_to_rgb_f32(hex: &str) -> [f32; 3] {
     }
 }
 
-fn add_entity(name: String, class_name: String, level: i32, texture: String) {
+fn add_entity(name: String, class_name: String, texture: String) {
     let state = CURSORSTATE.read().unwrap();
 
     let mut entity = Entity::default();
@@ -91,7 +91,6 @@ fn add_entity(name: String, class_name: String, level: i32, texture: String) {
     entity.set_position(Vec3::new(state.position.x, 1.0, state.position.y));
     entity.set_attribute("name".into(), Value::Str(name));
     entity.set_attribute("class_name".into(), Value::Str(class_name));
-    entity.set_attribute("level".into(), Value::Int(level));
 
     if let Some(id) = get_texture(&texture) {
         entity.set_attribute("tile_id".into(), Value::Id(id));

@@ -24,6 +24,7 @@ class EntityManager:
 
     def add_entity(self, entity):
         """Adds an entity and assigns it a unique integer ID."""
+
         if not isinstance(entity, Entity):
             raise TypeError("Only Entity instances can be added.")
 
@@ -39,6 +40,13 @@ class EntityManager:
         self.entities[entity_id] = entity
         return entity_id
 
+    def get_entity(self, entity_id):
+        """Retrieves an entity by its ID."""
+        if entity_id in self.entities:
+            return self.entities[entity_id]
+        else:
+            raise KeyError(f"Entity with ID {entity_id} does not exist.")
+
     def event(self, entity_id, event, value):
         """Event"""
         self.entities[entity_id].event(event, value)
@@ -53,30 +61,6 @@ class EntityManager:
             del self.entities[entity_id]
         else:
             raise KeyError(f"Entity with ID {entity_id} does not exist.")
-
-    def get_entity_position(self, entity_id):
-        """Gets the position of an entity."""
-        if entity_id not in self.entities:
-            raise KeyError(f"Entity with ID {entity_id} does not exist.")
-        return self.entities[entity_id].position
-
-    def set_entity_position(self, entity_id, position):
-        """Sets the position of an entity."""
-        if entity_id not in self.entities:
-            raise KeyError(f"Entity with ID {entity_id} does not exist.")
-        self.entities[entity_id].position = position
-
-    def update_attribute(self, entity_id, key, value):
-        """Updates or adds an attribute for a specific entity."""
-        if entity_id not in self.entities:
-            raise KeyError(f"Entity with ID {entity_id} does not exist.")
-        self.entities[entity_id].update_attribute(key, value)
-
-    def get_entity_attributes(self, entity_id):
-        """Gets the dictionary of attributes for a specific entity."""
-        if entity_id not in self.entities:
-            raise KeyError(f"Entity with ID {entity_id} does not exist.")
-        return self.entities[entity_id].get_all_attributes()
 
     def get_all_entities(self):
         """Returns all entities and their attributes."""
@@ -95,4 +79,4 @@ class EntityManager:
         """Prints all entities and their attributes."""
         print("Entities:")
         for entity_id, entity in self.entities.items():
-            print(f" - ID {entity_id}: {entity.get_all_attributes()}")
+            print(f" - ID {entity_id}: ")

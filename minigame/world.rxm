@@ -29,8 +29,8 @@ wall(6)
 
 # Monster
 move_to(10, 10.5)
-add_entity("Orc", "Monster", 1, "brickwall")
+add_entity("Orc", "Monster", "brickwall")
 
 # Set player
 move_to(6, 4.5)
-add_entity("Shabby", "Player", 1, "brickwall")
+add_entity("Shabby", "Player", "brickwall")
