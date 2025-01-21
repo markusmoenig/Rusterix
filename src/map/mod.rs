@@ -78,7 +78,9 @@ pub struct Map {
     pub selected_vertices: Vec<u32>,
     pub selected_linedefs: Vec<u32>,
     pub selected_sectors: Vec<u32>,
+
     pub selected_light: Option<u32>,
+    pub selected_entity: Option<Uuid>,
 
     // Animation
     #[serde(default)]
@@ -121,7 +123,9 @@ impl Map {
             selected_vertices: vec![],
             selected_linedefs: vec![],
             selected_sectors: vec![],
+
             selected_light: None,
+            selected_entity: None,
 
             animation: VertexAnimationSystem::default(),
         }
@@ -133,6 +137,15 @@ impl Map {
         self.curr_grid_pos = None;
         self.curr_rectangle = None;
         self.selected_light = None;
+    }
+
+    // Clear the selection
+    pub fn clear_selection(&mut self) {
+        self.selected_vertices = vec![];
+        self.selected_linedefs = vec![];
+        self.selected_sectors = vec![];
+        self.selected_light = None;
+        self.selected_entity = None;
     }
 
     /// Generate a bounding box for all vertices in the map

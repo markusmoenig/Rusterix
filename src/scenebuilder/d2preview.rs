@@ -62,6 +62,20 @@ impl SceneBuilder for D2PreviewBuilder {
             Tile::from_texture(Texture::from_color([128, 128, 128, 255])),
         ];
 
+        // Add preview icon textures
+
+        if let Some(Value::Texture(tex)) = properties.get("character_on") {
+            textures.push(Tile::from_texture(tex.clone()));
+        } else {
+            textures.push(Tile::from_texture(Texture::white()));
+        }
+
+        if let Some(Value::Texture(tex)) = properties.get("character_off") {
+            textures.push(Tile::from_texture(tex.clone()));
+        } else {
+            textures.push(Tile::from_texture(Texture::black()));
+        }
+
         if self.map_tool_type == MapToolType::Effects {
             if let Some(Value::Texture(tex)) = properties.get("light_on") {
                 textures.push(Tile::from_texture(tex.clone()));
@@ -89,8 +103,11 @@ impl SceneBuilder for D2PreviewBuilder {
             .color([128, 128, 128, 255])
             .mode(crate::PrimitiveMode::Lines);
 
-        let mut light_on_batch = Batch::emptyd2().texture_index(6);
-        let mut light_off_batch = Batch::emptyd2().texture_index(7);
+        let mut character_on_batch = Batch::emptyd2().texture_index(6);
+        let mut character_off_batch = Batch::emptyd2().texture_index(7);
+
+        let mut light_on_batch = Batch::emptyd2().texture_index(8);
+        let mut light_off_batch = Batch::emptyd2().texture_index(9);
 
         // Add the material clipping area
         if self.material_mode {
@@ -119,7 +136,6 @@ impl SceneBuilder for D2PreviewBuilder {
         if self.map_tool_type == MapToolType::General
             || self.map_tool_type == MapToolType::Selection
             || self.map_tool_type == MapToolType::Sector
-            || self.map_tool_type == MapToolType::Effects
         {
             for sector in &map.sectors {
                 if let Some(geo) = sector.generate_geometry(map) {
@@ -312,6 +328,31 @@ impl SceneBuilder for D2PreviewBuilder {
             }
         }
 
+        // Entities
+        for entity in &map.entities {
+            let entity_pos = Vec2::new(entity.position.x, entity.position.z);
+            let pos =
+                self.map_grid_to_local(screen_size, Vec2::new(entity_pos.x, entity_pos.y), map);
+            let size = map.grid_size;
+            let hsize = map.grid_size / 2.0;
+
+            if let Some(id) = entity.get_attr_uuid("tile_id") {
+                if let Some(tile) = tiles.get(&id) {
+                    let texture_index = textures.len();
+
+                    let mut batch = Batch::emptyd2().texture_index(texture_index);
+                    batch.add_rectangle(pos.x - hsize, pos.y - hsize, size, size);
+                    textures.push(tile.clone());
+                    repeated_offsets.insert(tile.id, repeated_batches.len());
+                    repeated_batches.push(batch);
+                }
+            } else if Some(entity.creator_id) == map.selected_entity {
+                character_on_batch.add_rectangle(pos.x - hsize, pos.y - hsize, size, size);
+            } else {
+                character_off_batch.add_rectangle(pos.x - hsize, pos.y - hsize, size, size);
+            }
+        }
+
         // For line action previews
         if let Some(grid_pos) = map.curr_grid_pos {
             let local = self.map_grid_to_local(screen_size, grid_pos, map);
@@ -346,6 +387,8 @@ impl SceneBuilder for D2PreviewBuilder {
             gray_batch_lines,
             light_on_batch,
             light_off_batch,
+            character_on_batch,
+            character_off_batch,
         ]);
 
         scene.d2 = batches;
