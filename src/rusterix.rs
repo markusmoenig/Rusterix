@@ -66,6 +66,7 @@ impl Rusterix {
             self.server
                 .create_region_instance(name.clone(), map.clone(), &self.assets.entities);
         }
+        self.server.set_state(crate::ServerState::Running);
     }
 
     /// Build the client scene based on the maps camera mode.

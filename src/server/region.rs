@@ -238,6 +238,11 @@ impl RegionInstance {
                 }
             }
         }
+
+        // Mark all fields dirty for the first transmission to the server.
+        for e in MAP.borrow_mut().entities.iter_mut() {
+            e.mark_all_dirty();
+        }
     }
 
     /// Run this instance
@@ -328,6 +333,9 @@ impl RegionInstance {
                                             println!("User event error: {} in {}", err, cmd);
                                         }
                                     }
+                                }
+                                Quit => {
+                                    println!("Shutton down '{}'", MAP.borrow().name);
                                 }
                                 _ => {}
                             }

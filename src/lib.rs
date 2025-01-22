@@ -75,7 +75,7 @@ pub use crate::{
     script::mapscript::MapScript,
     server::{
         assets::Assets, entity::Entity, entity::EntityUpdate, message::EntityAction,
-        message::RegionMessage, region::RegionInstance, Server,
+        message::RegionMessage, region::RegionInstance, Server, ServerState,
     },
     shader::{grid::GridShader, vgradient::VGrayGradientShader, Shader},
     texture::{RepeatMode, SampleMode, Texture},

@@ -183,6 +183,12 @@ impl Entity {
         self.dirty_attributes.insert(key.to_string());
     }
 
+    /// Mark all fields and attributes as dirty.
+    pub fn mark_all_dirty(&mut self) {
+        self.dirty_flags = 0b0111;
+        self.dirty_attributes = self.attributes.keys().cloned().collect();
+    }
+
     /// Check if the entity is dirty
     pub fn is_dirty(&self) -> bool {
         self.dirty_flags != 0 || !self.dirty_attributes.is_empty()

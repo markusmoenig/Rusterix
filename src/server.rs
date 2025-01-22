@@ -6,7 +6,10 @@ pub mod region;
 use crossbeam_channel::{Receiver, Sender};
 
 use crate::prelude::*;
-use std::sync::{Arc, LazyLock, RwLock};
+use std::{
+    borrow::BorrowMut,
+    sync::{Arc, LazyLock, RwLock},
+};
 use theframework::prelude::*;
 
 // Pipes to the regions
@@ -32,6 +35,13 @@ fn register_player(region_id: u32, entity_id: u32) {
     }
 }
 
+#[derive(Clone, Copy, PartialEq)]
+pub enum ServerState {
+    Off,
+    Running,
+    Paused,
+}
+
 pub struct Server {
     pub id_gen: u32,
 
@@ -39,6 +49,8 @@ pub struct Server {
     from_region: Vec<Receiver<RegionMessage>>,
 
     pub entities: FxHashMap<u32, Vec<Entity>>,
+
+    pub state: ServerState,
 }
 
 impl Default for Server {
@@ -56,7 +68,14 @@ impl Server {
             from_region: vec![],
 
             entities: FxHashMap::default(),
+
+            state: ServerState::Off,
         }
+    }
+
+    /// Set the server state.
+    pub fn set_state(&mut self, state: ServerState) {
+        self.state = state;
     }
 
     /// Create the given region instance.
@@ -167,6 +186,24 @@ impl Server {
                 }
             }
         }
+    }
+
+    /// Shuts down all region instances.
+    pub fn stop(&mut self) {
+        if let Ok(pipes) = REGIONPIPE.read() {
+            for sender in pipes.values() {
+                sender.send(RegionMessage::Quit).unwrap();
+            }
+        }
+        if let Ok(mut pipes) = REGIONPIPE.write() {
+            pipes.clear();
+        }
+        if let Ok(mut players) = LOCAL_PLAYERS.write() {
+            players.clear();
+        }
+        self.id_gen = 0;
+        self.region_id_map.clear();
+        self.state = ServerState::Off;
     }
 
     /// Create a id

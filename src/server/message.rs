@@ -13,6 +13,8 @@ pub enum RegionMessage {
     UserAction(u32, EntityAction),
     /// Entity updates for a given region instance
     EntitiesUpdate(u32, Vec<Vec<u8>>),
+    /// Stop processing and quit
+    Quit,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Default)]
