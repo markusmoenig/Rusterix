@@ -9,6 +9,9 @@ pub enum SampleMode {
     Nearest,
     /// Linear interpolation sampling
     Linear,
+    Anisotropic {
+        max_samples: u8,
+    },
 }
 
 /// The repeat mode for texture sampling.
@@ -188,7 +191,75 @@ impl Texture {
         match sample_mode {
             SampleMode::Nearest => self.sample_nearest(u, v),
             SampleMode::Linear => self.sample_linear(u, v),
+            _ => [0, 0, 0, 0],
         }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn sample_anisotropic(
+        &self,
+        mut u: f32,
+        mut v: f32,
+        dudx: f32,
+        dudy: f32,
+        dvdx: f32,
+        dvdy: f32,
+        max_samples: u8,
+        repeat_mode: RepeatMode,
+    ) -> [u8; 4] {
+        match repeat_mode {
+            RepeatMode::ClampXY => {
+                u = u.clamp(0.0, 1.0);
+                v = v.clamp(0.0, 1.0);
+            }
+            RepeatMode::RepeatXY => {
+                u = u - u.floor(); // Wraps in both X and Y
+                v = v - v.floor();
+            }
+            RepeatMode::RepeatX => {
+                u = u - u.floor(); // Wraps only in X
+                v = v.clamp(0.0, 1.0);
+            }
+            RepeatMode::RepeatY => {
+                u = u.clamp(0.0, 1.0);
+                v = v - v.floor(); // Wraps only in Y
+            }
+        }
+
+        // Calculate anisotropy direction and magnitude
+        let anisotropy = (dudx.hypot(dudy) + dvdx.hypot(dvdy)) / 2.0;
+        if anisotropy == 0.0 {
+            return self.sample_nearest(u, v);
+        }
+        let samples = (anisotropy.log2().ceil() as u8).clamp(1, max_samples);
+
+        // Calculate major axis direction
+        let dir_x = dudx / anisotropy;
+        let dir_y = dvdy / anisotropy;
+
+        let mut color = [0f32; 4];
+        let step = 1.0 / samples as f32;
+
+        // Sample along the anisotropy axis
+        for i in 0..samples {
+            let offset = (i as f32 - samples as f32 / 2.0) * step;
+            // let su = u + offset * dir_x;
+            // let sv = v + offset * dir_y;
+            let su = (u + offset * dir_x).rem_euclid(1.0);
+            let sv = (v + offset * dir_y).rem_euclid(1.0);
+
+            let sampled = self.sample_linear(su, sv);
+            for (c, s) in color.iter_mut().zip(&sampled) {
+                *c += *s as f32;
+            }
+        }
+
+        // Average samples
+        for c in &mut color {
+            *c /= samples as f32;
+        }
+
+        color.map(|c| c.round() as u8)
     }
 
     /// Samples the texture at given UV coordinates.

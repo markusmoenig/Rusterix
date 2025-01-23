@@ -67,7 +67,7 @@ impl SceneBuilder for D3Builder {
 
                             let mut batch = Batch::emptyd3()
                                 .repeat_mode(crate::RepeatMode::RepeatXY)
-                                .sample_mode(crate::SampleMode::Nearest)
+                                .sample_mode(crate::SampleMode::Linear)
                                 .texture_index(texture_index);
 
                             batch.add(floor_vertices, indices.clone(), floor_uvs);
@@ -113,7 +113,7 @@ impl SceneBuilder for D3Builder {
 
                                 let mut batch = Batch::emptyd3()
                                     .repeat_mode(crate::RepeatMode::RepeatXY)
-                                    .sample_mode(crate::SampleMode::Nearest)
+                                    .sample_mode(crate::SampleMode::Linear)
                                     .texture_index(texture_index);
 
                                 batch.add(ceiling_vertices, indices, floor_uvs);
@@ -285,30 +285,32 @@ impl SceneBuilder for D3Builder {
 
         let mut index = 0;
         for entity in entities {
-            if !entity.is_player() {
-                let entity_pos = Vec2::new(entity.position.x, entity.position.z);
-                let camera_pos = Vec2::new(camera.position().x, camera.position().z);
-                let direction_to_camera = (camera_pos - entity_pos).normalized();
+            let show_entity = true; // !(entity.is_player() && camera.id() == "firstp");
 
-                // Calculate perpendicular vector on the XZ plane
-                let perpendicular = Vec2::new(-direction_to_camera.y, direction_to_camera.x);
-                let start = entity_pos + perpendicular * 0.5;
-                let end = entity_pos - perpendicular * 0.5;
-
-                let mut batch = Batch::emptyd3()
-                    .texture_index(index)
-                    .repeat_mode(crate::RepeatMode::RepeatXY);
-
-                add_entity_billboard(&start, &end, 2.0, &mut batch);
-
+            if show_entity {
                 if let Some(id) = entity.get_attr_uuid("tile_id") {
+                    let entity_pos = Vec2::new(entity.position.x, entity.position.z);
+                    let camera_pos = Vec2::new(camera.position().x, camera.position().z);
+                    let direction_to_camera = (camera_pos - entity_pos).normalized();
+
+                    // Calculate perpendicular vector on the XZ plane
+                    let perpendicular = Vec2::new(-direction_to_camera.y, direction_to_camera.x);
+                    let start = entity_pos + perpendicular * 0.5;
+                    let end = entity_pos - perpendicular * 0.5;
+
+                    let mut batch = Batch::emptyd3()
+                        .texture_index(index)
+                        .repeat_mode(crate::RepeatMode::RepeatXY);
+
+                    add_entity_billboard(&start, &end, 2.0, &mut batch);
+
                     if let Some(tile) = tiles.get(&id) {
                         textures.push(tile.clone());
                     }
-                }
 
-                batches.push(batch);
-                index += 1;
+                    batches.push(batch);
+                    index += 1;
+                }
             }
         }
 
@@ -406,7 +408,7 @@ impl D3BuilderUtils for D3Builder {
                 let mut batch = Batch::emptyd3()
                     .repeat_mode(crate::RepeatMode::RepeatXY)
                     .cull_mode(crate::CullMode::Off)
-                    .sample_mode(crate::SampleMode::Nearest)
+                    .sample_mode(crate::SampleMode::Anisotropic { max_samples: 2 })
                     .texture_index(texture_index);
 
                 batch.add(wall_vertices, wall_indices, wall_uvs);
@@ -482,7 +484,7 @@ impl D3BuilderUtils for D3Builder {
                     let mut batch = Batch::emptyd3()
                         .repeat_mode(crate::RepeatMode::RepeatXY)
                         .cull_mode(crate::CullMode::Off)
-                        .sample_mode(crate::SampleMode::Nearest)
+                        .sample_mode(crate::SampleMode::Linear)
                         .texture_index(texture_index);
 
                     batch.add(row_vertices, row_indices, row_uvs);
@@ -627,7 +629,7 @@ impl D3BuilderUtils for D3Builder {
             let mut batch = Batch::emptyd3()
                 .repeat_mode(crate::RepeatMode::RepeatXY)
                 .cull_mode(crate::CullMode::Off)
-                .sample_mode(crate::SampleMode::Nearest)
+                .sample_mode(crate::SampleMode::Linear)
                 .texture_index(texture_index)
                 .receives_light(false);
 

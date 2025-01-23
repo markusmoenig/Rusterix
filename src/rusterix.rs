@@ -87,6 +87,13 @@ impl Rusterix {
         }
     }
 
+    /// Apply the entities to the 3D scene.
+    pub fn apply_entities(&mut self, entities: &[Entity], map: &Map, assets: &Assets) {
+        if map.camera != MapCamera::TwoD {
+            self.client.apply_entities_d3(entities, assets);
+        }
+    }
+
     /// Build the client scene in D3.
     pub fn build_scene_d3(&mut self, map: &Map) {
         if self.is_dirty_d3 {

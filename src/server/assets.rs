@@ -3,6 +3,7 @@ use rect_packer::{Config, Packer};
 use std::path::Path;
 use theframework::prelude::*;
 
+#[derive(Clone)]
 pub struct Assets {
     pub map_sources: FxHashMap<String, String>,
     pub maps: FxHashMap<String, Map>,

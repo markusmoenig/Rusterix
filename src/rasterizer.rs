@@ -1,4 +1,4 @@
-use crate::{Batch, Pixel, PrimitiveMode, Scene};
+use crate::{Batch, Pixel, PrimitiveMode, SampleMode, Scene};
 use rayon::prelude::*;
 use vek::{Mat3, Mat4, Vec2, Vec3, Vec4};
 
@@ -14,6 +14,8 @@ pub struct Rasterizer {
     pub height: f32,
     pub camera_pos: Vec3<f32>,
 }
+
+const FXAA_PADDING: usize = 2;
 
 /// Rasterizes batches of 2D and 3D meshes (and lines).
 impl Rasterizer {
@@ -229,7 +231,7 @@ impl Rasterizer {
                                         // Sample the texture
 
                                         let t = &scene.textures[batch.texture_index];
-                                        let index = t.textures.len() % scene.animation_frame;
+                                        let index = scene.animation_frame % t.textures.len();
 
                                         let texel = t.textures[index].sample(
                                             u,
@@ -391,8 +393,6 @@ impl Rasterizer {
                                         let zidx = (ty - tile.y) * tile.width + (tx - tile.x);
 
                                         if z < z_buffer[zidx] {
-                                            z_buffer[zidx] = z;
-
                                             // Perform the interpolation of all U/w and V/w values using barycentric weights and a factor of 1/w
                                             let mut interpolated_u = (uv0[0] / v0[3]) * alpha
                                                 + (uv1[0] / v1[3]) * beta
@@ -414,14 +414,14 @@ impl Rasterizer {
                                             let world = self.screen_to_world(p[0], p[1], z);
 
                                             if batch.receives_light {
-                                                // Distance based UV jittering to hide Moire patterns
+                                                // Distance based bayer matrix dithering
                                                 // Distance to camera
                                                 let distance =
                                                     (world - self.camera_pos).magnitude();
 
                                                 // TODO: Make this configurable
-                                                let start_distance = 5.0;
-                                                let ramp_distance = 3.0;
+                                                let start_distance = 2.0;
+                                                let ramp_distance = 10.0;
                                                 let jitter_scale = 0.028;
 
                                                 let mut t = ((distance - start_distance)
@@ -429,10 +429,22 @@ impl Rasterizer {
                                                     .clamp(0.0, 1.0);
                                                 t = t * t * (3.0 - 2.0 * t);
 
-                                                let jitter_x =
-                                                    self.hash_uv(tx, ty) * t * jitter_scale;
-                                                let jitter_y =
-                                                    self.hash_uv(ty, tx) * t * jitter_scale;
+                                                const BAYER_8X8: [[i32; 8]; 8] = [
+                                                    [0, 32, 8, 40, 2, 34, 10, 42],
+                                                    [48, 16, 56, 24, 50, 18, 58, 26],
+                                                    [12, 44, 4, 36, 14, 46, 6, 38],
+                                                    [60, 28, 52, 20, 62, 30, 54, 22],
+                                                    [3, 35, 11, 43, 1, 33, 9, 41],
+                                                    [51, 19, 59, 27, 49, 17, 57, 25],
+                                                    [15, 47, 7, 39, 13, 45, 5, 37],
+                                                    [63, 31, 55, 23, 61, 29, 53, 21],
+                                                ];
+
+                                                let threshold =
+                                                    BAYER_8X8[ty % 8][tx % 8] as f32 / 64.0 - 0.5;
+
+                                                let jitter_x = threshold * jitter_scale * t;
+                                                let jitter_y = threshold * jitter_scale * t;
 
                                                 interpolated_u += jitter_x;
                                                 interpolated_v += jitter_y;
@@ -449,12 +461,67 @@ impl Rasterizer {
                                             let t = &textures[batch.texture_index];
                                             let index = t.textures.len() % scene.animation_frame;
 
-                                            let mut texel = t.textures[index].sample(
-                                                interpolated_u,
-                                                interpolated_v,
-                                                batch.sample_mode,
-                                                batch.repeat_mode,
-                                            );
+                                            let mut texel = match batch.sample_mode {
+                                                SampleMode::Anisotropic { max_samples } => {
+                                                    // Calculate partial derivatives of UV coordinates in screen space
+                                                    let dudx = ((uv1[0] / v1[3])
+                                                        - (uv0[0] / v0[3]))
+                                                        * (v2[1] - v0[1])
+                                                        - ((uv2[0] / v2[3]) - (uv0[0] / v0[3]))
+                                                            * (v1[1] - v0[1]);
+                                                    let dudy = ((uv2[0] / v2[3])
+                                                        - (uv0[0] / v0[3]))
+                                                        * (v1[0] - v0[0])
+                                                        - ((uv1[0] / v1[3]) - (uv0[0] / v0[3]))
+                                                            * (v2[0] - v0[0]);
+
+                                                    let dvdx = ((uv1[1] / v1[3])
+                                                        - (uv0[1] / v0[3]))
+                                                        * (v2[1] - v0[1])
+                                                        - ((uv2[1] / v2[3]) - (uv0[1] / v0[3]))
+                                                            * (v1[1] - v0[1]);
+                                                    let dvdy = ((uv2[1] / v2[3])
+                                                        - (uv0[1] / v0[3]))
+                                                        * (v1[0] - v0[0])
+                                                        - ((uv1[1] / v1[3]) - (uv0[1] / v0[3]))
+                                                            * (v2[0] - v0[0]);
+
+                                                    // Normalize derivatives by determinant (area of the triangle)
+                                                    let det = (v1[0] - v0[0]) * (v2[1] - v0[1])
+                                                        - (v2[0] - v0[0]) * (v1[1] - v0[1]);
+
+                                                    if det.abs() < 1e-6 {
+                                                        t.textures[index].sample(
+                                                            interpolated_u,
+                                                            interpolated_v,
+                                                            SampleMode::Linear,
+                                                            batch.repeat_mode,
+                                                        )
+                                                    } else {
+                                                        let dudx = dudx / det;
+                                                        let dudy = dudy / det;
+                                                        let dvdx = dvdx / det;
+                                                        let dvdy = dvdy / det;
+
+                                                        t.textures[index].sample_anisotropic(
+                                                            interpolated_u,
+                                                            interpolated_v,
+                                                            dudx,
+                                                            dudy,
+                                                            dvdx,
+                                                            dvdy,
+                                                            max_samples,
+                                                            batch.repeat_mode,
+                                                        )
+                                                    }
+                                                }
+                                                _ => t.textures[index].sample(
+                                                    interpolated_u,
+                                                    interpolated_v,
+                                                    batch.sample_mode,
+                                                    batch.repeat_mode,
+                                                ),
+                                            };
 
                                             if batch.receives_light && !scene.lights.is_empty() {
                                                 let mut accumulated_light = [0.0, 0.0, 0.0];
@@ -570,16 +637,17 @@ impl Rasterizer {
         }
     }
 
-    /// A simple hash for creating noise to hide Moire patterns while moving
+    // Gamma correction in final output
+    #[allow(dead_code)]
     #[inline(always)]
-    fn hash_uv(&self, x: usize, y: usize) -> f32 {
-        // Simple hash function for UV jittering, returning a value between -0.5 and 0.5
-        let seed = 0x9E3779B9; // Arbitrary prime constant
-        let mut hash = x as u32;
-        hash = hash.wrapping_mul(seed).wrapping_add(y as u32);
-        hash = hash ^ (hash >> 16);
-        hash = hash.wrapping_mul(seed);
-        ((hash & 0xFF) as f32 / 255.0) - 0.5
+    fn gamma_correct(&self, color: [u8; 4]) -> [u8; 4] {
+        let gamma = 2.2;
+        [
+            (f32::powf(color[0] as f32 / 255.0, 1.0 / gamma) * 255.0) as u8,
+            (f32::powf(color[1] as f32 / 255.0, 1.0 / gamma) * 255.0) as u8,
+            (f32::powf(color[2] as f32 / 255.0, 1.0 / gamma) * 255.0) as u8,
+            color[3],
+        ]
     }
 
     /// Convert screen coordinate to world coordinate

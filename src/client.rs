@@ -111,6 +111,6 @@ impl Client {
             self.camera_d3
                 .projection_matrix(width as f32, height as f32),
         )
-        .rasterize(&mut self.scene_d3, pixels, width, height, 200);
+        .rasterize(&mut self.scene_d3, pixels, width, height, 64);
     }
 }
