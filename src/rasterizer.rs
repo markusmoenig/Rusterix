@@ -15,8 +15,6 @@ pub struct Rasterizer {
     pub camera_pos: Vec3<f32>,
 }
 
-const FXAA_PADDING: usize = 2;
-
 /// Rasterizes batches of 2D and 3D meshes (and lines).
 impl Rasterizer {
     pub fn setup(
@@ -421,7 +419,7 @@ impl Rasterizer {
 
                                                 // TODO: Make this configurable
                                                 let start_distance = 2.0;
-                                                let ramp_distance = 10.0;
+                                                let ramp_distance = 2.0;
                                                 let jitter_scale = 0.028;
 
                                                 let mut t = ((distance - start_distance)
