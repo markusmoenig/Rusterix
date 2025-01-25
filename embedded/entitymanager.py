@@ -47,6 +47,11 @@ class EntityManager:
         else:
             raise KeyError(f"Entity with ID {entity_id} does not exist.")
 
+    def broadcast(self, event, value):
+        """Broadcasts an event to all entities."""
+        for entity_id, entity in self.entities.items():
+            entity.event(event, value)
+
     def event(self, entity_id, event, value):
         """Event"""
         self.entities[entity_id].event(event, value)

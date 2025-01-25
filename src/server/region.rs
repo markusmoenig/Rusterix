@@ -1,15 +1,25 @@
+use crate::server::py_fn::*;
 use crate::server::register_player;
 use crate::{EntityAction, Map, Value};
 use crossbeam_channel::{select, tick, unbounded, Receiver, Sender};
 use ref_thread_local::{ref_thread_local, RefThreadLocal};
-use rustpython::vm::{Interpreter, PyObjectRef};
+use rustpython::vm::*;
 use std::sync::{Arc, Mutex, OnceLock};
-use theframework::prelude::{FxHashMap, Uuid};
+use theframework::prelude::{FxHashMap, TheTime, Uuid};
 
 // Local thread global data for the Region
 ref_thread_local! {
     pub static managed REGION: RegionInstance = RegionInstance::default();
     pub static managed MAP: Map = Map::default();
+    pub static managed TIME: TheTime = TheTime::default();
+
+    /// A list of notifications to send to the given entity at the specified tick.
+    pub static managed NOTIFICATIONS: Vec<(u32, i64, String)> = vec![];
+
+    /// The current tick
+    pub static managed TICKS: i64 = 0;
+    /// Ticks per in-game minute
+    pub static managed TICKS_PER_MINUTE: u32 = 4;
 
     pub static managed TO_RECEIVER: OnceLock<Receiver<RegionMessage>> = OnceLock::new();
     pub static managed FROM_SENDER: OnceLock<Sender<RegionMessage>> = OnceLock::new();
@@ -77,6 +87,22 @@ impl RegionInstance {
                 vm.new_function("set_tile", set_tile).into(),
                 vm,
             );
+
+            let _ = scope
+                .globals
+                .set_item("random", vm.new_function("random", random).into(), vm);
+
+            let _ = scope.globals.set_item(
+                "notify_in",
+                vm.new_function("notify_in", notify_in).into(),
+                vm,
+            );
+
+            let _ = scope.globals.set_item(
+                "get_sector_name",
+                vm.new_function("get_sector_name", get_sector_name).into(),
+                vm,
+            );
         });
 
         let (to_sender, to_receiver) = unbounded::<RegionMessage>();
@@ -119,6 +145,7 @@ impl RegionInstance {
         self.name = name;
 
         *MAP.borrow_mut() = map;
+        *NOTIFICATIONS.borrow_mut() = vec![];
         self.apply_base_classes();
 
         // Create the manager
@@ -173,70 +200,6 @@ impl RegionInstance {
                     );
                 }
             }
-
-            // Running init of the class on the entity instance
-            match self.execute(&format!("manager.get_entity({}).init()", entity_id)) {
-                Ok(_) => {
-                    println!(
-                        "Executing Init {}/{} ({}) to '{}': Ok",
-                        entity.get_attr_string("name").unwrap(),
-                        entity.get_attr_string("class_name").unwrap(),
-                        entity_id,
-                        self.name
-                    );
-                }
-                Err(err) => {
-                    println!(
-                        "Executing Init {} Character to '{}': {}",
-                        entity.get_attr_string("name").unwrap(),
-                        self.name,
-                        err
-                    );
-                }
-            }
-
-            // Running the setup script for the class instance
-            if let Some(setup) = entity.get_attr_string("setup") {
-                match self.execute(&setup) {
-                    Ok(_) => {
-                        println!(
-                            "Setup {}/{} ({}) to '{}': Ok",
-                            entity.get_attr_string("name").unwrap(),
-                            entity.get_attr_string("class_name").unwrap(),
-                            entity_id,
-                            self.name
-                        );
-                    }
-                    Err(err) => {
-                        println!(
-                            "Setup {} Character to '{}': {}",
-                            entity.get_attr_string("name").unwrap(),
-                            self.name,
-                            err
-                        );
-                    }
-                }
-
-                match self.execute(&format!("setup(manager.get_entity({}))", entity_id)) {
-                    Ok(_) => {
-                        println!(
-                            "Executing Setup {}/{} ({}) to '{}': Ok",
-                            entity.get_attr_string("name").unwrap(),
-                            entity.get_attr_string("class_name").unwrap(),
-                            entity_id,
-                            self.name
-                        );
-                    }
-                    Err(err) => {
-                        println!(
-                            "Executing Setup {} Character to '{}': {}",
-                            entity.get_attr_string("name").unwrap(),
-                            self.name,
-                            err
-                        );
-                    }
-                }
-            }
         }
 
         // Mark all fields dirty for the first transmission to the server.
@@ -247,11 +210,12 @@ impl RegionInstance {
 
     /// Run this instance
     pub fn run(self) {
-        //let ticker = tick(std::time::Duration::from_millis(250));
-        let ticker = tick(std::time::Duration::from_millis(16));
+        let system_ticker = tick(std::time::Duration::from_millis(250));
+        let redraw_ticker = tick(std::time::Duration::from_millis(16));
 
         // We have to reassign map inside the thread
         let map = MAP.borrow_mut().clone();
+        let name = map.name.clone();
 
         std::thread::spawn(move || {
             // Initialize the local thread global storage
@@ -265,10 +229,85 @@ impl RegionInstance {
                 .unwrap();
             *REGION.borrow_mut() = self;
             *MAP.borrow_mut() = map;
+            *TICKS.borrow_mut() = 0;
+            // TODO: Make this configurable
+            *TICKS_PER_MINUTE.borrow_mut() = 4;
+
+            // Broadcast the startup event
+            let cmd = "manager.broadcast(\"startup\", \"\")";
+            let _ = REGION.borrow_mut().execute(cmd);
+
+            // Running the setup scripts for the class instances
+            let entities = MAP.borrow().entities.clone();
+            for entity in entities.iter() {
+                if let Some(setup) = entity.get_attr_string("setup") {
+                    match REGION.borrow_mut().execute(&setup) {
+                        Ok(_) => {
+                            println!(
+                                "Setup {}/{} ({}) to '{}': Ok",
+                                entity.get_attr_string("name").unwrap(),
+                                entity.get_attr_string("class_name").unwrap(),
+                                entity.id,
+                                name
+                            );
+                        }
+                        Err(err) => {
+                            println!(
+                                "Setup {} Character to '{}': {}",
+                                entity.get_attr_string("name").unwrap(),
+                                name,
+                                err
+                            );
+                        }
+                    }
+
+                    match REGION
+                        .borrow_mut()
+                        .execute(&format!("setup(manager.get_entity({}))", entity.id))
+                    {
+                        Ok(_) => {
+                            println!(
+                                "Executing Setup {}/{} ({}) to '{}': Ok",
+                                entity.get_attr_string("name").unwrap(),
+                                entity.get_attr_string("class_name").unwrap(),
+                                entity.id,
+                                name
+                            );
+                        }
+                        Err(err) => {
+                            println!(
+                                "Executing Setup {} Character to '{}': {}",
+                                entity.get_attr_string("name").unwrap(),
+                                name,
+                                err
+                            );
+                        }
+                    }
+                }
+            }
 
             loop {
                 select! {
-                    recv(ticker) -> _ => {
+                    recv(system_ticker) -> _ => {
+                        let ticks;
+                        {
+                            *TICKS.borrow_mut() += 1;
+                            ticks = *TICKS.borrow();
+                            *TIME.borrow_mut() = TheTime::from_ticks(ticks, *TICKS_PER_MINUTE.borrow());
+                        }
+
+                        let mut notifications = NOTIFICATIONS.borrow_mut();
+                        notifications.retain(|(id, tick, notification)| {
+                            if *tick <= ticks {
+                                let cmd = format!("manager.event({}, \"{}\", \"\")", id, notification);
+                                let _ = REGION.borrow_mut().execute(&cmd);
+                                false
+                            } else {
+                                true
+                            }
+                        });
+                    }
+                    recv(redraw_ticker) -> _ => {
                         let region_mut = REGION.borrow_mut();
                         let player_id = region_mut.player_id;
 
@@ -335,7 +374,7 @@ impl RegionInstance {
                                     }
                                 }
                                 Quit => {
-                                    println!("Shutton down '{}'", MAP.borrow().name);
+                                    println!("Shutting down '{}'. Goodbye.", MAP.borrow().name);
                                 }
                                 _ => {}
                             }
@@ -439,4 +478,33 @@ fn set_tile(entity_id: u32, id: String) {
             entity.set_attribute("tile_id".into(), Value::Id(uuid));
         }
     }
+}
+
+/// Notify the entity in the given amount of minutes.
+fn notify_in(entity_id: u32, minutes: i32, notification: String) {
+    let tick = *TICKS.borrow() + (minutes as u32 * *TICKS_PER_MINUTE.borrow()) as i64;
+    NOTIFICATIONS
+        .borrow_mut()
+        .push((entity_id, tick, notification));
+}
+
+/// Returns the name of the sector the entity is currently in.
+fn get_sector_name(entity_id: u32) -> String {
+    let map = MAP.borrow();
+    for e in map.entities.iter() {
+        if e.id == entity_id {
+            let pos = e.get_pos_xz();
+            for s in map.sectors.iter() {
+                if s.is_inside(&map, pos) {
+                    if s.name.is_empty() {
+                        return "Unnamed Sector".to_string();
+                    } else {
+                        return s.name.clone();
+                    }
+                }
+            }
+        }
+    }
+
+    "Not inside any sector".to_string()
 }

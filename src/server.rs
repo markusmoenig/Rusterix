@@ -1,6 +1,7 @@
 pub mod assets;
 pub mod entity;
 pub mod message;
+pub mod py_fn;
 pub mod region;
 
 use crossbeam_channel::{Receiver, Sender};

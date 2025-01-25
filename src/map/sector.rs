@@ -1,5 +1,7 @@
 use crate::{Map, Value, ValueContainer};
 use earcutr::earcut;
+use rand::seq::SliceRandom;
+use rand::Rng;
 use theframework::prelude::*;
 
 use super::pixelsource::PixelSource;
@@ -65,6 +67,33 @@ impl Sector {
         (Vec2::new(min_x, min_y), Vec2::new(max_x, max_y))
     }
 
+    /// Calculate the center of the sector
+    pub fn center(&self, map: &Map) -> Option<Vec2<f32>> {
+        // Collect all vertices for the sector
+        let mut vertices = Vec::new();
+        for &linedef_id in &self.linedefs {
+            if let Some(linedef) = map.linedefs.get(linedef_id as usize) {
+                if let Some(start_vertex) = map.vertices.get(linedef.start_vertex as usize) {
+                    vertices.push(Vec2::new(start_vertex.x, start_vertex.y));
+                    if let Some(end_vertex) = map.vertices.get(linedef.end_vertex as usize) {
+                        vertices.push(Vec2::new(end_vertex.x, end_vertex.y));
+                    }
+                }
+            }
+        }
+
+        // Ensure we have vertices to calculate the center
+        if vertices.is_empty() {
+            return None;
+        }
+
+        // Calculate the average x and y coordinates
+        let sum = vertices.iter().fold(Vec2::new(0.0, 0.0), |acc, v| acc + *v);
+        let count = vertices.len() as f32;
+        Some(sum / count)
+    }
+
+    /*
     /// Sets the wall height for all linedefs in the sector.
     pub fn set_wall_height(&mut self, _map: &mut Map, height: f32) {
         self.properties.set("wall_height", Value::Float(height));
@@ -73,7 +102,7 @@ impl Sector {
         //         linedef.wall_height = height;
         //     }
         // }
-    }
+    }*/
 
     /// Calculate the area of the sector (for sorting).
     pub fn area(&self, map: &Map) -> f32 {
@@ -138,5 +167,76 @@ impl Sector {
         } else {
             None
         }
+    }
+
+    /// Returns a random position inside the sector.
+    pub fn random_position(&self, map: &Map) -> Option<Vec2<f32>> {
+        // Generate geometry for the sector
+        if let Some((vertices, indices)) = self.generate_geometry(map) {
+            // Create a random number generator
+            let mut rng = rand::thread_rng();
+
+            // Randomly select a triangle from the indices
+            if let Some(&(i1, i2, i3)) = indices.choose(&mut rng) {
+                let v1 = vertices[i1];
+                let v2 = vertices[i2];
+                let v3 = vertices[i3];
+
+                // Generate random barycentric coordinates
+                let r1: f32 = rng.gen();
+                let r2: f32 = rng.gen();
+
+                // Ensure they are constrained to the triangle
+                let sqrt_r1 = r1.sqrt();
+                let u = 1.0 - sqrt_r1;
+                let v = r2 * sqrt_r1;
+
+                // Compute the random position as a weighted sum of the triangle's vertices
+                let x = u * v1[0] + v * v2[0] + (1.0 - u - v) * v3[0];
+                let y = u * v1[1] + v * v2[1] + (1.0 - u - v) * v3[1];
+
+                Some(Vec2::new(x, y))
+            } else {
+                None // Return None if no triangles are available
+            }
+        } else {
+            None // Return None if geometry couldn't be generated
+        }
+    }
+
+    /// Checks if a point is inside the sector polygon using the ray-casting algorithm.
+    pub fn is_inside(&self, map: &Map, point: Vec2<f32>) -> bool {
+        // Collect the polygon vertices
+        let mut polygon = Vec::new();
+        for &linedef_id in &self.linedefs {
+            if let Some(linedef) = map.linedefs.get(linedef_id as usize) {
+                if let Some(start_vertex) = map.vertices.get(linedef.start_vertex as usize) {
+                    polygon.push(Vec2::new(start_vertex.x, start_vertex.y));
+                }
+            }
+        }
+
+        // Early exit if the polygon is invalid
+        if polygon.len() < 3 {
+            return false; // A polygon must have at least 3 vertices
+        }
+
+        // Ray-casting algorithm
+        let mut inside = false;
+        let mut j = polygon.len() - 1;
+
+        for i in 0..polygon.len() {
+            if (polygon[i].y > point.y) != (polygon[j].y > point.y)
+                && point.x
+                    < (polygon[j].x - polygon[i].x) * (point.y - polygon[i].y)
+                        / (polygon[j].y - polygon[i].y)
+                        + polygon[i].x
+            {
+                inside = !inside;
+            }
+            j = i;
+        }
+
+        inside
     }
 }

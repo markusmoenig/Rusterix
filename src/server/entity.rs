@@ -60,6 +60,11 @@ impl Entity {
         }
     }
 
+    /// Get the XZ position.
+    pub fn get_pos_xz(&self) -> Vec2<f32> {
+        Vec2::new(self.position.x, self.position.z)
+    }
+
     /// Computes the look-at target based on position, orientation, and vertical tilt (tilt).
     pub fn camera_look_at(&self) -> Vec3<f32> {
         let vertical_offset = self.orientation.magnitude() * self.tilt.sin();
@@ -104,15 +109,6 @@ impl Entity {
         self.mark_dirty_field(0b0010);
     }
 
-    /// Maps a normalized screen coordinate (0.0 to 1.0) to a `tilt` angle.
-    /// `0.0` -> maximum downward tilt, `1.0` -> maximum upward tilt.
-    pub fn set_tilt_from_screen_coordinate(&mut self, screen_y: f32) {
-        // Map the normalized screen coordinate to a range of angles (e.g., -π/4 to π/4)
-        let max_tilt = std::f32::consts::FRAC_PI_4; // 45 degrees
-        self.tilt = (screen_y - 0.5) * 2.0 * max_tilt;
-        self.mark_dirty_field(0b0100);
-    }
-
     /// Applies the camera's position and look-at parameters based on the entity's state.
     pub fn apply_to_camera(&self, camera: &mut Box<dyn D3Camera>) {
         // println!("{} {}", self.position, self.orientation);
@@ -150,6 +146,15 @@ impl Entity {
             self.tilt = new_tilt;
             self.mark_dirty_field(0b0100);
         }
+    }
+
+    /// Maps a normalized screen coordinate (0.0 to 1.0) to a `tilt` angle.
+    /// `0.0` -> maximum downward tilt, `1.0` -> maximum upward tilt.
+    pub fn set_tilt_from_screen_coordinate(&mut self, screen_y: f32) {
+        // Map the normalized screen coordinate to a range of angles (e.g., -π/4 to π/4)
+        let max_tilt = std::f32::consts::FRAC_PI_4; // 45 degrees
+        self.tilt = (screen_y - 0.5) * 2.0 * max_tilt;
+        self.mark_dirty_field(0b0100);
     }
 
     /// Set a dynamic attribute and mark it as dirty
@@ -277,6 +282,33 @@ impl Entity {
             self.attributes.set(&key, value.clone());
             self.mark_dirty_attribute(&key);
         }
+    }
+
+    /// Sets the orientation to face east.
+    pub fn face_east(&mut self) {
+        self.set_orientation(Vec2::new(1.0, 0.0));
+    }
+
+    /// Sets the orientation to face west.
+    pub fn face_west(&mut self) {
+        self.set_orientation(Vec2::new(-1.0, 0.0));
+    }
+
+    /// Sets the orientation to face north.
+    pub fn face_north(&mut self) {
+        self.set_orientation(Vec2::new(0.0, -1.0));
+    }
+
+    /// Sets the orientation to face south.
+    pub fn face_south(&mut self) {
+        self.set_orientation(Vec2::new(0.0, 1.0));
+    }
+
+    /// Sets the orientation to face a specific point.
+    pub fn face_at(&mut self, target: Vec2<f32>) {
+        let current_position = self.get_pos_xz();
+        let direction = (target - current_position).normalized();
+        self.set_orientation(direction);
     }
 }
 

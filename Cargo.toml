@@ -31,6 +31,7 @@ walkdir = "2.5.0"
 crossbeam-channel = "0.5.14"
 ref_thread_local = "0.1.1"
 bincode = "1.3.3"
+rand = "0.8.5"
 
 rust-embed = { version = "8.5", default-features = true, features = [
     "include-exclude",

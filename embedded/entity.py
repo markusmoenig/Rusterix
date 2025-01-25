@@ -9,10 +9,6 @@ class Entity:
 
         self.type = EntityType.NPC
 
-    def init(self):
-        """Init the entity."""
-        pass
-
     def serialize(self):
         """Serializes the Entity to a pickle string."""
         return pickle.dumps(self)
@@ -21,10 +17,6 @@ class Entity:
     def deserialize(data):
         """Deserializes an Entity from a pickle string."""
         return pickle.loads(data)
-
-    def update(self):
-        """Update"""
-        pass
 
     def event(self, event, value):
         """Event"""
