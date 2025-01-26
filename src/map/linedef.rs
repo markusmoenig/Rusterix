@@ -4,14 +4,17 @@ use theframework::prelude::*;
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Linedef {
     pub id: u32,
-    #[serde(default)]
+
+    // For editors
+    pub creator_id: Uuid,
+
     pub name: String,
     pub start_vertex: u32,
     pub end_vertex: u32,
+
     pub front_sector: Option<u32>,
     pub back_sector: Option<u32>,
 
-    #[serde(default)]
     pub properties: ValueContainer,
 }
 
@@ -25,6 +28,7 @@ impl Linedef {
         properties.set("row3_source", Value::Source(PixelSource::Off));
         Self {
             id,
+            creator_id: Uuid::new_v4(),
             name: String::new(),
             start_vertex,
             end_vertex,

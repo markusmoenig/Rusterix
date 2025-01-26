@@ -21,37 +21,39 @@ pub enum RegionMessage {
 pub enum EntityAction {
     #[default]
     Off,
-    West,
-    North,
-    East,
-    South,
+    Left,
+    Forward,
+    Right,
+    Backward,
 }
 
-impl EntityAction {
-    /// Converts an `i32` to an `EntityAction`
-    pub fn from_i32(value: i32) -> Option<Self> {
+use std::str::FromStr;
+impl FromStr for EntityAction {
+    type Err = ();
+
+    /// Converts a `&str` to an `EntityAction`.
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
         match value {
-            0 => Some(EntityAction::Off),
-            1 => Some(EntityAction::West),
-            2 => Some(EntityAction::North),
-            3 => Some(EntityAction::East),
-            4 => Some(EntityAction::South),
-            _ => None, // Return None for invalid values
+            "none" => Ok(EntityAction::Off),
+            "left" => Ok(EntityAction::Left),
+            "forward" => Ok(EntityAction::Forward),
+            "right" => Ok(EntityAction::Right),
+            "backward" => Ok(EntityAction::Backward),
+            _ => Err(()), // Return an error for invalid values
         }
     }
 }
 
 use std::convert::TryFrom;
-
 impl TryFrom<i32> for EntityAction {
     type Error = &'static str;
 
     fn try_from(value: i32) -> Result<Self, Self::Error> {
         match value {
-            0 => Ok(EntityAction::West),
-            1 => Ok(EntityAction::North),
-            2 => Ok(EntityAction::East),
-            3 => Ok(EntityAction::South),
+            0 => Ok(EntityAction::Left),
+            1 => Ok(EntityAction::Forward),
+            2 => Ok(EntityAction::Right),
+            3 => Ok(EntityAction::Backward),
             _ => Err("Invalid value for EntityAction"),
         }
     }

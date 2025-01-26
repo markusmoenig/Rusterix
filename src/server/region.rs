@@ -103,6 +103,12 @@ impl RegionInstance {
                 vm.new_function("get_sector_name", get_sector_name).into(),
                 vm,
             );
+
+            let _ = scope.globals.set_item(
+                "face_random",
+                vm.new_function("face_random", face_random).into(),
+                vm,
+            );
         });
 
         let (to_sender, to_receiver) = unbounded::<RegionMessage>();
@@ -316,16 +322,16 @@ impl RegionInstance {
                         for entity in &mut MAP.borrow_mut().entities {
                             if Some(entity.id) == player_id {
                                 match entity.action {
-                                    EntityAction::North => {
+                                    EntityAction::Forward => {
                                         entity.move_forward(0.05 * 2.0);
                                     }
-                                    EntityAction::West => {
+                                    EntityAction::Left => {
                                         entity.turn_left(2.0);
                                     }
-                                    EntityAction::East => {
+                                    EntityAction::Right => {
                                         entity.turn_right(2.0);
                                     }
-                                    EntityAction::South => {
+                                    EntityAction::Backward => {
                                         entity.move_backward(0.05 * 2.0);
                                     }
                                     _ => {}
@@ -463,10 +469,10 @@ impl RegionInstance {
 }
 
 /// Perform the given action on the next update().
-fn player_action(entity_id: u32, action: i32) {
-    if let Some(action) = EntityAction::from_i32(action) {
+fn player_action(entity_id: u32, action: String) {
+    if let Ok(parsed_action) = action.parse::<EntityAction>() {
         if let Some(entity) = MAP.borrow_mut().entities.get_mut(entity_id as usize) {
-            entity.action = action;
+            entity.action = parsed_action;
         }
     }
 }
@@ -494,17 +500,22 @@ fn get_sector_name(entity_id: u32) -> String {
     for e in map.entities.iter() {
         if e.id == entity_id {
             let pos = e.get_pos_xz();
-            for s in map.sectors.iter() {
-                if s.is_inside(&map, pos) {
-                    if s.name.is_empty() {
-                        return "Unnamed Sector".to_string();
-                    } else {
-                        return s.name.clone();
-                    }
+            if let Some(s) = map.find_sector_at(pos) {
+                if s.name.is_empty() {
+                    return "Unnamed Sector".to_string();
+                } else {
+                    return s.name.clone();
                 }
             }
         }
     }
 
     "Not inside any sector".to_string()
+}
+
+/// Faces the entity at a random direction.
+fn face_random(entity_id: u32) {
+    if let Some(entity) = MAP.borrow_mut().entities.get_mut(entity_id as usize) {
+        entity.face_random();
+    }
 }

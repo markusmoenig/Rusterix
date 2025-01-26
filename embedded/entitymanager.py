@@ -5,17 +5,6 @@ class EntityType(Enum):
     NPC = 1
     PLAYER = 2
 
-class EntityAction(Enum):
-    NONE = 0
-    WEST = 1
-    NORTH = 2
-    EAST = 3
-    SOUTH = 4
-
-    def to_int(self):
-        """Convert the Enum to its integer value."""
-        return self.value
-
 class EntityManager:
     def __init__(self, id):
         self.id = id

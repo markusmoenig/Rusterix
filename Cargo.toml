@@ -1,6 +1,6 @@
 [package]
 name = "rusterix"
-version = "0.2.7"
+version = "0.2.8"
 edition = "2021"
 description = "Rusterix is a fast software renderer and game engine."
 license = "Apache-2.0 AND MIT"
@@ -11,7 +11,7 @@ keywords = ["software", "rendering", "graphics", "game", "engine"]
 members = [".", "rusteria"]
 
 [dependencies]
-theframework = { version = "0.1.39", git = "https://github.com/markusmoenig/theframework" }
+theframework = { version = "0.1.40", git = "https://github.com/markusmoenig/theframework" }
 # theframework = "0.1.33"
 # theframework = { path = "../TheFramework" }
 rayon = "1.10"
@@ -32,6 +32,8 @@ crossbeam-channel = "0.5.14"
 ref_thread_local = "0.1.1"
 bincode = "1.3.3"
 rand = "0.8.5"
+pathfinding = "4.13.1"
+ordered-float = "3.1"
 
 rust-embed = { version = "8.5", default-features = true, features = [
     "include-exclude",

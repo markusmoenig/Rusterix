@@ -1,3 +1,4 @@
+use rand::Rng;
 use rustc_hash::FxHashSet;
 use theframework::prelude::*;
 use vek::{Vec2, Vec3};
@@ -308,6 +309,14 @@ impl Entity {
     pub fn face_at(&mut self, target: Vec2<f32>) {
         let current_position = self.get_pos_xz();
         let direction = (target - current_position).normalized();
+        self.set_orientation(direction);
+    }
+
+    /// Sets the orientation to face a random direction.
+    pub fn face_random(&mut self) {
+        let mut rng = rand::thread_rng();
+        let angle = rng.gen_range(0.0..std::f32::consts::TAU); // TAU is 2π
+        let direction = Vec2::new(angle.cos(), angle.sin());
         self.set_orientation(direction);
     }
 }

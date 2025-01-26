@@ -242,6 +242,9 @@ impl SceneBuilder for D2PreviewBuilder {
             || self.map_tool_type == MapToolType::Sector
             || self.map_tool_type == MapToolType::Effects
         {
+            let mut selected_lines = vec![];
+            let mut non_selected_lines = vec![];
+
             for linedef in &map.linedefs {
                 if let Some(start_vertex) = map.get_vertex(linedef.start_vertex) {
                     let start_pos = self.map_grid_to_local(screen_size, start_vertex, map);
@@ -279,12 +282,22 @@ impl SceneBuilder for D2PreviewBuilder {
                         }
 
                         if selected {
-                            selected_batch.add_line(start_pos, end_pos, 1.0);
+                            selected_lines.push((start_pos, end_pos));
                         } else {
-                            white_batch.add_line(start_pos, end_pos, 1.0);
+                            non_selected_lines.push((start_pos, end_pos));
                         }
                     }
                 }
+            }
+
+            // Draw non-selected lines first
+            for (start_pos, end_pos) in non_selected_lines {
+                white_batch.add_line(start_pos, end_pos, 1.0);
+            }
+
+            // Draw selected lines last
+            for (start_pos, end_pos) in selected_lines {
+                selected_batch.add_line(start_pos, end_pos, 1.0);
             }
         }
 

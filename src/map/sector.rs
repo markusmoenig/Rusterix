@@ -9,13 +9,14 @@ use super::pixelsource::PixelSource;
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Sector {
     pub id: u32,
-    #[serde(default)]
+
+    // For editors
+    pub creator_id: Uuid,
+
     pub name: String,
     pub linedefs: Vec<u32>,
 
-    #[serde(default)]
     pub properties: ValueContainer,
-
     pub neighbours: Vec<u32>,
 }
 
@@ -29,6 +30,7 @@ impl Sector {
 
         Self {
             id,
+            creator_id: Uuid::new_v4(),
             name: String::new(),
             linedefs,
             properties,

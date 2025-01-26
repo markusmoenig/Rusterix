@@ -8,6 +8,8 @@ pub mod tile;
 pub mod vertex;
 
 use crate::VertexAnimationSystem;
+use ordered_float::NotNan;
+use pathfinding::prelude::astar;
 
 use linedef::*;
 use sector::*;
@@ -651,6 +653,112 @@ impl Map {
         Some(new_vertex_id)
     }
 
+    /// Returns the sector at the given position (if any).
+    pub fn find_sector_at(&self, position: Vec2<f32>) -> Option<&Sector> {
+        self.sectors.iter().find(|s| s.is_inside(self, position))
+    }
+
+    /// Checks if a linedef is passable based on front and back sectors.
+    pub fn is_linedef_passable(&self, linedef_id: u32) -> bool {
+        if let Some(linedef) = self.linedefs.iter().find(|ld| ld.id == linedef_id) {
+            linedef.front_sector.is_some() && linedef.back_sector.is_some()
+        } else {
+            false
+        }
+    }
+
+    /// Gets the neighbors of a sector, considering passable linedefs
+    pub fn get_neighbors(&self, sector_id: u32) -> Vec<(u32, f32)> {
+        self.sectors
+            .iter()
+            .find(|s| s.id == sector_id)
+            .map(|sector| {
+                sector
+                    .linedefs
+                    .iter()
+                    .filter_map(|&linedef_id| {
+                        // Get the linedef and check if it's passable
+                        self.linedefs
+                            .iter()
+                            .find(|ld| ld.id == linedef_id)
+                            .filter(|_linedef| self.is_linedef_passable(linedef_id))
+                            .and_then(|linedef| {
+                                // Determine the neighbor sector
+                                linedef
+                                    .front_sector
+                                    .filter(|&id| id != sector_id)
+                                    .or_else(|| linedef.back_sector.filter(|&id| id != sector_id))
+                                    .map(|neighbor_id| (neighbor_id, 1.0))
+                            })
+                    })
+                    .collect()
+            })
+            .unwrap_or_else(Vec::new)
+    }
+
+    /// Finds the shortest path to a named sector using the A* algorithm.
+    pub fn find_path_to_sector(
+        &self,
+        start_sector_id: u32,
+        target_sector_name: &str,
+    ) -> Option<(Vec<u32>, f32)> {
+        // Find the target sector by name
+        let target_sector = self.sectors.iter().find(|s| s.name == target_sector_name)?;
+        let target_sector_id = target_sector.id;
+
+        // Use A* to find the shortest path
+        astar(
+            &start_sector_id,
+            |&current_sector_id| {
+                // Get the neighbors of the current sector and their costs
+                self.get_neighbors(current_sector_id)
+                    .into_iter()
+                    .map(|(neighbor_id, cost)| (neighbor_id, NotNan::new(cost).unwrap()))
+                    .collect::<Vec<(u32, NotNan<f32>)>>()
+            },
+            |&current_sector_id| {
+                // Heuristic: Euclidean distance between sector centers
+                let current_center = self
+                    .sectors
+                    .iter()
+                    .find(|s| s.id == current_sector_id)
+                    .and_then(|s| s.center(self));
+                let target_center = target_sector.center(self);
+
+                if let (Some(current), Some(target)) = (current_center, target_center) {
+                    NotNan::new((target - current).magnitude()).unwrap()
+                } else {
+                    NotNan::new(f32::INFINITY).unwrap()
+                }
+            },
+            |&current_sector_id| current_sector_id == target_sector_id, // Goal condition
+        )
+        .map(|(path, cost)| (path, cost.into_inner())) // Convert NotNan<f32> back to f32
+    }
+
+    /// Find the linedef which connects the two sectors.
+    pub fn get_connecting_linedef(
+        &self,
+        current_sector_id: u32,
+        next_sector_id: u32,
+    ) -> Option<u32> {
+        self.linedefs.iter().find_map(|linedef| {
+            if self.is_linedef_passable(linedef.id) {
+                if (linedef.front_sector == Some(current_sector_id)
+                    && linedef.back_sector == Some(next_sector_id))
+                    || (linedef.back_sector == Some(current_sector_id)
+                        && linedef.front_sector == Some(next_sector_id))
+                {
+                    Some(linedef.id)
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        })
+    }
+
     /// Debug: Print all vertices with their current animated positions
     pub fn debug_print_vertices(&self) {
         for vertex in &self.vertices {
@@ -674,3 +782,24 @@ impl Map {
         )
     }
 }
+
+/* *
+if let Some((path, _cost)) = map.find_path_to_sector(start_sector_id, "Target Sector") {
+    if path.len() > 1 {
+        let next_sector_id = path[1];
+        if let Some(connecting_linedef_id) =
+            map.get_connecting_linedef(start_sector_id, next_sector_id)
+        {
+            println!(
+                "Move from sector {} to sector {} through linedef {}",
+                start_sector_id, next_sector_id, connecting_linedef_id
+            );
+        } else {
+            println!("No connecting linedef found!");
+        }
+    } else {
+        println!("You are already in the target sector!");
+    }
+} else {
+    println!("No path found to the target sector.");
+}*/
