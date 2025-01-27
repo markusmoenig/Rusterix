@@ -52,6 +52,9 @@ pub struct Server {
     pub entities: FxHashMap<u32, Vec<Entity>>,
 
     pub state: ServerState,
+
+    pub log: String,
+    pub log_changed: bool,
 }
 
 impl Default for Server {
@@ -71,7 +74,21 @@ impl Server {
             entities: FxHashMap::default(),
 
             state: ServerState::Off,
+
+            log: String::new(),
+            log_changed: true,
         }
+    }
+
+    /// Clear the log
+    pub fn clear_log(&mut self) {
+        self.log = String::new();
+    }
+
+    /// Retrieve the log
+    pub fn get_log(&mut self) -> String {
+        self.log_changed = false;
+        self.log.clone()
     }
 
     /// Set the server state.
@@ -110,11 +127,10 @@ impl Server {
         }
     }
 
-    /// Updates the entities from the regions.
-    pub fn update_entities(&mut self) {
+    /// Retrieves all messages from the regions.
+    pub fn update(&mut self) {
         for receiver in &self.from_region {
             while let Ok(message) = receiver.try_recv() {
-                #[allow(clippy::single_match)]
                 match message {
                     RegionMessage::EntitiesUpdate(id, serialized_updates) => {
                         let updates: Vec<EntityUpdate> = serialized_updates
@@ -129,6 +145,14 @@ impl Server {
                             Self::process_entity_updates(&mut entities, updates);
                             self.entities.insert(id, entities);
                         }
+                    }
+                    RegionMessage::LogMessage(message) => {
+                        if self.log.is_empty() {
+                            self.log = message;
+                        } else {
+                            self.log += &format!("{}{}", "\n", message);
+                        }
+                        self.log_changed = true;
                     }
                     _ => {}
                 }

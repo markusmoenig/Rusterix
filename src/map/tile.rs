@@ -6,6 +6,8 @@ pub struct Tile {
     pub id: Uuid,
     pub uvs: Vec<vek::Vec4<i32>>,
     pub textures: Vec<Texture>,
+    /// For top down 2D scenarios
+    pub blocking: bool,
 }
 
 impl Tile {
@@ -16,6 +18,7 @@ impl Tile {
             id: Uuid::new_v4(),
             uvs: vec![uv],
             textures: vec![texture],
+            blocking: false,
         }
     }
 
@@ -25,6 +28,7 @@ impl Tile {
             id: Uuid::new_v4(),
             uvs: vec![],
             textures: vec![],
+            blocking: false,
         }
     }
 

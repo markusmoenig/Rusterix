@@ -3,29 +3,8 @@ from array import array
 class Player(Entity):
     def __init__(self):
         """Initializes the Player."""
-        super().__init__()
 
         self.type = EntityType.PLAYER
-
-    def attack(self, target):
-        """Attacks another fighter, reducing its health."""
-        if not isinstance(target, Monster):
-            print("Target must be an EntityFighter.")
-            return
-
-        target.take_damage(self.damage)
-        print(f"{self} attacked {target}, dealing {self.damage} damage!")
-
-    def take_damage(self, amount):
-        """Reduces the fighter's health."""
-        self.health -= amount
-        print(f"{self} took {amount} damage, health is now {self.health}")
-        if self.health <= 0:
-            print(f"{self} has been defeated!")
-
-    def update(self):
-        """Update"""
-        pass
 
     def event(self, event, value):
         pass
@@ -35,21 +14,16 @@ class Player(Entity):
         # print("Player User Event", event, value)
         if event == 'key_down':
             if value == 'w':
-                action(self.id, "forward")
+                action("forward")
             if value == 'a':
-                action(self.id, "left")
+                action("left")
             if value == 'd':
-                action(self.id, "right")
+                action("right")
             if value == 's':
-                action(self.id, "backward")
+                action("backward")
         if event == 'key_up':
-                action(self.id, "none")
+                action("none")
 
         # match event:
         #    case "a":
         #        action(self.id, self.manager_id, EntityAction.NORTH)
-
-
-    def __str__(self):
-        """String representation of the fighter."""
-        return f"EntityFighter at {list(self.position)} with {self.health} HP and {self.damage} damage"

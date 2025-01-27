@@ -2,10 +2,14 @@ use crate::server::py_fn::*;
 use crate::server::register_player;
 use crate::{EntityAction, Map, Value};
 use crossbeam_channel::{select, tick, unbounded, Receiver, Sender};
+use rand::*;
 use ref_thread_local::{ref_thread_local, RefThreadLocal};
 use rustpython::vm::*;
 use std::sync::{Arc, Mutex, OnceLock};
 use theframework::prelude::{FxHashMap, TheTime, Uuid};
+use vek::num_traits::zero;
+
+use EntityAction::*;
 
 // Local thread global data for the Region
 ref_thread_local! {
@@ -20,6 +24,13 @@ ref_thread_local! {
     pub static managed TICKS: i64 = 0;
     /// Ticks per in-game minute
     pub static managed TICKS_PER_MINUTE: u32 = 4;
+
+    /// The entity id which is currently handled/executed in Python
+    pub static managed CURR_ENTITYID: u32 = 0;
+
+    /// Errors since starting the region.
+    pub static managed ERROR_COUNT: u32 = 0;
+    pub static managed STARTUP_ERRORS: Vec<String> = vec![];
 
     pub static managed TO_RECEIVER: OnceLock<Receiver<RegionMessage>> = OnceLock::new();
     pub static managed FROM_SENDER: OnceLock<Sender<RegionMessage>> = OnceLock::new();
@@ -88,9 +99,11 @@ impl RegionInstance {
                 vm,
             );
 
-            let _ = scope
-                .globals
-                .set_item("random", vm.new_function("random", random).into(), vm);
+            let _ = scope.globals.set_item(
+                "random",
+                vm.new_function("random", random_in_range).into(),
+                vm,
+            );
 
             let _ = scope.globals.set_item(
                 "notify_in",
@@ -109,6 +122,23 @@ impl RegionInstance {
                 vm.new_function("face_random", face_random).into(),
                 vm,
             );
+
+            let _ = scope.globals.set_item(
+                "random_walk",
+                vm.new_function("random_walk", random_walk).into(),
+                vm,
+            );
+
+            let _ = scope.globals.set_item(
+                "random_walk_in_sector",
+                vm.new_function("random_walk_in_sector", random_walk_in_sector)
+                    .into(),
+                vm,
+            );
+
+            let _ = scope
+                .globals
+                .set_item("debug", vm.new_function("debug", debug).into(), vm);
         });
 
         let (to_sender, to_receiver) = unbounded::<RegionMessage>();
@@ -152,6 +182,7 @@ impl RegionInstance {
 
         *MAP.borrow_mut() = map;
         *NOTIFICATIONS.borrow_mut() = vec![];
+        *STARTUP_ERRORS.borrow_mut() = vec![];
         self.apply_base_classes();
 
         // Create the manager
@@ -159,13 +190,11 @@ impl RegionInstance {
 
         // Installing Entity Class
         for (name, entity_source) in entities {
-            match self.execute(entity_source) {
-                Ok(_) => {
-                    println!("Installing {} Class to '{}': Ok", name, self.name);
-                }
-                Err(_err) => {
-                    println!("Installing {} Class to '{}': Error", name, self.name);
-                }
+            if let Err(err) = self.execute(entity_source) {
+                STARTUP_ERRORS.borrow_mut().push(format!(
+                    "{}: Error Installing {} Class: {}",
+                    self.name, name, err,
+                ));
             }
         }
 
@@ -183,13 +212,6 @@ impl RegionInstance {
                 Ok(obj) => {
                     self.interp.enter(|vm| {
                         if let Ok(value) = obj.try_into_value::<i32>(vm) {
-                            println!(
-                                "Initialized {}/{} ({}) to '{}': Ok",
-                                entity.get_attr_string("name").unwrap(),
-                                entity.get_attr_string("class_name").unwrap(),
-                                value,
-                                self.name
-                            );
                             if let Some(e) = MAP.borrow_mut().entities.get_mut(index) {
                                 e.id = value as u32;
                                 entity_id = value as u32;
@@ -198,12 +220,15 @@ impl RegionInstance {
                     });
                 }
                 Err(err) => {
-                    println!(
-                        "Error for {}/{}: {}",
-                        entity.get_attr_string("name").unwrap(),
-                        entity.get_attr_string("class_name").unwrap(),
-                        err
-                    );
+                    STARTUP_ERRORS.borrow_mut().push(format!(
+                        "{}: Error Installing '{}' Instance ({}): {}",
+                        self.name,
+                        entity
+                            .get_attr_string("class_name")
+                            .unwrap_or("Unknown".into()),
+                        entity.get_attr_string("name").unwrap_or("Unknown".into()),
+                        err,
+                    ));
                 }
             }
         }
@@ -222,6 +247,7 @@ impl RegionInstance {
         // We have to reassign map inside the thread
         let map = MAP.borrow_mut().clone();
         let name = map.name.clone();
+        let startup_errors = STARTUP_ERRORS.borrow().clone();
 
         std::thread::spawn(move || {
             // Initialize the local thread global storage
@@ -239,6 +265,12 @@ impl RegionInstance {
             // TODO: Make this configurable
             *TICKS_PER_MINUTE.borrow_mut() = 4;
 
+            // Send startup messages
+            *ERROR_COUNT.borrow_mut() = startup_errors.len() as u32;
+            for l in startup_errors {
+                send_log_message(l);
+            }
+
             // Broadcast the startup event
             let cmd = "manager.broadcast(\"startup\", \"\")";
             let _ = REGION.borrow_mut().execute(cmd);
@@ -247,49 +279,42 @@ impl RegionInstance {
             let entities = MAP.borrow().entities.clone();
             for entity in entities.iter() {
                 if let Some(setup) = entity.get_attr_string("setup") {
-                    match REGION.borrow_mut().execute(&setup) {
-                        Ok(_) => {
-                            println!(
-                                "Setup {}/{} ({}) to '{}': Ok",
-                                entity.get_attr_string("name").unwrap(),
-                                entity.get_attr_string("class_name").unwrap(),
-                                entity.id,
-                                name
-                            );
-                        }
-                        Err(err) => {
-                            println!(
-                                "Setup {} Character to '{}': {}",
-                                entity.get_attr_string("name").unwrap(),
-                                name,
-                                err
-                            );
-                        }
+                    if let Err(err) = REGION.borrow_mut().execute(&setup) {
+                        send_log_message(format!(
+                            "{}: Setup '{}/{}': {}",
+                            name,
+                            entity.get_attr_string("name").unwrap_or("Unknown".into()),
+                            entity
+                                .get_attr_string("class_name")
+                                .unwrap_or("Unknown".into()),
+                            err,
+                        ));
+                        *ERROR_COUNT.borrow_mut() += 1;
                     }
 
-                    match REGION
+                    if let Err(err) = REGION
                         .borrow_mut()
                         .execute(&format!("setup(manager.get_entity({}))", entity.id))
                     {
-                        Ok(_) => {
-                            println!(
-                                "Executing Setup {}/{} ({}) to '{}': Ok",
-                                entity.get_attr_string("name").unwrap(),
-                                entity.get_attr_string("class_name").unwrap(),
-                                entity.id,
-                                name
-                            );
-                        }
-                        Err(err) => {
-                            println!(
-                                "Executing Setup {} Character to '{}': {}",
-                                entity.get_attr_string("name").unwrap(),
-                                name,
-                                err
-                            );
-                        }
+                        send_log_message(format!(
+                            "{}: Setup '{}/{}': {}",
+                            name,
+                            entity.get_attr_string("name").unwrap_or("Unknown".into()),
+                            entity
+                                .get_attr_string("class_name")
+                                .unwrap_or("Unknown".into()),
+                            err,
+                        ));
+                        *ERROR_COUNT.borrow_mut() += 1;
                     }
                 }
+
+                // Send startup log message
+                send_log_message(format!(
+                    "{}: Startup with {} errors.",
+                    name,
+                    *ERROR_COUNT.borrow(),
+                ));
             }
 
             loop {
@@ -306,6 +331,7 @@ impl RegionInstance {
                         notifications.retain(|(id, tick, notification)| {
                             if *tick <= ticks {
                                 let cmd = format!("manager.event({}, \"{}\", \"\")", id, notification);
+                                *CURR_ENTITYID.borrow_mut() = *id;
                                 let _ = REGION.borrow_mut().execute(&cmd);
                                 false
                             } else {
@@ -314,39 +340,7 @@ impl RegionInstance {
                         });
                     }
                     recv(redraw_ticker) -> _ => {
-                        let region_mut = REGION.borrow_mut();
-                        let player_id = region_mut.player_id;
-
-                        let mut updates: Vec<Vec<u8>> = vec![];
-
-                        for entity in &mut MAP.borrow_mut().entities {
-                            if Some(entity.id) == player_id {
-                                match entity.action {
-                                    EntityAction::Forward => {
-                                        entity.move_forward(0.05 * 2.0);
-                                    }
-                                    EntityAction::Left => {
-                                        entity.turn_left(2.0);
-                                    }
-                                    EntityAction::Right => {
-                                        entity.turn_right(2.0);
-                                    }
-                                    EntityAction::Backward => {
-                                        entity.move_backward(0.05 * 2.0);
-                                    }
-                                    _ => {}
-                                }
-                            }
-                            if entity.is_dirty() {
-                                updates.push(entity.get_update().pack());
-                                entity.clear_dirty();
-                            }
-                        }
-
-                        // Send the updates if non empty
-                        if !updates.is_empty() {
-                            FROM_SENDER.borrow().get().unwrap().send(RegionMessage::EntitiesUpdate(region_mut.id, updates)).unwrap();
-                        }
+                        REGION.borrow_mut().handle_redraw_tick();
                     },
                     recv(TO_RECEIVER.borrow().get().unwrap()) -> mess => {
                         if let Ok(message) = mess {
@@ -363,24 +357,30 @@ impl RegionInstance {
                                 }
                                 Event(entity_id, event, value) => {
                                     let cmd = format!("manager.event({}, '{}', {})", entity_id, event, value);
-                                    match REGION.borrow().execute(&cmd) {
-                                        Ok(_) => {}
-                                        Err(err) => {
-                                            println!("Event error: {} in {}", err, cmd);
-                                        }
+                                    *CURR_ENTITYID.borrow_mut() = entity_id;
+                                    if let Err(err) = REGION.borrow().execute(&cmd) {
+                                        send_log_message(format!(
+                                            "{}: Event Error for '{}': {}",
+                                            name,
+                                            get_entity_name(entity_id),
+                                            err,
+                                        ));
                                     }
                                 }
                                 UserEvent(entity_id, event, value) => {
                                     let cmd = format!("manager.user_event({}, '{}', '{}')", entity_id, event, value);
-                                    match REGION.borrow().execute(&cmd) {
-                                        Ok(_) => {}
-                                        Err(err) => {
-                                            println!("User event error: {} in {}", err, cmd);
-                                        }
+                                    *CURR_ENTITYID.borrow_mut() = entity_id;
+                                    if let Err(err) = REGION.borrow().execute(&cmd) {
+                                        send_log_message(format!(
+                                            "{}: User Event Error for '{}': {}",
+                                            name,
+                                            get_entity_name(entity_id),
+                                            err,
+                                        ));
                                     }
                                 }
                                 Quit => {
-                                    println!("Shutting down '{}'. Goodbye.", MAP.borrow().name);
+                                    send_log_message(format!("Shutting down '{}'. Goodbye.", MAP.borrow().name));
                                 }
                                 _ => {}
                             }
@@ -389,6 +389,94 @@ impl RegionInstance {
                 }
             }
         });
+    }
+
+    /// Redraw tick
+    fn handle_redraw_tick(&mut self) {
+        let mut updates: Vec<Vec<u8>> = vec![];
+        let mut entities = MAP.borrow().entities.clone();
+        for entity in &mut entities {
+            match &entity.action {
+                EntityAction::Forward => {
+                    entity.move_forward(0.05 * 2.0);
+                }
+                EntityAction::Left => {
+                    entity.turn_left(2.0);
+                }
+                EntityAction::Right => {
+                    entity.turn_right(2.0);
+                }
+                EntityAction::Backward => {
+                    entity.move_backward(0.05 * 2.0);
+                }
+                EntityAction::RandomWalk(distance, speed, max_sleep, state, target) => {
+                    if *state == 0 {
+                        // State 0: Uninitialized, find a target location.
+                        let pos = find_random_position(entity.get_pos_xz(), *distance);
+                        entity.action = RandomWalk(*distance, *speed, *max_sleep, 1, pos);
+                        entity.face_at(pos);
+                    } else if *state == 1 {
+                        // State 1: Walk towards
+                        if target.distance(entity.get_pos_xz()) < 0.1 {
+                            // Arrived, Sleep
+                            let mut rng = rand::thread_rng();
+                            entity.action = self.create_sleep_switch_action(
+                                rng.gen_range(0..=*max_sleep) as u32,
+                                RandomWalk(*distance, *speed, *max_sleep, 0, *target),
+                            );
+                        } else {
+                            // Move towards
+                            entity.move_forward(0.05 * speed);
+                        }
+                    }
+                }
+                EntityAction::RandomWalkInSector(speed, max_sleep, state, target) => {
+                    if *state == 0 {
+                        // State 0: Uninitialized, find a target location.
+                        let map = MAP.borrow();
+                        if let Some(sector) = map.find_sector_at(entity.get_pos_xz()) {
+                            if let Some(pos) = sector.get_random_position(&map) {
+                                entity.action = RandomWalkInSector(*speed, *max_sleep, 1, pos);
+                                entity.face_at(pos);
+                            }
+                        }
+                    } else if *state == 1 {
+                        // State 1: Walk towards
+                        if target.distance(entity.get_pos_xz()) < 0.1 {
+                            // Arrived, Sleep
+                            let mut rng = rand::thread_rng();
+                            entity.action = self.create_sleep_switch_action(
+                                rng.gen_range(0..=*max_sleep) as u32,
+                                RandomWalkInSector(*speed, *max_sleep, 0, *target),
+                            );
+                        } else {
+                            entity.move_forward(0.05 * speed);
+                        }
+                    }
+                }
+                SleepAndSwitch(tick, action) => {
+                    if *tick <= *TICKS.borrow() {
+                        entity.action = *action.clone();
+                    }
+                }
+                _ => {}
+            }
+            if entity.is_dirty() {
+                updates.push(entity.get_update().pack());
+                entity.clear_dirty();
+            }
+        }
+        MAP.borrow_mut().entities = entities;
+
+        // Send the updates if non empty
+        if !updates.is_empty() {
+            FROM_SENDER
+                .borrow()
+                .get()
+                .unwrap()
+                .send(RegionMessage::EntitiesUpdate(self.id, updates))
+                .unwrap();
+        }
     }
 
     /// Get the position of the entity of the given id.
@@ -466,39 +554,75 @@ impl RegionInstance {
             }
         })
     }
+
+    /// Create a sleep action which switches back to the previous action.
+    fn create_sleep_switch_action(&self, minutes: u32, switchback: EntityAction) -> EntityAction {
+        let tick = *TICKS.borrow() + (minutes * *TICKS_PER_MINUTE.borrow()) as i64;
+        SleepAndSwitch(tick, Box::new(switchback))
+    }
+}
+
+/// Get the name of the entity with the given id.
+pub fn get_entity_name(id: u32) -> String {
+    for entity in &MAP.borrow().entities {
+        if entity.id == id {
+            if let Some(name) = entity.attributes.get_str("name") {
+                return name.to_string();
+            }
+        }
+    }
+    "Unknown".into()
+}
+
+/// Send a log message.
+pub fn send_log_message(message: String) {
+    FROM_SENDER
+        .borrow()
+        .get()
+        .unwrap()
+        .send(RegionMessage::LogMessage(message))
+        .unwrap();
 }
 
 /// Perform the given action on the next update().
-fn player_action(entity_id: u32, action: String) {
+fn player_action(action: String) {
     if let Ok(parsed_action) = action.parse::<EntityAction>() {
-        if let Some(entity) = MAP.borrow_mut().entities.get_mut(entity_id as usize) {
+        if let Some(entity) = MAP
+            .borrow_mut()
+            .entities
+            .get_mut(*CURR_ENTITYID.borrow() as usize)
+        {
             entity.action = parsed_action;
         }
     }
 }
 
 /// Set the tile_id of the entity.
-fn set_tile(entity_id: u32, id: String) {
+fn set_tile(id: String) {
     if let Ok(uuid) = Uuid::try_parse(&id) {
-        if let Some(entity) = MAP.borrow_mut().entities.get_mut(entity_id as usize) {
+        if let Some(entity) = MAP
+            .borrow_mut()
+            .entities
+            .get_mut(*CURR_ENTITYID.borrow() as usize)
+        {
             entity.set_attribute("tile_id".into(), Value::Id(uuid));
         }
     }
 }
 
 /// Notify the entity in the given amount of minutes.
-fn notify_in(entity_id: u32, minutes: i32, notification: String) {
+fn notify_in(minutes: i32, notification: String) {
     let tick = *TICKS.borrow() + (minutes as u32 * *TICKS_PER_MINUTE.borrow()) as i64;
     NOTIFICATIONS
         .borrow_mut()
-        .push((entity_id, tick, notification));
+        .push((*CURR_ENTITYID.borrow(), tick, notification));
 }
 
 /// Returns the name of the sector the entity is currently in.
-fn get_sector_name(entity_id: u32) -> String {
+fn get_sector_name() -> String {
     let map = MAP.borrow();
     for e in map.entities.iter() {
-        if e.id == entity_id {
+        if e.id == *CURR_ENTITYID.borrow() {
             let pos = e.get_pos_xz();
             if let Some(s) = map.find_sector_at(pos) {
                 if s.name.is_empty() {
@@ -514,8 +638,53 @@ fn get_sector_name(entity_id: u32) -> String {
 }
 
 /// Faces the entity at a random direction.
-fn face_random(entity_id: u32) {
-    if let Some(entity) = MAP.borrow_mut().entities.get_mut(entity_id as usize) {
+fn face_random() {
+    if let Some(entity) = MAP
+        .borrow_mut()
+        .entities
+        .get_mut(*CURR_ENTITYID.borrow() as usize)
+    {
         entity.face_random();
     }
+}
+
+/// Faces the entity at a random direction.
+fn random_walk(distance: f32, speed: f32, max_sleep: i32) {
+    if let Some(entity) = MAP
+        .borrow_mut()
+        .entities
+        .get_mut(*CURR_ENTITYID.borrow() as usize)
+    {
+        entity.action = RandomWalk(distance, speed, max_sleep, 0, zero())
+    }
+}
+
+/// Faces the entity at a random direction.
+fn random_walk_in_sector(speed: f32, max_sleep: i32) {
+    if let Some(entity) = MAP
+        .borrow_mut()
+        .entities
+        .get_mut(*CURR_ENTITYID.borrow() as usize)
+    {
+        entity.action = RandomWalkInSector(speed, max_sleep, 0, zero())
+    }
+}
+
+/// Debug
+pub fn debug(args: rustpython_vm::function::FuncArgs, vm: &VirtualMachine) -> PyResult<()> {
+    let mut output = String::new();
+    for (i, arg) in args.args.iter().enumerate() {
+        // Convert each argument to a string using Python's `str()` method
+        let arg_str = match arg.str(vm) {
+            Ok(s) => s.as_str().to_owned(),
+            Err(_) => "<error converting to string>".to_owned(),
+        };
+        if i > 0 {
+            output.push(' ');
+        }
+        output.push_str(&arg_str);
+    }
+
+    send_log_message(output);
+    Ok(())
 }

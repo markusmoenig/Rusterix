@@ -64,7 +64,7 @@ impl TheTrait for MiniGame {
         let _start = get_time();
 
         // Update the entities on the server.
-        self.rusterix.server.update_entities();
+        self.rusterix.server.update();
 
         if let Some(entities) = self
             .rusterix

@@ -172,7 +172,7 @@ impl Sector {
     }
 
     /// Returns a random position inside the sector.
-    pub fn random_position(&self, map: &Map) -> Option<Vec2<f32>> {
+    pub fn get_random_position(&self, map: &Map) -> Option<Vec2<f32>> {
         // Generate geometry for the sector
         if let Some((vertices, indices)) = self.generate_geometry(map) {
             // Create a random number generator

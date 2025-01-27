@@ -13,11 +13,13 @@ pub enum RegionMessage {
     UserAction(u32, EntityAction),
     /// Entity updates for a given region instance
     EntitiesUpdate(u32, Vec<Vec<u8>>),
+    /// Log Message
+    LogMessage(String),
     /// Stop processing and quit
     Quit,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]
 pub enum EntityAction {
     #[default]
     Off,
@@ -25,6 +27,12 @@ pub enum EntityAction {
     Forward,
     Right,
     Backward,
+    /// Sleep until the given tick and switch back to the given action
+    SleepAndSwitch(i64, Box<EntityAction>),
+    /// User: Distance, Speed, Max Min Sleep. System: State, Target
+    RandomWalk(f32, f32, i32, i32, Vec2<f32>),
+    /// User: Speed, Max Min Sleep. System: State, Target
+    RandomWalkInSector(f32, i32, i32, Vec2<f32>),
 }
 
 use std::str::FromStr;
