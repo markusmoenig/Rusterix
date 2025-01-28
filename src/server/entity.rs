@@ -29,11 +29,35 @@ pub struct Entity {
     /// Attributes
     pub attributes: ValueContainer,
 
-    /// Dirty static atrributes
+    /// Dirty static attributes
+    /// The `dirty_flags` field is a bitmask representing changes to various components of the entity.
+    /// Each bit corresponds to a specific type of change:
+    /// - `0b00000001` (1): Position changed
+    /// - `0b00000010` (2): Orientation changed
+    /// - `0b00000100` (4): Tilt changed
+    /// - `0b00001000` (8): Inventory changed
+    /// - `0b00010000` (16): Equipped items changed
+    /// - `0b00100000` (32): Wallet changed
     pub dirty_flags: u8,
 
     /// Dirty Attributes
     pub dirty_attributes: FxHashSet<String>,
+
+    /// Inventory: A container for the entity's items
+    pub inventory: FxHashMap<u32, Item>,
+
+    /// Track added items
+    pub inventory_additions: FxHashMap<u32, Item>,
+    /// Track removed items
+    pub inventory_removals: FxHashSet<u32>,
+    /// Track updated items
+    pub inventory_updates: FxHashMap<u32, ItemUpdate>,
+
+    /// Equipped items: Slot to item ID mapping
+    pub equipped: FxHashMap<String, u32>, // "main_hand" -> Item ID
+
+    /// Wallet
+    pub wallet: Wallet,
 }
 
 impl Default for Entity {
@@ -58,6 +82,15 @@ impl Entity {
 
             dirty_flags: 0,
             dirty_attributes: FxHashSet::default(),
+
+            inventory: FxHashMap::default(),
+            inventory_additions: FxHashMap::default(),
+            inventory_removals: FxHashSet::default(),
+            inventory_updates: FxHashMap::default(),
+
+            equipped: FxHashMap::default(),
+
+            wallet: Wallet::default(),
         }
     }
 
@@ -158,8 +191,94 @@ impl Entity {
         self.mark_dirty_field(0b0100);
     }
 
+    /// Add an item to the entity's inventory and track additions
+    pub fn add_item(&mut self, item: Item) {
+        self.inventory.insert(item.id, item.clone());
+        self.inventory_removals.remove(&item.id); // If it was previously removed, undo that
+        self.inventory_additions.insert(item.id, item);
+        self.mark_dirty_field(0b1000);
+    }
+
+    /// Remove an item from the entity's inventory and track removals
+    pub fn remove_item(&mut self, item_id: u32) -> Option<Item> {
+        if let Some(item) = self.inventory.remove(&item_id) {
+            self.inventory_removals.insert(item_id);
+            self.inventory_additions.remove(&item_id); // If it was previously added, undo that
+            self.mark_dirty_field(0b1000);
+            Some(item)
+        } else {
+            None
+        }
+    }
+
+    /// Get a reference to an item by ID
+    pub fn get_item(&self, item_id: u32) -> Option<&Item> {
+        self.inventory.get(&item_id)
+    }
+
+    /// Get a mutable reference to an item by ID
+    pub fn get_item_mut(&mut self, item_id: u32) -> Option<&mut Item> {
+        if let Some(item) = self.inventory.get_mut(&item_id) {
+            // Mark the item as updated
+            self.inventory_updates.insert(item_id, item.get_update());
+            Some(item)
+        } else {
+            None
+        }
+    }
+
+    /// Equip an item in a specific slot
+    pub fn equip_item(&mut self, item_id: u32, slot: &str) -> Result<(), String> {
+        // Check if the item exists in the inventory
+        if self.inventory.contains_key(&item_id) {
+            self.equipped.insert(slot.to_string(), item_id);
+            self.dirty_flags |= 0b10000; // Mark equipped slots as dirty
+            Ok(())
+        } else {
+            Err("Item not found in inventory.".to_string())
+        }
+    }
+
+    /// Unequip an item from a specific slot
+    pub fn unequip_item(&mut self, slot: &str) -> Result<(), String> {
+        if self.equipped.remove(slot).is_some() {
+            self.dirty_flags |= 0b10000; // Mark equipped slots as dirty
+            Ok(())
+        } else {
+            Err("No item equipped in the given slot.".to_string())
+        }
+    }
+
+    /// Get the item ID equipped in a specific slot
+    pub fn get_equipped_item(&self, slot: &str) -> Option<u32> {
+        self.equipped.get(slot).copied()
+    }
+
+    /// Add the given currency to the wallet.
+    pub fn add_currency(
+        &mut self,
+        symbol: &str,
+        amount: i64,
+        currencies: &Currencies,
+    ) -> Result<(), String> {
+        self.wallet.add(symbol, amount, currencies)?;
+        self.dirty_flags |= 0b100000;
+        Ok(())
+    }
+
+    /// Spend the given currency.
+    pub fn spend_currency(
+        &mut self,
+        base_amount: i64,
+        currencies: &Currencies,
+    ) -> Result<(), String> {
+        self.wallet.spend(base_amount, currencies)?;
+        self.dirty_flags |= 0b100000;
+        Ok(())
+    }
+
     /// Set a dynamic attribute and mark it as dirty
-    pub fn set_attribute(&mut self, key: String, value: Value) {
+    pub fn set_attribute(&mut self, key: &str, value: Value) {
         self.attributes.set(&key, value);
         self.mark_dirty_attribute(&key);
     }
@@ -199,7 +318,7 @@ impl Entity {
 
     /// Mark all fields and attributes as dirty.
     pub fn mark_all_dirty(&mut self) {
-        self.dirty_flags = 0b0111;
+        self.dirty_flags = 0b11111;
         self.dirty_attributes = self.attributes.keys().cloned().collect();
     }
 
@@ -208,15 +327,9 @@ impl Entity {
         self.dirty_flags != 0 || !self.dirty_attributes.is_empty()
     }
 
-    /// Mark all fields and attributes as dirty
-    pub fn set_all_dirty(&mut self) {
-        self.dirty_flags = 0b0111;
-        self.dirty_attributes = self.attributes.keys().cloned().collect();
-    }
-
     /// Mark all static fields as dirty
     pub fn set_static_dirty(&mut self) {
-        self.dirty_flags = 0b0111;
+        self.dirty_flags = 0b11111;
         self.dirty_attributes.clear();
     }
 
@@ -224,17 +337,13 @@ impl Entity {
     pub fn clear_dirty(&mut self) {
         self.dirty_flags = 0;
         self.dirty_attributes.clear();
+        self.inventory_additions.clear();
+        self.inventory_removals.clear();
+        self.inventory_updates.clear();
     }
 
     /// Get a partial update containing only dirty fields and attributes
     pub fn get_update(&self) -> EntityUpdate {
-        let mut updated_attributes = FxHashMap::default();
-        for key in &self.dirty_attributes {
-            if let Some(value) = self.attributes.get(key) {
-                updated_attributes.insert(key.clone(), value.clone());
-            }
-        }
-
         EntityUpdate {
             id: self.id,
             position: if self.dirty_flags & 0b0001 != 0 {
@@ -252,7 +361,36 @@ impl Entity {
             } else {
                 None
             },
-            attributes: updated_attributes,
+            attributes: self
+                .dirty_attributes
+                .iter()
+                .filter_map(|key| self.attributes.get(key).map(|v| (key.clone(), v.clone())))
+                .collect(),
+            inventory_additions: if !self.inventory_additions.is_empty() {
+                Some(self.inventory_additions.clone())
+            } else {
+                None
+            },
+            inventory_removals: if !self.inventory_removals.is_empty() {
+                Some(self.inventory_removals.clone())
+            } else {
+                None
+            },
+            inventory_updates: if !self.inventory_updates.is_empty() {
+                Some(self.inventory_updates.clone())
+            } else {
+                None
+            },
+            equipped_updates: if self.dirty_flags & 0b10000 != 0 {
+                Some(self.equipped.clone())
+            } else {
+                None
+            },
+            wallet_updates: if self.dirty_flags & 0b100000 != 0 {
+                Some(self.wallet.balances.clone())
+            } else {
+                None
+            },
         }
     }
 
@@ -267,21 +405,53 @@ impl Entity {
         // Update static fields
         if let Some(new_position) = update.position {
             self.position = new_position;
-            self.mark_dirty_field(0b0001);
         }
         if let Some(new_orientation) = update.orientation {
             self.orientation = new_orientation;
-            self.mark_dirty_field(0b0010);
         }
         if let Some(new_camera_tilt) = update.tilt {
             self.tilt = new_camera_tilt;
-            self.mark_dirty_field(0b0100);
         }
 
         // Update dynamic attributes
         for (key, value) in update.attributes {
             self.attributes.set(&key, value.clone());
             self.mark_dirty_attribute(&key);
+        }
+
+        // Apply inventory additions
+        if let Some(inventory_additions) = update.inventory_additions {
+            for (item_id, item) in inventory_additions {
+                self.inventory.insert(item_id, item);
+            }
+        }
+
+        // Apply inventory removals
+        if let Some(inventory_removals) = update.inventory_removals {
+            for item_id in inventory_removals {
+                self.inventory.remove(&item_id);
+            }
+        }
+
+        // Apply inventory updates
+        if let Some(inventory_updates) = update.inventory_updates {
+            for (item_id, item_update) in inventory_updates {
+                if let Some(item) = self.inventory.get_mut(&item_id) {
+                    item.apply_update(item_update);
+                }
+            }
+        }
+
+        // Apply equipped slot updates
+        if let Some(equipped_updates) = update.equipped_updates {
+            self.equipped = equipped_updates;
+        }
+
+        // Apply wallet updates
+        if let Some(wallet_updates) = update.wallet_updates {
+            for (symbol, balance) in wallet_updates {
+                self.wallet.balances.insert(symbol, balance);
+            }
         }
     }
 
@@ -308,7 +478,11 @@ impl Entity {
     /// Sets the orientation to face a specific point.
     pub fn face_at(&mut self, target: Vec2<f32>) {
         let current_position = self.get_pos_xz();
-        let direction = (target - current_position).normalized();
+        let delta = target - current_position;
+        if delta.magnitude_squared() < f32::EPSILON {
+            return; // Don't face if target is the same as current
+        }
+        let direction = delta.normalized();
         self.set_orientation(direction);
     }
 
@@ -329,6 +503,11 @@ pub struct EntityUpdate {
     pub orientation: Option<Vec2<f32>>,
     pub tilt: Option<f32>,
     pub attributes: FxHashMap<String, Value>,
+    pub inventory_additions: Option<FxHashMap<u32, Item>>,
+    pub inventory_removals: Option<FxHashSet<u32>>,
+    pub inventory_updates: Option<FxHashMap<u32, ItemUpdate>>,
+    pub equipped_updates: Option<FxHashMap<String, u32>>,
+    pub wallet_updates: Option<FxHashMap<String, i64>>,
 }
 
 impl EntityUpdate {
@@ -345,6 +524,11 @@ impl EntityUpdate {
             orientation: None,
             tilt: None,
             attributes: FxHashMap::default(),
+            inventory_updates: None,
+            inventory_additions: None,
+            inventory_removals: None,
+            equipped_updates: None,
+            wallet_updates: None,
         })
     }
 }

@@ -74,8 +74,15 @@ pub use crate::{
     scenebuilder::{d2material::D2MaterialBuilder, d2preview::D2PreviewBuilder, SceneBuilder},
     script::mapscript::MapScript,
     server::{
-        assets::Assets, entity::Entity, entity::EntityUpdate, message::EntityAction,
-        message::RegionMessage, region::RegionInstance, Server, ServerState,
+        assets::Assets,
+        currency::{Currencies, Currency, Wallet},
+        entity::Entity,
+        entity::EntityUpdate,
+        item::{Item, ItemUpdate},
+        message::EntityAction,
+        message::RegionMessage,
+        region::RegionInstance,
+        Server, ServerState,
     },
     shader::{grid::GridShader, vgradient::VGrayGradientShader, Shader},
     texture::{RepeatMode, SampleMode, Texture},
@@ -97,7 +104,10 @@ pub mod prelude {
         AnimationVertexState, Light, Linedef, Map, MapMeta, MapToolType, NoiseTarget, PixelSource,
         Sector, Tile, Vertex, VertexAnimationSystem, VertexState,
     };
-    pub use crate::{Assets, Entity, EntityUpdate, RegionInstance, RegionMessage, Server};
+    pub use crate::{
+        Assets, Currencies, Currency, Entity, EntityUpdate, Item, ItemUpdate, RegionInstance,
+        RegionMessage, Server, Wallet,
+    };
     pub use crate::{Batch, CullMode, PrimitiveMode};
     pub use crate::{D3Camera, D3FirstPCamera, D3IsoCamera, D3OrbitCamera};
     pub use crate::{GridShader, Shader, VGrayGradientShader};

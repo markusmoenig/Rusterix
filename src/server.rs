@@ -1,5 +1,7 @@
 pub mod assets;
+pub mod currency;
 pub mod entity;
+pub mod item;
 pub mod message;
 pub mod py_fn;
 pub mod region;
