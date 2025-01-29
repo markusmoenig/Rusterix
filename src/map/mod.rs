@@ -18,7 +18,7 @@ use uuid::Uuid;
 use vek::{Vec2, Vec4};
 use vertex::*;
 
-use crate::{Entity, Light};
+use crate::{Entity, Item, Light};
 
 #[derive(Serialize, Deserialize, PartialEq, Clone, Debug, Copy)]
 pub enum MapCamera {
@@ -76,6 +76,9 @@ pub struct Map {
     // Entities
     pub entities: Vec<Entity>,
 
+    // Items
+    pub items: Vec<Item>,
+
     // Selection
     pub selected_vertices: Vec<u32>,
     pub selected_linedefs: Vec<u32>,
@@ -121,6 +124,7 @@ impl Map {
 
             lights: vec![],
             entities: vec![],
+            items: vec![],
 
             selected_vertices: vec![],
             selected_linedefs: vec![],

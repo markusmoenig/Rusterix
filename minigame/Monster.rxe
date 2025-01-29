@@ -1,8 +1,4 @@
-from array import array
-
-class Monster(Entity):
-    def __init__(self):
-        """Initializes a Monster."""
+class Monster:
 
     def event(self, event, value):
         """Event"""

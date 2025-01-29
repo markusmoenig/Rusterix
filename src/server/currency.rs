@@ -110,7 +110,7 @@ impl Wallet {
 
     /// Spend currency from the wallet using base currency amount
     pub fn spend(&mut self, base_amount: i64, currencies: &Currencies) -> Result<(), String> {
-        for (symbol, _currency) in &currencies.currencies {
+        for symbol in currencies.currencies.keys() {
             let converted_amount = currencies.convert_from_base(base_amount, symbol)?;
             if let Some(balance) = self.balances.get_mut(symbol) {
                 if *balance >= converted_amount {

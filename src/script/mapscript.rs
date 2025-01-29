@@ -89,11 +89,11 @@ fn add_entity(name: String, class_name: String, texture: String) {
     let mut entity = Entity::default();
 
     entity.set_position(Vec3::new(state.position.x, 1.0, state.position.y));
-    entity.set_attribute("name".into(), Value::Str(name));
-    entity.set_attribute("class_name".into(), Value::Str(class_name));
+    entity.set_attribute("name", Value::Str(name));
+    entity.set_attribute("class_name", Value::Str(class_name));
 
     if let Some(id) = get_texture(&texture) {
-        entity.set_attribute("tile_id".into(), Value::Id(id));
+        entity.set_attribute("tile_id", Value::Id(id));
     }
 
     let mut map = MAP.write().unwrap();

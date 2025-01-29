@@ -95,7 +95,7 @@ impl Item {
     /// Set a dynamic attribute and mark it as dirty
     pub fn set_attribute(&mut self, key: &str, value: Value) {
         self.attributes.set(key, value);
-        self.mark_dirty_attribute(&key);
+        self.mark_dirty_attribute(key);
     }
 
     /// Get a dynamic attribute
@@ -146,7 +146,8 @@ impl Item {
             || self
                 .container
                 .as_ref()
-                .map_or(false, |c| c.iter().any(|item| item.is_dirty()))
+                .map(|c| c.iter().any(|item| item.is_dirty()))
+                .unwrap_or(false)
     }
 
     /// Generate an `ItemUpdate` containing only dirty fields and attributes
@@ -158,17 +159,13 @@ impl Item {
             }
         }
 
-        let container_updates = if let Some(container) = &self.container {
-            Some(
-                container
-                    .iter()
-                    .filter(|item| item.is_dirty())
-                    .map(|item| item.get_update())
-                    .collect(),
-            )
-        } else {
-            None
-        };
+        let container_updates = self.container.as_ref().map(|container| {
+            container
+                .iter()
+                .filter(|item| item.is_dirty())
+                .flat_map(|item| [item.get_update()])
+                .collect()
+        });
 
         ItemUpdate {
             id: self.id,

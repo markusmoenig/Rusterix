@@ -1,12 +1,12 @@
 use crate::server::py_fn::*;
-use crate::server::register_player;
-use crate::{EntityAction, Map, Value};
+use crate::{Assets, EntityAction, Map, Value};
 use crossbeam_channel::{select, tick, unbounded, Receiver, Sender};
 use rand::*;
 use ref_thread_local::{ref_thread_local, RefThreadLocal};
+use rustc_hash::FxHashMap;
 use rustpython::vm::*;
 use std::sync::{Arc, Mutex, OnceLock};
-use theframework::prelude::{FxHashMap, TheTime, Uuid};
+use theframework::prelude::{TheTime, Uuid};
 use vek::num_traits::zero;
 
 use EntityAction::*;
@@ -16,6 +16,12 @@ ref_thread_local! {
     pub static managed REGION: RegionInstance = RegionInstance::default();
     pub static managed MAP: Map = Map::default();
     pub static managed TIME: TheTime = TheTime::default();
+
+    /// RegionID
+    pub static managed REGIONID: u32 = 0;
+
+    /// Id counter.
+    pub static managed ID_GEN: u32 = 0;
 
     /// A list of notifications to send to the given entity at the specified tick.
     pub static managed NOTIFICATIONS: Vec<(u32, i64, String)> = vec![];
@@ -27,6 +33,9 @@ ref_thread_local! {
 
     /// The entity id which is currently handled/executed in Python
     pub static managed CURR_ENTITYID: u32 = 0;
+
+    /// Maps the entity id to its class name.
+    pub static managed ENTITY_CLASSES: FxHashMap<u32, String> = FxHashMap::default();
 
     /// Errors since starting the region.
     pub static managed ERROR_COUNT: u32 = 0;
@@ -49,9 +58,6 @@ pub struct RegionInstance {
     scope: Arc<Mutex<rustpython_vm::scope::Scope>>,
 
     name: String,
-
-    /// The registered, local player for this entity
-    player_id: Option<u32>,
 
     /// Send messages to this region
     pub to_sender: Sender<RegionMessage>,
@@ -152,8 +158,6 @@ impl RegionInstance {
 
             name: String::new(),
 
-            player_id: None,
-
             to_receiver,
             to_sender,
             from_receiver,
@@ -161,43 +165,62 @@ impl RegionInstance {
         }
     }
 
-    /// Apply the base classes to the Python subsystem.
-    pub fn apply_base_classes(&mut self) {
-        // Apply the base classes
-        if let Some(bytes) = crate::Embedded::get("entity.py") {
-            if let Ok(source) = std::str::from_utf8(bytes.data.as_ref()) {
-                let _ = self.execute(source);
-            }
-        }
-        if let Some(bytes) = crate::Embedded::get("entitymanager.py") {
-            if let Ok(source) = std::str::from_utf8(bytes.data.as_ref()) {
-                let _ = self.execute(source);
-            }
-        }
-    }
+    // /// Apply the base classes to the Python subsystem.
+    // pub fn apply_base_classes(&mut self) {
+    //     // Apply the base classes
+    //     if let Some(bytes) = crate::Embedded::get("entity.py") {
+    //         if let Ok(source) = std::str::from_utf8(bytes.data.as_ref()) {
+    //             let _ = self.execute(source);
+    //         }
+    //     }
+    //     if let Some(bytes) = crate::Embedded::get("entitymanager.py") {
+    //         if let Ok(source) = std::str::from_utf8(bytes.data.as_ref()) {
+    //             let _ = self.execute(source);
+    //         }
+    //     }
+    // }
 
     /// Initializes the Python bases classes, sets the map and applies entities
-    pub fn init(&mut self, name: String, map: Map, entities: &FxHashMap<String, String>) {
+    pub fn init(&mut self, name: String, map: Map, assets: &Assets) {
         self.name = name;
 
         *MAP.borrow_mut() = map;
         *NOTIFICATIONS.borrow_mut() = vec![];
         *STARTUP_ERRORS.borrow_mut() = vec![];
-        self.apply_base_classes();
 
-        // Create the manager
-        let _ = self.execute(&format!("manager = EntityManager({})", self.id));
-
-        // Installing Entity Class
-        for (name, entity_source) in entities {
+        // Installing Entity Class Templates
+        for (name, entity_source) in &assets.entities {
             if let Err(err) = self.execute(entity_source) {
                 STARTUP_ERRORS.borrow_mut().push(format!(
-                    "{}: Error Installing {} Class: {}",
+                    "{}: Error Compiling {} Character Class: {}",
+                    self.name, name, err,
+                ));
+            }
+            if let Err(err) = self.execute(&format!("{} = {}()", name, name)) {
+                STARTUP_ERRORS.borrow_mut().push(format!(
+                    "{}: Error Installing {} Character Class: {}",
                     self.name, name, err,
                 ));
             }
         }
 
+        // Installing Item Class Templates
+        for (name, entity_source) in &assets.items {
+            if let Err(err) = self.execute(entity_source) {
+                STARTUP_ERRORS.borrow_mut().push(format!(
+                    "{}: Error Compiling {} Item Class: {}",
+                    self.name, name, err,
+                ));
+                if let Err(err) = self.execute(&format!("{} = {}()", name, name)) {
+                    STARTUP_ERRORS.borrow_mut().push(format!(
+                        "{}: Error Installing {} Item Class: {}",
+                        self.name, name, err,
+                    ));
+                }
+            }
+        }
+
+        /*
         let entities = MAP.borrow().entities.clone();
 
         // Installing Entity Instances
@@ -231,10 +254,12 @@ impl RegionInstance {
                     ));
                 }
             }
-        }
+        }*/
 
-        // Mark all fields dirty for the first transmission to the server.
+        // Set an entity id and mark all fields dirty for the first transmission to the server.
         for e in MAP.borrow_mut().entities.iter_mut() {
+            e.id = *ID_GEN.borrow();
+            *ID_GEN.borrow_mut() += 1;
             e.mark_all_dirty();
         }
     }
@@ -259,6 +284,7 @@ impl RegionInstance {
                 .borrow_mut()
                 .set(self.to_receiver.clone())
                 .unwrap();
+            *REGIONID.borrow_mut() = self.id;
             *REGION.borrow_mut() = self;
             *MAP.borrow_mut() = map;
             *TICKS.borrow_mut() = 0;
@@ -271,12 +297,27 @@ impl RegionInstance {
                 send_log_message(l);
             }
 
-            // Broadcast the startup event
-            let cmd = "manager.broadcast(\"startup\", \"\")";
-            let _ = REGION.borrow_mut().execute(cmd);
+            // Send "startup" event to all entities.
+            let entities = MAP.borrow().entities.clone();
+            for entity in entities.iter() {
+                if let Some(class_name) = entity.get_attr_string("class_name") {
+                    let cmd = format!("{}.event(\"startup\", \"\")", class_name);
+                    //println!("{} = {}", entity.id, class_name);
+                    ENTITY_CLASSES.borrow_mut().insert(entity.id, class_name);
+                    *CURR_ENTITYID.borrow_mut() = entity.id;
+                    if let Err(err) = REGION.borrow_mut().execute(&cmd) {
+                        send_log_message(format!(
+                            "{}: Event Error ({}) for '{}': {}",
+                            name,
+                            "startup",
+                            get_entity_name(entity.id),
+                            err,
+                        ));
+                    }
+                }
+            }
 
             // Running the setup scripts for the class instances
-            let entities = MAP.borrow().entities.clone();
             for entity in entities.iter() {
                 if let Some(setup) = entity.get_attr_string("setup") {
                     if let Err(err) = REGION.borrow_mut().execute(&setup) {
@@ -292,10 +333,7 @@ impl RegionInstance {
                         *ERROR_COUNT.borrow_mut() += 1;
                     }
 
-                    if let Err(err) = REGION
-                        .borrow_mut()
-                        .execute(&format!("setup(manager.get_entity({}))", entity.id))
-                    {
+                    if let Err(err) = REGION.borrow_mut().execute("setup()") {
                         send_log_message(format!(
                             "{}: Setup '{}/{}': {}",
                             name,
@@ -345,16 +383,6 @@ impl RegionInstance {
                     recv(TO_RECEIVER.borrow().get().unwrap()) -> mess => {
                         if let Ok(message) = mess {
                             match message {
-                                RegisterPlayer(entity_id) => {
-                                    println!(
-                                        "Region {} ({}): Registering player {}",
-                                        REGION.borrow().name, REGION.borrow().id, entity_id
-                                    );
-                                    if let Some(entity) = MAP.borrow_mut().entities.get_mut(entity_id as usize) {
-                                        entity.set_attribute("is_player".into(), Value::Bool(true));
-                                    }
-                                    REGION.borrow_mut().player_id = Some(entity_id);
-                                }
                                 Event(entity_id, event, value) => {
                                     let cmd = format!("manager.event({}, '{}', {})", entity_id, event, value);
                                     *CURR_ENTITYID.borrow_mut() = entity_id;
@@ -368,19 +396,21 @@ impl RegionInstance {
                                     }
                                 }
                                 UserEvent(entity_id, event, value) => {
-                                    let cmd = format!("manager.user_event({}, '{}', '{}')", entity_id, event, value);
-                                    *CURR_ENTITYID.borrow_mut() = entity_id;
-                                    if let Err(err) = REGION.borrow().execute(&cmd) {
-                                        send_log_message(format!(
-                                            "{}: User Event Error for '{}': {}",
-                                            name,
-                                            get_entity_name(entity_id),
-                                            err,
-                                        ));
+                                    if let Some(class_name) = ENTITY_CLASSES.borrow().get(&entity_id) {
+                                        let cmd = format!("{}.user_event('{}', '{}')", class_name, event, value);
+                                        *CURR_ENTITYID.borrow_mut() = entity_id;
+                                        if let Err(err) = REGION.borrow().execute(&cmd) {
+                                            send_log_message(format!(
+                                                "{}: User Event Error for '{}': {}",
+                                                name,
+                                                get_entity_name(entity_id),
+                                                err,
+                                            ));
+                                        }
                                     }
                                 }
                                 Quit => {
-                                    send_log_message(format!("Shutting down '{}'. Goodbye.", MAP.borrow().name));
+                                    println!("Shutting down '{}'. Goodbye.", MAP.borrow().name);
                                 }
                                 _ => {}
                             }
@@ -562,6 +592,23 @@ impl RegionInstance {
     }
 }
 
+/// Register Player
+fn register_player() {
+    let region_id = *REGIONID.borrow();
+    let entity_id = *CURR_ENTITYID.borrow();
+
+    if let Some(entity) = MAP.borrow_mut().entities.get_mut(entity_id as usize) {
+        entity.set_attribute("is_player", Value::Bool(true));
+    }
+
+    FROM_SENDER
+        .borrow()
+        .get()
+        .unwrap()
+        .send(RegisterPlayer(region_id, entity_id))
+        .unwrap();
+}
+
 /// Get the name of the entity with the given id.
 pub fn get_entity_name(id: u32) -> String {
     for entity in &MAP.borrow().entities {
@@ -605,7 +652,7 @@ fn set_tile(id: String) {
             .entities
             .get_mut(*CURR_ENTITYID.borrow() as usize)
         {
-            entity.set_attribute("tile_id".into(), Value::Id(uuid));
+            entity.set_attribute("tile_id", Value::Id(uuid));
         }
     }
 }

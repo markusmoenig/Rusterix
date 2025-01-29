@@ -8,6 +8,7 @@ pub struct Assets {
     pub map_sources: FxHashMap<String, String>,
     pub maps: FxHashMap<String, Map>,
     pub entities: FxHashMap<String, String>,
+    pub items: FxHashMap<String, String>,
     pub tiles: FxHashMap<Uuid, Tile>,
     pub textures: FxHashMap<String, Texture>,
 
@@ -26,6 +27,7 @@ impl Assets {
             map_sources: FxHashMap::default(),
             maps: FxHashMap::default(),
             entities: FxHashMap::default(),
+            items: FxHashMap::default(),
             tiles: FxHashMap::default(),
             textures: FxHashMap::default(),
 

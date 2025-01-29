@@ -1,17 +1,11 @@
-from array import array
-
-class Player(Entity):
-    def __init__(self):
-        """Initializes the Player."""
-
-        self.type = EntityType.PLAYER
+class Player:
 
     def event(self, event, value):
-        pass
-        # print("Player Event", event, value)
+        #print("Player Event", event, value)
+        register_player()
 
     def user_event(self, event, value):
-        # print("Player User Event", event, value)
+        #print("Player User Event", event, value)
         if event == 'key_down':
             if value == 'w':
                 action("forward")
@@ -23,7 +17,3 @@ class Player(Entity):
                 action("backward")
         if event == 'key_up':
                 action("none")
-
-        # match event:
-        #    case "a":
-        #        action(self.id, self.manager_id, EntityAction.NORTH)

@@ -279,8 +279,8 @@ impl Entity {
 
     /// Set a dynamic attribute and mark it as dirty
     pub fn set_attribute(&mut self, key: &str, value: Value) {
-        self.attributes.set(&key, value);
-        self.mark_dirty_attribute(&key);
+        self.attributes.set(key, value);
+        self.mark_dirty_attribute(key);
     }
 
     /// Get the given String

@@ -64,7 +64,7 @@ impl Rusterix {
     pub fn create_regions(&mut self) {
         for (name, map) in &self.assets.maps {
             self.server
-                .create_region_instance(name.clone(), map.clone(), &self.assets.entities);
+                .create_region_instance(name.clone(), map.clone(), &self.assets);
         }
         self.server.set_state(crate::ServerState::Running);
     }

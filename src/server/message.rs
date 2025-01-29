@@ -4,7 +4,8 @@ use theframework::prelude::*;
 /// Messages to the Region
 pub enum RegionMessage {
     /// Register a local player (which receives user based events).
-    RegisterPlayer(u32),
+    /// RegionInstanceId, PlayerId
+    RegisterPlayer(u32, u32),
     /// An event
     Event(u32, String, Value),
     /// A user event

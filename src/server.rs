@@ -25,18 +25,19 @@ type Player = Arc<RwLock<Vec<(u32, u32)>>>;
 static LOCAL_PLAYERS: LazyLock<Player> = LazyLock::new(|| Arc::new(RwLock::new(Vec::new())));
 
 /// Send from a player script to register the player.
-fn register_player(region_id: u32, entity_id: u32) {
-    if let Ok(pipes) = REGIONPIPE.read() {
-        if let Some(sender) = pipes.get(&region_id) {
-            sender
-                .send(RegionMessage::RegisterPlayer(entity_id))
-                .unwrap();
-        }
-    }
-    if let Ok(mut players) = LOCAL_PLAYERS.write() {
-        players.push((region_id, entity_id));
-    }
-}
+// fn register_player(region_id: u32, entity_id: u32) {
+//     println!("1");
+//     if let Ok(pipes) = REGIONPIPE.read() {
+//         if let Some(sender) = pipes.get(&region_id) {
+//             sender
+//                 .send(RegionMessage::RegisterPlayer(entity_id))
+//                 .unwrap();
+//         }
+//     }
+//     if let Ok(mut players) = LOCAL_PLAYERS.write() {
+//         players.push((region_id, entity_id));
+//     }
+// }
 
 #[derive(Clone, Copy, PartialEq)]
 pub enum ServerState {
@@ -99,12 +100,7 @@ impl Server {
     }
 
     /// Create the given region instance.
-    pub fn create_region_instance(
-        &mut self,
-        name: String,
-        map: Map,
-        entities: &FxHashMap<String, String>,
-    ) {
+    pub fn create_region_instance(&mut self, name: String, map: Map, assets: &Assets) {
         let mut region_instance = RegionInstance::default();
         region_instance.id = self.get_next_id();
 
@@ -116,7 +112,7 @@ impl Server {
 
         self.from_region.push(region_instance.from_receiver.clone());
 
-        region_instance.init(name, map, entities);
+        region_instance.init(name, map, assets);
         region_instance.run();
     }
 
@@ -134,6 +130,12 @@ impl Server {
         for receiver in &self.from_region {
             while let Ok(message) = receiver.try_recv() {
                 match message {
+                    RegionMessage::RegisterPlayer(region_id, entity_id) => {
+                        if let Ok(mut players) = LOCAL_PLAYERS.write() {
+                            println!("Registering player: {} {}", region_id, entity_id);
+                            players.push((region_id, entity_id));
+                        }
+                    }
                     RegionMessage::EntitiesUpdate(id, serialized_updates) => {
                         let updates: Vec<EntityUpdate> = serialized_updates
                             .into_iter()
@@ -149,6 +151,7 @@ impl Server {
                         }
                     }
                     RegionMessage::LogMessage(message) => {
+                        println!("{}", message);
                         if self.log.is_empty() {
                             self.log = message;
                         } else {
