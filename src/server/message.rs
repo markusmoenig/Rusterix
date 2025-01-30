@@ -14,6 +14,8 @@ pub enum RegionMessage {
     UserAction(u32, EntityAction),
     /// Entity updates for a given region instance
     EntitiesUpdate(u32, Vec<Vec<u8>>),
+    /// Item updates for a given region instance
+    ItemsUpdate(u32, Vec<Vec<u8>>),
     /// Log Message
     LogMessage(String),
     /// Stop processing and quit

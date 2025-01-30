@@ -24,21 +24,6 @@ static REGIONPIPE: LazyLock<RegionRegistry> =
 type Player = Arc<RwLock<Vec<(u32, u32)>>>;
 static LOCAL_PLAYERS: LazyLock<Player> = LazyLock::new(|| Arc::new(RwLock::new(Vec::new())));
 
-/// Send from a player script to register the player.
-// fn register_player(region_id: u32, entity_id: u32) {
-//     println!("1");
-//     if let Ok(pipes) = REGIONPIPE.read() {
-//         if let Some(sender) = pipes.get(&region_id) {
-//             sender
-//                 .send(RegionMessage::RegisterPlayer(entity_id))
-//                 .unwrap();
-//         }
-//     }
-//     if let Ok(mut players) = LOCAL_PLAYERS.write() {
-//         players.push((region_id, entity_id));
-//     }
-// }
-
 #[derive(Clone, Copy, PartialEq)]
 pub enum ServerState {
     Off,
@@ -53,6 +38,7 @@ pub struct Server {
     from_region: Vec<Receiver<RegionMessage>>,
 
     pub entities: FxHashMap<u32, Vec<Entity>>,
+    pub items: FxHashMap<u32, Vec<Item>>,
 
     pub state: ServerState,
 
@@ -75,6 +61,7 @@ impl Server {
             from_region: vec![],
 
             entities: FxHashMap::default(),
+            items: FxHashMap::default(),
 
             state: ServerState::Off,
 
@@ -116,13 +103,26 @@ impl Server {
         region_instance.run();
     }
 
-    /// Get entities for a given region.
-    pub fn get_entities(&self, region_id: &Uuid) -> Option<&Vec<Entity>> {
-        if let Some(region_id) = self.region_id_map.get(region_id) {
+    /// Get entities and items for a given region.
+    pub fn get_entities_items(
+        &self,
+        region_id: &Uuid,
+    ) -> (Option<&Vec<Entity>>, Option<&Vec<Item>>) {
+        let mut rc: (Option<&Vec<Entity>>, Option<&Vec<Item>>) = (None, None);
+
+        rc.0 = if let Some(region_id) = self.region_id_map.get(region_id) {
             self.entities.get(region_id)
         } else {
             None
-        }
+        };
+
+        rc.1 = if let Some(region_id) = self.region_id_map.get(region_id) {
+            self.items.get(region_id)
+        } else {
+            None
+        };
+
+        rc
     }
 
     /// Retrieves all messages from the regions.
@@ -148,6 +148,20 @@ impl Server {
                             let mut entities = vec![];
                             Self::process_entity_updates(&mut entities, updates);
                             self.entities.insert(id, entities);
+                        }
+                    }
+                    RegionMessage::ItemsUpdate(id, serialized_updates) => {
+                        let updates: Vec<ItemUpdate> = serialized_updates
+                            .into_iter()
+                            .map(|data| ItemUpdate::unpack(&data))
+                            .collect();
+
+                        if let Some(items) = self.items.get_mut(&id) {
+                            Self::process_item_updates(items, updates);
+                        } else {
+                            let mut items = vec![];
+                            Self::process_item_updates(&mut items, updates);
+                            self.items.insert(id, items);
                         }
                     }
                     RegionMessage::LogMessage(message) => {
@@ -187,11 +201,42 @@ impl Server {
                 new_entity.apply_update(update);
 
                 // Add to the entity list
-                let new_entity_id = new_entity.id; // Copy or borrow the ID
+                let new_entity_id = new_entity.id;
                 entities.push(new_entity);
 
-                // Update the map with the new entity's ID
+                // Update the map with the new entitys ID
                 entity_map.insert(new_entity_id, entities.len() - 1);
+            }
+        }
+    }
+
+    /// Update existing items (or create new ones if they do not exist).
+    pub fn process_item_updates(items: &mut Vec<Item>, updates: Vec<ItemUpdate>) {
+        // Create a mapping from entity ID to index for efficient lookup
+        let mut item_map: FxHashMap<u32, usize> = items
+            .iter()
+            .enumerate()
+            .map(|(index, entity)| (entity.id, index))
+            .collect();
+
+        for update in updates {
+            if let Some(&index) = item_map.get(&update.id) {
+                // Entity exists, apply the update
+                items[index].apply_update(update);
+            } else {
+                // Entity does not exist, create a new one
+                let mut new_item = Item {
+                    id: update.id,
+                    ..Default::default()
+                };
+                new_item.apply_update(update);
+
+                // Add to the item list
+                let new_entity_id = new_item.id;
+                items.push(new_item);
+
+                // Update the map with the new items ID
+                item_map.insert(new_entity_id, items.len() - 1);
             }
         }
     }

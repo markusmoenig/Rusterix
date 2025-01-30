@@ -85,7 +85,7 @@ pub struct Map {
     pub selected_sectors: Vec<u32>,
 
     pub selected_light: Option<u32>,
-    pub selected_entity: Option<Uuid>,
+    pub selected_entity_item: Option<Uuid>,
 
     // Animation
     #[serde(default)]
@@ -131,7 +131,7 @@ impl Map {
             selected_sectors: vec![],
 
             selected_light: None,
-            selected_entity: None,
+            selected_entity_item: None,
 
             animation: VertexAnimationSystem::default(),
         }
@@ -151,7 +151,7 @@ impl Map {
         self.selected_linedefs = vec![];
         self.selected_sectors = vec![];
         self.selected_light = None;
-        self.selected_entity = None;
+        self.selected_entity_item = None;
     }
 
     /// Generate a bounding box for all vertices in the map

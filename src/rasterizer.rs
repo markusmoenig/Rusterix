@@ -457,7 +457,7 @@ impl Rasterizer {
                                             };
 
                                             let t = &textures[batch.texture_index];
-                                            let index = t.textures.len() % scene.animation_frame;
+                                            let index = scene.animation_frame % t.textures.len();
 
                                             let mut texel = match batch.sample_mode {
                                                 SampleMode::Anisotropic { max_samples } => {

@@ -69,4 +69,8 @@ impl D3Camera for D3IsoCamera {
             _ => {}
         }
     }
+
+    fn position(&self) -> Vec3<f32> {
+        self.position
+    }
 }

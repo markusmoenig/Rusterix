@@ -2,7 +2,7 @@ pub mod d2material;
 pub mod d2preview;
 pub mod d3builder;
 
-use crate::{D3Camera, Entity, Map, MapToolType, Scene, Texture, Tile, ValueContainer};
+use crate::{D3Camera, Entity, Item, Map, MapToolType, Scene, Texture, Tile, ValueContainer};
 use theframework::prelude::*;
 use vek::Vec2;
 
@@ -26,9 +26,10 @@ pub trait SceneBuilder: Send + Sync {
     }
 
     /// Apply dynamic elements to the scene.
-    fn build_entities_d3(
+    fn build_entities_items_d3(
         &self,
         entities: &[Entity],
+        items: &[Item],
         camera: &dyn D3Camera,
         tiles: &FxHashMap<Uuid, Tile>,
         scene: &mut Scene,

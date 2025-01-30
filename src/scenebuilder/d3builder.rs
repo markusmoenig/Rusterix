@@ -1,7 +1,7 @@
 // use crate::PrimitiveMode::*;
 use crate::SceneBuilder;
 use crate::Texture;
-use crate::{Batch, D3Camera, Entity, Map, PixelSource, Scene, Tile, Value, ValueContainer};
+use crate::{Batch, D3Camera, Entity, Item, Map, PixelSource, Scene, Tile, Value, ValueContainer};
 use theframework::prelude::*;
 use vek::Vec2;
 
@@ -254,9 +254,10 @@ impl SceneBuilder for D3Builder {
         scene
     }
 
-    fn build_entities_d3(
+    fn build_entities_items_d3(
         &self,
         entities: &[Entity],
+        items: &[Item],
         camera: &dyn D3Camera,
         tiles: &FxHashMap<Uuid, Tile>,
         scene: &mut Scene,
@@ -290,6 +291,37 @@ impl SceneBuilder for D3Builder {
             if show_entity {
                 if let Some(id) = entity.get_attr_uuid("tile_id") {
                     let entity_pos = Vec2::new(entity.position.x, entity.position.z);
+                    let camera_pos = Vec2::new(camera.position().x, camera.position().z);
+                    let direction_to_camera = (camera_pos - entity_pos).normalized();
+
+                    // Calculate perpendicular vector on the XZ plane
+                    let perpendicular = Vec2::new(-direction_to_camera.y, direction_to_camera.x);
+                    let start = entity_pos + perpendicular * 0.5;
+                    let end = entity_pos - perpendicular * 0.5;
+
+                    let mut batch = Batch::emptyd3()
+                        .texture_index(index)
+                        .repeat_mode(crate::RepeatMode::RepeatXY);
+
+                    add_entity_billboard(&start, &end, 2.0, &mut batch);
+
+                    if let Some(tile) = tiles.get(&id) {
+                        textures.push(tile.clone());
+                    }
+
+                    batches.push(batch);
+                    index += 1;
+                }
+            }
+        }
+
+        index = 0;
+        for item in items {
+            let show_entity = true; // !(entity.is_player() && camera.id() == "firstp");
+
+            if show_entity {
+                if let Some(id) = item.get_attr_uuid("tile_id") {
+                    let entity_pos = Vec2::new(item.position.x, item.position.z);
                     let camera_pos = Vec2::new(camera.position().x, camera.position().z);
                     let direction_to_camera = (camera_pos - entity_pos).normalized();
 

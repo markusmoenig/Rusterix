@@ -76,6 +76,18 @@ impl SceneBuilder for D2PreviewBuilder {
             textures.push(Tile::from_texture(Texture::black()));
         }
 
+        if let Some(Value::Texture(tex)) = properties.get("treasure_on") {
+            textures.push(Tile::from_texture(tex.clone()));
+        } else {
+            textures.push(Tile::from_texture(Texture::white()));
+        }
+
+        if let Some(Value::Texture(tex)) = properties.get("treasure_off") {
+            textures.push(Tile::from_texture(tex.clone()));
+        } else {
+            textures.push(Tile::from_texture(Texture::black()));
+        }
+
         if self.map_tool_type == MapToolType::Effects {
             if let Some(Value::Texture(tex)) = properties.get("light_on") {
                 textures.push(Tile::from_texture(tex.clone()));
@@ -106,8 +118,11 @@ impl SceneBuilder for D2PreviewBuilder {
         let mut character_on_batch = Batch::emptyd2().texture_index(6);
         let mut character_off_batch = Batch::emptyd2().texture_index(7);
 
-        let mut light_on_batch = Batch::emptyd2().texture_index(8);
-        let mut light_off_batch = Batch::emptyd2().texture_index(9);
+        let mut treasure_on_batch = Batch::emptyd2().texture_index(8);
+        let mut treasure_off_batch = Batch::emptyd2().texture_index(9);
+
+        let mut light_on_batch = Batch::emptyd2().texture_index(10);
+        let mut light_off_batch = Batch::emptyd2().texture_index(11);
 
         // Add the material clipping area
         if self.material_mode {
@@ -359,10 +374,35 @@ impl SceneBuilder for D2PreviewBuilder {
                     repeated_offsets.insert(tile.id, repeated_batches.len());
                     repeated_batches.push(batch);
                 }
-            } else if Some(entity.creator_id) == map.selected_entity {
+            } else if Some(entity.creator_id) == map.selected_entity_item {
                 character_on_batch.add_rectangle(pos.x - hsize, pos.y - hsize, size, size);
             } else {
                 character_off_batch.add_rectangle(pos.x - hsize, pos.y - hsize, size, size);
+            }
+        }
+
+        // Items
+        for item in &map.items {
+            let entity_pos = Vec2::new(item.position.x, item.position.z);
+            let pos =
+                self.map_grid_to_local(screen_size, Vec2::new(entity_pos.x, entity_pos.y), map);
+            let size = map.grid_size;
+            let hsize = map.grid_size / 2.0;
+
+            if let Some(id) = item.get_attr_uuid("tile_id") {
+                if let Some(tile) = tiles.get(&id) {
+                    let texture_index = textures.len();
+
+                    let mut batch = Batch::emptyd2().texture_index(texture_index);
+                    batch.add_rectangle(pos.x - hsize, pos.y - hsize, size, size);
+                    textures.push(tile.clone());
+                    repeated_offsets.insert(tile.id, repeated_batches.len());
+                    repeated_batches.push(batch);
+                }
+            } else if Some(item.creator_id) == map.selected_entity_item {
+                treasure_on_batch.add_rectangle(pos.x - hsize, pos.y - hsize, size, size);
+            } else {
+                treasure_off_batch.add_rectangle(pos.x - hsize, pos.y - hsize, size, size);
             }
         }
 
@@ -402,6 +442,8 @@ impl SceneBuilder for D2PreviewBuilder {
             light_off_batch,
             character_on_batch,
             character_off_batch,
+            treasure_on_batch,
+            treasure_off_batch,
         ]);
 
         scene.d2 = batches;

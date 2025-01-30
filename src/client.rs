@@ -12,6 +12,8 @@ pub struct Client {
 
     pub scene_d2: Scene,
     pub scene_d3: Scene,
+
+    pub animation_frame: usize,
 }
 
 impl Default for Client {
@@ -32,7 +34,14 @@ impl Client {
 
             scene_d2: Scene::default(),
             scene_d3: Scene::default(),
+
+            animation_frame: 0,
         }
+    }
+
+    /// Increase the anim counter.
+    pub fn inc_animation_frame(&mut self) {
+        self.animation_frame += 1;
     }
 
     /// Set the current map id.
@@ -78,14 +87,20 @@ impl Client {
     }
 
     /// Apply the entities to the 3D scene.
-    pub fn apply_entities_d3(&mut self, entities: &[Entity], assets: &Assets) {
+    pub fn apply_entities_items_d3(
+        &mut self,
+        entities: &[Entity],
+        items: &[Item],
+        assets: &Assets,
+    ) {
         for entity in entities {
             if entity.is_player() {
                 entity.apply_to_camera(&mut self.camera_d3);
             }
         }
-        self.builder_d3.build_entities_d3(
+        self.builder_d3.build_entities_items_d3(
             entities,
+            items,
             self.camera_d3.as_ref(),
             &assets.tiles,
             &mut self.scene_d3,
@@ -94,6 +109,7 @@ impl Client {
 
     /// Draw the 2D scene.
     pub fn draw_d2(&mut self, pixels: &mut [u8], width: usize, height: usize) {
+        self.scene_d2.animation_frame = self.animation_frame;
         Rasterizer::setup(None, Mat4::identity(), Mat4::identity()).rasterize(
             &mut self.scene_d2,
             pixels,
@@ -105,6 +121,7 @@ impl Client {
 
     /// Draw the 3D scene.
     pub fn draw_d3(&mut self, pixels: &mut [u8], width: usize, height: usize) {
+        self.scene_d3.animation_frame = self.animation_frame;
         Rasterizer::setup(
             None,
             self.camera_d3.view_matrix(),

@@ -34,8 +34,14 @@ ref_thread_local! {
     /// The entity id which is currently handled/executed in Python
     pub static managed CURR_ENTITYID: u32 = 0;
 
+    /// The item id which is currently handled/executed in Python
+    pub static managed CURR_ITEMID: Option<u32> = None;
+
     /// Maps the entity id to its class name.
     pub static managed ENTITY_CLASSES: FxHashMap<u32, String> = FxHashMap::default();
+
+    /// Maps the item id to its class name.
+    pub static managed ITEM_CLASSES: FxHashMap<u32, String> = FxHashMap::default();
 
     /// Errors since starting the region.
     pub static managed ERROR_COUNT: u32 = 0;
@@ -205,62 +211,33 @@ impl RegionInstance {
         }
 
         // Installing Item Class Templates
-        for (name, entity_source) in &assets.items {
-            if let Err(err) = self.execute(entity_source) {
+        for (name, item_source) in &assets.items {
+            if let Err(err) = self.execute(item_source) {
                 STARTUP_ERRORS.borrow_mut().push(format!(
                     "{}: Error Compiling {} Item Class: {}",
                     self.name, name, err,
                 ));
-                if let Err(err) = self.execute(&format!("{} = {}()", name, name)) {
-                    STARTUP_ERRORS.borrow_mut().push(format!(
-                        "{}: Error Installing {} Item Class: {}",
-                        self.name, name, err,
-                    ));
-                }
+            }
+            if let Err(err) = self.execute(&format!("{} = {}()", name, name)) {
+                STARTUP_ERRORS.borrow_mut().push(format!(
+                    "{}: Error Installing {} Item Class: {}",
+                    self.name, name, err,
+                ));
             }
         }
-
-        /*
-        let entities = MAP.borrow().entities.clone();
-
-        // Installing Entity Instances
-        for (index, entity) in entities.iter().enumerate() {
-            let class_name = match entity.attributes.get("class_name") {
-                Some(value) => value,
-                None => &Value::Str("unknown".into()),
-            };
-            let cmd = format!("manager.add_entity({}())", class_name);
-            let mut entity_id = 0;
-            match self.execute(&cmd) {
-                Ok(obj) => {
-                    self.interp.enter(|vm| {
-                        if let Ok(value) = obj.try_into_value::<i32>(vm) {
-                            if let Some(e) = MAP.borrow_mut().entities.get_mut(index) {
-                                e.id = value as u32;
-                                entity_id = value as u32;
-                            }
-                        }
-                    });
-                }
-                Err(err) => {
-                    STARTUP_ERRORS.borrow_mut().push(format!(
-                        "{}: Error Installing '{}' Instance ({}): {}",
-                        self.name,
-                        entity
-                            .get_attr_string("class_name")
-                            .unwrap_or("Unknown".into()),
-                        entity.get_attr_string("name").unwrap_or("Unknown".into()),
-                        err,
-                    ));
-                }
-            }
-        }*/
 
         // Set an entity id and mark all fields dirty for the first transmission to the server.
         for e in MAP.borrow_mut().entities.iter_mut() {
             e.id = *ID_GEN.borrow();
             *ID_GEN.borrow_mut() += 1;
             e.mark_all_dirty();
+        }
+
+        // Set an item id and mark all fields dirty for the first transmission to the server.
+        for i in MAP.borrow_mut().items.iter_mut() {
+            i.id = *ID_GEN.borrow();
+            *ID_GEN.borrow_mut() += 1;
+            i.mark_all_dirty();
         }
     }
 
@@ -302,7 +279,6 @@ impl RegionInstance {
             for entity in entities.iter() {
                 if let Some(class_name) = entity.get_attr_string("class_name") {
                     let cmd = format!("{}.event(\"startup\", \"\")", class_name);
-                    //println!("{} = {}", entity.id, class_name);
                     ENTITY_CLASSES.borrow_mut().insert(entity.id, class_name);
                     *CURR_ENTITYID.borrow_mut() = entity.id;
                     if let Err(err) = REGION.borrow_mut().execute(&cmd) {
@@ -317,7 +293,27 @@ impl RegionInstance {
                 }
             }
 
-            // Running the setup scripts for the class instances
+            // Send "startup" event to all items.
+            let items = MAP.borrow().items.clone();
+            for item in items.iter() {
+                if let Some(class_name) = item.get_attr_string("class_name") {
+                    let cmd = format!("{}.event(\"startup\", \"\")", class_name);
+                    ITEM_CLASSES.borrow_mut().insert(item.id, class_name);
+                    *CURR_ITEMID.borrow_mut() = Some(item.id);
+                    if let Err(err) = REGION.borrow_mut().execute(&cmd) {
+                        send_log_message(format!(
+                            "{}: Item Event Error ({}) for '{}': {}",
+                            name,
+                            "startup",
+                            get_entity_name(item.id),
+                            err,
+                        ));
+                    }
+                }
+            }
+            *CURR_ITEMID.borrow_mut() = None;
+
+            // Running the character setup scripts for the class instances
             for entity in entities.iter() {
                 if let Some(setup) = entity.get_attr_string("setup") {
                     if let Err(err) = REGION.borrow_mut().execute(&setup) {
@@ -333,6 +329,7 @@ impl RegionInstance {
                         *ERROR_COUNT.borrow_mut() += 1;
                     }
 
+                    *CURR_ENTITYID.borrow_mut() = entity.id;
                     if let Err(err) = REGION.borrow_mut().execute("setup()") {
                         send_log_message(format!(
                             "{}: Setup '{}/{}': {}",
@@ -346,6 +343,38 @@ impl RegionInstance {
                         *ERROR_COUNT.borrow_mut() += 1;
                     }
                 }
+
+                // Running the item setup scripts for the class instances
+                let items = MAP.borrow().items.clone();
+                for item in items.iter() {
+                    if let Some(setup) = item.get_attr_string("setup") {
+                        if let Err(err) = REGION.borrow_mut().execute(&setup) {
+                            send_log_message(format!(
+                                "{}: Item Setup '{}/{}': {}",
+                                name,
+                                item.get_attr_string("name").unwrap_or("Unknown".into()),
+                                item.get_attr_string("class_name")
+                                    .unwrap_or("Unknown".into()),
+                                err,
+                            ));
+                            *ERROR_COUNT.borrow_mut() += 1;
+                        }
+
+                        *CURR_ITEMID.borrow_mut() = Some(item.id);
+                        if let Err(err) = REGION.borrow_mut().execute("setup()") {
+                            send_log_message(format!(
+                                "{}: Item Setup '{}/{}': {}",
+                                name,
+                                item.get_attr_string("name").unwrap_or("Unknown".into()),
+                                item.get_attr_string("class_name")
+                                    .unwrap_or("Unknown".into()),
+                                err,
+                            ));
+                            *ERROR_COUNT.borrow_mut() += 1;
+                        }
+                    }
+                }
+                *CURR_ITEMID.borrow_mut() = None;
 
                 // Send startup log message
                 send_log_message(format!(
@@ -424,6 +453,7 @@ impl RegionInstance {
     /// Redraw tick
     fn handle_redraw_tick(&mut self) {
         let mut updates: Vec<Vec<u8>> = vec![];
+        let mut item_updates: Vec<Vec<u8>> = vec![];
         let mut entities = MAP.borrow().entities.clone();
         for entity in &mut entities {
             match &entity.action {
@@ -498,13 +528,31 @@ impl RegionInstance {
         }
         MAP.borrow_mut().entities = entities;
 
-        // Send the updates if non empty
+        // Send the entity updates if non empty
         if !updates.is_empty() {
             FROM_SENDER
                 .borrow()
                 .get()
                 .unwrap()
                 .send(RegionMessage::EntitiesUpdate(self.id, updates))
+                .unwrap();
+        }
+
+        // let mut items = MAP.borrow().items.clone();
+        for item in &mut MAP.borrow_mut().items {
+            if item.is_dirty() {
+                item_updates.push(item.get_update().pack());
+                item.clear_dirty();
+            }
+        }
+
+        // Send the item updates if non empty
+        if !item_updates.is_empty() {
+            FROM_SENDER
+                .borrow()
+                .get()
+                .unwrap()
+                .send(RegionMessage::ItemsUpdate(self.id, item_updates))
                 .unwrap();
         }
     }
@@ -647,12 +695,25 @@ fn player_action(action: String) {
 /// Set the tile_id of the entity.
 fn set_tile(id: String) {
     if let Ok(uuid) = Uuid::try_parse(&id) {
-        if let Some(entity) = MAP
-            .borrow_mut()
-            .entities
-            .get_mut(*CURR_ENTITYID.borrow() as usize)
-        {
-            entity.set_attribute("tile_id", Value::Id(uuid));
+        if let Some(item_id) = *CURR_ITEMID.borrow() {
+            if let Some(item) = MAP
+                .borrow_mut()
+                .items
+                .iter_mut()
+                .find(|item| item.id == item_id)
+            {
+                item.set_attribute("tile_id", Value::Id(uuid));
+            }
+        } else {
+            let entity_id = *CURR_ENTITYID.borrow();
+            if let Some(entity) = MAP
+                .borrow_mut()
+                .entities
+                .iter_mut()
+                .find(|entity| entity.id == entity_id)
+            {
+                entity.set_attribute("tile_id", Value::Id(uuid));
+            }
         }
     }
 }

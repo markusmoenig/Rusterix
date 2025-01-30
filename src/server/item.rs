@@ -8,6 +8,9 @@ pub struct Item {
     /// The unique ID of the item
     pub id: u32,
 
+    /// The position in the map (if not on an entity).
+    pub position: Vec3<f32>,
+
     /// Maps the item to a creator ID
     pub creator_id: Uuid,
 
@@ -40,6 +43,7 @@ impl Item {
     pub fn new() -> Self {
         Self {
             id: 0,
+            position: Vec3::new(0.0, 1.0, 0.0),
             creator_id: Uuid::new_v4(),
             item_type: String::new(),
             max_capacity: 1, // Default to 1 for non-stackable, non-container items
@@ -47,6 +51,22 @@ impl Item {
             attributes: ValueContainer::default(),
             dirty_flags: 0,
             dirty_attributes: FxHashSet::default(),
+        }
+    }
+
+    /// Set the position and mark it as dirty
+    pub fn set_position(&mut self, new_position: Vec3<f32>) {
+        if self.position != new_position {
+            self.position = new_position;
+            self.mark_dirty_field(0b0100);
+        }
+    }
+
+    /// Set the position and mark it as dirty
+    pub fn set_max_capacity(&mut self, new_max_capacity: u32) {
+        if self.max_capacity != new_max_capacity {
+            self.max_capacity = new_max_capacity;
+            self.mark_dirty_field(0b0010);
         }
     }
 
@@ -103,6 +123,20 @@ impl Item {
         self.attributes.get(key)
     }
 
+    /// Get the given String
+    pub fn get_attr_string(&self, key: &str) -> Option<String> {
+        self.attributes.get(key).map(|value| value.to_string())
+    }
+
+    /// Get the given Uuid
+    pub fn get_attr_uuid(&self, key: &str) -> Option<Uuid> {
+        if let Some(Value::Id(value)) = self.attributes.get(key) {
+            Some(*value)
+        } else {
+            None
+        }
+    }
+
     /// Mark a static field as dirty
     fn mark_dirty_field(&mut self, field: u8) {
         self.dirty_flags |= field;
@@ -115,7 +149,7 @@ impl Item {
 
     /// Mark all fields and attributes as dirty
     pub fn mark_all_dirty(&mut self) {
-        self.dirty_flags = 0b1111; // Mark all fields as dirty
+        self.dirty_flags = 0b0111; // Mark all fields as dirty
         for key in self.attributes.keys() {
             self.dirty_attributes.insert(key.clone());
         }
@@ -179,6 +213,11 @@ impl Item {
             } else {
                 None
             },
+            position: if self.dirty_flags & 0b0100 != 0 {
+                Some(self.position)
+            } else {
+                None
+            },
             attributes: updated_attributes,
             container_updates,
         }
@@ -195,17 +234,17 @@ impl Item {
         // Update static fields
         if let Some(new_item_type) = update.item_type {
             self.item_type = new_item_type;
-            self.dirty_flags |= 0b0001;
         }
         if let Some(new_max_capacity) = update.max_capacity {
             self.max_capacity = new_max_capacity;
-            self.dirty_flags |= 0b0010;
+        }
+        if let Some(new_position) = update.position {
+            self.position = new_position;
         }
 
         // Update dynamic attributes
         for (key, value) in update.attributes {
             self.attributes.set(&key, value.clone());
-            self.dirty_attributes.insert(key);
         }
 
         // Recursively apply updates to items in the container
@@ -227,6 +266,7 @@ pub struct ItemUpdate {
     pub id: u32,
     pub item_type: Option<String>,
     pub max_capacity: Option<u32>,
+    pub position: Option<Vec3<f32>>,
     pub attributes: FxHashMap<String, Value>,
     pub container_updates: Option<Vec<ItemUpdate>>,
 }
@@ -243,6 +283,7 @@ impl ItemUpdate {
             id: 0,
             item_type: None,
             max_capacity: None,
+            position: None,
             attributes: FxHashMap::default(),
             container_updates: None,
         })
