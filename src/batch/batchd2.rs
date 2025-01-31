@@ -33,7 +33,7 @@ impl Batch<[f32; 3]> {
             clipped_uvs: vec![],
             transform_2d: Mat3::identity(),
             transform_3d: Mat4::identity(),
-            receives_light: true,
+            receives_light: false,
         }
     }
 
@@ -311,6 +311,12 @@ impl Batch<[f32; 3]> {
     /// Set the 3D transform matrix for this batch
     pub fn transform(mut self, transform: Mat3<f32>) -> Self {
         self.transform_2d = transform;
+        self
+    }
+
+    /// Set if the batch receives light
+    pub fn receives_light(mut self, receives_light: bool) -> Self {
+        self.receives_light = receives_light;
         self
     }
 

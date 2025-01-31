@@ -315,7 +315,6 @@ impl SceneBuilder for D3Builder {
             }
         }
 
-        index = 0;
         for item in items {
             let show_entity = true; // !(entity.is_player() && camera.id() == "firstp");
 
@@ -334,7 +333,7 @@ impl SceneBuilder for D3Builder {
                         .texture_index(index)
                         .repeat_mode(crate::RepeatMode::RepeatXY);
 
-                    add_entity_billboard(&start, &end, 2.0, &mut batch);
+                    add_entity_billboard(&start, &end, 1.0, &mut batch);
 
                     if let Some(tile) = tiles.get(&id) {
                         textures.push(tile.clone());

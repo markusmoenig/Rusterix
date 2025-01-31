@@ -18,6 +18,8 @@ pub enum RegionMessage {
     ItemsUpdate(u32, Vec<Vec<u8>>),
     /// Log Message
     LogMessage(String),
+    /// Time event of a Region
+    Time(u32, TheTime),
     /// Stop processing and quit
     Quit,
 }

@@ -40,6 +40,8 @@ pub struct Server {
     pub entities: FxHashMap<u32, Vec<Entity>>,
     pub items: FxHashMap<u32, Vec<Item>>,
 
+    pub times: FxHashMap<u32, TheTime>,
+
     pub state: ServerState,
 
     pub log: String,
@@ -59,6 +61,8 @@ impl Server {
 
             region_id_map: FxHashMap::default(),
             from_region: vec![],
+
+            times: FxHashMap::default(),
 
             entities: FxHashMap::default(),
             items: FxHashMap::default(),
@@ -125,6 +129,34 @@ impl Server {
         rc
     }
 
+    /// Get the current time for the given region.
+    pub fn get_time(&self, region_id: &Uuid) -> Option<TheTime> {
+        if let Some(region_id) = self.region_id_map.get(region_id) {
+            if let Some(time) = self.times.get(region_id) {
+                return Some(*time);
+            }
+        }
+        None
+    }
+
+    /// Set the current time for the given region.
+    pub fn set_time(&mut self, region_id: &Uuid, time: TheTime) -> TheTime {
+        if let Some(region_id) = self.region_id_map.get(region_id) {
+            if let Ok(pipe) = REGIONPIPE.read() {
+                if let Some(sender) = pipe.get(region_id) {
+                    self.times.clear();
+                    match sender.send(RegionMessage::Time(*region_id, time)) {
+                        Ok(_) => {}
+                        Err(err) => {
+                            println!("{:?}", err.to_string());
+                        }
+                    }
+                }
+            }
+        }
+        TheTime::default()
+    }
+
     /// Retrieves all messages from the regions.
     pub fn update(&mut self) {
         for receiver in &self.from_region {
@@ -172,6 +204,9 @@ impl Server {
                             self.log += &format!("{}{}", "\n", message);
                         }
                         self.log_changed = true;
+                    }
+                    RegionMessage::Time(id, time) => {
+                        self.times.insert(id, time);
                     }
                     _ => {}
                 }

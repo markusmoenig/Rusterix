@@ -10,6 +10,9 @@ pub struct Scene {
     /// The lights in the scene
     pub lights: Vec<Light>,
 
+    /// The lights in the scene
+    pub dynamic_lights: Vec<Light>,
+
     /// 3D static batches which do not need to be changed, i.e. no animation for textures or the mesh itself.
     pub d3_static: Vec<Batch<[f32; 4]>>,
     /// 3D dynamic batches which can be updated dynamically.
@@ -40,6 +43,7 @@ impl Scene {
         Self {
             background: None,
             lights: vec![],
+            dynamic_lights: vec![],
             d3_static: vec![],
             d3_dynamic: vec![],
             d2: vec![],
@@ -55,6 +59,7 @@ impl Scene {
         Self {
             background: None,
             lights: vec![],
+            dynamic_lights: vec![],
             d3_static: d3,
             d3_dynamic: vec![],
             d2,

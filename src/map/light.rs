@@ -1,4 +1,4 @@
-use vek::Vec3;
+use vek::{Vec2, Vec3};
 
 #[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
 pub enum Light {
@@ -53,7 +53,7 @@ impl Light {
         }
     }
 
-    /// Calculates the light's intensity and color at a given point
+    /// Calculate the lights intensity and color at a given point
     pub fn color_at(&self, point: Vec3<f32>, time: f32) -> [f32; 3] {
         match *self {
             Light::PointLight {
@@ -99,7 +99,6 @@ impl Light {
                     return [0.0, 0.0, 0.0];
                 }
 
-                // Distance attenuation
                 let attenuation = if distance <= start_distance {
                     1.0
                 } else {
@@ -132,16 +131,102 @@ impl Light {
                     return [0.0, 0.0, 0.0];
                 }
 
-                // Direction vector from the light to the point
                 let direction = to_point.normalized();
-
-                // Angle attenuation (dot product of normal and direction)
                 let angle_attenuation = normal.normalized().dot(direction).max(0.0);
-
-                // Distance attenuation (inverse square law)
                 let distance_attenuation = 1.0 / (distance * distance);
+                let attenuation = angle_attenuation * distance_attenuation * area * intensity;
 
-                // Final intensity scaling
+                [
+                    color[0] * attenuation,
+                    color[1] * attenuation,
+                    color[2] * attenuation,
+                ]
+            }
+        }
+    }
+
+    /// Calculates the light's intensity and color at a given 2D point using the XZ plane.
+    pub fn color_at_2d(&self, point_2d: Vec2<f32>, time: f32) -> [f32; 3] {
+        match *self {
+            Light::PointLight {
+                position,
+                color,
+                intensity,
+                start_distance,
+                end_distance,
+                flicker,
+            } => {
+                let light_pos_2d = Vec2::new(position.x, position.z);
+                let distance = (point_2d - light_pos_2d).magnitude();
+
+                if distance <= start_distance {
+                    return apply_flicker(color, intensity, flicker, time);
+                }
+                if distance >= end_distance {
+                    return [0.0, 0.0, 0.0];
+                }
+
+                let attenuation =
+                    1.0 - ((distance - start_distance) / (end_distance - start_distance));
+                let adjusted_intensity = intensity * attenuation;
+                apply_flicker(color, adjusted_intensity, flicker, time)
+            }
+            Light::AmbientLight {
+                color, intensity, ..
+            } => apply_flicker(color, intensity, None, time),
+            Light::Spotlight {
+                position,
+                direction,
+                color,
+                intensity,
+                start_distance,
+                end_distance,
+                cone_angle,
+                flicker,
+            } => {
+                let light_pos_2d = Vec2::new(position.x, position.z);
+                let direction_2d = Vec2::new(direction.x, direction.z).normalized();
+                let to_point = (point_2d - light_pos_2d).normalized();
+
+                let distance = (point_2d - light_pos_2d).magnitude();
+                if distance >= end_distance {
+                    return [0.0, 0.0, 0.0];
+                }
+
+                let attenuation = if distance <= start_distance {
+                    1.0
+                } else {
+                    1.0 - ((distance - start_distance) / (end_distance - start_distance))
+                };
+
+                let angle = direction_2d.dot(to_point).acos();
+                if angle > cone_angle {
+                    return [0.0, 0.0, 0.0];
+                }
+
+                let adjusted_intensity = intensity * attenuation;
+                apply_flicker(color, adjusted_intensity, flicker, time)
+            }
+            Light::AreaLight {
+                position,
+                normal,
+                width,
+                height,
+                color,
+                intensity,
+            } => {
+                let light_pos_2d = Vec2::new(position.x, position.z);
+                let normal_2d = Vec2::new(normal.x, normal.z).normalized();
+                let to_point = (point_2d - light_pos_2d).normalized();
+
+                let distance = (point_2d - light_pos_2d).magnitude();
+                if distance == 0.0 {
+                    return [0.0, 0.0, 0.0];
+                }
+
+                let angle_attenuation = normal_2d.dot(to_point).max(0.0);
+                let distance_attenuation = 1.0 / (distance * distance);
+                let area = width * height;
                 let attenuation = angle_attenuation * distance_attenuation * area * intensity;
 
                 [

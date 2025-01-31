@@ -1,5 +1,9 @@
+pub mod daylight;
+
 use crate::prelude::*;
 use crate::D2PreviewBuilder;
+use crate::Daylight;
+use num_traits::zero;
 use theframework::prelude::*;
 
 pub struct Client {
@@ -14,6 +18,9 @@ pub struct Client {
     pub scene_d3: Scene,
 
     pub animation_frame: usize,
+    pub server_time: TheTime,
+
+    pub daylight: Daylight,
 }
 
 impl Default for Client {
@@ -36,6 +43,9 @@ impl Client {
             scene_d3: Scene::default(),
 
             animation_frame: 0,
+            server_time: TheTime::default(),
+
+            daylight: Daylight::default(),
         }
     }
 
@@ -110,6 +120,15 @@ impl Client {
     /// Draw the 2D scene.
     pub fn draw_d2(&mut self, pixels: &mut [u8], width: usize, height: usize) {
         self.scene_d2.animation_frame = self.animation_frame;
+        let ac = self
+            .daylight
+            .daylight(self.server_time.total_minutes(), 0.0, 1.0);
+
+        self.scene_d2.dynamic_lights = vec![Light::AmbientLight {
+            position: zero(),
+            color: [ac.x, ac.y, ac.z],
+            intensity: 1.0,
+        }];
         Rasterizer::setup(None, Mat4::identity(), Mat4::identity()).rasterize(
             &mut self.scene_d2,
             pixels,
@@ -122,6 +141,15 @@ impl Client {
     /// Draw the 3D scene.
     pub fn draw_d3(&mut self, pixels: &mut [u8], width: usize, height: usize) {
         self.scene_d3.animation_frame = self.animation_frame;
+        let ac = self
+            .daylight
+            .daylight(self.server_time.total_minutes(), 0.0, 1.0);
+
+        self.scene_d3.dynamic_lights = vec![Light::AmbientLight {
+            position: zero(),
+            color: [ac.x, ac.y, ac.z],
+            intensity: 1.0,
+        }];
         Rasterizer::setup(
             None,
             self.camera_d3.view_matrix(),

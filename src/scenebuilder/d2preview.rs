@@ -206,7 +206,8 @@ impl SceneBuilder for D2PreviewBuilder {
 
                                     let mut batch = Batch::emptyd2()
                                         .repeat_mode(crate::RepeatMode::RepeatXY)
-                                        .texture_index(texture_index);
+                                        .texture_index(texture_index)
+                                        .receives_light(true);
 
                                     batch.add(vertices, geo.1, uvs);
 
@@ -368,7 +369,10 @@ impl SceneBuilder for D2PreviewBuilder {
                 if let Some(tile) = tiles.get(&id) {
                     let texture_index = textures.len();
 
-                    let mut batch = Batch::emptyd2().texture_index(texture_index);
+                    let mut batch = Batch::emptyd2()
+                        .texture_index(texture_index)
+                        .receives_light(true);
+
                     batch.add_rectangle(pos.x - hsize, pos.y - hsize, size, size);
                     textures.push(tile.clone());
                     repeated_offsets.insert(tile.id, repeated_batches.len());
@@ -393,7 +397,10 @@ impl SceneBuilder for D2PreviewBuilder {
                 if let Some(tile) = tiles.get(&id) {
                     let texture_index = textures.len();
 
-                    let mut batch = Batch::emptyd2().texture_index(texture_index);
+                    let mut batch = Batch::emptyd2()
+                        .texture_index(texture_index)
+                        .receives_light(true);
+
                     batch.add_rectangle(pos.x - hsize, pos.y - hsize, size, size);
                     textures.push(tile.clone());
                     repeated_offsets.insert(tile.id, repeated_batches.len());

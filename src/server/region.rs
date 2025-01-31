@@ -391,7 +391,18 @@ impl RegionInstance {
                         {
                             *TICKS.borrow_mut() += 1;
                             ticks = *TICKS.borrow();
-                            *TIME.borrow_mut() = TheTime::from_ticks(ticks, *TICKS_PER_MINUTE.borrow());
+                            let mut time = TIME.borrow_mut();
+                            let mins = time.total_minutes();
+                            *time = TheTime::from_ticks(ticks, *TICKS_PER_MINUTE.borrow());
+                            if time.total_minutes() > mins {
+                                // If the time changed send to server
+                                FROM_SENDER
+                                    .borrow()
+                                    .get()
+                                    .unwrap()
+                                    .send(RegionMessage::Time(*REGIONID.borrow(), *time))
+                                    .unwrap();
+                            }
                         }
 
                         let mut notifications = NOTIFICATIONS.borrow_mut();
@@ -437,6 +448,11 @@ impl RegionInstance {
                                             ));
                                         }
                                     }
+                                }
+                                Time(_id, time) => {
+                                    // User manually set the server time
+                                    *TICKS.borrow_mut() = time.to_ticks( *TICKS_PER_MINUTE.borrow());
+                                    *TIME.borrow_mut() = time;
                                 }
                                 Quit => {
                                     println!("Shutting down '{}'. Goodbye.", MAP.borrow().name);
