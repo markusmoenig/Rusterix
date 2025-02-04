@@ -151,6 +151,7 @@ impl SceneBuilder for D2PreviewBuilder {
         if self.map_tool_type == MapToolType::General
             || self.map_tool_type == MapToolType::Selection
             || self.map_tool_type == MapToolType::Sector
+            || self.map_tool_type == MapToolType::Rect
         {
             for sector in &map.sectors {
                 if let Some(geo) = sector.generate_geometry(map) {

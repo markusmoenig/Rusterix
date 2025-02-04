@@ -33,6 +33,7 @@ pub trait SceneBuilder: Send + Sync {
         camera: &dyn D3Camera,
         tiles: &FxHashMap<Uuid, Tile>,
         scene: &mut Scene,
+        properties: &ValueContainer,
     ) {
     }
 

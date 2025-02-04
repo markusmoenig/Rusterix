@@ -1,8 +1,8 @@
-use crate::{PixelSource, Texture};
+use crate::{PixelSource, SampleMode, Texture};
 use std::fmt;
 use theframework::prelude::*;
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub enum Value {
     Bool(bool),
     Int(i32),
@@ -14,6 +14,7 @@ pub enum Value {
     Id(Uuid),
     Source(PixelSource),
     Texture(Texture),
+    SampleMode(SampleMode),
 }
 
 impl Value {
@@ -41,6 +42,7 @@ impl fmt::Display for Value {
             Value::Texture(val) => {
                 write!(f, "Texture: {}, {}", val.width, val.height)
             }
+            Value::SampleMode(_) => write!(f, "SampleMode"),
         }
     }
 }

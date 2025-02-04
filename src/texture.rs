@@ -3,7 +3,7 @@ use std::io::Cursor;
 use theframework::prelude::*;
 
 /// Sample mode for texture sampling.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone, Copy)]
 pub enum SampleMode {
     /// Nearest-neighbor sampling
     Nearest,

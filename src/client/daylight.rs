@@ -14,13 +14,13 @@ pub struct Daylight {
 impl Default for Daylight {
     fn default() -> Self {
         Self {
-            sunrise: 300,                              // 5:00 AM
-            sunset: 1200,                              // 8:00 PM
-            transition_duration: 60,                   // 1 hour transition
-            daylight_color: Vec3::new(1.0, 0.95, 0.9), // Slightly yellowish white
-            sunrise_color: Vec3::new(1.0, 0.8, 0.8),   // Soft red
-            sunset_color: Vec3::new(1.0, 0.8, 0.8),    // Soft red
-            night_color: Vec3::new(0.0, 0.0, 0.4),     // Dark blue
+            sunrise: 300,                             // 5:00 AM
+            sunset: 1200,                             // 8:00 PM
+            transition_duration: 60,                  // 1 hour transition
+            daylight_color: Vec3::new(1.0, 1.0, 1.0), // Slightly yellowish white
+            sunrise_color: Vec3::new(1.0, 0.8, 0.8),  // Soft red
+            sunset_color: Vec3::new(1.0, 0.8, 0.8),   // Soft red
+            night_color: Vec3::new(0.3, 0.3, 0.3),    // Dark blue
         }
     }
 }

@@ -102,6 +102,7 @@ impl Client {
         entities: &[Entity],
         items: &[Item],
         assets: &Assets,
+        values: &ValueContainer,
     ) {
         for entity in entities {
             if entity.is_player() {
@@ -114,6 +115,7 @@ impl Client {
             self.camera_d3.as_ref(),
             &assets.tiles,
             &mut self.scene_d3,
+            values,
         );
     }
 

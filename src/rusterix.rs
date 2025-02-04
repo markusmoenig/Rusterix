@@ -94,9 +94,11 @@ impl Rusterix {
         items: &[Item],
         map: &Map,
         assets: &Assets,
+        values: &ValueContainer,
     ) {
         if map.camera != MapCamera::TwoD {
-            self.client.apply_entities_items_d3(entities, items, assets);
+            self.client
+                .apply_entities_items_d3(entities, items, assets, values);
         }
     }
 

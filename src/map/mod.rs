@@ -35,6 +35,7 @@ pub enum MapToolType {
     Linedef,
     Sector,
     Effects,
+    Rect,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -655,6 +656,37 @@ impl Map {
 
         // Return the ID of the new vertex
         Some(new_vertex_id)
+    }
+
+    /// Find sectors which consist of exactly the same 4 vertices and return them.
+    /// This is used for stacking tiles / layering via the RECT tool.
+    pub fn find_sectors_with_vertex_indices(&self, vertex_indices: &[u32; 4]) -> Vec<u32> {
+        let mut matching_sectors = Vec::new();
+
+        let mut new_vertex_set = vertex_indices.to_vec();
+        new_vertex_set.sort();
+
+        for sector in &self.sectors {
+            let mut sector_vertex_indices = Vec::new();
+
+            for &linedef_id in &sector.linedefs {
+                if let Some(linedef) = self.linedefs.get(linedef_id as usize) {
+                    sector_vertex_indices.push(linedef.start_vertex);
+                    sector_vertex_indices.push(linedef.end_vertex);
+                }
+            }
+
+            // Deduplicate and sort for consistent comparison
+            sector_vertex_indices.sort();
+            sector_vertex_indices.dedup();
+
+            // If the sector contains exactly these 4 vertices, it's a match
+            if sector_vertex_indices == new_vertex_set {
+                matching_sectors.push(sector.id);
+            }
+        }
+
+        matching_sectors
     }
 
     /// Returns the sector at the given position (if any).

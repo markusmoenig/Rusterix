@@ -1,7 +1,8 @@
-// use crate::PrimitiveMode::*;
 use crate::SceneBuilder;
 use crate::Texture;
-use crate::{Batch, D3Camera, Entity, Item, Map, PixelSource, Scene, Tile, Value, ValueContainer};
+use crate::{
+    Batch, D3Camera, Entity, Item, Map, PixelSource, SampleMode, Scene, Tile, Value, ValueContainer,
+};
 use theframework::prelude::*;
 use vek::Vec2;
 
@@ -19,8 +20,13 @@ impl SceneBuilder for D3Builder {
         atlas: Texture,
         _screen_size: Vec2<f32>,
         camera_id: &str,
-        _properties: &ValueContainer,
+        properties: &ValueContainer,
     ) -> Scene {
+        let mut sample_mode = SampleMode::Nearest;
+        if let Some(Value::SampleMode(sm)) = properties.get("sample_mode") {
+            sample_mode = *sm;
+        }
+
         let mut scene = Scene::empty();
         // let atlas_size = atlas.width as f32;
         let tile_size = 100;
@@ -67,7 +73,7 @@ impl SceneBuilder for D3Builder {
 
                             let mut batch = Batch::emptyd3()
                                 .repeat_mode(crate::RepeatMode::RepeatXY)
-                                .sample_mode(crate::SampleMode::Linear)
+                                .sample_mode(sample_mode)
                                 .texture_index(texture_index);
 
                             batch.add(floor_vertices, indices.clone(), floor_uvs);
@@ -113,7 +119,7 @@ impl SceneBuilder for D3Builder {
 
                                 let mut batch = Batch::emptyd3()
                                     .repeat_mode(crate::RepeatMode::RepeatXY)
-                                    .sample_mode(crate::SampleMode::Linear)
+                                    .sample_mode(sample_mode)
                                     .texture_index(texture_index);
 
                                 batch.add(ceiling_vertices, indices, floor_uvs);
@@ -133,7 +139,7 @@ impl SceneBuilder for D3Builder {
                             if let Some(end_vertex) = map.find_vertex(linedef.end_vertex) {
                                 let repeat_sources =
                                     linedef.properties.get_int_default("source_repeat", 0) == 0;
-                                Self::add_wall2(
+                                Self::add_wall(
                                     sector_elevation,
                                     &start_vertex.as_vec2(),
                                     &end_vertex.as_vec2(),
@@ -171,6 +177,7 @@ impl SceneBuilder for D3Builder {
                                     &mut repeated_offsets,
                                     &mut repeated_batches,
                                     &mut textures,
+                                    &sample_mode,
                                 );
                             }
                         }
@@ -186,7 +193,7 @@ impl SceneBuilder for D3Builder {
                     if let Some(end_vertex) = map.find_vertex(linedef.end_vertex) {
                         let repeat_sources =
                             linedef.properties.get_int_default("source_repeat", 0) == 0;
-                        Self::add_wall2(
+                        Self::add_wall(
                             0.0,
                             &start_vertex.as_vec2(),
                             &end_vertex.as_vec2(),
@@ -224,6 +231,7 @@ impl SceneBuilder for D3Builder {
                             &mut repeated_offsets,
                             &mut repeated_batches,
                             &mut textures,
+                            &sample_mode,
                         );
                     }
                 }
@@ -261,7 +269,13 @@ impl SceneBuilder for D3Builder {
         camera: &dyn D3Camera,
         tiles: &FxHashMap<Uuid, Tile>,
         scene: &mut Scene,
+        properties: &ValueContainer,
     ) {
+        let mut sample_mode = SampleMode::Nearest;
+        if let Some(Value::SampleMode(sm)) = properties.get("sample_mode") {
+            sample_mode = *sm;
+        }
+
         let mut textures = vec![];
         let mut batches = vec![];
 
@@ -301,6 +315,7 @@ impl SceneBuilder for D3Builder {
 
                     let mut batch = Batch::emptyd3()
                         .texture_index(index)
+                        .sample_mode(sample_mode)
                         .repeat_mode(crate::RepeatMode::RepeatXY);
 
                     add_entity_billboard(&start, &end, 2.0, &mut batch);
@@ -352,20 +367,7 @@ impl SceneBuilder for D3Builder {
 
 trait D3BuilderUtils {
     #[allow(clippy::too_many_arguments)]
-    #[allow(dead_code)]
     fn add_wall(
-        start_vertex: &Vec2<f32>,
-        end_vertex: &Vec2<f32>,
-        wall_height: f32,
-        wall_texture_id: &Uuid,
-        tiles: &FxHashMap<Uuid, Tile>,
-        repeated_offsets: &mut FxHashMap<Uuid, usize>,
-        repeated_batches: &mut Vec<Batch<[f32; 4]>>,
-        textures: &mut Vec<Tile>,
-    );
-
-    #[allow(clippy::too_many_arguments)]
-    fn add_wall2(
         sector_elevation: f32,
         start_vertex: &Vec2<f32>,
         end_vertex: &Vec2<f32>,
@@ -379,6 +381,7 @@ trait D3BuilderUtils {
         repeated_offsets: &mut FxHashMap<Uuid, usize>,
         repeated_batches: &mut Vec<Batch<[f32; 4]>>,
         textures: &mut Vec<Tile>,
+        sample_mode: &SampleMode,
     );
 
     fn add_sky(
@@ -391,68 +394,8 @@ trait D3BuilderUtils {
 }
 
 impl D3BuilderUtils for D3Builder {
-    /// Adds a wall to the appropriate batch
-    fn add_wall(
-        start_vertex: &Vec2<f32>,
-        end_vertex: &Vec2<f32>,
-        wall_height: f32,
-        wall_texture_id: &Uuid,
-        tiles: &FxHashMap<Uuid, Tile>,
-        repeated_offsets: &mut FxHashMap<Uuid, usize>,
-        repeated_batches: &mut Vec<Batch<[f32; 4]>>,
-        textures: &mut Vec<Tile>,
-    ) {
-        let wall_vertices = vec![
-            [start_vertex.x, 0.0, start_vertex.y, 1.0],
-            [start_vertex.x, wall_height, start_vertex.y, 1.0],
-            [end_vertex.x, wall_height, end_vertex.y, 1.0],
-            [end_vertex.x, 0.0, end_vertex.y, 1.0],
-        ];
-
-        if let Some(tile) = tiles.get(wall_texture_id) {
-            let wall_uvs =
-                if (end_vertex.x - start_vertex.x).abs() > (end_vertex.y - start_vertex.y).abs() {
-                    // Wall is mostly aligned along the X-axis
-                    vec![
-                        [start_vertex.x, wall_height],
-                        [start_vertex.x, 0.0],
-                        [end_vertex.x, 0.0],
-                        [end_vertex.x, wall_height],
-                    ]
-                } else {
-                    // Wall is mostly aligned along the Z-axis
-                    vec![
-                        [start_vertex.y, wall_height],
-                        [start_vertex.y, 0.0],
-                        [end_vertex.y, 0.0],
-                        [end_vertex.y, wall_height],
-                    ]
-                };
-
-            let wall_indices = vec![(0, 1, 2), (0, 2, 3)];
-
-            if let Some(offset) = repeated_offsets.get(&tile.id) {
-                repeated_batches[*offset].add(wall_vertices, wall_indices, wall_uvs);
-            } else {
-                let texture_index = textures.len();
-
-                let mut batch = Batch::emptyd3()
-                    .repeat_mode(crate::RepeatMode::RepeatXY)
-                    .cull_mode(crate::CullMode::Off)
-                    .sample_mode(crate::SampleMode::Anisotropic { max_samples: 2 })
-                    .texture_index(texture_index);
-
-                batch.add(wall_vertices, wall_indices, wall_uvs);
-
-                textures.push(tile.clone());
-                repeated_offsets.insert(tile.id, repeated_batches.len());
-                repeated_batches.push(batch);
-            }
-        }
-    }
-
     /// Adds a wall to the appropriate batch based on up to 3 input textures.
-    fn add_wall2(
+    fn add_wall(
         sector_elevation: f32,
         start_vertex: &Vec2<f32>,
         end_vertex: &Vec2<f32>,
@@ -466,6 +409,7 @@ impl D3BuilderUtils for D3Builder {
         repeated_offsets: &mut FxHashMap<Uuid, usize>,
         repeated_batches: &mut Vec<Batch<[f32; 4]>>,
         textures: &mut Vec<Tile>,
+        sample_mode: &SampleMode,
     ) {
         // Calculate dynamic row heights based on wall_height
         let row_heights = if wall_height <= 1.0 {
@@ -515,7 +459,7 @@ impl D3BuilderUtils for D3Builder {
                     let mut batch = Batch::emptyd3()
                         .repeat_mode(crate::RepeatMode::RepeatXY)
                         .cull_mode(crate::CullMode::Off)
-                        .sample_mode(crate::SampleMode::Linear)
+                        .sample_mode(*sample_mode)
                         .texture_index(texture_index);
 
                     batch.add(row_vertices, row_indices, row_uvs);
