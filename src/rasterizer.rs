@@ -1,4 +1,4 @@
-use crate::{Batch, Pixel, PrimitiveMode, SampleMode, Scene};
+use crate::{Batch, Light, MapMini, Pixel, PrimitiveMode, SampleMode, Scene};
 use rayon::prelude::*;
 use vek::{Mat3, Mat4, Vec2, Vec3, Vec4};
 
@@ -13,6 +13,9 @@ pub struct Rasterizer {
     pub width: f32,
     pub height: f32,
     pub camera_pos: Vec3<f32>,
+
+    /// For D2 grid space conversion when we dont use a translation matrix
+    pub mapmini: MapMini,
 }
 
 /// Rasterizes batches of 2D and 3D meshes (and lines).
@@ -41,6 +44,8 @@ impl Rasterizer {
             height: 0.0,
 
             camera_pos,
+
+            mapmini: MapMini::default(),
         }
     }
 
@@ -243,20 +248,58 @@ impl Rasterizer {
                                                 || !scene.dynamic_lights.is_empty())
                                         {
                                             let mut accumulated_light = [0.0, 0.0, 0.0];
-                                            let world = Vec2::zero();
+
+                                            // Calculate grid position
+                                            let grid_space_pos = Vec2::new(tx as f32, ty as f32)
+                                                - Vec2::new(self.width, self.height) / 2.0
+                                                - Vec2::new(
+                                                    self.mapmini.offset.x,
+                                                    -self.mapmini.offset.y,
+                                                );
+                                            let world = grid_space_pos / self.mapmini.grid_size;
 
                                             for light in &scene.lights {
-                                                let light_color = light.color_at_2d(world, 0.0);
-                                                accumulated_light[0] += light_color[0];
-                                                accumulated_light[1] += light_color[1];
-                                                accumulated_light[2] += light_color[2];
+                                                let light_color = light.color_at(
+                                                    Vec3::new(world.x, 0.0, world.y),
+                                                    0.0,
+                                                );
+
+                                                let mut light_is_visible = true;
+                                                if !matches!(light, Light::AmbientLight { .. })
+                                                    && !self
+                                                        .mapmini
+                                                        .is_visible(world, light.position_2d())
+                                                {
+                                                    light_is_visible = false;
+                                                }
+
+                                                if light_is_visible {
+                                                    accumulated_light[0] += light_color[0];
+                                                    accumulated_light[1] += light_color[1];
+                                                    accumulated_light[2] += light_color[2];
+                                                }
                                             }
 
                                             for light in &scene.dynamic_lights {
-                                                let light_color = light.color_at_2d(world, 0.0);
-                                                accumulated_light[0] += light_color[0];
-                                                accumulated_light[1] += light_color[1];
-                                                accumulated_light[2] += light_color[2];
+                                                let light_color = light.color_at(
+                                                    Vec3::new(world.x, 0.0, world.y),
+                                                    0.0,
+                                                );
+
+                                                let mut light_is_visible = true;
+                                                if !matches!(light, Light::AmbientLight { .. })
+                                                    && !self
+                                                        .mapmini
+                                                        .is_visible(world, light.position_2d())
+                                                {
+                                                    light_is_visible = false;
+                                                }
+
+                                                if light_is_visible {
+                                                    accumulated_light[0] += light_color[0];
+                                                    accumulated_light[1] += light_color[1];
+                                                    accumulated_light[2] += light_color[2];
+                                                }
                                             }
 
                                             accumulated_light[0] =

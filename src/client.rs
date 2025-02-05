@@ -131,13 +131,10 @@ impl Client {
             color: [ac.x, ac.y, ac.z],
             intensity: 1.0,
         }];
-        Rasterizer::setup(None, Mat4::identity(), Mat4::identity()).rasterize(
-            &mut self.scene_d2,
-            pixels,
-            width,
-            height,
-            200,
-        );
+        let mut rast = Rasterizer::setup(None, Mat4::identity(), Mat4::identity());
+        rast.mapmini = self.scene_d2.mapmini.clone();
+
+        rast.rasterize(&mut self.scene_d2, pixels, width, height, 200);
     }
 
     /// Draw the 3D scene.

@@ -1,4 +1,4 @@
-use crate::{Batch, Light, Shader, Tile};
+use crate::{Batch, Light, MapMini, Shader, Tile};
 use rayon::prelude::*;
 use vek::{Mat3, Mat4};
 
@@ -29,6 +29,9 @@ pub struct Scene {
 
     /// The current animation frame
     pub animation_frame: usize,
+
+    /// For 2D grid conversion when we dont use a matrix
+    pub mapmini: MapMini,
 }
 
 impl Default for Scene {
@@ -51,6 +54,8 @@ impl Scene {
             dynamic_textures: vec![],
 
             animation_frame: 1,
+
+            mapmini: MapMini::default(),
         }
     }
 
@@ -67,6 +72,8 @@ impl Scene {
             dynamic_textures: vec![],
 
             animation_frame: 1,
+
+            mapmini: MapMini::default(),
         }
     }
 

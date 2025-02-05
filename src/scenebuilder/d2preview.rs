@@ -152,6 +152,7 @@ impl SceneBuilder for D2PreviewBuilder {
             || self.map_tool_type == MapToolType::Selection
             || self.map_tool_type == MapToolType::Sector
             || self.map_tool_type == MapToolType::Rect
+            || self.map_tool_type == MapToolType::Effects
         {
             for sector in &map.sectors {
                 if let Some(geo) = sector.generate_geometry(map) {
@@ -226,7 +227,9 @@ impl SceneBuilder for D2PreviewBuilder {
         }
 
         // Add Vertices
-        if self.map_tool_type == MapToolType::Selection || self.map_tool_type == MapToolType::Vertex
+        if self.map_tool_type == MapToolType::Selection
+            || self.map_tool_type == MapToolType::Vertex
+            || self.map_tool_type == MapToolType::Sector
         {
             for vertex in &map.vertices {
                 if let Some(vertex_pos) = map.get_vertex(vertex.id) {
@@ -366,8 +369,8 @@ impl SceneBuilder for D2PreviewBuilder {
             let size = map.grid_size;
             let hsize = map.grid_size / 2.0;
 
-            if let Some(id) = entity.get_attr_uuid("tile_id") {
-                if let Some(tile) = tiles.get(&id) {
+            if let Some(Value::Source(source)) = entity.attributes.get("source") {
+                if let Some(tile) = source.to_tile(tiles, 100, &entity.attributes) {
                     let texture_index = textures.len();
 
                     let mut batch = Batch::emptyd2()
@@ -394,8 +397,8 @@ impl SceneBuilder for D2PreviewBuilder {
             let size = map.grid_size;
             let hsize = map.grid_size / 2.0;
 
-            if let Some(id) = item.get_attr_uuid("tile_id") {
-                if let Some(tile) = tiles.get(&id) {
+            if let Some(Value::Source(source)) = item.attributes.get("source") {
+                if let Some(tile) = source.to_tile(tiles, 100, &item.attributes) {
                     let texture_index = textures.len();
 
                     let mut batch = Batch::emptyd2()
@@ -454,8 +457,11 @@ impl SceneBuilder for D2PreviewBuilder {
             treasure_off_batch,
         ]);
 
+        scene.mapmini = map.as_mini();
+
         scene.d2 = batches;
         scene.textures = textures;
+        scene.lights = map.lights.clone();
         scene
     }
 

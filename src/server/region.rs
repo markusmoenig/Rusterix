@@ -1,5 +1,5 @@
 use crate::server::py_fn::*;
-use crate::{Assets, EntityAction, Map, Value};
+use crate::{Assets, EntityAction, Map, PixelSource, Value};
 use crossbeam_channel::{select, tick, unbounded, Receiver, Sender};
 use rand::*;
 use ref_thread_local::{ref_thread_local, RefThreadLocal};
@@ -718,7 +718,7 @@ fn set_tile(id: String) {
                 .iter_mut()
                 .find(|item| item.id == item_id)
             {
-                item.set_attribute("tile_id", Value::Id(uuid));
+                item.set_attribute("source", Value::Source(PixelSource::TileId(uuid)));
             }
         } else {
             let entity_id = *CURR_ENTITYID.borrow();
@@ -728,7 +728,7 @@ fn set_tile(id: String) {
                 .iter_mut()
                 .find(|entity| entity.id == entity_id)
             {
-                entity.set_attribute("tile_id", Value::Id(uuid));
+                entity.set_attribute("source", Value::Source(PixelSource::TileId(uuid)));
             }
         }
     }

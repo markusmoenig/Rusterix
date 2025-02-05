@@ -62,7 +62,7 @@ pub use crate::{
     edge::Edges,
     intodata::IntoDataInput,
     map::{
-        light::Light, linedef::Linedef, meta::MapMeta, pixelsource::NoiseTarget,
+        light::Light, linedef::Linedef, meta::MapMeta, mini::MapMini, pixelsource::NoiseTarget,
         pixelsource::PixelSource, sector::Sector, state::AnimationVertexState,
         state::InterpolationType, state::VertexAnimationSystem, state::VertexState, tile::Tile,
         vertex::Vertex, Map, MapCamera, MapToolType,

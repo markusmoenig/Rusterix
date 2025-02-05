@@ -1,13 +1,14 @@
 pub mod light;
 pub mod linedef;
 pub mod meta;
+pub mod mini;
 pub mod pixelsource;
 pub mod sector;
 pub mod state;
 pub mod tile;
 pub mod vertex;
 
-use crate::VertexAnimationSystem;
+use crate::{MapMini, VertexAnimationSystem};
 use ordered_float::NotNan;
 use pathfinding::prelude::astar;
 
@@ -138,7 +139,7 @@ impl Map {
         }
     }
 
-    // Clear temporary data
+    /// Clear temporary data
     pub fn clear_temp(&mut self) {
         self.possible_polygon = vec![];
         self.curr_grid_pos = None;
@@ -146,13 +147,23 @@ impl Map {
         self.selected_light = None;
     }
 
-    // Clear the selection
+    /// Clear the selection
     pub fn clear_selection(&mut self) {
         self.selected_vertices = vec![];
         self.selected_linedefs = vec![];
         self.selected_sectors = vec![];
         self.selected_light = None;
         self.selected_entity_item = None;
+    }
+
+    /// Return the Map as MapMini
+    pub fn as_mini(&self) -> MapMini {
+        MapMini::new(
+            self.offset,
+            self.grid_size,
+            self.vertices.clone(),
+            self.linedefs.clone(),
+        )
     }
 
     /// Generate a bounding box for all vertices in the map

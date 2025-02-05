@@ -303,7 +303,7 @@ impl SceneBuilder for D3Builder {
             let show_entity = true; // !(entity.is_player() && camera.id() == "firstp");
 
             if show_entity {
-                if let Some(id) = entity.get_attr_uuid("tile_id") {
+                if let Some(Value::Source(source)) = entity.attributes.get("source") {
                     let entity_pos = Vec2::new(entity.position.x, entity.position.z);
                     let camera_pos = Vec2::new(camera.position().x, camera.position().z);
                     let direction_to_camera = (camera_pos - entity_pos).normalized();
@@ -320,7 +320,7 @@ impl SceneBuilder for D3Builder {
 
                     add_entity_billboard(&start, &end, 2.0, &mut batch);
 
-                    if let Some(tile) = tiles.get(&id) {
+                    if let Some(tile) = source.to_tile(tiles, 100, &entity.attributes) {
                         textures.push(tile.clone());
                     }
 
@@ -334,7 +334,7 @@ impl SceneBuilder for D3Builder {
             let show_entity = true; // !(entity.is_player() && camera.id() == "firstp");
 
             if show_entity {
-                if let Some(id) = item.get_attr_uuid("tile_id") {
+                if let Some(Value::Source(source)) = item.attributes.get("source") {
                     let entity_pos = Vec2::new(item.position.x, item.position.z);
                     let camera_pos = Vec2::new(camera.position().x, camera.position().z);
                     let direction_to_camera = (camera_pos - entity_pos).normalized();
@@ -350,7 +350,7 @@ impl SceneBuilder for D3Builder {
 
                     add_entity_billboard(&start, &end, 1.0, &mut batch);
 
-                    if let Some(tile) = tiles.get(&id) {
+                    if let Some(tile) = source.to_tile(tiles, 100, &item.attributes) {
                         textures.push(tile.clone());
                     }
 
