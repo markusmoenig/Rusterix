@@ -311,9 +311,13 @@ impl Server {
         if let Ok(mut players) = LOCAL_PLAYERS.write() {
             players.clear();
         }
+        self.entities.clear();
+        self.items.clear();
         self.id_gen = 0;
         self.region_id_map.clear();
         self.state = ServerState::Off;
+        self.from_region.clear();
+        self.times.clear();
     }
 
     /// Create a id

@@ -166,6 +166,13 @@ impl Entity {
         }
     }
 
+    /// Set the position as a Vec2 and mark it as dirty
+    pub fn set_pos_xz(&mut self, new_position: Vec2<f32>) {
+        self.position.x = new_position.x;
+        self.position.z = new_position.y;
+        self.mark_dirty_field(0b0001);
+    }
+
     /// Set the orientation and mark it as dirty
     pub fn set_orientation(&mut self, new_orientation: Vec2<f32>) {
         if self.orientation != new_orientation {

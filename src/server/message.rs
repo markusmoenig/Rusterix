@@ -40,6 +40,14 @@ pub enum EntityAction {
     RandomWalkInSector(f32, i32, i32, Vec2<f32>),
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]
+pub enum PlayerCamera {
+    #[default]
+    D2,
+    D3Iso,
+    D3FirstP,
+}
+
 use std::str::FromStr;
 impl FromStr for EntityAction {
     type Err = ();

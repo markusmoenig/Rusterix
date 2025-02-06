@@ -80,6 +80,7 @@ pub use crate::{
         entity::EntityUpdate,
         item::{Item, ItemUpdate},
         message::EntityAction,
+        message::PlayerCamera,
         message::RegionMessage,
         region::RegionInstance,
         Server, ServerState,

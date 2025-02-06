@@ -266,6 +266,9 @@ impl Rasterizer {
 
                                                 let mut light_is_visible = true;
                                                 if !matches!(light, Light::AmbientLight { .. })
+                                                    && (light_color[0] > 0.0
+                                                        || light_color[1] > 0.0
+                                                        || light_color[2] > 0.0)
                                                     && !self
                                                         .mapmini
                                                         .is_visible(world, light.position_2d())

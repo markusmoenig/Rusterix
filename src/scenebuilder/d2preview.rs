@@ -230,6 +230,7 @@ impl SceneBuilder for D2PreviewBuilder {
         if self.map_tool_type == MapToolType::Selection
             || self.map_tool_type == MapToolType::Vertex
             || self.map_tool_type == MapToolType::Sector
+            || self.map_tool_type == MapToolType::Linedef
         {
             for vertex in &map.vertices {
                 if let Some(vertex_pos) = map.get_vertex(vertex.id) {

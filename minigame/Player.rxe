@@ -3,6 +3,7 @@ class Player:
     def event(self, event, value):
         #print("Player Event", event, value)
         register_player()
+        set_player_camera("firstp")
 
     def user_event(self, event, value):
         #print("Player User Event", event, value)

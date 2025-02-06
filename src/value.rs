@@ -1,4 +1,4 @@
-use crate::{PixelSource, SampleMode, Texture};
+use crate::{PixelSource, PlayerCamera, SampleMode, Texture};
 use std::fmt;
 use theframework::prelude::*;
 
@@ -15,6 +15,7 @@ pub enum Value {
     Source(PixelSource),
     Texture(Texture),
     SampleMode(SampleMode),
+    PlayerCamera(PlayerCamera),
 }
 
 impl Value {
@@ -43,6 +44,7 @@ impl fmt::Display for Value {
                 write!(f, "Texture: {}, {}", val.width, val.height)
             }
             Value::SampleMode(_) => write!(f, "SampleMode"),
+            Value::PlayerCamera(_) => write!(f, "PlayerCamera"),
         }
     }
 }

@@ -1,5 +1,5 @@
 use crate::server::py_fn::*;
-use crate::{Assets, EntityAction, Map, PixelSource, Value};
+use crate::{Assets, Entity, EntityAction, Map, MapMini, PixelSource, PlayerCamera, Value};
 use crossbeam_channel::{select, tick, unbounded, Receiver, Sender};
 use rand::*;
 use ref_thread_local::{ref_thread_local, RefThreadLocal};
@@ -15,6 +15,7 @@ use EntityAction::*;
 ref_thread_local! {
     pub static managed REGION: RegionInstance = RegionInstance::default();
     pub static managed MAP: Map = Map::default();
+    pub static managed MAPMINI: MapMini = MapMini::default();
     pub static managed TIME: TheTime = TheTime::default();
 
     /// RegionID
@@ -96,6 +97,13 @@ impl RegionInstance {
             let _ = scope.globals.set_item(
                 "register_player",
                 vm.new_function("register_player", register_player).into(),
+                vm,
+            );
+
+            let _ = scope.globals.set_item(
+                "set_player_camera",
+                vm.new_function("set_player_camera", set_player_camera)
+                    .into(),
                 vm,
             );
 
@@ -263,6 +271,7 @@ impl RegionInstance {
                 .unwrap();
             *REGIONID.borrow_mut() = self.id;
             *REGION.borrow_mut() = self;
+            *MAPMINI.borrow_mut() = map.as_mini();
             *MAP.borrow_mut() = map;
             *TICKS.borrow_mut() = 0;
             // TODO: Make this configurable
@@ -474,16 +483,66 @@ impl RegionInstance {
         for entity in &mut entities {
             match &entity.action {
                 EntityAction::Forward => {
-                    entity.move_forward(0.05 * 2.0);
+                    if entity.is_player() {
+                        if let Some(Value::PlayerCamera(player_camera)) =
+                            entity.attributes.get("player_camera")
+                        {
+                            if *player_camera != PlayerCamera::D3FirstP {
+                                entity.face_north();
+                            }
+                            self.move_entity(entity, 1.0);
+                        }
+                    } else {
+                        self.move_entity(entity, 1.0);
+                    }
                 }
                 EntityAction::Left => {
-                    entity.turn_left(2.0);
+                    if entity.is_player() {
+                        if let Some(Value::PlayerCamera(player_camera)) =
+                            entity.attributes.get("player_camera")
+                        {
+                            if *player_camera != PlayerCamera::D3FirstP {
+                                entity.face_west();
+                                self.move_entity(entity, 1.0);
+                            } else {
+                                entity.turn_left(2.0);
+                            }
+                        }
+                    } else {
+                        entity.turn_left(2.0);
+                    }
                 }
                 EntityAction::Right => {
-                    entity.turn_right(2.0);
+                    if entity.is_player() {
+                        if let Some(Value::PlayerCamera(player_camera)) =
+                            entity.attributes.get("player_camera")
+                        {
+                            if *player_camera != PlayerCamera::D3FirstP {
+                                entity.face_east();
+                                self.move_entity(entity, 1.0);
+                            } else {
+                                entity.turn_right(2.0);
+                            }
+                        }
+                    } else {
+                        entity.turn_right(2.0);
+                    }
                 }
                 EntityAction::Backward => {
-                    entity.move_backward(0.05 * 2.0);
+                    if entity.is_player() {
+                        if let Some(Value::PlayerCamera(player_camera)) =
+                            entity.attributes.get("player_camera")
+                        {
+                            if *player_camera != PlayerCamera::D3FirstP {
+                                entity.face_south();
+                                self.move_entity(entity, 1.0);
+                            } else {
+                                self.move_entity(entity, -1.0);
+                            }
+                        }
+                    } else {
+                        self.move_entity(entity, -1.0);
+                    }
                 }
                 EntityAction::RandomWalk(distance, speed, max_sleep, state, target) => {
                     if *state == 0 {
@@ -501,8 +560,16 @@ impl RegionInstance {
                                 RandomWalk(*distance, *speed, *max_sleep, 0, *target),
                             );
                         } else {
-                            // Move towards
-                            entity.move_forward(0.05 * speed);
+                            let t = RandomWalk(*distance, *speed, *max_sleep, 0, *target);
+                            let max_sleep = *max_sleep;
+                            let blocked = self.move_entity(entity, 1.0);
+                            if blocked {
+                                let mut rng = rand::thread_rng();
+                                entity.action = self.create_sleep_switch_action(
+                                    rng.gen_range(0..=max_sleep) as u32,
+                                    t,
+                                );
+                            }
                         }
                     }
                 }
@@ -526,7 +593,16 @@ impl RegionInstance {
                                 RandomWalkInSector(*speed, *max_sleep, 0, *target),
                             );
                         } else {
-                            entity.move_forward(0.05 * speed);
+                            let t = RandomWalkInSector(*speed, *max_sleep, 0, *target);
+                            let max_sleep = *max_sleep;
+                            let blocked = self.move_entity(entity, 1.0);
+                            if blocked {
+                                let mut rng = rand::thread_rng();
+                                entity.action = self.create_sleep_switch_action(
+                                    rng.gen_range(0..=max_sleep) as u32,
+                                    t,
+                                );
+                            }
                         }
                     }
                 }
@@ -654,6 +730,18 @@ impl RegionInstance {
         let tick = *TICKS.borrow() + (minutes * *TICKS_PER_MINUTE.borrow()) as i64;
         SleepAndSwitch(tick, Box::new(switchback))
     }
+
+    /// Moves an entity forward or backward. Returns true if blocked.
+    fn move_entity(&self, entity: &mut Entity, dir: f32) -> bool {
+        let speed = 0.05 * 2.0;
+        let move_vector = entity.orientation * speed * dir;
+        let (end_position, blocked) =
+            MAPMINI
+                .borrow()
+                .move_distance(entity.get_pos_xz(), move_vector, 0.5);
+        entity.set_pos_xz(end_position);
+        blocked
+    }
 }
 
 /// Register Player
@@ -663,6 +751,7 @@ fn register_player() {
 
     if let Some(entity) = MAP.borrow_mut().entities.get_mut(entity_id as usize) {
         entity.set_attribute("is_player", Value::Bool(true));
+        entity.set_attribute("player_camera", Value::PlayerCamera(PlayerCamera::D2));
     }
 
     FROM_SENDER
@@ -671,6 +760,21 @@ fn register_player() {
         .unwrap()
         .send(RegisterPlayer(region_id, entity_id))
         .unwrap();
+}
+
+/// Set Player Camera
+fn set_player_camera(camera: String) {
+    let player_camera = match camera.as_str() {
+        "iso" => PlayerCamera::D3Iso,
+        "firstp" => PlayerCamera::D3FirstP,
+        _ => PlayerCamera::D2,
+    };
+
+    let entity_id = *CURR_ENTITYID.borrow();
+
+    if let Some(entity) = MAP.borrow_mut().entities.get_mut(entity_id as usize) {
+        entity.set_attribute("player_camera", Value::PlayerCamera(player_camera));
+    }
 }
 
 /// Get the name of the entity with the given id.
