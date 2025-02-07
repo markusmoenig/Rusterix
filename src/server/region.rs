@@ -198,6 +198,7 @@ impl RegionInstance {
     pub fn init(&mut self, name: String, map: Map, assets: &Assets) {
         self.name = name;
 
+        *ID_GEN.borrow_mut() = 0;
         *MAP.borrow_mut() = map;
         *NOTIFICATIONS.borrow_mut() = vec![];
         *STARTUP_ERRORS.borrow_mut() = vec![];

@@ -2,6 +2,7 @@ use crate::Value;
 use theframework::prelude::*;
 
 /// Messages to the Region
+#[derive(Debug)]
 pub enum RegionMessage {
     /// Register a local player (which receives user based events).
     /// RegionInstanceId, PlayerId

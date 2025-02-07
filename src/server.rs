@@ -9,10 +9,7 @@ pub mod region;
 use crossbeam_channel::{Receiver, Sender};
 
 use crate::prelude::*;
-use std::{
-    // borrow::BorrowMut,
-    sync::{Arc, LazyLock, RwLock},
-};
+use std::sync::{Arc, LazyLock, RwLock};
 use theframework::prelude::*;
 
 // Pipes to the regions
@@ -305,6 +302,11 @@ impl Server {
                 sender.send(RegionMessage::Quit).unwrap();
             }
         }
+        self.clear();
+    }
+
+    /// Shuts down all region instances.
+    pub fn clear(&mut self) {
         if let Ok(mut pipes) = REGIONPIPE.write() {
             pipes.clear();
         }
@@ -318,6 +320,7 @@ impl Server {
         self.state = ServerState::Off;
         self.from_region.clear();
         self.times.clear();
+        self.clear_log();
     }
 
     /// Create a id

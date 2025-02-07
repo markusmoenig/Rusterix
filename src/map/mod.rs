@@ -1,3 +1,4 @@
+pub mod geometry;
 pub mod light;
 pub mod linedef;
 pub mod meta;
@@ -37,6 +38,7 @@ pub enum MapToolType {
     Sector,
     Effects,
     Rect,
+    Game,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]

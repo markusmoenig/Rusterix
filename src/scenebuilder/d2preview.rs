@@ -153,6 +153,9 @@ impl SceneBuilder for D2PreviewBuilder {
             || self.map_tool_type == MapToolType::Sector
             || self.map_tool_type == MapToolType::Rect
             || self.map_tool_type == MapToolType::Effects
+            || self.map_tool_type == MapToolType::Linedef
+            || self.map_tool_type == MapToolType::Vertex
+            || self.map_tool_type == MapToolType::Game
         {
             for sector in &map.sectors {
                 if let Some(geo) = sector.generate_geometry(map) {
@@ -219,6 +222,153 @@ impl SceneBuilder for D2PreviewBuilder {
                                 }
                             } else {
                                 atlas_batch.add(vertices, geo.1, uvs);
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Walls
+            for sector in &map.sectors {
+                if let Some(hash) = sector.generate_wall_geometry_by_linedef(map) {
+                    for (linedef_id, geo) in hash.iter() {
+                        let mut source = None;
+
+                        if let Some(linedef) = map.find_linedef(*linedef_id) {
+                            if let Some(Value::Source(pixelsource)) =
+                                linedef.properties.get("row1_source")
+                            {
+                                source = Some(pixelsource);
+                            }
+                        }
+
+                        let mut vertices: Vec<[f32; 3]> = vec![];
+                        let mut uvs: Vec<[f32; 2]> = vec![];
+                        let bbox = sector.bounding_box(map);
+
+                        let repeat = true;
+                        let tile_size = 100;
+
+                        if let Some(pixelsource) = source {
+                            if let Some(tile) =
+                                pixelsource.to_tile(tiles, tile_size, &sector.properties)
+                            {
+                                for vertex in &geo.0 {
+                                    let local = self.map_grid_to_local(
+                                        screen_size,
+                                        Vec2::new(vertex[0], vertex[1]),
+                                        map,
+                                    );
+
+                                    let index = 0;
+
+                                    if !repeat {
+                                        let uv = [
+                                            (tile.uvs[index].x as f32
+                                                + ((vertex[0] - bbox.0.x) / (bbox.1.x - bbox.0.x)
+                                                    * tile.uvs[index].z as f32))
+                                                / atlas_size,
+                                            ((tile.uvs[index].y as f32
+                                                + (vertex[1] - bbox.0.y) / (bbox.1.y - bbox.0.y)
+                                                    * tile.uvs[index].w as f32)
+                                                / atlas_size),
+                                        ];
+                                        uvs.push(uv);
+                                    } else {
+                                        let texture_scale = 1.0;
+                                        let uv = [
+                                            (vertex[0] - bbox.0.x) / texture_scale,
+                                            (vertex[1] - bbox.0.y) / texture_scale,
+                                        ];
+                                        uvs.push(uv);
+                                    }
+                                    vertices.push([local.x, local.y, 1.0]);
+                                }
+
+                                if repeat {
+                                    if let Some(offset) = repeated_offsets.get(&tile.id) {
+                                        repeated_batches[*offset].add(vertices, geo.1.clone(), uvs);
+                                    } else {
+                                        let texture_index = textures.len();
+
+                                        let mut batch = Batch::emptyd2()
+                                            .repeat_mode(crate::RepeatMode::RepeatXY)
+                                            .texture_index(texture_index)
+                                            .receives_light(true);
+
+                                        batch.add(vertices, geo.1.clone(), uvs);
+
+                                        textures.push(tile.clone());
+                                        repeated_offsets.insert(tile.id, repeated_batches.len());
+                                        repeated_batches.push(batch);
+                                    }
+                                } else {
+                                    atlas_batch.add(vertices, geo.1.clone(), uvs);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Add standalone walls
+            for linedef in &map.linedefs {
+                if linedef.front_sector.is_none() && linedef.back_sector.is_none() {
+                    if let Some(hash) =
+                        crate::map::geometry::generate_line_segments_d2(map, &[linedef.id])
+                    {
+                        for (_linedef_id, geo) in hash.iter() {
+                            let mut source = None;
+
+                            if let Some(Value::Source(pixelsource)) =
+                                linedef.properties.get("row1_source")
+                            {
+                                source = Some(pixelsource);
+                            }
+
+                            let mut vertices: Vec<[f32; 3]> = vec![];
+                            let mut uvs: Vec<[f32; 2]> = vec![];
+
+                            let tile_size = 100;
+                            if let Some(pixelsource) = source {
+                                if let Some(tile) =
+                                    pixelsource.to_tile(tiles, tile_size, &linedef.properties)
+                                {
+                                    for vertex in &geo.0 {
+                                        let local = self.map_grid_to_local(
+                                            screen_size,
+                                            Vec2::new(vertex[0], vertex[1]),
+                                            map,
+                                        );
+
+                                        let texture_scale = 1.0;
+                                        let uv = [
+                                            (vertex[0]) / texture_scale,
+                                            (vertex[1]) / texture_scale,
+                                        ];
+                                        uvs.push(uv);
+                                        vertices.push([local.x, local.y, 1.0]);
+                                    }
+
+                                    if let Some(offset) = repeated_offsets.get(&tile.id) {
+                                        repeated_batches[*offset].add(vertices, geo.1.clone(), uvs);
+                                    } else {
+                                        let texture_index = textures.len();
+
+                                        let mut batch = Batch::emptyd2()
+                                            .repeat_mode(crate::RepeatMode::RepeatXY)
+                                            .texture_index(texture_index)
+                                            .receives_light(true);
+
+                                        batch.add(vertices, geo.1.clone(), uvs);
+
+                                        textures.push(tile.clone());
+                                        repeated_offsets.insert(tile.id, repeated_batches.len());
+                                        repeated_batches.push(batch);
+                                    }
+                                } else {
+                                    // atlas_batch.add(vertices, geo.1.clone(), uvs);
+                                }
                             }
                         }
                     }

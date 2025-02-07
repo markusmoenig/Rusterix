@@ -95,17 +95,6 @@ impl Sector {
         Some(sum / count)
     }
 
-    /*
-    /// Sets the wall height for all linedefs in the sector.
-    pub fn set_wall_height(&mut self, _map: &mut Map, height: f32) {
-        self.properties.set("wall_height", Value::Float(height));
-        // for &linedef_id in &self.linedefs {
-        //     if let Some(linedef) = map.linedefs.iter_mut().find(|l| l.id == linedef_id) {
-        //         linedef.wall_height = height;
-        //     }
-        // }
-    }*/
-
     /// Calculate the area of the sector (for sorting).
     pub fn area(&self, map: &Map) -> f32 {
         // Generate geometry for the sector
@@ -240,5 +229,241 @@ impl Sector {
         }
 
         inside
+    }
+
+    /// Generate 2D walls with uniform thickness for the sector using mitered joins.
+    #[allow(clippy::type_complexity)]
+    pub fn generate_wall_geometry(
+        &self,
+        map: &Map,
+        thickness: f32,
+    ) -> Option<(Vec<[f32; 2]>, Vec<(usize, usize, usize)>)> {
+        let mut vertices = Vec::new();
+        let mut indices = Vec::new();
+
+        // Collect ordered unique vertices of the sector
+        let mut polygon = Vec::new();
+        for &linedef_id in &self.linedefs {
+            if let Some(linedef) = map.linedefs.get(linedef_id as usize) {
+                if let Some(start_vertex) = map.vertices.get(linedef.start_vertex as usize) {
+                    let v_start = Vec2::new(start_vertex.x, start_vertex.y);
+                    polygon.push(v_start);
+                }
+            }
+        }
+
+        // Ensure the polygon is closed
+        if let (Some(&first), Some(&last)) = (polygon.first(), polygon.last()) {
+            if first != last {
+                polygon.push(first);
+            }
+        }
+
+        // Remove the artificially duplicated last point
+        polygon.pop();
+
+        let len = polygon.len();
+        if len < 3 {
+            return None;
+        }
+
+        // We'll store our "inner" and "outer" offset points
+        let mut outer_points = Vec::with_capacity(len);
+        let mut inner_points = Vec::with_capacity(len);
+
+        for i in 0..len {
+            let prev = polygon[(i + len - 1) % len];
+            let curr = polygon[i];
+            let next = polygon[(i + 1) % len];
+
+            // Compute segment direction and normal for edges (prev->curr) and (curr->next)
+            let dir1 = (curr - prev).normalized();
+            let dir2 = (next - curr).normalized();
+
+            let normal1 = Vec2::new(-dir1.y, dir1.x);
+            let normal2 = Vec2::new(-dir2.y, dir2.x);
+
+            // Compute the bisector and how much to offset
+            let bisector = (normal1 + normal2).normalized();
+            let angle = dir1.angle_between(dir2) / 2.0;
+
+            // Prevent near-zero or negative cosines from blowing up offset_length
+            let offset_length = thickness / (2.0 * angle.cos()).max(0.1);
+
+            let outer = curr + bisector * offset_length;
+            let inner = curr - bisector * offset_length;
+
+            outer_points.push(outer);
+            inner_points.push(inner);
+        }
+
+        // Convert all offset points into 'vertices' in one big buffer
+        let mut outer_indices = Vec::with_capacity(len);
+        let mut inner_indices = Vec::with_capacity(len);
+
+        for &pt in &outer_points {
+            outer_indices.push(vertices.len());
+            vertices.push([pt.x, pt.y]);
+        }
+
+        for &pt in &inner_points {
+            inner_indices.push(vertices.len());
+            vertices.push([pt.x, pt.y]);
+        }
+
+        // Now generate triangles connecting outer/inner rings
+        for i in 0..len {
+            let next = (i + 1) % len;
+
+            // Outer ring indices
+            let o1 = outer_indices[i];
+            let o2 = outer_indices[next];
+            // Inner ring indices
+            let i1 = inner_indices[i];
+            let i2 = inner_indices[next];
+
+            // Two triangles per quad:
+            //  1) outer[i], outer[i+1], inner[i]
+            //  2) outer[i+1], inner[i+1], inner[i]
+            indices.push((o1, o2, i1));
+            indices.push((o2, i2, i1));
+        }
+
+        Some((vertices, indices))
+    }
+
+    /// For each linedef, we produce its own (vertices, indices).
+    #[allow(clippy::type_complexity)]
+    pub fn generate_wall_geometry_by_linedef(
+        &self,
+        map: &Map,
+        // thickness: f32,
+    ) -> Option<FxHashMap<u32, (Vec<[f32; 2]>, Vec<(usize, usize, usize)>)>> {
+        let mut result: FxHashMap<u32, (Vec<[f32; 2]>, Vec<(usize, usize, usize)>)> =
+            FxHashMap::default();
+
+        let mut polygon = Vec::new();
+        for &linedef_id in &self.linedefs {
+            if let Some(linedef) = map.linedefs.get(linedef_id as usize) {
+                if let Some(start_vertex) = map.vertices.get(linedef.start_vertex as usize) {
+                    let v_start = Vec2::new(start_vertex.x, start_vertex.y);
+                    polygon.push(v_start);
+                }
+            }
+        }
+
+        // Ensure the polygon is closed
+        if let (Some(&first), Some(&last)) = (polygon.first(), polygon.last()) {
+            if first != last {
+                polygon.push(first);
+            }
+        }
+        // Remove the artificially duplicated last point (avoid zero-length edge)
+        polygon.pop();
+
+        let len = polygon.len();
+        if len < 3 {
+            return None;
+        }
+
+        let mut outer_points = Vec::with_capacity(len);
+        let mut inner_points = Vec::with_capacity(len);
+
+        /*
+        for i in 0..len {
+            let prev = polygon[(i + len - 1) % len];
+            let curr = polygon[i];
+            let next = polygon[(i + 1) % len];
+
+            // Directions and normals
+            let dir1 = (curr - prev).normalized();
+            let dir2 = (next - curr).normalized();
+
+            let normal1 = Vec2::new(-dir1.y, dir1.x);
+            let normal2 = Vec2::new(-dir2.y, dir2.x);
+
+            // Bisector for the corner
+            let bisector = (normal1 + normal2).normalized();
+
+            // Half the angle between edges
+            let angle = dir1.angle_between(dir2) / 2.0;
+            // Avoid blow-ups for near-180° angles
+            let offset_length = thickness / (2.0 * angle.cos()).max(0.1);
+
+            let outer = curr + bisector * offset_length;
+            let inner = curr - bisector * offset_length;
+
+            outer_points.push(outer);
+            inner_points.push(inner);
+        }*/
+
+        // For each corner i in [0..len)
+        for i in 0..len {
+            let prev = polygon[(i + len - 1) % len];
+            let curr = polygon[i];
+            let next = polygon[(i + 1) % len];
+
+            // Directions, normals, angle as before...
+            let dir1 = (curr - prev).normalized();
+            let dir2 = (next - curr).normalized();
+            let normal1 = Vec2::new(-dir1.y, dir1.x);
+            let normal2 = Vec2::new(-dir2.y, dir2.x);
+            let bisector = (normal1 + normal2).normalized();
+            let angle = dir1.angle_between(dir2) / 2.0;
+
+            // Look up each linedef's thickness:
+            let prev_line_id = self.linedefs[(i + len - 1) % len];
+            let curr_line_id = self.linedefs[i];
+
+            let mut t_prev = 0.0;
+            let mut t_curr = 0.0;
+
+            if let Some(linedef) = map.find_linedef(prev_line_id) {
+                t_prev = linedef.properties.get_float_default("wall_width", 0.0);
+            }
+
+            if let Some(linedef) = map.find_linedef(curr_line_id) {
+                t_curr = linedef.properties.get_float_default("wall_width", 0.0);
+            }
+
+            // For a "smooth" approach, average them. (Or pick whichever logic you prefer.)
+            let corner_thickness = (t_prev + t_curr) * 0.5;
+
+            // The final offset distance at corner i
+            let offset_length = corner_thickness / (2.0 * angle.cos()).max(0.1);
+
+            let outer = curr + bisector * offset_length;
+            let inner = curr - bisector * offset_length;
+
+            outer_points.push(outer);
+            inner_points.push(inner);
+        }
+
+        // The "wall" between corner i and i+1 is a quad -> 2 triangles
+        // We'll store them in the HashMap keyed by linedef_id.
+        for i in 0..len {
+            let next = (i + 1) % len;
+            let linedef_id = self.linedefs[i];
+
+            // 4 local, duplicated vertices for this linedef
+            let o1 = outer_points[i];
+            let o2 = outer_points[next];
+            let i1 = inner_points[i];
+            let i2 = inner_points[next];
+
+            // We'll store them in order: [o1, o2, i2, i1]
+            // so the winding of the first triangle is (0->1->3), etc.
+            let local_verts = vec![
+                [o1.x, o1.y], // index 0
+                [o2.x, o2.y], // index 1
+                [i2.x, i2.y], // index 2
+                [i1.x, i1.y], // index 3
+            ];
+
+            let local_inds = vec![(0, 1, 3), (1, 2, 3)];
+            result.insert(linedef_id, (local_verts, local_inds));
+        }
+
+        Some(result)
     }
 }
