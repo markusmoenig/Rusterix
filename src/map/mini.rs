@@ -108,121 +108,6 @@ impl MapMini {
         true // No intersection, so fully visible and lit
     }
 
-    /*
-    /// Returns collision distance and surface normal if collision occurs
-    pub fn move_distance(
-        &self,
-        start_pos: Vec2<f32>,
-        move_vector: Vec2<f32>,
-        radius: f32,
-    ) -> (Vec2<f32>, bool) {
-        let mut current_pos = start_pos;
-        let remaining_vector = move_vector;
-        let mut blocked = false;
-        let epsilon = 0.001; // Small offset to prevent wall sticking
-
-        // Single iteration with proper sliding
-        let mut closest_hit = None;
-
-        // First pass: Find earliest collision
-        for linedef in &self.linedefs {
-            if let (Some(start), Some(end)) = (
-                self.find_vertex(linedef.start_vertex),
-                self.find_vertex(linedef.end_vertex),
-            ) {
-                let line_start = start.as_vec2();
-                let line_end = end.as_vec2();
-
-                let radius = radius + linedef.properties.get_float_default("wall_width", 0.0) / 2.0;
-
-                if let Some((distance, normal)) = self.check_intersection(
-                    current_pos,
-                    current_pos + remaining_vector,
-                    line_start,
-                    line_end,
-                    radius,
-                ) {
-                    if closest_hit.map(|(d, _)| distance < d).unwrap_or(true) {
-                        closest_hit = Some((distance, normal));
-                    }
-                }
-            }
-        }
-
-        if let Some((distance, normal)) = closest_hit {
-            blocked = true;
-
-            // Move up to collision point with epsilon buffer
-            let move_dir = remaining_vector.normalized();
-            let allowed_move = move_dir * (distance - epsilon);
-            current_pos += allowed_move;
-
-            // Calculate sliding direction using remaining movement
-            let remaining = remaining_vector - allowed_move;
-            let tangent = Vec2::new(-normal.y, normal.x);
-            let slide_amount = remaining.dot(tangent);
-
-            // Apply sliding movement with wall-end detection
-            current_pos += tangent * slide_amount;
-
-            // Final position correction to prevent wall penetration
-            current_pos += normal * epsilon;
-        } else {
-            // No collision, full movement
-            current_pos += remaining_vector;
-        }
-
-        (current_pos, blocked)
-    }
-
-    /// Improved intersection check with endpoint handling
-    fn check_intersection(
-        &self,
-        start_pos: Vec2<f32>,
-        end_pos: Vec2<f32>,
-        line_start: Vec2<f32>,
-        line_end: Vec2<f32>,
-        radius: f32,
-    ) -> Option<(f32, Vec2<f32>)> {
-        let line_vec = line_end - line_start;
-        let line_length = line_vec.magnitude();
-        if line_length < f32::EPSILON {
-            return None; // Zero-length line
-        }
-
-        let line_dir = line_vec / line_length;
-        let normal = Vec2::new(-line_dir.y, line_dir.x);
-
-        // Calculate distance from line using expanded polygon
-        let start_dist = (start_pos - line_start).dot(normal);
-        let end_dist = (end_pos - line_start).dot(normal);
-
-        // Check if movement crosses the expanded line
-        if start_dist > radius && end_dist > radius {
-            return None;
-        }
-        if start_dist < -radius && end_dist < -radius {
-            return None;
-        }
-
-        // Find intersection point
-        let t = (radius - start_dist) / (end_dist - start_dist);
-        if !(0.0..=1.0).contains(&t) {
-            return None;
-        }
-
-        let intersection = start_pos + (end_pos - start_pos) * t;
-
-        // Verify intersection lies within line segment
-        let line_proj = (intersection - line_start).dot(line_dir);
-        if line_proj < -radius || line_proj > line_length + radius {
-            return None;
-        }
-
-        let distance = (intersection - start_pos).magnitude();
-        Some((distance, normal))
-    }*/
-
     /// Returns collision distance if collision occurs
     pub fn move_distance(
         &self,
@@ -308,34 +193,7 @@ impl MapMini {
             }
         }
 
-        // Final position correction: ensure we're not still penetrating any walls
-        /*
-        for linedef in &self.linedefs {
-            if let (Some(start_v), Some(end_v)) = (
-                self.find_vertex(linedef.start_vertex),
-                self.find_vertex(linedef.end_vertex),
-            ) {
-                let line_start = start_v.as_vec2();
-                let line_end = end_v.as_vec2();
-
-                let coll_radius =
-                    radius + linedef.properties.get_float_default("wall_width", 0.0) / 2.0;
-
-                if let Some((distance, normal)) = self.check_intersection(
-                    current_pos,
-                    current_pos,
-                    line_start,
-                    line_end,
-                    coll_radius,
-                ) {
-                    // If we're inside the wall, push out
-                    if distance < coll_radius {
-                        current_pos += normal * (coll_radius + EPSILON - distance);
-                    }
-                }
-            }
-        }*/
-
+        // Final "push out" pass
         for linedef in &self.linedefs {
             if let (Some(start_v), Some(end_v)) = (
                 self.find_vertex(linedef.start_vertex),
@@ -479,6 +337,7 @@ impl MapMini {
         Some((collision_dist, normal))
     }
 
+    /// Point vs segment distance check
     fn check_point_against_segment(
         &self,
         point: Vec2<f32>,
