@@ -174,7 +174,8 @@ impl MapMini {
 
                         // Reassign 'remaining' to be the tangent movement scaled to leftover length
                         if slide_len > EPSILON {
-                            remaining = slide_vec.normalized() * leftover;
+                            let friction = 0.5;
+                            remaining = slide_vec.normalized() * leftover * friction;
                         } else {
                             remaining = Vec2::zero();
                         }

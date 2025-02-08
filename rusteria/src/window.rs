@@ -91,8 +91,10 @@ impl TheTrait for Editor {
             MapPreview(meta) => match &self.preview_mode {
                 D2 => {
                     let mut builder = D2PreviewBuilder::new();
-                    builder
-                        .set_camera_info(Some(self.entity.position), self.entity.camera_look_at());
+                    builder.set_camera_info(
+                        Some(self.entity.position),
+                        Some(self.entity.camera_look_at()),
+                    );
                     builder.set_map_tool_type(MapToolType::Selection);
 
                     let mut scene = builder.build(

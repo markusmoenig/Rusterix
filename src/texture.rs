@@ -335,8 +335,15 @@ impl Texture {
 
         for y in 0..new_height {
             for x in 0..new_width {
-                let src_x = (x as f32 * scale_x).round() as usize;
-                let src_y = (y as f32 * scale_y).round() as usize;
+                let mut src_x = (x as f32 * scale_x) as usize;
+                if src_x >= self.width {
+                    src_x = self.width - 1;
+                }
+
+                let mut src_y = (y as f32 * scale_y) as usize;
+                if src_y >= self.height {
+                    src_y = self.height - 1;
+                }
 
                 let src_idx = (src_y * self.width + src_x) * 4;
                 let dst_idx = (y * new_width + x) * 4;

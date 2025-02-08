@@ -19,7 +19,7 @@ pub struct D2PreviewBuilder {
     /// Camera Position
     pub camera_pos: Option<vek::Vec3<f32>>,
     /// Camera Center
-    pub look_at: vek::Vec3<f32>,
+    pub look_at: Option<Vec3<f32>>,
     /// Material Mode
     pub material_mode: bool,
 }
@@ -34,7 +34,7 @@ impl SceneBuilder for D2PreviewBuilder {
             hover_cursor: None,
 
             camera_pos: None,
-            look_at: vek::Vec3::zero(),
+            look_at: None,
 
             material_mode: false,
         }
@@ -585,10 +585,28 @@ impl SceneBuilder for D2PreviewBuilder {
 
         // Camera Pos
         if let Some(camera_pos) = self.camera_pos {
-            let pos =
+            let camera_grid_pos =
                 self.map_grid_to_local(screen_size, Vec2::new(camera_pos.x, camera_pos.z), map);
             let size = 4.0;
-            red_batch.add_rectangle(pos.x - size, pos.y - size, size * 2.0, size * 2.0);
+            red_batch.add_rectangle(
+                camera_grid_pos.x - size,
+                camera_grid_pos.y - size,
+                size * 2.0,
+                size * 2.0,
+            );
+
+            // Look At Pos
+            if let Some(look_at) = self.look_at {
+                let look_at_grid_pos =
+                    self.map_grid_to_local(screen_size, Vec2::new(look_at.x, look_at.z), map);
+                gray_batch_lines.add_line(camera_grid_pos, look_at_grid_pos, 1.0);
+                yellow_batch.add_rectangle(
+                    look_at_grid_pos.x - size,
+                    look_at_grid_pos.y - size,
+                    size * 2.0,
+                    size * 2.0,
+                );
+            }
         }
 
         let mut batches = repeated_batches;
@@ -596,10 +614,10 @@ impl SceneBuilder for D2PreviewBuilder {
             atlas_batch,
             white_batch,
             selected_batch,
-            yellow_batch,
-            red_batch,
             gray_batch,
             gray_batch_lines,
+            yellow_batch,
+            red_batch,
             light_on_batch,
             light_off_batch,
             character_on_batch,
@@ -629,7 +647,7 @@ impl SceneBuilder for D2PreviewBuilder {
         self.hover_cursor = hover_cursor;
     }
 
-    fn set_camera_info(&mut self, pos: Option<vek::Vec3<f32>>, look_at: vek::Vec3<f32>) {
+    fn set_camera_info(&mut self, pos: Option<vek::Vec3<f32>>, look_at: Option<Vec3<f32>>) {
         self.camera_pos = pos;
         self.look_at = look_at;
     }

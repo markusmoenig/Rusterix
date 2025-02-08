@@ -147,10 +147,9 @@ impl Rusterix {
     }
 
     /// Build the client scene in D3.
-    pub fn build_scene_d3(&mut self, map: &Map) {
+    pub fn build_scene_d3(&mut self, map: &Map, values: &ValueContainer) {
         if self.is_dirty_d3 {
-            self.client
-                .build_scene_d3(map, &self.assets, &ValueContainer::default());
+            self.client.build_scene_d3(map, &self.assets, values);
             self.is_dirty_d3 = false;
         }
         self.set_d3();

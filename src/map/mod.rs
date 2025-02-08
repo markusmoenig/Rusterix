@@ -73,6 +73,8 @@ pub struct Map {
     pub camera: MapCamera,
     #[serde(skip)]
     pub camera_xz: Option<Vec2<f32>>,
+    #[serde(skip)]
+    pub look_at_xz: Option<Vec2<f32>>,
 
     // Lights
     pub lights: Vec<Light>,
@@ -125,6 +127,7 @@ impl Map {
 
             camera: MapCamera::TwoD,
             camera_xz: None,
+            look_at_xz: None,
 
             lights: vec![],
             entities: vec![],
