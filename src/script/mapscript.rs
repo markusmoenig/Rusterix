@@ -104,14 +104,21 @@ fn add_point_light(color: String, intensity: f32, start_distance: f32, end_dista
     let state = CURSORSTATE.read().unwrap();
     let mut map = MAP.write().unwrap();
 
-    let light = Light::PointLight {
-        position: Vec3::new(state.position.x, 0.5, state.position.y),
-        color: hex_to_rgb_f32(&color),
-        intensity,
-        start_distance,
-        end_distance,
-        flicker: None,
-    };
+    // let light = Light::PointLight {
+    //     position: Vec3::new(state.position.x, 0.5, state.position.y),
+    //     color: hex_to_rgb_f32(&color),
+    //     intensity,
+    //     start_distance,
+    //     end_distance,
+    //     flicker: None,
+    // };
+
+    let mut light = Light::new(crate::LightType::Point);
+    light.set_position(Vec3::new(state.position.x, 0.5, state.position.y));
+    light.set_color(hex_to_rgb_f32(&color));
+    light.set_intensity(intensity);
+    light.set_start_distance(start_distance);
+    light.set_end_distance(end_distance);
 
     map.lights.push(light);
 }

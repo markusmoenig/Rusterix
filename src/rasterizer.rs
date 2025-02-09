@@ -1,4 +1,4 @@
-use crate::{Batch, Light, MapMini, Pixel, PrimitiveMode, SampleMode, Scene};
+use crate::{pixel_to_vec4, vec4_to_pixel, Batch, LightType, MapMini, Pixel, PrimitiveMode, Scene};
 use rayon::prelude::*;
 use vek::{Mat3, Mat4, Vec2, Vec3, Vec4};
 
@@ -259,49 +259,44 @@ impl Rasterizer {
                                             let world = grid_space_pos / self.mapmini.grid_size;
 
                                             for light in &scene.lights {
-                                                let light_color = light.color_at(
-                                                    Vec3::new(world.x, 0.0, world.y),
-                                                    0.0,
-                                                );
-
-                                                let mut light_is_visible = true;
-                                                if !matches!(light, Light::AmbientLight { .. })
-                                                    && (light_color[0] > 0.0
-                                                        || light_color[1] > 0.0
-                                                        || light_color[2] > 0.0)
-                                                    && !self
-                                                        .mapmini
-                                                        .is_visible(world, light.position_2d())
+                                                if let Some(light_color) = light
+                                                    .color_at(Vec3::new(world.x, 0.0, world.y), 0.0)
                                                 {
-                                                    light_is_visible = false;
-                                                }
+                                                    let mut light_is_visible = true;
+                                                    if light.light_type != LightType::Ambient
+                                                        && !self
+                                                            .mapmini
+                                                            .is_visible(world, light.position_2d())
+                                                    {
+                                                        light_is_visible = false;
+                                                    }
 
-                                                if light_is_visible {
-                                                    accumulated_light[0] += light_color[0];
-                                                    accumulated_light[1] += light_color[1];
-                                                    accumulated_light[2] += light_color[2];
+                                                    if light_is_visible {
+                                                        accumulated_light[0] += light_color[0];
+                                                        accumulated_light[1] += light_color[1];
+                                                        accumulated_light[2] += light_color[2];
+                                                    }
                                                 }
                                             }
 
                                             for light in &scene.dynamic_lights {
-                                                let light_color = light.color_at(
-                                                    Vec3::new(world.x, 0.0, world.y),
-                                                    0.0,
-                                                );
-
-                                                let mut light_is_visible = true;
-                                                if !matches!(light, Light::AmbientLight { .. })
-                                                    && !self
-                                                        .mapmini
-                                                        .is_visible(world, light.position_2d())
+                                                if let Some(light_color) = light
+                                                    .color_at(Vec3::new(world.x, 0.0, world.y), 0.0)
                                                 {
-                                                    light_is_visible = false;
-                                                }
+                                                    let mut light_is_visible = true;
+                                                    if light.light_type != LightType::Ambient
+                                                        && !self
+                                                            .mapmini
+                                                            .is_visible(world, light.position_2d())
+                                                    {
+                                                        light_is_visible = false;
+                                                    }
 
-                                                if light_is_visible {
-                                                    accumulated_light[0] += light_color[0];
-                                                    accumulated_light[1] += light_color[1];
-                                                    accumulated_light[2] += light_color[2];
+                                                    if light_is_visible {
+                                                        accumulated_light[0] += light_color[0];
+                                                        accumulated_light[1] += light_color[1];
+                                                        accumulated_light[2] += light_color[2];
+                                                    }
                                                 }
                                             }
 
@@ -494,6 +489,39 @@ impl Rasterizer {
                                             // Get the screen coordinates of the hitpoint
                                             let world = self.screen_to_world(p[0], p[1], z);
 
+                                            // Sample the texture
+                                            let textures = if dynamic {
+                                                &scene.dynamic_textures
+                                            } else {
+                                                &scene.textures
+                                            };
+
+                                            let textile = &textures[batch.texture_index];
+                                            let index =
+                                                scene.animation_frame % textile.textures.len();
+
+                                            // let distance = (world - self.camera_pos).magnitude();
+                                            // let start_distance = 8.0;
+                                            // let ramp_distance = 4.0;
+
+                                            // let mut blur = ((distance - start_distance)
+                                            //     / ramp_distance)
+                                            //     .clamp(0.0, 1.0);
+                                            // blur = blur * blur * (3.0 - 2.0 * blur);
+                                            // blur = blur.clamp(0.0, 1.0);
+
+                                            let texel = textile.textures[index].sample(
+                                                interpolated_u,
+                                                interpolated_v,
+                                                batch.sample_mode,
+                                                batch.repeat_mode,
+                                            );
+
+                                            let mut color = pixel_to_vec4(&texel);
+
+                                            // -- Pipeline
+
+                                            /*
                                             if batch.receives_light {
                                                 // Distance based bayer matrix dithering
                                                 // Distance to camera
@@ -524,104 +552,109 @@ impl Rasterizer {
                                                 let threshold =
                                                     BAYER_8X8[ty % 8][tx % 8] as f32 / 64.0 - 0.5;
 
-                                                let jitter_x = threshold * jitter_scale * t;
-                                                let jitter_y = threshold * jitter_scale * t;
+                                                fn hash(x: f32, y: f32) -> f32 {
+                                                    // Convert x and y to integers by scaling and truncating
+                                                    let ix = x as i32;
+                                                    let iy = y as i32;
 
-                                                interpolated_u += jitter_x;
-                                                interpolated_v += jitter_y;
-                                            }
+                                                    // Combine the integer parts using bitwise operations
+                                                    let mut n = (ix ^ iy) as u32;
+                                                    n ^= n << 13;
+                                                    n ^= n >> 17;
+                                                    n ^= n << 5;
 
-                                            // Sample the texture
-
-                                            let textures = if dynamic {
-                                                &scene.dynamic_textures
-                                            } else {
-                                                &scene.textures
-                                            };
-
-                                            let t = &textures[batch.texture_index];
-                                            let index = scene.animation_frame % t.textures.len();
-
-                                            let mut texel = match batch.sample_mode {
-                                                SampleMode::Anisotropic { max_samples } => {
-                                                    // Calculate partial derivatives of UV coordinates in screen space
-                                                    let dudx = ((uv1[0] / v1[3])
-                                                        - (uv0[0] / v0[3]))
-                                                        * (v2[1] - v0[1])
-                                                        - ((uv2[0] / v2[3]) - (uv0[0] / v0[3]))
-                                                            * (v1[1] - v0[1]);
-                                                    let dudy = ((uv2[0] / v2[3])
-                                                        - (uv0[0] / v0[3]))
-                                                        * (v1[0] - v0[0])
-                                                        - ((uv1[0] / v1[3]) - (uv0[0] / v0[3]))
-                                                            * (v2[0] - v0[0]);
-
-                                                    let dvdx = ((uv1[1] / v1[3])
-                                                        - (uv0[1] / v0[3]))
-                                                        * (v2[1] - v0[1])
-                                                        - ((uv2[1] / v2[3]) - (uv0[1] / v0[3]))
-                                                            * (v1[1] - v0[1]);
-                                                    let dvdy = ((uv2[1] / v2[3])
-                                                        - (uv0[1] / v0[3]))
-                                                        * (v1[0] - v0[0])
-                                                        - ((uv1[1] / v1[3]) - (uv0[1] / v0[3]))
-                                                            * (v2[0] - v0[0]);
-
-                                                    // Normalize derivatives by determinant (area of the triangle)
-                                                    let det = (v1[0] - v0[0]) * (v2[1] - v0[1])
-                                                        - (v2[0] - v0[0]) * (v1[1] - v0[1]);
-
-                                                    if det.abs() < 1e-6 {
-                                                        t.textures[index].sample(
-                                                            interpolated_u,
-                                                            interpolated_v,
-                                                            SampleMode::Linear,
-                                                            batch.repeat_mode,
-                                                        )
-                                                    } else {
-                                                        let dudx = dudx / det;
-                                                        let dudy = dudy / det;
-                                                        let dvdx = dvdx / det;
-                                                        let dvdy = dvdy / det;
-
-                                                        t.textures[index].sample_anisotropic(
-                                                            interpolated_u,
-                                                            interpolated_v,
-                                                            dudx,
-                                                            dudy,
-                                                            dvdx,
-                                                            dvdy,
-                                                            max_samples,
-                                                            batch.repeat_mode,
-                                                        )
-                                                    }
+                                                    // Normalize the result to [0, 1]
+                                                    n as f32 / u32::MAX as f32
                                                 }
-                                                _ => t.textures[index].sample(
-                                                    interpolated_u,
-                                                    interpolated_v,
-                                                    batch.sample_mode,
-                                                    batch.repeat_mode,
-                                                ),
-                                            };
 
+                                                let jitter = (hash(p[0], p[1])) * 0.2 * t; //threshold * 0.5 * t; // * jitter_scale; // * t;
+
+                                                color[0] += jitter;
+                                                color[1] += jitter;
+                                                color[3] += jitter;
+                                            }*/
+
+                                            // Distance based fog
+                                            /*
+                                            if batch.receives_light {
+                                                let distance =
+                                                    (world - self.camera_pos).magnitude();
+
+                                                let fog_density = 0.1;
+                                                let fog_factor = (-fog_density * distance).exp();
+                                                let fog_factor = fog_factor.clamp(0.0, 1.0);
+
+                                                let fog_color = [1.0, 1.0, 1.0];
+
+                                                for i in 0..3 {
+                                                    color[i] = color[i] * fog_factor
+                                                        + fog_color[i] * (1.0 - fog_factor);
+                                                }
+                                            }*/
+
+                                            // Sample Lights
                                             if batch.receives_light
                                                 && (!scene.lights.is_empty()
                                                     || !scene.dynamic_lights.is_empty())
                                             {
                                                 let mut accumulated_light = [0.0, 0.0, 0.0];
+                                                let world_2d = Vec2::new(world.x, world.z);
+                                                let epsilon = 0.01;
 
                                                 for light in &scene.lights {
-                                                    let light_color = light.color_at(world, 0.0);
-                                                    accumulated_light[0] += light_color[0];
-                                                    accumulated_light[1] += light_color[1];
-                                                    accumulated_light[2] += light_color[2];
+                                                    if let Some(light_color) =
+                                                        light.color_at(world, 0.0)
+                                                    {
+                                                        let direction_to_light =
+                                                            (light.position_2d() - world_2d)
+                                                                .normalized();
+                                                        let offset_world_2d =
+                                                            world_2d + direction_to_light * epsilon;
+
+                                                        let mut light_is_visible = true;
+                                                        if light.light_type != LightType::Ambient
+                                                            && !self.mapmini.is_visible(
+                                                                offset_world_2d,
+                                                                light.position_2d(),
+                                                            )
+                                                        {
+                                                            light_is_visible = false;
+                                                        }
+
+                                                        if light_is_visible {
+                                                            accumulated_light[0] += light_color[0];
+                                                            accumulated_light[1] += light_color[1];
+                                                            accumulated_light[2] += light_color[2];
+                                                        }
+                                                    }
                                                 }
 
                                                 for light in &scene.dynamic_lights {
-                                                    let light_color = light.color_at(world, 0.0);
-                                                    accumulated_light[0] += light_color[0];
-                                                    accumulated_light[1] += light_color[1];
-                                                    accumulated_light[2] += light_color[2];
+                                                    if let Some(light_color) =
+                                                        light.color_at(world, 0.0)
+                                                    {
+                                                        let direction_to_light =
+                                                            (light.position_2d() - world_2d)
+                                                                .normalized();
+                                                        let offset_world_2d =
+                                                            world_2d + direction_to_light * epsilon;
+
+                                                        let mut light_is_visible = true;
+                                                        if light.light_type != LightType::Ambient
+                                                            && !self.mapmini.is_visible(
+                                                                offset_world_2d,
+                                                                light.position_2d(),
+                                                            )
+                                                        {
+                                                            light_is_visible = false;
+                                                        }
+
+                                                        if light_is_visible {
+                                                            accumulated_light[0] += light_color[0];
+                                                            accumulated_light[1] += light_color[1];
+                                                            accumulated_light[2] += light_color[2];
+                                                        }
+                                                    }
                                                 }
 
                                                 accumulated_light[0] =
@@ -632,30 +665,14 @@ impl Rasterizer {
                                                     accumulated_light[2].clamp(0.0, 1.0);
 
                                                 for i in 0..3 {
-                                                    texel[i] = ((texel[i] as f32 / 255.0)
-                                                        * accumulated_light[i]
-                                                        * 255.0)
-                                                        .clamp(0.0, 255.0)
-                                                        as u8;
+                                                    color[i] *= accumulated_light[i];
                                                 }
                                             }
 
+                                            // ---
+
+                                            let texel = vec4_to_pixel(&color);
                                             if texel[3] == 255 {
-                                                /*
-                                                let fog_color = WHITE;
-                                                let fog_intensity = 0.4;
-                                                t *= fog_intensity;
-
-                                                texel[0] = (texel[0] as f32 * (1.0 - t)
-                                                    + fog_color[0] as f32 * t)
-                                                    as u8;
-                                                texel[1] = (texel[1] as f32 * (1.0 - t)
-                                                    + fog_color[1] as f32 * t)
-                                                    as u8;
-                                                texel[2] = (texel[2] as f32 * (1.0 - t)
-                                                    + fog_color[2] as f32 * t)
-                                                    as u8;*/
-
                                                 let idx = ((ty - tile.y) * tile.width
                                                     + (tx - tile.x))
                                                     * 4;

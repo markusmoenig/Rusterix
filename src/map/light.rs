@@ -1,211 +1,262 @@
+use crate::{Value, ValueContainer};
+use theframework::prelude::*;
 use vek::{Vec2, Vec3};
 
-#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
-pub enum Light {
-    PointLight {
-        position: Vec3<f32>,
-        color: [f32; 3],
-        intensity: f32,
-        start_distance: f32,
-        end_distance: f32,
-        flicker: Option<Flicker>, // Optional flickering
-    },
-    AmbientLight {
-        position: Vec3<f32>,
-        color: [f32; 3],
-        intensity: f32,
-    },
-    Spotlight {
-        position: Vec3<f32>,
-        direction: Vec3<f32>,
-        color: [f32; 3],
-        intensity: f32,
-        start_distance: f32,
-        end_distance: f32,
-        cone_angle: f32,
-        flicker: Option<Flicker>, // Optional flickering
-    },
-    AreaLight {
-        position: Vec3<f32>, // Center of the light
-        normal: Vec3<f32>,   // Normal vector of the emitting surface
-        width: f32,          // Width of the rectangular light
-        height: f32,         // Height of the rectangular light
-        color: [f32; 3],     // RGB color of the light
-        intensity: f32,      // Overall intensity
-    },
+/// Parameters for flickering
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub enum LightType {
+    Point,
+    Ambient,
+    Spot,
+    Area,
 }
 
 /// Parameters for flickering
-#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct Flicker {
     pub frequency: f32, // How fast the flicker changes (in Hz)
     pub amplitude: f32, // Max intensity change (e.g., 0.2 for 20% flicker)
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Light {
+    pub light_type: LightType,
+    pub properties: ValueContainer,
+}
+
 impl Light {
-    /// Returns the position of the light, if applicable
+    pub fn new(light_type: LightType) -> Self {
+        Self {
+            light_type,
+            properties: ValueContainer::default(),
+        }
+    }
+
+    /// Helper: get the position from the ValueContainer (defaults to [0,0,0] if not found)
+    fn get_position(&self) -> Vec3<f32> {
+        let p = self
+            .properties
+            .get_vec3("position")
+            .unwrap_or([0.0, 0.0, 0.0]);
+        Vec3::new(p[0], p[1], p[2])
+    }
+
+    /// Helper: get color (defaults to white if not found)
+    pub fn get_color(&self) -> [f32; 3] {
+        self.properties.get_vec3("color").unwrap_or([1.0, 1.0, 1.0])
+    }
+
+    /// Helper: get intensity (defaults to 1.0 if not found)
+    pub fn get_intensity(&self) -> f32 {
+        self.properties.get_float_default("intensity", 1.0)
+    }
+
+    /// Helper: get start distance (defaults to 3.0 if not found)
+    pub fn get_start_distance(&self) -> f32 {
+        self.properties.get_float_default("start_distance", 3.0)
+    }
+
+    /// Helper: get end distance (defaults to 5.0 if not found)
+    pub fn get_end_distance(&self) -> f32 {
+        self.properties.get_float_default("end_distance", 10.0)
+    }
+
+    /// Helper: get flicker if it exists (requires flicker_frequency & flicker_amplitude)
+    pub fn get_flicker(&self) -> Option<Flicker> {
+        let freq = self.properties.get_float("flicker_frequency")?;
+        let amp = self.properties.get_float("flicker_amplitude")?;
+        // If both exist, we consider flicker "enabled"
+        Some(Flicker {
+            frequency: freq,
+            amplitude: amp,
+        })
+    }
+
+    /// Returns the position of the light (3D)
     pub fn position(&self) -> Vec3<f32> {
-        match *self {
-            Light::PointLight { position, .. } => position,
-            Light::Spotlight { position, .. } => position,
-            Light::AreaLight { position, .. } => position,
-            Light::AmbientLight { position, .. } => position,
-        }
+        self.get_position()
     }
 
+    /// Returns the position of the light in 2D (x, z)
     pub fn position_2d(&self) -> Vec2<f32> {
-        match *self {
-            Light::PointLight { position, .. } => Vec2::new(position.x, position.z),
-            Light::Spotlight { position, .. } => Vec2::new(position.x, position.z),
-            Light::AreaLight { position, .. } => Vec2::new(position.x, position.z),
-            Light::AmbientLight { position, .. } => Vec2::new(position.x, position.z),
+        let p = self.position();
+        Vec2::new(p.x, p.z)
+    }
+
+    /// Calculate the light's intensity and color at a given point
+    pub fn color_at(&self, point: Vec3<f32>, time: f32) -> Option<[f32; 3]> {
+        match self.light_type {
+            LightType::Point => self.calculate_point_light(point, time),
+            LightType::Ambient => self.calculate_ambient_light(time),
+            LightType::Spot => self.calculate_spot_light(point, time),
+            LightType::Area => self.calculate_area_light(point),
         }
     }
 
-    /// Calculate the lights intensity and color at a given point
-    pub fn color_at(&self, point: Vec3<f32>, time: f32) -> [f32; 3] {
-        match *self {
-            Light::PointLight {
-                position,
-                color,
-                intensity,
-                start_distance,
-                end_distance,
-                flicker,
-            } => {
-                let distance = (point - position).magnitude();
+    fn calculate_point_light(&self, point: Vec3<f32>, time: f32) -> Option<[f32; 3]> {
+        let position = self.get_position();
+        let color = self.get_color();
+        let intensity = self.get_intensity();
 
-                if distance <= start_distance {
-                    return apply_flicker(color, intensity, flicker, time);
-                }
-                if distance >= end_distance {
-                    return [0.0, 0.0, 0.0];
-                }
+        let start_distance = self.get_start_distance();
+        let end_distance = self.get_end_distance();
 
-                let attenuation = if distance <= start_distance {
-                    1.0
-                } else {
-                    // let attenuation =
-                    //     1.0 - ((distance - start_distance) / (end_distance - start_distance));
-                    //
-                    smoothstep(end_distance, start_distance, distance)
-                };
-                let adjusted_intensity = intensity * attenuation;
-                apply_flicker(color, adjusted_intensity, flicker, time)
-            }
-            Light::AmbientLight {
-                color, intensity, ..
-            } => {
-                // Ambient light doesn't attenuate
-                apply_flicker(color, intensity, None, time)
-            }
-            Light::Spotlight {
-                position,
-                direction,
-                color,
-                intensity,
-                start_distance,
-                end_distance,
-                cone_angle,
-                flicker,
-            } => {
-                let distance = (point - position).magnitude();
-                if distance >= end_distance {
-                    return [0.0, 0.0, 0.0];
-                }
+        let flicker = self.get_flicker();
 
-                let attenuation = if distance <= start_distance {
-                    1.0
-                } else {
-                    1.0 - ((distance - start_distance) / (end_distance - start_distance))
-                };
+        let distance = (point - position).magnitude();
 
-                // Spotlight cone angle falloff
-                let direction_to_point = (point - position).normalized();
-                let angle = direction.normalized().dot(direction_to_point).acos();
-                if angle > cone_angle {
-                    return [0.0, 0.0, 0.0];
-                }
-
-                let adjusted_intensity = intensity * attenuation;
-                apply_flicker(color, adjusted_intensity, flicker, time)
-            }
-            Light::AreaLight {
-                position,
-                normal,
-                width,
-                height,
-                color,
-                intensity,
-            } => {
-                let area = width * height;
-                let to_point = point - position;
-                let distance = to_point.magnitude();
-
-                if distance == 0.0 {
-                    return [0.0, 0.0, 0.0];
-                }
-
-                let direction = to_point.normalized();
-                let angle_attenuation = normal.normalized().dot(direction).max(0.0);
-                let distance_attenuation = 1.0 / (distance * distance);
-                let attenuation = angle_attenuation * distance_attenuation * area * intensity;
-
-                [
-                    color[0] * attenuation,
-                    color[1] * attenuation,
-                    color[2] * attenuation,
-                ]
-            }
+        // Within start_distance => full intensity
+        if distance <= start_distance {
+            return Some(apply_flicker(color, intensity, flicker, time));
         }
+        // Beyond end_distance => no intensity
+        if distance >= end_distance {
+            return None;
+        }
+
+        // Smooth attenuation between start and end
+        let attenuation = smoothstep(end_distance, start_distance, distance);
+        let adjusted_intensity = intensity * attenuation;
+        Some(apply_flicker(color, adjusted_intensity, flicker, time))
+    }
+
+    fn calculate_ambient_light(&self, time: f32) -> Option<[f32; 3]> {
+        let color = self.get_color();
+        let intensity = self.get_intensity();
+        // Ambient light does not attenuate by distance
+        // Usually no flicker on ambient, but let's allow it
+        let flicker = self.get_flicker();
+        Some(apply_flicker(color, intensity, flicker, time))
+    }
+
+    fn calculate_spot_light(&self, point: Vec3<f32>, time: f32) -> Option<[f32; 3]> {
+        let position = self.get_position();
+        // For direction, if not found, default to pointing down the -Z axis
+        let dir = self
+            .properties
+            .get_vec3("direction")
+            .unwrap_or([0.0, 0.0, -1.0]);
+        let direction = Vec3::new(dir[0], dir[1], dir[2]).normalized();
+
+        let color = self.get_color();
+        let intensity = self.get_intensity();
+
+        let start_distance = self.properties.get_float_default("start_distance", 0.0);
+        let end_distance = self.properties.get_float_default("end_distance", 100.0);
+        let cone_angle = self
+            .properties
+            .get_float_default("cone_angle", std::f32::consts::FRAC_PI_4);
+
+        let flicker = self.get_flicker();
+
+        let distance = (point - position).magnitude();
+        if distance >= end_distance {
+            return None;
+        }
+
+        let attenuation = if distance <= start_distance {
+            1.0
+        } else {
+            1.0 - ((distance - start_distance) / (end_distance - start_distance))
+        };
+
+        // Check angle
+        let direction_to_point = (point - position).normalized();
+        let angle = direction.dot(direction_to_point).acos();
+        if angle > cone_angle {
+            return None;
+        }
+
+        let adjusted_intensity = intensity * attenuation;
+        Some(apply_flicker(color, adjusted_intensity, flicker, time))
+    }
+
+    fn calculate_area_light(&self, point: Vec3<f32>) -> Option<[f32; 3]> {
+        let position = self.get_position();
+        // Default normal is up on Y
+        let n = self
+            .properties
+            .get_vec3("normal")
+            .unwrap_or([0.0, 1.0, 0.0]);
+        let normal = Vec3::new(n[0], n[1], n[2]).normalized();
+
+        let width = self.properties.get_float_default("width", 1.0);
+        let height = self.properties.get_float_default("height", 1.0);
+        let area = width * height;
+
+        let color = self.get_color();
+        let intensity = self.get_intensity();
+
+        let to_point = point - position;
+        let distance = to_point.magnitude();
+        if distance == 0.0 {
+            return None;
+        }
+
+        let direction = to_point.normalized();
+        let angle_attenuation = normal.dot(direction).max(0.0);
+        let distance_attenuation = 1.0 / (distance * distance);
+
+        let attenuation = angle_attenuation * distance_attenuation * area * intensity;
+        Some([
+            color[0] * attenuation,
+            color[1] * attenuation,
+            color[2] * attenuation,
+        ])
+    }
+
+    /// Set the position of the light
+    pub fn set_position(&mut self, position: Vec3<f32>) {
+        self.properties.set(
+            "position",
+            Value::Vec3([position.x, position.y, position.z]),
+        );
     }
 
     /// Sets the color of the light
     pub fn set_color(&mut self, new_color: [f32; 3]) {
-        match self {
-            Light::PointLight { color, .. } => *color = new_color,
-            Light::AmbientLight { color, .. } => *color = new_color,
-            Light::Spotlight { color, .. } => *color = new_color,
-            Light::AreaLight { color, .. } => *color = new_color,
-        }
+        self.properties.set("color", Value::Vec3(new_color));
     }
 
     /// Sets the intensity of the light
     pub fn set_intensity(&mut self, new_intensity: f32) {
-        match self {
-            Light::PointLight { intensity, .. } => *intensity = new_intensity,
-            Light::AmbientLight { intensity, .. } => *intensity = new_intensity,
-            Light::Spotlight { intensity, .. } => *intensity = new_intensity,
-            Light::AreaLight { intensity, .. } => *intensity = new_intensity,
-        }
+        self.properties
+            .set("intensity", Value::Float(new_intensity));
     }
 
-    /// Sets the start distance of the light for applicable light types
+    /// Sets the start distance (for Point or Spot)
     pub fn set_start_distance(&mut self, new_start_distance: f32) {
-        match self {
-            Light::PointLight { start_distance, .. } => *start_distance = new_start_distance,
-            Light::Spotlight { start_distance, .. } => *start_distance = new_start_distance,
-            _ => {}
-        }
+        self.properties
+            .set("start_distance", Value::Float(new_start_distance));
     }
 
-    /// Sets the end distance of the light for applicable light types
+    /// Sets the end distance (for Point or Spot)
     pub fn set_end_distance(&mut self, new_end_distance: f32) {
-        match self {
-            Light::PointLight { end_distance, .. } => *end_distance = new_end_distance,
-            Light::Spotlight { end_distance, .. } => *end_distance = new_end_distance,
-            _ => {}
-        }
+        self.properties
+            .set("end_distance", Value::Float(new_end_distance));
+    }
+
+    /// Set flicker frequency and amplitude
+    pub fn set_flicker(&mut self, frequency: f32, amplitude: f32) {
+        self.properties
+            .set("flicker_frequency", Value::Float(frequency));
+        self.properties
+            .set("flicker_amplitude", Value::Float(amplitude));
+    }
+
+    /// Remove flicker
+    pub fn clear_flicker(&mut self) {
+        self.properties.remove("flicker_frequency");
+        self.properties.remove("flicker_amplitude");
     }
 }
 
-/// Applies flickering to the light color
 fn apply_flicker(color: [f32; 3], intensity: f32, flicker: Option<Flicker>, time: f32) -> [f32; 3] {
-    let flicker_factor = if let Some(flicker) = flicker {
-        let noise = ((time * flicker.frequency).sin() * 0.5 + 0.5) * flicker.amplitude; // Sine-based flicker
-        1.0 - noise // Reduce intensity by the flicker factor
+    let flicker_factor = if let Some(f) = flicker {
+        let noise = ((time * f.frequency).sin() * 0.5 + 0.5) * f.amplitude;
+        1.0 - noise
     } else {
-        1.0 // No flicker
+        1.0
     };
 
     [
@@ -217,5 +268,5 @@ fn apply_flicker(color: [f32; 3], intensity: f32, flicker: Option<Flicker>, time
 
 fn smoothstep(edge0: f32, edge1: f32, x: f32) -> f32 {
     let t = ((x - edge0) / (edge1 - edge0)).clamp(0.0, 1.0);
-    t * t * (3.0 - 2.0 * t) // Smooth cubic interpolation
+    t * t * (3.0 - 2.0 * t)
 }

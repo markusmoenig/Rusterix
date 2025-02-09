@@ -3,7 +3,6 @@ pub mod daylight;
 use crate::prelude::*;
 use crate::D2PreviewBuilder;
 use crate::Daylight;
-use num_traits::zero;
 use theframework::prelude::*;
 
 pub struct Client {
@@ -126,11 +125,11 @@ impl Client {
             .daylight
             .daylight(self.server_time.total_minutes(), 0.0, 1.0);
 
-        self.scene_d2.dynamic_lights = vec![Light::AmbientLight {
-            position: zero(),
-            color: [ac.x, ac.y, ac.z],
-            intensity: 1.0,
-        }];
+        let mut light = Light::new(LightType::Ambient);
+        light.set_color([ac.x, ac.y, ac.z]);
+        light.set_intensity(1.0);
+        self.scene_d2.dynamic_lights = vec![light];
+
         let mut rast = Rasterizer::setup(None, Mat4::identity(), Mat4::identity());
         rast.mapmini = self.scene_d2.mapmini.clone();
 
@@ -144,17 +143,18 @@ impl Client {
             .daylight
             .daylight(self.server_time.total_minutes(), 0.0, 1.0);
 
-        self.scene_d3.dynamic_lights = vec![Light::AmbientLight {
-            position: zero(),
-            color: [ac.x, ac.y, ac.z],
-            intensity: 1.0,
-        }];
-        Rasterizer::setup(
+        let mut light = Light::new(LightType::Ambient);
+        light.set_color([ac.x, ac.y, ac.z]);
+        light.set_intensity(1.0);
+
+        self.scene_d3.dynamic_lights = vec![light];
+        let mut rast = Rasterizer::setup(
             None,
             self.camera_d3.view_matrix(),
             self.camera_d3
                 .projection_matrix(width as f32, height as f32),
-        )
-        .rasterize(&mut self.scene_d3, pixels, width, height, 64);
+        );
+        rast.mapmini = self.scene_d2.mapmini.clone();
+        rast.rasterize(&mut self.scene_d3, pixels, width, height, 64);
     }
 }

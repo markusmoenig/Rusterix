@@ -9,9 +9,6 @@ pub enum SampleMode {
     Nearest,
     /// Linear interpolation sampling
     Linear,
-    Anisotropic {
-        max_samples: u8,
-    },
 }
 
 /// The repeat mode for texture sampling.
@@ -191,21 +188,17 @@ impl Texture {
         match sample_mode {
             SampleMode::Nearest => self.sample_nearest(u, v),
             SampleMode::Linear => self.sample_linear(u, v),
-            _ => [0, 0, 0, 0],
         }
     }
 
-    #[allow(clippy::too_many_arguments)]
-    pub fn sample_anisotropic(
+    /// Samples the texture using the specified sampling and repeat mode
+    pub fn sample_blur(
         &self,
         mut u: f32,
         mut v: f32,
-        dudx: f32,
-        dudy: f32,
-        dvdx: f32,
-        dvdy: f32,
-        max_samples: u8,
+        sample_mode: SampleMode,
         repeat_mode: RepeatMode,
+        blur_strength: f32,
     ) -> [u8; 4] {
         match repeat_mode {
             RepeatMode::ClampXY => {
@@ -225,56 +218,142 @@ impl Texture {
                 v = v - v.floor(); // Wraps only in Y
             }
         }
-
-        // Calculate anisotropy direction and magnitude
-        let anisotropy = (dudx.hypot(dudy) + dvdx.hypot(dvdy)) / 2.0;
-        if anisotropy == 0.0 {
-            return self.sample_nearest(u, v);
-        }
-        let samples = (anisotropy.log2().ceil() as u8).clamp(1, max_samples);
-
-        // Calculate major axis direction
-        let dir_x = dudx / anisotropy;
-        let dir_y = dvdy / anisotropy;
-
-        let mut color = [0f32; 4];
-        let step = 1.0 / samples as f32;
-
-        // Sample along the anisotropy axis
-        for i in 0..samples {
-            let offset = (i as f32 - samples as f32 / 2.0) * step;
-            // let su = u + offset * dir_x;
-            // let sv = v + offset * dir_y;
-            let su = (u + offset * dir_x).rem_euclid(1.0);
-            let sv = (v + offset * dir_y).rem_euclid(1.0);
-
-            let sampled = self.sample_linear(su, sv);
-            for (c, s) in color.iter_mut().zip(&sampled) {
-                *c += *s as f32;
+        match sample_mode {
+            SampleMode::Nearest => {
+                if blur_strength == 0.0 {
+                    self.sample_nearest(u, v)
+                } else {
+                    self.sample_nearest_blur(u, v, blur_strength)
+                }
             }
-        }
 
-        // Average samples
-        for c in &mut color {
-            *c /= samples as f32;
+            SampleMode::Linear => self.sample_linear(u, v),
         }
-
-        color.map(|c| c.round() as u8)
     }
 
+    // pub fn sample_nearest(&self, u: f32, v: f32) -> [u8; 4] {
+    //     // Map UV coordinates to pixel indices
+    //     let tex_x = (u * (self.width as f32 - 1.0)).round() as usize;
+    //     let tex_y = (v * (self.height as f32 - 1.0)).round() as usize;
+
+    //     // Retrieve the color from the texture
+    //     let idx = (tex_y * self.width + tex_x) * 4;
+    //     [
+    //         self.data[idx],
+    //         self.data[idx + 1],
+    //         self.data[idx + 2],
+    //         self.data[idx + 3],
+    //     ]
+    // }
     /// Samples the texture at given UV coordinates.
     pub fn sample_nearest(&self, u: f32, v: f32) -> [u8; 4] {
-        // Map UV coordinates to pixel indices
-        let tex_x = (u * (self.width as f32 - 1.0)).round() as usize;
-        let tex_y = (v * (self.height as f32 - 1.0)).round() as usize;
+        let mut tx = (u * self.width as f32 + 0.5).floor() as i32;
+        let mut ty = (v * self.height as f32 + 0.5).floor() as i32;
 
-        // Retrieve the color from the texture
-        let idx = (tex_y * self.width + tex_x) * 4;
+        if tx < 0 {
+            tx = 0;
+        } else if tx >= self.width as i32 {
+            tx = self.width as i32 - 1;
+        }
+        if ty < 0 {
+            ty = 0;
+        } else if ty >= self.height as i32 {
+            ty = self.height as i32 - 1;
+        }
+
+        let idx = (ty as usize * self.width + tx as usize) * 4;
         [
             self.data[idx],
             self.data[idx + 1],
             self.data[idx + 2],
             self.data[idx + 3],
+        ]
+    }
+
+    /// Samples the texture at given UV coordinates.
+    pub fn sample_nearest_blur(&self, u: f32, v: f32, blur_strength: f32) -> [u8; 4] {
+        // Clamp blur_strength to [0, 1]
+        let blur_strength = blur_strength.clamp(0.0, 1.0);
+
+        // Map UV coordinates to pixel indices
+        let mut tx = (u * self.width as f32 + 0.5).floor() as i32;
+        let mut ty = (v * self.height as f32 + 0.5).floor() as i32;
+
+        // Clamp texel coordinates to texture bounds
+        if tx < 0 {
+            tx = 0;
+        } else if tx >= self.width as i32 {
+            tx = self.width as i32 - 1;
+        }
+        if ty < 0 {
+            ty = 0;
+        } else if ty >= self.height as i32 {
+            ty = self.height as i32 - 1;
+        }
+
+        // If blur_strength is 0, fall back to pure nearest sampling
+        if blur_strength == 0.0 {
+            let idx = (ty as usize * self.width + tx as usize) * 4;
+            return [
+                self.data[idx],
+                self.data[idx + 1],
+                self.data[idx + 2],
+                self.data[idx + 3],
+            ];
+        }
+
+        // Define a 3x3 kernel for blurring
+        let offsets = [
+            (-1, -1),
+            (0, -1),
+            (1, -1),
+            (-1, 0),
+            (0, 0),
+            (1, 0),
+            (-1, 1),
+            (0, 1),
+            (1, 1),
+        ];
+
+        // Accumulate color values from neighboring texels
+        let mut result = [0.0f32; 4];
+        let mut total_weight = 0.0f32;
+
+        for &(dx, dy) in &offsets {
+            let nx = (tx + dx).clamp(0, self.width as i32 - 1) as usize;
+            let ny = (ty + dy).clamp(0, self.height as i32 - 1) as usize;
+
+            // Calculate weight based on distance from center
+            let distance = ((dx.abs() + dy.abs()) as f32).max(1.0); // Avoid division by zero
+            let weight = (1.0 / distance) * blur_strength;
+
+            // Retrieve the color from the texture
+            let idx = (ny * self.width + nx) * 4;
+            let color = [
+                self.data[idx] as f32,
+                self.data[idx + 1] as f32,
+                self.data[idx + 2] as f32,
+                self.data[idx + 3] as f32,
+            ];
+
+            // Accumulate weighted color
+            for i in 0..4 {
+                result[i] += color[i] * weight;
+            }
+            total_weight += weight;
+        }
+
+        // Normalize the result by total weight
+        for item in &mut result {
+            *item /= total_weight;
+        }
+
+        // Convert back to u8
+        [
+            result[0].round() as u8,
+            result[1].round() as u8,
+            result[2].round() as u8,
+            result[3].round() as u8,
         ]
     }
 

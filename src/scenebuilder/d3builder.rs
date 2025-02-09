@@ -256,6 +256,7 @@ impl SceneBuilder for D3Builder {
         let mut batches = repeated_batches;
         batches.extend(vec![atlas_batch]);
 
+        scene.mapmini = map.as_mini();
         scene.d3_static = batches;
         scene.textures = textures;
         scene.lights = map.lights.clone();

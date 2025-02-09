@@ -62,10 +62,10 @@ pub use crate::{
     edge::Edges,
     intodata::IntoDataInput,
     map::{
-        light::Light, linedef::Linedef, meta::MapMeta, mini::MapMini, pixelsource::NoiseTarget,
-        pixelsource::PixelSource, sector::Sector, state::AnimationVertexState,
-        state::InterpolationType, state::VertexAnimationSystem, state::VertexState, tile::Tile,
-        vertex::Vertex, Map, MapCamera, MapToolType,
+        light::Light, light::LightType, linedef::Linedef, meta::MapMeta, mini::MapMini,
+        pixelsource::NoiseTarget, pixelsource::PixelSource, sector::Sector,
+        state::AnimationVertexState, state::InterpolationType, state::VertexAnimationSystem,
+        state::VertexState, tile::Tile, vertex::Vertex, Map, MapCamera, MapToolType,
     },
     rasterizer::Rasterizer,
     rect::Rect,
@@ -102,8 +102,8 @@ pub mod prelude {
     pub use crate::Rasterizer;
     pub use crate::{pixel_to_vec4, vec4_to_pixel};
     pub use crate::{
-        AnimationVertexState, Light, Linedef, Map, MapMeta, MapToolType, NoiseTarget, PixelSource,
-        Sector, Tile, Vertex, VertexAnimationSystem, VertexState,
+        AnimationVertexState, Light, LightType, Map, MapMeta, MapToolType, NoiseTarget,
+        PixelSource, Sector, Tile, Vertex, VertexAnimationSystem, VertexState,
     };
     pub use crate::{
         Assets, Currencies, Currency, Entity, EntityUpdate, Item, ItemUpdate, RegionInstance,

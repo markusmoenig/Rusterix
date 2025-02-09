@@ -510,61 +510,62 @@ impl SceneBuilder for D2PreviewBuilder {
                     light_off_batch.add_rectangle(pos.x - hsize, pos.y - hsize, size, size);
                 }
             }
-        }
+        } else {
+            // We dont show entities and items in Effects Mode to avoid overlapping icons
+            // Entities
+            for entity in &map.entities {
+                let entity_pos = Vec2::new(entity.position.x, entity.position.z);
+                let pos =
+                    self.map_grid_to_local(screen_size, Vec2::new(entity_pos.x, entity_pos.y), map);
+                let size = map.grid_size;
+                let hsize = map.grid_size / 2.0;
 
-        // Entities
-        for entity in &map.entities {
-            let entity_pos = Vec2::new(entity.position.x, entity.position.z);
-            let pos =
-                self.map_grid_to_local(screen_size, Vec2::new(entity_pos.x, entity_pos.y), map);
-            let size = map.grid_size;
-            let hsize = map.grid_size / 2.0;
+                if let Some(Value::Source(source)) = entity.attributes.get("source") {
+                    if let Some(tile) = source.to_tile(tiles, 100, &entity.attributes) {
+                        let texture_index = textures.len();
 
-            if let Some(Value::Source(source)) = entity.attributes.get("source") {
-                if let Some(tile) = source.to_tile(tiles, 100, &entity.attributes) {
-                    let texture_index = textures.len();
+                        let mut batch = Batch::emptyd2()
+                            .texture_index(texture_index)
+                            .receives_light(true);
 
-                    let mut batch = Batch::emptyd2()
-                        .texture_index(texture_index)
-                        .receives_light(true);
-
-                    batch.add_rectangle(pos.x - hsize, pos.y - hsize, size, size);
-                    textures.push(tile.clone());
-                    repeated_offsets.insert(tile.id, repeated_batches.len());
-                    repeated_batches.push(batch);
+                        batch.add_rectangle(pos.x - hsize, pos.y - hsize, size, size);
+                        textures.push(tile.clone());
+                        repeated_offsets.insert(tile.id, repeated_batches.len());
+                        repeated_batches.push(batch);
+                    }
+                } else if Some(entity.creator_id) == map.selected_entity_item {
+                    character_on_batch.add_rectangle(pos.x - hsize, pos.y - hsize, size, size);
+                } else {
+                    character_off_batch.add_rectangle(pos.x - hsize, pos.y - hsize, size, size);
                 }
-            } else if Some(entity.creator_id) == map.selected_entity_item {
-                character_on_batch.add_rectangle(pos.x - hsize, pos.y - hsize, size, size);
-            } else {
-                character_off_batch.add_rectangle(pos.x - hsize, pos.y - hsize, size, size);
             }
-        }
 
-        // Items
-        for item in &map.items {
-            let entity_pos = Vec2::new(item.position.x, item.position.z);
-            let pos =
-                self.map_grid_to_local(screen_size, Vec2::new(entity_pos.x, entity_pos.y), map);
-            let size = map.grid_size;
-            let hsize = map.grid_size / 2.0;
+            // Items
+            for item in &map.items {
+                let entity_pos = Vec2::new(item.position.x, item.position.z);
+                let pos =
+                    self.map_grid_to_local(screen_size, Vec2::new(entity_pos.x, entity_pos.y), map);
+                let size = map.grid_size;
+                let hsize = map.grid_size / 2.0;
 
-            if let Some(Value::Source(source)) = item.attributes.get("source") {
-                if let Some(tile) = source.to_tile(tiles, 100, &item.attributes) {
-                    let texture_index = textures.len();
+                if let Some(Value::Source(source)) = item.attributes.get("source") {
+                    if let Some(tile) = source.to_tile(tiles, 100, &item.attributes) {
+                        let texture_index = textures.len();
 
-                    let mut batch = Batch::emptyd2()
-                        .texture_index(texture_index)
-                        .receives_light(true);
+                        let mut batch = Batch::emptyd2()
+                            .texture_index(texture_index)
+                            .receives_light(true);
 
-                    batch.add_rectangle(pos.x - hsize, pos.y - hsize, size, size);
-                    textures.push(tile.clone());
-                    repeated_offsets.insert(tile.id, repeated_batches.len());
-                    repeated_batches.push(batch);
+                        batch.add_rectangle(pos.x - hsize, pos.y - hsize, size, size);
+                        textures.push(tile.clone());
+                        repeated_offsets.insert(tile.id, repeated_batches.len());
+                        repeated_batches.push(batch);
+                    }
+                } else if Some(item.creator_id) == map.selected_entity_item {
+                    treasure_on_batch.add_rectangle(pos.x - hsize, pos.y - hsize, size, size);
+                } else {
+                    treasure_off_batch.add_rectangle(pos.x - hsize, pos.y - hsize, size, size);
                 }
-            } else if Some(item.creator_id) == map.selected_entity_item {
-                treasure_on_batch.add_rectangle(pos.x - hsize, pos.y - hsize, size, size);
-            } else {
-                treasure_off_batch.add_rectangle(pos.x - hsize, pos.y - hsize, size, size);
             }
         }
 
@@ -627,7 +628,6 @@ impl SceneBuilder for D2PreviewBuilder {
         ]);
 
         scene.mapmini = map.as_mini();
-
         scene.d2 = batches;
         scene.textures = textures;
         scene.lights = map.lights.clone();
