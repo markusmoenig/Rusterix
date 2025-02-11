@@ -18,6 +18,10 @@ pub struct Sector {
 
     pub properties: ValueContainer,
     pub neighbours: Vec<u32>,
+
+    /// The rect tool layer for this sector (if created by the rect tool).
+    #[serde(default)]
+    pub layer: Option<u8>,
 }
 
 impl Sector {
@@ -35,6 +39,8 @@ impl Sector {
             linedefs,
             properties,
             neighbours: vec![],
+
+            layer: None,
         }
     }
 

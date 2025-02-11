@@ -1,5 +1,5 @@
 // use crate::PrimitiveMode::*;
-use crate::SceneBuilder;
+
 use crate::Texture;
 use crate::{Batch, Map, Rasterizer, Scene, Tile, Value};
 use theframework::prelude::*;
@@ -7,12 +7,18 @@ use vek::Vec2;
 
 pub struct D2MaterialBuilder {}
 
-impl SceneBuilder for D2MaterialBuilder {
-    fn new() -> Self {
+impl Default for D2MaterialBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl D2MaterialBuilder {
+    pub fn new() -> Self {
         Self {}
     }
 
-    fn build_texture(&self, map: &Map, tiles: &FxHashMap<Uuid, Tile>, texture: &mut Texture) {
+    pub fn build_texture(&self, map: &Map, tiles: &FxHashMap<Uuid, Tile>, texture: &mut Texture) {
         let mut textures = vec![];
         let mut batches: Vec<Batch<[f32; 3]>> = vec![];
         let size = texture.width;

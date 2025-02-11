@@ -47,7 +47,7 @@ impl TheTrait for Map {
 
         if let Some(map) = assets.get_map("world") {
             // Build 3D scene from the world map.
-            let builder = D3Builder::new();
+            let mut builder = D3Builder::new();
             scene = builder.build(
                 map,
                 &assets.tiles,

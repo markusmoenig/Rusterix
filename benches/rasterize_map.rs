@@ -13,7 +13,7 @@ fn rasterize_map(c: &mut Criterion) {
     let _ = assets.compile_source_map("world".into());
 
     if let Some(map) = assets.get_map("world") {
-        let builder = D3Builder::new();
+        let mut builder = D3Builder::new();
         scene = builder.build(
             map,
             &assets.tiles,

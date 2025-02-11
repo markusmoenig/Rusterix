@@ -1,4 +1,4 @@
-use crate::{Linedef, Vertex};
+use crate::CompiledLinedef;
 use vek::Vec2;
 
 /// A miniature version of the Map used for client side lighting calculations during the rasterization process and server side collision detection etc.
@@ -7,8 +7,7 @@ pub struct MapMini {
     pub offset: Vec2<f32>,
     pub grid_size: f32,
 
-    pub vertices: Vec<Vertex>,
-    pub linedefs: Vec<Linedef>,
+    linedefs: Vec<CompiledLinedef>,
 }
 
 impl Default for MapMini {
@@ -22,28 +21,16 @@ impl MapMini {
         Self {
             offset: Vec2::zero(),
             grid_size: 0.0,
-            vertices: vec![],
             linedefs: vec![],
         }
     }
 
-    pub fn new(
-        offset: Vec2<f32>,
-        grid_size: f32,
-        vertices: Vec<Vertex>,
-        linedefs: Vec<Linedef>,
-    ) -> Self {
+    pub fn new(offset: Vec2<f32>, grid_size: f32, linedefs: Vec<CompiledLinedef>) -> Self {
         Self {
             offset,
             grid_size,
-            vertices,
             linedefs,
         }
-    }
-
-    /// Finds a reference to a vertex by its ID
-    pub fn find_vertex(&self, id: u32) -> Option<&Vertex> {
-        self.vertices.iter().find(|vertex| vertex.id == id)
     }
 
     /// Returns true if the two segments intersect.
@@ -69,12 +56,8 @@ impl MapMini {
     /// Test if "to" is visible from "from".
     pub fn is_visible(&self, from: Vec2<f32>, to: Vec2<f32>) -> bool {
         for linedef in &self.linedefs {
-            if let Some(start) = self.find_vertex(linedef.start_vertex) {
-                if let Some(end) = self.find_vertex(linedef.end_vertex) {
-                    if self.segments_intersect(from, to, start.as_vec2(), end.as_vec2()) {
-                        return false; // Line is blocked by a linedef
-                    }
-                }
+            if self.segments_intersect(from, to, linedef.start, linedef.end) {
+                return false; // Line is blocked by a linedef
             }
         }
         true
@@ -87,21 +70,15 @@ impl MapMini {
             Vec2::new(-direction.y, direction.x)
         }
         for linedef in &self.linedefs {
-            if let Some(start) = self.find_vertex(linedef.start_vertex) {
-                if let Some(end) = self.find_vertex(linedef.end_vertex) {
-                    let start_pos = start.as_vec2();
-                    let end_pos = end.as_vec2();
-                    if self.segments_intersect(from, to, start_pos, end_pos) {
-                        let normal = compute_normal(&start_pos, &end_pos);
-                        let light_dir = (from - to).normalized();
-                        let dot_product = normal.dot(light_dir);
+            if self.segments_intersect(from, to, linedef.start, linedef.end) {
+                let normal = compute_normal(&linedef.start, &linedef.end);
+                let light_dir = (from - to).normalized();
+                let dot_product = normal.dot(light_dir);
 
-                        if dot_product < 0.0 {
-                            return true; // Lit (hit inside)
-                        } else {
-                            return false; // Not lit (hit outside)
-                        }
-                    }
+                if dot_product < 0.0 {
+                    return true; // Lit (hit inside)
+                } else {
+                    return false; // Not lit (hit outside)
                 }
             }
         }
@@ -129,28 +106,19 @@ impl MapMini {
             // Find earliest collision in remaining path
             let mut closest_collision = None;
             for linedef in &self.linedefs {
-                if let (Some(start_v), Some(end_v)) = (
-                    self.find_vertex(linedef.start_vertex),
-                    self.find_vertex(linedef.end_vertex),
+                // Add any 'wall_width' to the player's collision radius
+                let coll_radius = radius + linedef.wall_width / 2.0;
+
+                if let Some((distance, normal)) = self.check_intersection(
+                    current_pos,
+                    current_pos + remaining,
+                    linedef.start,
+                    linedef.end,
+                    coll_radius,
                 ) {
-                    let line_start = start_v.as_vec2();
-                    let line_end = end_v.as_vec2();
-
-                    // Add any 'wall_width' to the player's collision radius
-                    let coll_radius =
-                        radius + linedef.properties.get_float_default("wall_width", 0.0) / 2.0;
-
-                    if let Some((distance, normal)) = self.check_intersection(
-                        current_pos,
-                        current_pos + remaining,
-                        line_start,
-                        line_end,
-                        coll_radius,
-                    ) {
-                        // Keep the closest collision only
-                        if closest_collision.map_or(true, |(d, _)| distance < d) {
-                            closest_collision = Some((distance, normal));
-                        }
+                    // Keep the closest collision only
+                    if closest_collision.map_or(true, |(d, _)| distance < d) {
+                        closest_collision = Some((distance, normal));
                     }
                 }
             }
@@ -196,24 +164,19 @@ impl MapMini {
 
         // Final "push out" pass
         for linedef in &self.linedefs {
-            if let (Some(start_v), Some(end_v)) = (
-                self.find_vertex(linedef.start_vertex),
-                self.find_vertex(linedef.end_vertex),
-            ) {
-                let line_start = start_v.as_vec2();
-                let line_end = end_v.as_vec2();
-                let coll_radius =
-                    radius + linedef.properties.get_float_default("wall_width", 0.0) / 2.0;
+            let coll_radius = radius + linedef.wall_width / 2.0;
 
-                if let Some((dist, normal)) =
-                    self.check_point_against_segment(current_pos, line_start, line_end, coll_radius)
-                {
-                    // We are inside the wall if dist < coll_radius
-                    let penetration = coll_radius - dist;
-                    if penetration > 0.0 {
-                        // Push out by the overlap
-                        current_pos += normal * (penetration + EPSILON);
-                    }
+            if let Some((dist, normal)) = self.check_point_against_segment(
+                current_pos,
+                linedef.start,
+                linedef.end,
+                coll_radius,
+            ) {
+                // We are inside the wall if dist < coll_radius
+                let penetration = coll_radius - dist;
+                if penetration > 0.0 {
+                    // Push out by the overlap
+                    current_pos += normal * (penetration + EPSILON);
                 }
             }
         }

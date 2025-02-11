@@ -1,6 +1,12 @@
-use crate::{pixel_to_vec4, vec4_to_pixel, Batch, LightType, MapMini, Pixel, PrimitiveMode, Scene};
+use crate::SampleMode;
+use crate::{
+    pixel_to_vec4, vec4_to_pixel, Batch, CompiledLight, LightType, MapMini, Pixel, PrimitiveMode,
+    Scene,
+};
 use rayon::prelude::*;
 use vek::{Mat3, Mat4, Vec2, Vec3, Vec4};
+
+use SampleMode::*;
 
 pub struct Rasterizer {
     pub projection_matrix_2d: Option<Mat3<f32>>,
@@ -16,6 +22,12 @@ pub struct Rasterizer {
 
     /// For D2 grid space conversion when we dont use a translation matrix
     pub mapmini: MapMini,
+
+    /// SampleMode, default is Nearest.
+    pub sample_mode: SampleMode,
+
+    /// The compliled lights in the scene.
+    pub compiled_lights: Vec<CompiledLight>,
 }
 
 /// Rasterizes batches of 2D and 3D meshes (and lines).
@@ -46,9 +58,19 @@ impl Rasterizer {
             camera_pos,
 
             mapmini: MapMini::default(),
+            sample_mode: Nearest,
+
+            compiled_lights: vec![],
         }
     }
 
+    /// Sets the sample mode for the batch using the builder pattern.
+    pub fn sample_mode(mut self, sample_mode: SampleMode) -> Self {
+        self.sample_mode = sample_mode;
+        self
+    }
+
+    /// Rasterize the scene.
     pub fn rasterize(
         &mut self,
         scene: &mut Scene,
@@ -67,6 +89,8 @@ impl Rasterizer {
             width,
             height,
         );
+
+        self.compiled_lights = scene.compile_lights();
 
         // Divide the screen into tiles
         let mut tiles = Vec::new();
@@ -239,7 +263,7 @@ impl Rasterizer {
                                         let mut texel = t.textures[index].sample(
                                             u,
                                             v,
-                                            batch.sample_mode,
+                                            self.sample_mode,
                                             batch.repeat_mode,
                                         );
 
@@ -258,28 +282,7 @@ impl Rasterizer {
                                                 );
                                             let world = grid_space_pos / self.mapmini.grid_size;
 
-                                            for light in &scene.lights {
-                                                if let Some(light_color) = light
-                                                    .color_at(Vec3::new(world.x, 0.0, world.y), 0.0)
-                                                {
-                                                    let mut light_is_visible = true;
-                                                    if light.light_type != LightType::Ambient
-                                                        && !self
-                                                            .mapmini
-                                                            .is_visible(world, light.position_2d())
-                                                    {
-                                                        light_is_visible = false;
-                                                    }
-
-                                                    if light_is_visible {
-                                                        accumulated_light[0] += light_color[0];
-                                                        accumulated_light[1] += light_color[1];
-                                                        accumulated_light[2] += light_color[2];
-                                                    }
-                                                }
-                                            }
-
-                                            for light in &scene.dynamic_lights {
+                                            for light in &self.compiled_lights {
                                                 if let Some(light_color) = light
                                                     .color_at(Vec3::new(world.x, 0.0, world.y), 0.0)
                                                 {
@@ -513,7 +516,7 @@ impl Rasterizer {
                                             let texel = textile.textures[index].sample(
                                                 interpolated_u,
                                                 interpolated_v,
-                                                batch.sample_mode,
+                                                self.sample_mode,
                                                 batch.repeat_mode,
                                             );
 
@@ -601,7 +604,7 @@ impl Rasterizer {
                                                 let world_2d = Vec2::new(world.x, world.z);
                                                 let epsilon = 0.01;
 
-                                                for light in &scene.lights {
+                                                for light in &self.compiled_lights {
                                                     if let Some(light_color) =
                                                         light.color_at(world, 0.0)
                                                     {
@@ -629,44 +632,9 @@ impl Rasterizer {
                                                     }
                                                 }
 
-                                                for light in &scene.dynamic_lights {
-                                                    if let Some(light_color) =
-                                                        light.color_at(world, 0.0)
-                                                    {
-                                                        let direction_to_light =
-                                                            (light.position_2d() - world_2d)
-                                                                .normalized();
-                                                        let offset_world_2d =
-                                                            world_2d + direction_to_light * epsilon;
-
-                                                        let mut light_is_visible = true;
-                                                        if light.light_type != LightType::Ambient
-                                                            && !self.mapmini.is_visible(
-                                                                offset_world_2d,
-                                                                light.position_2d(),
-                                                            )
-                                                        {
-                                                            light_is_visible = false;
-                                                        }
-
-                                                        if light_is_visible {
-                                                            accumulated_light[0] += light_color[0];
-                                                            accumulated_light[1] += light_color[1];
-                                                            accumulated_light[2] += light_color[2];
-                                                        }
-                                                    }
-                                                }
-
-                                                accumulated_light[0] =
-                                                    accumulated_light[0].clamp(0.0, 1.0);
-                                                accumulated_light[1] =
-                                                    accumulated_light[1].clamp(0.0, 1.0);
-                                                accumulated_light[2] =
-                                                    accumulated_light[2].clamp(0.0, 1.0);
-
-                                                for i in 0..3 {
-                                                    color[i] *= accumulated_light[i];
-                                                }
+                                                color[0] *= accumulated_light[0].clamp(0.0, 1.0);
+                                                color[1] *= accumulated_light[1].clamp(0.0, 1.0);
+                                                color[2] *= accumulated_light[2].clamp(0.0, 1.0);
                                             }
 
                                             // ---

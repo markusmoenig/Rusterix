@@ -1,5 +1,5 @@
 // use crate::PrimitiveMode::*;
-use crate::SceneBuilder;
+
 use crate::Texture;
 use crate::{
     Batch, GridShader, Map, MapToolType, Pixel, Scene, Shader, Tile, Value, ValueContainer, WHITE,
@@ -24,8 +24,14 @@ pub struct D2PreviewBuilder {
     pub material_mode: bool,
 }
 
-impl SceneBuilder for D2PreviewBuilder {
-    fn new() -> Self {
+impl Default for D2PreviewBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl D2PreviewBuilder {
+    pub fn new() -> Self {
         Self {
             selection_color: [187, 122, 208, 255],
             map_tool_type: Linedef,
@@ -40,7 +46,7 @@ impl SceneBuilder for D2PreviewBuilder {
         }
     }
 
-    fn build(
+    pub fn build(
         &self,
         map: &Map,
         tiles: &FxHashMap<Uuid, Tile>,
@@ -634,11 +640,11 @@ impl SceneBuilder for D2PreviewBuilder {
         scene
     }
 
-    fn set_map_tool_type(&mut self, tool: MapToolType) {
+    pub fn set_map_tool_type(&mut self, tool: MapToolType) {
         self.map_tool_type = tool;
     }
 
-    fn set_map_hover_info(
+    pub fn set_map_hover_info(
         &mut self,
         hover: (Option<u32>, Option<u32>, Option<u32>),
         hover_cursor: Option<Vec2<f32>>,
@@ -647,12 +653,22 @@ impl SceneBuilder for D2PreviewBuilder {
         self.hover_cursor = hover_cursor;
     }
 
-    fn set_camera_info(&mut self, pos: Option<vek::Vec3<f32>>, look_at: Option<Vec3<f32>>) {
+    pub fn set_camera_info(&mut self, pos: Option<vek::Vec3<f32>>, look_at: Option<Vec3<f32>>) {
         self.camera_pos = pos;
         self.look_at = look_at;
     }
 
-    fn set_material_mode(&mut self, material_mode: bool) {
+    pub fn set_material_mode(&mut self, material_mode: bool) {
         self.material_mode = material_mode;
+    }
+
+    fn map_grid_to_local(
+        &self,
+        screen_size: Vec2<f32>,
+        grid_pos: Vec2<f32>,
+        map: &Map,
+    ) -> Vec2<f32> {
+        let grid_space_pos = grid_pos * map.grid_size;
+        grid_space_pos + Vec2::new(map.offset.x, -map.offset.y) + screen_size / 2.0
     }
 }

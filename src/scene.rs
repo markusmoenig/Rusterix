@@ -1,4 +1,4 @@
-use crate::{Batch, Light, MapMini, Shader, Tile};
+use crate::{Batch, CompiledLight, Light, MapMini, Shader, Tile};
 use rayon::prelude::*;
 use vek::{Mat3, Mat4};
 
@@ -130,5 +130,20 @@ impl Scene {
                 height as f32,
             );
         });
+    }
+
+    /// Compiles all lights and returns them.
+    pub fn compile_lights(&self) -> Vec<CompiledLight> {
+        let mut cl = vec![];
+
+        for l in &self.lights {
+            cl.push(l.compile());
+        }
+
+        for l in &self.dynamic_lights {
+            cl.push(l.compile());
+        }
+
+        cl
     }
 }

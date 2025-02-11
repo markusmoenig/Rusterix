@@ -66,7 +66,7 @@ impl TheTrait for Editor {
                     match command {
                         FocusMap(meta) => {
                             self.content = MapPreview(meta.clone());
-                            let builder = D3Builder::new();
+                            let mut builder = D3Builder::new();
 
                             self.scene = builder.build(
                                 &meta.map,

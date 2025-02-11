@@ -160,6 +160,7 @@ impl Texture {
     }
 
     /// Samples the texture using the specified sampling and repeat mode
+    #[inline(always)]
     pub fn sample(
         &self,
         mut u: f32,
@@ -231,6 +232,7 @@ impl Texture {
         }
     }
 
+    // Samples the texture at given UV coordinates.
     // pub fn sample_nearest(&self, u: f32, v: f32) -> [u8; 4] {
     //     // Map UV coordinates to pixel indices
     //     let tex_x = (u * (self.width as f32 - 1.0)).round() as usize;
@@ -245,23 +247,15 @@ impl Texture {
     //         self.data[idx + 3],
     //     ]
     // }
-    /// Samples the texture at given UV coordinates.
+    #[inline(always)]
     pub fn sample_nearest(&self, u: f32, v: f32) -> [u8; 4] {
-        let mut tx = (u * self.width as f32 + 0.5).floor() as i32;
-        let mut ty = (v * self.height as f32 + 0.5).floor() as i32;
+        let mut tx = (u * self.width as f32 + 0.5).floor() as usize;
+        let mut ty = (v * self.height as f32 + 0.5).floor() as usize;
 
-        if tx < 0 {
-            tx = 0;
-        } else if tx >= self.width as i32 {
-            tx = self.width as i32 - 1;
-        }
-        if ty < 0 {
-            ty = 0;
-        } else if ty >= self.height as i32 {
-            ty = self.height as i32 - 1;
-        }
+        tx = tx.clamp(0, self.width - 1);
+        ty = ty.clamp(0, self.height - 1);
 
-        let idx = (ty as usize * self.width + tx as usize) * 4;
+        let idx = (ty * self.width + tx) * 4;
         [
             self.data[idx],
             self.data[idx + 1],
@@ -271,6 +265,7 @@ impl Texture {
     }
 
     /// Samples the texture at given UV coordinates.
+    #[inline(always)]
     pub fn sample_nearest_blur(&self, u: f32, v: f32, blur_strength: f32) -> [u8; 4] {
         // Clamp blur_strength to [0, 1]
         let blur_strength = blur_strength.clamp(0.0, 1.0);

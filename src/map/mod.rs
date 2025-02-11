@@ -163,12 +163,60 @@ impl Map {
 
     /// Return the Map as MapMini
     pub fn as_mini(&self) -> MapMini {
-        MapMini::new(
-            self.offset,
-            self.grid_size,
-            self.vertices.clone(),
-            self.linedefs.clone(),
-        )
+        let mut linedefs: Vec<CompiledLinedef> = vec![];
+
+        for sector in self.sectors.iter() {
+            let mut throws_shadows = true;
+            let mut add_it = true;
+
+            if sector.layer.is_some() {
+                let render_mode = sector.properties.get_int_default("rect_rendering", 0);
+                if render_mode != 1 {
+                    throws_shadows = false;
+                    add_it = false;
+                }
+            }
+
+            if add_it {
+                for linedef_id in sector.linedefs.iter() {
+                    if let Some(linedef) = self.find_linedef(*linedef_id) {
+                        if linedef.front_sector.is_none() && linedef.back_sector.is_none() {
+                            if let Some(start) = self.find_vertex(linedef.start_vertex) {
+                                if let Some(end) = self.find_vertex(linedef.end_vertex) {
+                                    let cl = CompiledLinedef::new(
+                                        start.as_vec2(),
+                                        end.as_vec2(),
+                                        linedef.properties.get_float_default("wall_width", 0.0),
+                                        linedef.properties.get_float_default("wall_height", 0.0),
+                                        throws_shadows,
+                                    );
+                                    linedefs.push(cl);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        for l in self.linedefs.iter() {
+            if l.front_sector.is_none() && l.back_sector.is_none() {
+                if let Some(start) = self.find_vertex(l.start_vertex) {
+                    if let Some(end) = self.find_vertex(l.end_vertex) {
+                        let cl = CompiledLinedef::new(
+                            start.as_vec2(),
+                            end.as_vec2(),
+                            l.properties.get_float_default("wall_width", 0.0),
+                            l.properties.get_float_default("wall_height", 0.0),
+                            true,
+                        );
+                        linedefs.push(cl);
+                    }
+                }
+            }
+        }
+
+        MapMini::new(self.offset, self.grid_size, linedefs)
     }
 
     /// Generate a bounding box for all vertices in the map

@@ -62,16 +62,17 @@ pub use crate::{
     edge::Edges,
     intodata::IntoDataInput,
     map::{
-        light::Light, light::LightType, linedef::Linedef, meta::MapMeta, mini::MapMini,
-        pixelsource::NoiseTarget, pixelsource::PixelSource, sector::Sector,
-        state::AnimationVertexState, state::InterpolationType, state::VertexAnimationSystem,
-        state::VertexState, tile::Tile, vertex::Vertex, Map, MapCamera, MapToolType,
+        light::CompiledLight, light::Light, light::LightType, linedef::CompiledLinedef,
+        linedef::Linedef, meta::MapMeta, mini::MapMini, pixelsource::NoiseTarget,
+        pixelsource::PixelSource, sector::Sector, state::AnimationVertexState,
+        state::InterpolationType, state::VertexAnimationSystem, state::VertexState, tile::Tile,
+        vertex::Vertex, Map, MapCamera, MapToolType,
     },
     rasterizer::Rasterizer,
     rect::Rect,
     rusterix::Rusterix,
     scene::Scene,
-    scenebuilder::{d2material::D2MaterialBuilder, d2preview::D2PreviewBuilder, SceneBuilder},
+    scenebuilder::{d2material::D2MaterialBuilder, d2preview::D2PreviewBuilder},
     script::mapscript::MapScript,
     server::{
         assets::Assets,
@@ -94,7 +95,6 @@ pub use crate::{
 pub mod prelude {
     pub use crate::scenebuilder::{
         d2material::D2MaterialBuilder, d2preview::D2PreviewBuilder, d3builder::D3Builder,
-        SceneBuilder,
     };
     pub use crate::Client;
     pub use crate::IntoDataInput;
