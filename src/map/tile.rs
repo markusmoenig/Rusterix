@@ -8,6 +8,8 @@ pub struct Tile {
     pub textures: Vec<Texture>,
     /// For top down 2D scenarios
     pub blocking: bool,
+    /// For Rect Tool rendering in 3D
+    pub render_mode: u8,
 }
 
 impl Tile {
@@ -19,6 +21,7 @@ impl Tile {
             uvs: vec![uv],
             textures: vec![texture],
             blocking: false,
+            render_mode: 0,
         }
     }
 
@@ -29,6 +32,7 @@ impl Tile {
             uvs: vec![],
             textures: vec![],
             blocking: false,
+            render_mode: 0,
         }
     }
 

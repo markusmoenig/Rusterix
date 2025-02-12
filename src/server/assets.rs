@@ -69,6 +69,7 @@ impl Assets {
                 uvs: array.clone(),
                 textures: texture_array.clone(),
                 blocking: t.blocking,
+                render_mode: t.render_mode,
             };
             elements.insert(*id, array);
             tiles.insert(*id, tile);
