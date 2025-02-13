@@ -7,8 +7,8 @@ use theframework::prelude::*;
 pub struct Assets {
     pub map_sources: FxHashMap<String, String>,
     pub maps: FxHashMap<String, Map>,
-    pub entities: FxHashMap<String, String>,
-    pub items: FxHashMap<String, String>,
+    pub entities: FxHashMap<String, (String, String)>,
+    pub items: FxHashMap<String, (String, String)>,
     pub tiles: FxHashMap<Uuid, Tile>,
     pub textures: FxHashMap<String, Texture>,
 
@@ -139,7 +139,8 @@ impl Assets {
                                 if let Some(base_name) =
                                     file_path.file_stem().and_then(|stem| stem.to_str())
                                 {
-                                    self.entities.insert(base_name.to_string(), source);
+                                    self.entities
+                                        .insert(base_name.to_string(), (source, String::new()));
                                 }
                             }
                         }
@@ -193,7 +194,7 @@ impl Assets {
     }
 
     /// Add an entity.
-    pub fn add_entity(&mut self, name: String, code: String) {
-        self.entities.insert(name, code);
+    pub fn add_entity(&mut self, name: String, code: String, data: String) {
+        self.entities.insert(name, (code, data));
     }
 }

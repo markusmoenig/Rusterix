@@ -44,6 +44,12 @@ ref_thread_local! {
     /// Maps the item id to its class name.
     pub static managed ITEM_CLASSES: FxHashMap<u32, String> = FxHashMap::default();
 
+    /// Maps an entity class name to its data file.
+    pub static managed ENTITY_CLASS_DATA: FxHashMap<String, String> = FxHashMap::default();
+
+    /// Maps an item class name to its data file.
+    pub static managed ITEM_CLASS_DATA: FxHashMap<String, String> = FxHashMap::default();
+
     /// Errors since starting the region.
     pub static managed ERROR_COUNT: u32 = 0;
     pub static managed STARTUP_ERRORS: Vec<String> = vec![];
@@ -52,9 +58,9 @@ ref_thread_local! {
     pub static managed FROM_SENDER: OnceLock<Sender<RegionMessage>> = OnceLock::new();
 }
 
+use super::data::{apply_entity_data, apply_item_data};
 use super::RegionMessage;
 use vek::Vec3;
-// use EntityAction::*;
 
 use RegionMessage::*;
 
@@ -204,7 +210,7 @@ impl RegionInstance {
         *STARTUP_ERRORS.borrow_mut() = vec![];
 
         // Installing Entity Class Templates
-        for (name, entity_source) in &assets.entities {
+        for (name, (entity_source, entity_data)) in &assets.entities {
             if let Err(err) = self.execute(entity_source) {
                 STARTUP_ERRORS.borrow_mut().push(format!(
                     "{}: Error Compiling {} Character Class: {}",
@@ -217,10 +223,13 @@ impl RegionInstance {
                     self.name, name, err,
                 ));
             }
+            ENTITY_CLASS_DATA
+                .borrow_mut()
+                .insert(name.clone(), entity_data.clone());
         }
 
         // Installing Item Class Templates
-        for (name, item_source) in &assets.items {
+        for (name, (item_source, item_data)) in &assets.items {
             if let Err(err) = self.execute(item_source) {
                 STARTUP_ERRORS.borrow_mut().push(format!(
                     "{}: Error Compiling {} Item Class: {}",
@@ -233,6 +242,9 @@ impl RegionInstance {
                     self.name, name, err,
                 ));
             }
+            ITEM_CLASS_DATA
+                .borrow_mut()
+                .insert(name.clone(), item_data.clone());
         }
 
         // Set an entity id and mark all fields dirty for the first transmission to the server.
@@ -259,6 +271,8 @@ impl RegionInstance {
         let map = MAP.borrow_mut().clone();
         let name = map.name.clone();
         let startup_errors = STARTUP_ERRORS.borrow().clone();
+        let entity_class_data = ENTITY_CLASS_DATA.borrow().clone();
+        let item_class_data = ITEM_CLASS_DATA.borrow().clone();
 
         std::thread::spawn(move || {
             // Initialize the local thread global storage
@@ -277,6 +291,8 @@ impl RegionInstance {
             *TICKS.borrow_mut() = 0;
             // TODO: Make this configurable
             *TICKS_PER_MINUTE.borrow_mut() = 4;
+            *ENTITY_CLASS_DATA.borrow_mut() = entity_class_data;
+            *ITEM_CLASS_DATA.borrow_mut() = item_class_data;
 
             // Send startup messages
             *ERROR_COUNT.borrow_mut() = startup_errors.len() as u32;
@@ -352,47 +368,70 @@ impl RegionInstance {
                         ));
                         *ERROR_COUNT.borrow_mut() += 1;
                     }
-                }
 
-                // Running the item setup scripts for the class instances
-                let items = MAP.borrow().items.clone();
-                for item in items.iter() {
-                    if let Some(setup) = item.get_attr_string("setup") {
-                        if let Err(err) = REGION.borrow_mut().execute(&setup) {
-                            send_log_message(format!(
-                                "{}: Item Setup '{}/{}': {}",
-                                name,
-                                item.get_attr_string("name").unwrap_or("Unknown".into()),
-                                item.get_attr_string("class_name")
-                                    .unwrap_or("Unknown".into()),
-                                err,
-                            ));
-                            *ERROR_COUNT.borrow_mut() += 1;
-                        }
-
-                        *CURR_ITEMID.borrow_mut() = Some(item.id);
-                        if let Err(err) = REGION.borrow_mut().execute("setup()") {
-                            send_log_message(format!(
-                                "{}: Item Setup '{}/{}': {}",
-                                name,
-                                item.get_attr_string("name").unwrap_or("Unknown".into()),
-                                item.get_attr_string("class_name")
-                                    .unwrap_or("Unknown".into()),
-                                err,
-                            ));
-                            *ERROR_COUNT.borrow_mut() += 1;
+                    // Setting the data for the entity.
+                    if let Some(class_name) = entity.get_attr_string("class_name") {
+                        if let Some(data) = ENTITY_CLASS_DATA.borrow().get(&class_name) {
+                            let mut map = MAP.borrow_mut();
+                            for e in map.entities.iter_mut() {
+                                if e.id == entity.id {
+                                    apply_entity_data(e, data);
+                                }
+                            }
                         }
                     }
                 }
-                *CURR_ITEMID.borrow_mut() = None;
-
-                // Send startup log message
-                send_log_message(format!(
-                    "{}: Startup with {} errors.",
-                    name,
-                    *ERROR_COUNT.borrow(),
-                ));
             }
+
+            // Running the item setup scripts for the class instances
+            let items = MAP.borrow().items.clone();
+            for item in items.iter() {
+                if let Some(setup) = item.get_attr_string("setup") {
+                    if let Err(err) = REGION.borrow_mut().execute(&setup) {
+                        send_log_message(format!(
+                            "{}: Item Setup '{}/{}': {}",
+                            name,
+                            item.get_attr_string("name").unwrap_or("Unknown".into()),
+                            item.get_attr_string("class_name")
+                                .unwrap_or("Unknown".into()),
+                            err,
+                        ));
+                        *ERROR_COUNT.borrow_mut() += 1;
+                    }
+
+                    *CURR_ITEMID.borrow_mut() = Some(item.id);
+                    if let Err(err) = REGION.borrow_mut().execute("setup()") {
+                        send_log_message(format!(
+                            "{}: Item Setup '{}/{}': {}",
+                            name,
+                            item.get_attr_string("name").unwrap_or("Unknown".into()),
+                            item.get_attr_string("class_name")
+                                .unwrap_or("Unknown".into()),
+                            err,
+                        ));
+                        *ERROR_COUNT.borrow_mut() += 1;
+                    }
+                }
+                // Setting the data for the item.
+                if let Some(class_name) = item.get_attr_string("class_name") {
+                    if let Some(data) = ITEM_CLASS_DATA.borrow().get(&class_name) {
+                        let mut map = MAP.borrow_mut();
+                        for i in map.items.iter_mut() {
+                            if i.id == item.id {
+                                apply_item_data(i, data);
+                            }
+                        }
+                    }
+                }
+            }
+            *CURR_ITEMID.borrow_mut() = None;
+
+            // Send startup log message
+            send_log_message(format!(
+                "{}: Startup with {} errors.",
+                name,
+                *ERROR_COUNT.borrow(),
+            ));
 
             loop {
                 select! {

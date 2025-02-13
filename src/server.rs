@@ -1,5 +1,6 @@
 pub mod assets;
 pub mod currency;
+pub mod data;
 pub mod entity;
 pub mod item;
 pub mod message;

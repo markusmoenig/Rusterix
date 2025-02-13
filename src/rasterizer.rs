@@ -740,6 +740,7 @@ impl Rasterizer {
     }
 
     /// Compute the barycentric weights for a Vec2
+    #[inline(always)]
     fn barycentric_weights_2d(
         &self,
         a: &[f32; 3],
@@ -762,6 +763,7 @@ impl Rasterizer {
     }
 
     /// Compute the barycentric weights for a Vec2
+    #[inline(always)]
     fn barycentric_weights_3d(
         &self,
         a: &[f32; 4],

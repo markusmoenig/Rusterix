@@ -526,6 +526,10 @@ impl D2PreviewBuilder {
                 let size = map.grid_size;
                 let hsize = map.grid_size / 2.0;
 
+                if let Some(Value::Light(light)) = entity.attributes.get("light") {
+                    scene.dynamic_lights.push(light.clone());
+                }
+
                 if let Some(Value::Source(source)) = entity.attributes.get("source") {
                     if let Some(tile) = source.to_tile(tiles, 100, &entity.attributes) {
                         let texture_index = textures.len();

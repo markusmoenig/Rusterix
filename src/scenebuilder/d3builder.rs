@@ -393,6 +393,10 @@ impl D3Builder {
             let show_entity = true; // !(entity.is_player() && camera.id() == "firstp");
 
             if show_entity {
+                if let Some(Value::Light(light)) = entity.attributes.get("light") {
+                    scene.dynamic_lights.push(light.clone());
+                }
+
                 if let Some(Value::Source(source)) = entity.attributes.get("source") {
                     let entity_pos = Vec2::new(entity.position.x, entity.position.z);
                     let direction_to_camera = (camera_pos - entity_pos).normalized();
@@ -424,6 +428,10 @@ impl D3Builder {
             let show_entity = true; // !(entity.is_player() && camera.id() == "firstp");
 
             if show_entity {
+                if let Some(Value::Light(light)) = item.attributes.get("light") {
+                    scene.dynamic_lights.push(light.clone());
+                }
+
                 if let Some(Value::Source(source)) = item.attributes.get("source") {
                     let item_pos = Vec2::new(item.position.x, item.position.z);
                     let direction_to_camera = (camera_pos - item_pos).normalized();

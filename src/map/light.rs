@@ -12,13 +12,13 @@ pub enum LightType {
 }
 
 /// Parameters for flickering
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct Flicker {
     pub frequency: f32, // How fast the flicker changes (in Hz)
     pub amplitude: f32, // Max intensity change (e.g., 0.2 for 20% flicker)
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Light {
     pub light_type: LightType,
     pub properties: ValueContainer,
@@ -136,6 +136,7 @@ impl Light {
         };
         let width = self.properties.get_float_default("width", 1.0);
         let height = self.properties.get_float_default("height", 1.0);
+        let emitting = self.properties.get_bool_default("emitting", true);
 
         CompiledLight {
             light_type: self.light_type,
@@ -143,6 +144,7 @@ impl Light {
             position,
             color,
             intensity,
+            emitting,
             // point/spot
             start_distance,
             end_distance,
@@ -211,6 +213,7 @@ pub struct CompiledLight {
     pub position: Vec3<f32>,
     pub color: [f32; 3],
     pub intensity: f32,
+    pub emitting: bool,
     // for point and spot lights
     pub start_distance: f32,
     pub end_distance: f32,
@@ -237,6 +240,9 @@ impl CompiledLight {
 
     /// Calculate the light's intensity and color at a given point.
     pub fn color_at(&self, point: Vec3<f32>, time: f32) -> Option<[f32; 3]> {
+        if !self.emitting {
+            return None;
+        };
         match self.light_type {
             LightType::Point => self.calculate_point_light(point, time),
             LightType::Ambient => self.calculate_ambient_light(time),

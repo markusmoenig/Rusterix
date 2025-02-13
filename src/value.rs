@@ -1,4 +1,4 @@
-use crate::{PixelSource, PlayerCamera, SampleMode, Texture};
+use crate::{Light, PixelSource, PlayerCamera, SampleMode, Texture};
 use std::fmt;
 use theframework::prelude::*;
 
@@ -16,6 +16,7 @@ pub enum Value {
     Texture(Texture),
     SampleMode(SampleMode),
     PlayerCamera(PlayerCamera),
+    Light(Light),
 }
 
 impl Value {
@@ -45,11 +46,12 @@ impl fmt::Display for Value {
             }
             Value::SampleMode(_) => write!(f, "SampleMode"),
             Value::PlayerCamera(_) => write!(f, "PlayerCamera"),
+            Value::Light(_) => write!(f, "Light"),
         }
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct ValueContainer {
     values: FxHashMap<String, Value>,
 }
@@ -87,6 +89,13 @@ impl ValueContainer {
                 None
             }
         })
+    }
+
+    pub fn get_bool_default(&self, key: &str, def: bool) -> bool {
+        self.values
+            .get(key)
+            .map(|v| if let Value::Bool(val) = v { *val } else { def })
+            .unwrap_or(def)
     }
 
     pub fn get_int(&self, key: &str) -> Option<i32> {

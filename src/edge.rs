@@ -23,6 +23,7 @@ impl Edges {
     }
 
     /// Evaluate all edges for a point and return true if the point is inside the triangle.
+    #[inline(always)]
     pub fn evaluate(&self, p: [f32; 2]) -> bool {
         for i in 0..3 {
             let result = self.a[i] * p[0] + self.b[i] * p[1] + self.c[i];

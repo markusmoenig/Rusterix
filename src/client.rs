@@ -128,7 +128,7 @@ impl Client {
         let mut light = Light::new(LightType::Ambient);
         light.set_color([ac.x, ac.y, ac.z]);
         light.set_intensity(1.0);
-        self.scene_d2.dynamic_lights = vec![light];
+        self.scene_d2.dynamic_lights.push(light);
 
         let mut rast = Rasterizer::setup(None, Mat4::identity(), Mat4::identity());
         rast.mapmini = self.scene_d2.mapmini.clone();
@@ -147,7 +147,7 @@ impl Client {
         light.set_color([ac.x, ac.y, ac.z]);
         light.set_intensity(1.0);
 
-        self.scene_d3.dynamic_lights = vec![light];
+        self.scene_d3.dynamic_lights.push(light);
         let mut rast = Rasterizer::setup(
             None,
             self.camera_d3.view_matrix(),

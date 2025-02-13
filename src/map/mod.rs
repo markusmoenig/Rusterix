@@ -180,18 +180,16 @@ impl Map {
             if add_it {
                 for linedef_id in sector.linedefs.iter() {
                     if let Some(linedef) = self.find_linedef(*linedef_id) {
-                        if linedef.front_sector.is_none() && linedef.back_sector.is_none() {
-                            if let Some(start) = self.find_vertex(linedef.start_vertex) {
-                                if let Some(end) = self.find_vertex(linedef.end_vertex) {
-                                    let cl = CompiledLinedef::new(
-                                        start.as_vec2(),
-                                        end.as_vec2(),
-                                        linedef.properties.get_float_default("wall_width", 0.0),
-                                        linedef.properties.get_float_default("wall_height", 0.0),
-                                        throws_shadows,
-                                    );
-                                    linedefs.push(cl);
-                                }
+                        if let Some(start) = self.find_vertex(linedef.start_vertex) {
+                            if let Some(end) = self.find_vertex(linedef.end_vertex) {
+                                let cl = CompiledLinedef::new(
+                                    start.as_vec2(),
+                                    end.as_vec2(),
+                                    linedef.properties.get_float_default("wall_width", 0.0),
+                                    linedef.properties.get_float_default("wall_height", 0.0),
+                                    throws_shadows,
+                                );
+                                linedefs.push(cl);
                             }
                         }
                     }
