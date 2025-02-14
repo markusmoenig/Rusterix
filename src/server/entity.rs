@@ -1,5 +1,6 @@
 use rand::Rng;
 use rustc_hash::FxHashSet;
+use std::collections::VecDeque;
 use theframework::prelude::*;
 use vek::{Vec2, Vec3};
 
@@ -500,6 +501,16 @@ impl Entity {
         let direction = Vec2::new(angle.cos(), angle.sin());
         self.set_orientation(direction);
     }
+
+    /// Create an iterator over the inventory.
+    pub fn iter_inventory(&self) -> InventoryIterator {
+        InventoryIterator::new(self)
+    }
+
+    /// Create a mutable iterator over the inventory.
+    pub fn iter_inventory_mut(&mut self) -> InventoryIteratorMut {
+        InventoryIteratorMut::new(self)
+    }
 }
 
 // EntityUpdate
@@ -537,5 +548,79 @@ impl EntityUpdate {
             equipped_updates: None,
             wallet_updates: None,
         })
+    }
+}
+
+/// Iterator over inventory
+pub struct InventoryIterator<'a> {
+    stack: VecDeque<Box<dyn Iterator<Item = &'a Item> + 'a>>,
+}
+
+impl<'a> InventoryIterator<'a> {
+    pub fn new(entity: &'a Entity) -> Self {
+        let iter: Box<dyn Iterator<Item = &'a Item> + 'a> = Box::new(entity.inventory.values());
+        let mut stack = VecDeque::new();
+        stack.push_back(iter); // Push the boxed iterator
+        InventoryIterator { stack }
+    }
+}
+
+impl<'a> Iterator for InventoryIterator<'a> {
+    type Item = &'a Item;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        while let Some(iter) = self.stack.back_mut() {
+            if let Some(item) = iter.next() {
+                if let Some(container) = &item.container {
+                    let child_iter: Box<dyn Iterator<Item = &'a Item> + 'a> =
+                        Box::new(container.iter());
+                    self.stack.push_back(child_iter);
+                }
+                return Some(item);
+            } else {
+                self.stack.pop_back();
+            }
+        }
+        None
+    }
+}
+
+/// Mut iterator over inventory
+pub struct InventoryIteratorMut<'a> {
+    stack: VecDeque<Box<dyn Iterator<Item = &'a mut Item> + 'a>>,
+}
+
+impl<'a> InventoryIteratorMut<'a> {
+    pub fn new(entity: &'a mut Entity) -> Self {
+        let iter: Box<dyn Iterator<Item = &'a mut Item> + 'a> =
+            Box::new(entity.inventory.values_mut());
+        let mut stack = VecDeque::new();
+        stack.push_back(iter);
+        InventoryIteratorMut { stack }
+    }
+}
+
+impl<'a> Iterator for InventoryIteratorMut<'a> {
+    type Item = &'a mut Item;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        while let Some(iter) = self.stack.back_mut() {
+            if let Some(item) = iter.next() {
+                // Use a raw pointer to bypass the borrow checker
+                let container_ptr = item.container.as_mut().map(|c| c as *mut Vec<Item>);
+
+                if let Some(ptr) = container_ptr {
+                    let container = unsafe { &mut *ptr };
+                    let child_iter: Box<dyn Iterator<Item = &'a mut Item> + 'a> =
+                        Box::new(container.iter_mut());
+                    self.stack.push_back(child_iter);
+                }
+
+                return Some(item);
+            } else {
+                self.stack.pop_back();
+            }
+        }
+        None
     }
 }

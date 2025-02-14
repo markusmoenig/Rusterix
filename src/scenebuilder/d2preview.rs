@@ -526,8 +526,20 @@ impl D2PreviewBuilder {
                 let size = map.grid_size;
                 let hsize = map.grid_size / 2.0;
 
+                // Find light on entity
                 if let Some(Value::Light(light)) = entity.attributes.get("light") {
-                    scene.dynamic_lights.push(light.clone());
+                    let mut light = light.clone();
+                    light.set_position(entity.position);
+                    scene.dynamic_lights.push(light);
+                }
+
+                // Find light on entity items
+                for item in entity.iter_inventory() {
+                    if let Some(Value::Light(light)) = item.attributes.get("light") {
+                        let mut light = light.clone();
+                        light.set_position(entity.position);
+                        scene.dynamic_lights.push(light);
+                    }
                 }
 
                 if let Some(Value::Source(source)) = entity.attributes.get("source") {
@@ -552,11 +564,17 @@ impl D2PreviewBuilder {
 
             // Items
             for item in &map.items {
-                let entity_pos = Vec2::new(item.position.x, item.position.z);
+                let item_pos = Vec2::new(item.position.x, item.position.z);
                 let pos =
-                    self.map_grid_to_local(screen_size, Vec2::new(entity_pos.x, entity_pos.y), map);
+                    self.map_grid_to_local(screen_size, Vec2::new(item_pos.x, item_pos.y), map);
                 let size = map.grid_size;
                 let hsize = map.grid_size / 2.0;
+
+                if let Some(Value::Light(light)) = item.attributes.get("light") {
+                    let mut light = light.clone();
+                    light.set_position(item.position);
+                    scene.dynamic_lights.push(light);
+                }
 
                 if let Some(Value::Source(source)) = item.attributes.get("source") {
                     if let Some(tile) = source.to_tile(tiles, 100, &item.attributes) {

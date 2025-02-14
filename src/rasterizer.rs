@@ -283,9 +283,10 @@ impl Rasterizer {
                                             let world = grid_space_pos / self.mapmini.grid_size;
 
                                             for light in &self.compiled_lights {
-                                                if let Some(light_color) = light
-                                                    .color_at(Vec3::new(world.x, 0.0, world.y), 0.0)
-                                                {
+                                                if let Some(light_color) = light.color_at(
+                                                    Vec3::new(world.x, 0.0, world.y),
+                                                    scene.animation_frame as f32,
+                                                ) {
                                                     let mut light_is_visible = true;
                                                     if light.light_type != LightType::Ambient
                                                         && !self
@@ -605,9 +606,10 @@ impl Rasterizer {
                                                 let epsilon = 0.01;
 
                                                 for light in &self.compiled_lights {
-                                                    if let Some(light_color) =
-                                                        light.color_at(world, 0.0)
-                                                    {
+                                                    if let Some(light_color) = light.color_at(
+                                                        world,
+                                                        scene.animation_frame as f32,
+                                                    ) {
                                                         let direction_to_light =
                                                             (light.position_2d() - world_2d)
                                                                 .normalized();

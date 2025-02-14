@@ -29,7 +29,8 @@ pub fn apply_entity_data(entity: &mut Entity, toml: &str) {
                         }
                     }
                 } else if attr == "light" {
-                    let light = Light::new(LightType::Point);
+                    let mut light = Light::new(LightType::Point);
+                    read_light(&mut light, v);
                     entity.set_attribute("light", crate::Value::Light(light));
                 }
             }
@@ -67,7 +68,8 @@ pub fn apply_item_data(item: &mut Item, toml: &str) {
                         }
                     }
                 } else if attr == "light" {
-                    let light = Light::new(LightType::Point);
+                    let mut light = Light::new(LightType::Point);
+                    read_light(&mut light, v);
                     item.set_attribute("light", crate::Value::Light(light));
                 }
             }
@@ -75,5 +77,42 @@ pub fn apply_item_data(item: &mut Item, toml: &str) {
         Err(err) => {
             println!("error {:?}", err);
         }
+    }
+}
+
+/// Read a light from the toml
+pub fn read_light(light: &mut Light, values: &toml::Value) {
+    if let Some(toml::Value::Float(flicker)) = values.get("flicker") {
+        light.set_flicker(*flicker as f32);
+    }
+    if let Some(toml::Value::Float(dist)) = values.get("start_distance") {
+        light.set_start_distance(*dist as f32);
+    }
+    if let Some(toml::Value::Float(dist)) = values.get("end_distance") {
+        light.set_end_distance(*dist as f32);
+    }
+    if let Some(toml::Value::Float(dist)) = values.get("intensity") {
+        light.set_intensity(*dist as f32);
+    }
+    if let Some(toml::Value::String(hex)) = values.get("color") {
+        light.set_color(hex_to_rgb_f32(hex));
+    }
+}
+
+/// Converts a hex color string  to an [f32; 3]
+fn hex_to_rgb_f32(hex: &str) -> [f32; 3] {
+    let hex = hex.trim_start_matches('#');
+
+    if hex.len() != 6 {
+        return [1.0, 1.0, 1.0]; // Return white for invalid input
+    }
+
+    match (
+        u8::from_str_radix(&hex[0..2], 16),
+        u8::from_str_radix(&hex[2..4], 16),
+        u8::from_str_radix(&hex[4..6], 16),
+    ) {
+        (Ok(r), Ok(g), Ok(b)) => [r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0],
+        _ => [1.0, 1.0, 1.0], // Return white for invalid input
     }
 }

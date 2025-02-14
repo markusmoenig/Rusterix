@@ -80,6 +80,11 @@ impl ValueContainer {
         self.values.get(key)
     }
 
+    // Get a mutable reference to a value by key
+    pub fn get_mut(&mut self, key: &str) -> Option<&mut Value> {
+        self.values.get_mut(key)
+    }
+
     // Getters for specific value types by key
     pub fn get_bool(&self, key: &str) -> Option<bool> {
         self.values.get(key).and_then(|v| {

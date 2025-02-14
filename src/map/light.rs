@@ -1,4 +1,7 @@
 use crate::{Value, ValueContainer};
+use rand::rngs::StdRng;
+use rand::Rng;
+use rand::SeedableRng;
 use theframework::prelude::*;
 use vek::{Vec2, Vec3};
 
@@ -9,13 +12,6 @@ pub enum LightType {
     Ambient,
     Spot,
     Area,
-}
-
-/// Parameters for flickering
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
-pub struct Flicker {
-    pub frequency: f32, // How fast the flicker changes (in Hz)
-    pub amplitude: f32, // Max intensity change (e.g., 0.2 for 20% flicker)
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -61,15 +57,9 @@ impl Light {
         self.properties.get_float_default("end_distance", 10.0)
     }
 
-    /// Helper: get flicker if it exists (requires flicker_frequency & flicker_amplitude)
-    pub fn get_flicker(&self) -> Option<Flicker> {
-        let freq = self.properties.get_float("flicker_frequency")?;
-        let amp = self.properties.get_float("flicker_amplitude")?;
-        // If both exist, we consider flicker "enabled"
-        Some(Flicker {
-            frequency: freq,
-            amplitude: amp,
-        })
+    /// Helper: get flicker
+    pub fn get_flicker(&self) -> f32 {
+        self.properties.get_float_default("flicker", 0.0)
     }
 
     /// Returns the position of the light (3D)
@@ -100,19 +90,7 @@ impl Light {
         let start_distance = self.properties.get_float_default("start_distance", 3.0);
         let end_distance = self.properties.get_float_default("end_distance", 10.0);
 
-        // Flicker is optional
-        let flicker = {
-            let freq = self.properties.get_float("flicker_frequency");
-            let amp = self.properties.get_float("flicker_amplitude");
-            if let (Some(f), Some(a)) = (freq, amp) {
-                Some(Flicker {
-                    frequency: f,
-                    amplitude: a,
-                })
-            } else {
-                None
-            }
-        };
+        let flicker = self.properties.get_float_default("flicker", 0.0);
 
         // For spot lights:
         let direction = {
@@ -191,17 +169,8 @@ impl Light {
     }
 
     /// Set flicker frequency and amplitude
-    pub fn set_flicker(&mut self, frequency: f32, amplitude: f32) {
-        self.properties
-            .set("flicker_frequency", Value::Float(frequency));
-        self.properties
-            .set("flicker_amplitude", Value::Float(amplitude));
-    }
-
-    /// Remove flicker
-    pub fn clear_flicker(&mut self) {
-        self.properties.remove("flicker_frequency");
-        self.properties.remove("flicker_amplitude");
+    pub fn set_flicker(&mut self, flicker: f32) {
+        self.properties.set("flicker", Value::Float(flicker));
     }
 }
 
@@ -217,7 +186,7 @@ pub struct CompiledLight {
     // for point and spot lights
     pub start_distance: f32,
     pub end_distance: f32,
-    pub flicker: Option<Flicker>,
+    pub flicker: f32,
     // for spot lights
     pub direction: Vec3<f32>,
     pub cone_angle: f32,
@@ -338,10 +307,10 @@ impl CompiledLight {
     }
 }
 
-fn apply_flicker(color: [f32; 3], intensity: f32, flicker: Option<Flicker>, time: f32) -> [f32; 3] {
-    let flicker_factor = if let Some(f) = flicker {
-        let noise = ((time * f.frequency).sin() * 0.5 + 0.5) * f.amplitude;
-        1.0 - noise
+fn apply_flicker(color: [f32; 3], intensity: f32, flicker: f32, time: f32) -> [f32; 3] {
+    let flicker_factor = if flicker > 0.0 {
+        let mut rng = StdRng::seed_from_u64(time as u64);
+        rng.gen_range(1.0 - flicker..=1.0)
     } else {
         1.0
     };

@@ -393,8 +393,16 @@ impl D3Builder {
             let show_entity = true; // !(entity.is_player() && camera.id() == "firstp");
 
             if show_entity {
+                // Find light on entity
                 if let Some(Value::Light(light)) = entity.attributes.get("light") {
                     scene.dynamic_lights.push(light.clone());
+                }
+
+                // Find light on entity items
+                for item in entity.iter_inventory() {
+                    if let Some(Value::Light(light)) = item.attributes.get("light") {
+                        scene.dynamic_lights.push(light.clone());
+                    }
                 }
 
                 if let Some(Value::Source(source)) = entity.attributes.get("source") {
