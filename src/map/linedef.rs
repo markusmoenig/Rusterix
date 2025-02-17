@@ -57,7 +57,7 @@ pub struct CompiledLinedef {
     pub wall_width: f32,
     pub wall_height: f32,
 
-    pub throws_shadows: bool,
+    pub casts_shadows: bool,
 }
 
 impl CompiledLinedef {
@@ -66,14 +66,14 @@ impl CompiledLinedef {
         end: Vec2<f32>,
         wall_width: f32,
         wall_height: f32,
-        throws_shadows: bool,
+        casts_shadows: bool,
     ) -> Self {
         Self {
             start,
             end,
             wall_width,
             wall_height,
-            throws_shadows,
+            casts_shadows,
         }
     }
 }

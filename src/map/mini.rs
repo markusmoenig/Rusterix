@@ -56,6 +56,9 @@ impl MapMini {
     /// Test if "to" is visible from "from".
     pub fn is_visible(&self, from: Vec2<f32>, to: Vec2<f32>) -> bool {
         for linedef in &self.linedefs {
+            if !linedef.casts_shadows {
+                continue;
+            }
             if self.segments_intersect(from, to, linedef.start, linedef.end) {
                 return false; // Line is blocked by a linedef
             }

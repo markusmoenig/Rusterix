@@ -87,7 +87,7 @@ impl D3Builder {
                                         [
                                             v[0],
                                             sector_elevation
-                                                + if add_it_as_floor { 0.09 } else { 0.0 },
+                                                + if add_it_as_floor { 0.2 } else { 0.0 },
                                             v[1],
                                             1.0,
                                         ]
@@ -329,6 +329,7 @@ impl D3Builder {
             sample_mode = *sm;
         }
 
+        scene.dynamic_lights = vec![];
         let mut textures = vec![];
         let mut batches = vec![];
 
@@ -395,13 +396,17 @@ impl D3Builder {
             if show_entity {
                 // Find light on entity
                 if let Some(Value::Light(light)) = entity.attributes.get("light") {
-                    scene.dynamic_lights.push(light.clone());
+                    let mut light = light.clone();
+                    light.set_position(entity.position);
+                    scene.dynamic_lights.push(light);
                 }
 
                 // Find light on entity items
                 for item in entity.iter_inventory() {
                     if let Some(Value::Light(light)) = item.attributes.get("light") {
-                        scene.dynamic_lights.push(light.clone());
+                        let mut light = light.clone();
+                        light.set_position(entity.position);
+                        scene.dynamic_lights.push(light);
                     }
                 }
 
@@ -437,7 +442,9 @@ impl D3Builder {
 
             if show_entity {
                 if let Some(Value::Light(light)) = item.attributes.get("light") {
-                    scene.dynamic_lights.push(light.clone());
+                    let mut light = light.clone();
+                    light.set_position(item.position);
+                    scene.dynamic_lights.push(light);
                 }
 
                 if let Some(Value::Source(source)) = item.attributes.get("source") {

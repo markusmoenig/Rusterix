@@ -28,6 +28,12 @@ pub struct Rasterizer {
 
     /// The compliled lights in the scene.
     pub compiled_lights: Vec<CompiledLight>,
+
+    /// Hash for animation
+    pub hash_anim: u32,
+
+    /// Background color (Sky etc.)
+    pub background_color: Option<[u8; 4]>,
 }
 
 /// Rasterizes batches of 2D and 3D meshes (and lines).
@@ -61,6 +67,9 @@ impl Rasterizer {
             sample_mode: Nearest,
 
             compiled_lights: vec![],
+            hash_anim: 0,
+
+            background_color: None,
         }
     }
 
@@ -81,6 +90,19 @@ impl Rasterizer {
     ) {
         self.width = width as f32;
         self.height = height as f32;
+
+        /// Generate a hash value for the given animation frame.
+        /// We use it for random light flickering.
+        fn hash_u32(seed: u32) -> u32 {
+            let mut state = seed;
+            state = (state ^ 61) ^ (state >> 16);
+            state = state.wrapping_add(state << 3);
+            state ^= state >> 4;
+            state = state.wrapping_mul(0x27d4eb2d);
+            state ^= state >> 15;
+            state
+        }
+        self.hash_anim = hash_u32(scene.animation_frame as u32);
 
         scene.project(
             self.projection_matrix_2d,
@@ -111,8 +133,14 @@ impl Rasterizer {
         let tile_buffers: Vec<Vec<u8>> = tiles
             .par_iter()
             .map(|tile| {
-                // Local tile buffer
+                // Local tile buffer, fill with background color if needed
                 let mut buffer = vec![0; tile.width * tile.height * 4];
+                if let Some(background_color) = &self.background_color {
+                    for chunk in buffer.chunks_exact_mut(4) {
+                        chunk.copy_from_slice(background_color);
+                    }
+                }
+
                 let mut z_buffer = vec![1.0_f32; tile.width * tile.height];
 
                 if let Some(shader) = &scene.background {
@@ -285,7 +313,7 @@ impl Rasterizer {
                                             for light in &self.compiled_lights {
                                                 if let Some(light_color) = light.color_at(
                                                     Vec3::new(world.x, 0.0, world.y),
-                                                    scene.animation_frame as f32,
+                                                    &self.hash_anim,
                                                 ) {
                                                     let mut light_is_visible = true;
                                                     if light.light_type != LightType::Ambient
@@ -598,18 +626,17 @@ impl Rasterizer {
 
                                             // Sample Lights
                                             if batch.receives_light
-                                                && (!scene.lights.is_empty()
-                                                    || !scene.dynamic_lights.is_empty())
+                                                && (!self.compiled_lights.is_empty())
                                             {
-                                                let mut accumulated_light = [0.0, 0.0, 0.0];
+                                                let mut accumulated_light: [f32; 3] =
+                                                    [0.0, 0.0, 0.0];
                                                 let world_2d = Vec2::new(world.x, world.z);
                                                 let epsilon = 0.01;
 
                                                 for light in &self.compiled_lights {
-                                                    if let Some(light_color) = light.color_at(
-                                                        world,
-                                                        scene.animation_frame as f32,
-                                                    ) {
+                                                    if let Some(light_color) =
+                                                        light.color_at(world, &self.hash_anim)
+                                                    {
                                                         let direction_to_light =
                                                             (light.position_2d() - world_2d)
                                                                 .normalized();

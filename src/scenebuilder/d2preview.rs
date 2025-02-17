@@ -162,6 +162,7 @@ impl D2PreviewBuilder {
             || self.map_tool_type == MapToolType::Linedef
             || self.map_tool_type == MapToolType::Vertex
             || self.map_tool_type == MapToolType::Game
+            || self.map_tool_type == MapToolType::MiniMap
         {
             for sector in &map.sectors {
                 if let Some(geo) = sector.generate_geometry(map) {
@@ -390,6 +391,44 @@ impl D2PreviewBuilder {
         {
             for vertex in &map.vertices {
                 if let Some(vertex_pos) = map.get_vertex(vertex.id) {
+                    if self.map_tool_type == MapToolType::Linedef {
+                        // In linedef mode, only show vertices that are part of selected linedefs
+                        let mut found = false;
+                        for linedef_id in map.selected_linedefs.iter() {
+                            if let Some(linedef) = map.find_linedef(*linedef_id) {
+                                if linedef.start_vertex == vertex.id
+                                    || linedef.end_vertex == vertex.id
+                                {
+                                    found = true;
+                                    break;
+                                }
+                            }
+                        }
+                        if !found {
+                            continue;
+                        }
+                    } else if self.map_tool_type == MapToolType::Sector {
+                        // In sector mode, only show vertices that are part of selected sectors
+                        let mut found = false;
+                        for sector_id in map.selected_sectors.iter() {
+                            if let Some(sector) = map.find_sector(*sector_id) {
+                                for linedef_id in sector.linedefs.iter() {
+                                    if let Some(linedef) = map.find_linedef(*linedef_id) {
+                                        if linedef.start_vertex == vertex.id
+                                            || linedef.end_vertex == vertex.id
+                                        {
+                                            found = true;
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        if !found {
+                            continue;
+                        }
+                    }
+
                     let pos = self.map_grid_to_local(screen_size, vertex_pos, map);
 
                     let size = 4.0;
@@ -418,6 +457,7 @@ impl D2PreviewBuilder {
             || self.map_tool_type == MapToolType::Linedef
             || self.map_tool_type == MapToolType::Sector
             || self.map_tool_type == MapToolType::Effects
+            || self.map_tool_type == MapToolType::MiniMap
         {
             let mut selected_lines = vec![];
             let mut non_selected_lines = vec![];

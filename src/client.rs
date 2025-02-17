@@ -155,6 +155,7 @@ impl Client {
                 .projection_matrix(width as f32, height as f32),
         );
         rast.mapmini = self.scene_d2.mapmini.clone();
+        rast.background_color = Some(vec4_to_pixel(&Vec4::new(ac.x, ac.y, ac.z, 1.0)));
         rast.rasterize(&mut self.scene_d3, pixels, width, height, 64);
     }
 }

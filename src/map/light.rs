@@ -1,7 +1,4 @@
 use crate::{Value, ValueContainer};
-use rand::rngs::StdRng;
-use rand::Rng;
-use rand::SeedableRng;
 use theframework::prelude::*;
 use vek::{Vec2, Vec3};
 
@@ -208,57 +205,43 @@ impl CompiledLight {
     }
 
     /// Calculate the light's intensity and color at a given point.
-    pub fn color_at(&self, point: Vec3<f32>, time: f32) -> Option<[f32; 3]> {
+    pub fn color_at(&self, point: Vec3<f32>, hash: &u32) -> Option<[f32; 3]> {
         if !self.emitting {
             return None;
         };
         match self.light_type {
-            LightType::Point => self.calculate_point_light(point, time),
-            LightType::Ambient => self.calculate_ambient_light(time),
-            LightType::Spot => self.calculate_spot_light(point, time),
-            LightType::Area => self.calculate_area_light(point),
+            LightType::Point => self.calculate_point_light(point, hash),
+            LightType::Ambient => self.calculate_ambient_light(hash),
+            LightType::Spot => self.calculate_spot_light(point, hash),
+            LightType::Area => self.calculate_area_light(point, hash),
         }
     }
 
-    fn calculate_point_light(&self, point: Vec3<f32>, time: f32) -> Option<[f32; 3]> {
+    fn calculate_point_light(&self, point: Vec3<f32>, hash: &u32) -> Option<[f32; 3]> {
         let distance = (point - self.position).magnitude();
 
-        // Within start_distance => full intensity
-        if distance <= self.start_distance {
-            return Some(apply_flicker(
-                self.color,
-                self.intensity,
-                self.flicker,
-                time,
-            ));
-        }
         // Beyond end_distance => no intensity
         if distance >= self.end_distance {
             return None;
         }
 
+        // Within start_distance => full intensity
+        if distance <= self.start_distance {
+            return Some(self.apply_flicker(self.color, self.intensity, self.flicker, hash));
+        }
+
         // Smooth attenuation between start and end
-        let attenuation = smoothstep(self.end_distance, self.start_distance, distance);
+        let attenuation = self.smoothstep(self.end_distance, self.start_distance, distance);
         let adjusted_intensity = self.intensity * attenuation;
-        Some(apply_flicker(
-            self.color,
-            adjusted_intensity,
-            self.flicker,
-            time,
-        ))
+        Some(self.apply_flicker(self.color, adjusted_intensity, self.flicker, hash))
     }
 
-    fn calculate_ambient_light(&self, time: f32) -> Option<[f32; 3]> {
+    fn calculate_ambient_light(&self, hash: &u32) -> Option<[f32; 3]> {
         // Ambient light does not attenuate by distance.
-        Some(apply_flicker(
-            self.color,
-            self.intensity,
-            self.flicker,
-            time,
-        ))
+        Some(self.apply_flicker(self.color, self.intensity, self.flicker, hash))
     }
 
-    fn calculate_spot_light(&self, point: Vec3<f32>, time: f32) -> Option<[f32; 3]> {
+    fn calculate_spot_light(&self, point: Vec3<f32>, hash: &u32) -> Option<[f32; 3]> {
         let distance = (point - self.position).magnitude();
         if distance >= self.end_distance {
             return None;
@@ -278,15 +261,10 @@ impl CompiledLight {
         }
 
         let adjusted_intensity = self.intensity * attenuation;
-        Some(apply_flicker(
-            self.color,
-            adjusted_intensity,
-            self.flicker,
-            time,
-        ))
+        Some(self.apply_flicker(self.color, adjusted_intensity, self.flicker, hash))
     }
 
-    fn calculate_area_light(&self, point: Vec3<f32>) -> Option<[f32; 3]> {
+    fn calculate_area_light(&self, point: Vec3<f32>, _hash: &u32) -> Option<[f32; 3]> {
         let to_point = point - self.position;
         let distance = to_point.magnitude();
         if distance == 0.0 {
@@ -305,24 +283,28 @@ impl CompiledLight {
             self.color[2] * attenuation,
         ])
     }
-}
 
-fn apply_flicker(color: [f32; 3], intensity: f32, flicker: f32, time: f32) -> [f32; 3] {
-    let flicker_factor = if flicker > 0.0 {
-        let mut rng = StdRng::seed_from_u64(time as u64);
-        rng.gen_range(1.0 - flicker..=1.0)
-    } else {
-        1.0
-    };
+    /// Applies flicker effect to the light color.
+    fn apply_flicker(&self, color: [f32; 3], intensity: f32, flicker: f32, hash: &u32) -> [f32; 3] {
+        let flicker_factor = if flicker > 0.0 {
+            let combined_hash = hash.wrapping_add(
+                (self.position.x as u32 + self.position.y as u32 + self.position.z as u32) * 100,
+            );
+            let flicker_value = (combined_hash as f32 / u32::MAX as f32).clamp(0.0, 1.0);
+            1.0 - flicker_value * flicker
+        } else {
+            1.0
+        };
 
-    [
-        color[0] * intensity * flicker_factor,
-        color[1] * intensity * flicker_factor,
-        color[2] * intensity * flicker_factor,
-    ]
-}
+        [
+            color[0] * intensity * flicker_factor,
+            color[1] * intensity * flicker_factor,
+            color[2] * intensity * flicker_factor,
+        ]
+    }
 
-fn smoothstep(edge0: f32, edge1: f32, x: f32) -> f32 {
-    let t = ((x - edge0) / (edge1 - edge0)).clamp(0.0, 1.0);
-    t * t * (3.0 - 2.0 * t)
+    fn smoothstep(&self, edge0: f32, edge1: f32, x: f32) -> f32 {
+        let t = ((x - edge0) / (edge1 - edge0)).clamp(0.0, 1.0);
+        t * t * (3.0 - 2.0 * t)
+    }
 }

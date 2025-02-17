@@ -39,6 +39,7 @@ pub enum MapToolType {
     Effects,
     Rect,
     Game,
+    MiniMap,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -166,13 +167,13 @@ impl Map {
         let mut linedefs: Vec<CompiledLinedef> = vec![];
 
         for sector in self.sectors.iter() {
-            let mut throws_shadows = true;
+            let mut casts_shadows = true;
             let mut add_it = true;
 
             if sector.layer.is_some() {
                 let render_mode = sector.properties.get_int_default("rect_rendering", 0);
                 if render_mode != 1 {
-                    throws_shadows = false;
+                    casts_shadows = false;
                     add_it = false;
                 }
             }
@@ -180,6 +181,11 @@ impl Map {
             if add_it {
                 for linedef_id in sector.linedefs.iter() {
                     if let Some(linedef) = self.find_linedef(*linedef_id) {
+                        let mut casts_shadows = casts_shadows;
+                        let cs = linedef.properties.get_int_default("casts_shadows", 0);
+                        if cs == 1 {
+                            casts_shadows = false;
+                        }
                         if let Some(start) = self.find_vertex(linedef.start_vertex) {
                             if let Some(end) = self.find_vertex(linedef.end_vertex) {
                                 let cl = CompiledLinedef::new(
@@ -187,7 +193,7 @@ impl Map {
                                     end.as_vec2(),
                                     linedef.properties.get_float_default("wall_width", 0.0),
                                     linedef.properties.get_float_default("wall_height", 0.0),
-                                    throws_shadows,
+                                    casts_shadows,
                                 );
                                 linedefs.push(cl);
                             }
