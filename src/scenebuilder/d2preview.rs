@@ -173,6 +173,23 @@ impl D2PreviewBuilder {
                     let repeat = true;
                     let tile_size = 100;
 
+                    // Add Floor Light
+                    if let Some(Value::Light(light)) = sector.properties.get("floor_light") {
+                        if let Some(center) = sector.center(map) {
+                            let light =
+                                light.from_sector(Vec3::new(center.x, 0.0, center.y), bbox.1);
+                            scene.lights.push(light);
+                        }
+                    }
+                    // Add Ceiling Light
+                    if let Some(Value::Light(light)) = sector.properties.get("ceiling_light") {
+                        if let Some(center) = sector.center(map) {
+                            let light =
+                                light.from_sector(Vec3::new(center.x, 0.0, center.y), bbox.1);
+                            scene.lights.push(light);
+                        }
+                    }
+
                     if let Some(Value::Source(pixelsource)) = sector.properties.get("floor_source")
                     {
                         if let Some(tile) =
@@ -468,6 +485,19 @@ impl D2PreviewBuilder {
                     if let Some(end_vertex) = map.get_vertex(linedef.end_vertex) {
                         let end_pos = self.map_grid_to_local(screen_size, end_vertex, map);
 
+                        // ---
+                        // Check for wall lights
+                        //
+                        for i in 1..=4 {
+                            let light_name = format!("row{}_light", i);
+                            if let Some(Value::Light(light)) = linedef.properties.get(&light_name) {
+                                let light =
+                                    light.from_linedef(start_vertex, end_vertex, i as f32 - 0.5);
+                                scene.lights.push(light);
+                            }
+                        }
+                        // --
+
                         let mut selected = false;
                         if self.hover.1 == Some(linedef.id)
                             || map.selected_linedefs.contains(&linedef.id)
@@ -698,7 +728,6 @@ impl D2PreviewBuilder {
         scene.mapmini = map.as_mini();
         scene.d2 = batches;
         scene.textures = textures;
-        scene.lights = map.lights.clone();
         scene
     }
 

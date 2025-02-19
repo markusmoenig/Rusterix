@@ -197,6 +197,11 @@ impl ValueContainer {
         })
     }
 
+    // Checks if the value exists
+    pub fn contains(&self, key: &str) -> bool {
+        self.values.contains_key(key)
+    }
+
     // Remove a value by key
     pub fn remove(&mut self, key: &str) -> Option<Value> {
         self.values.remove(key)

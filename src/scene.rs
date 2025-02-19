@@ -1,4 +1,4 @@
-use crate::{Batch, CompiledLight, Light, MapMini, Shader, Tile};
+use crate::{Batch, CompiledLight, Light, LightType, MapMini, Shader, Tile};
 use rayon::prelude::*;
 use vek::{Mat3, Mat4};
 
@@ -133,11 +133,21 @@ impl Scene {
     }
 
     /// Compiles all lights and returns them.
-    pub fn compile_lights(&self) -> Vec<CompiledLight> {
+    pub fn compile_lights(&self, background_color: Option<[u8; 4]>) -> Vec<CompiledLight> {
         let mut cl = vec![];
 
         for l in &self.lights {
-            cl.push(l.compile());
+            let mut comp = l.compile();
+            if comp.light_type == LightType::Daylight {
+                if let Some(background_color) = background_color {
+                    comp.color = [
+                        background_color[0] as f32 / 255.0,
+                        background_color[1] as f32 / 255.0,
+                        background_color[2] as f32 / 255.0,
+                    ];
+                }
+            }
+            cl.push(comp);
         }
 
         for l in &self.dynamic_lights {

@@ -112,7 +112,7 @@ impl Rasterizer {
             height,
         );
 
-        self.compiled_lights = scene.compile_lights();
+        self.compiled_lights = scene.compile_lights(self.background_color);
 
         // Divide the screen into tiles
         let mut tiles = Vec::new();

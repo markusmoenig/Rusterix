@@ -52,6 +52,23 @@ impl D3Builder {
 
         // Create sectors
         for sector in &map.sectors {
+            // Add Floor Light
+            if let Some(Value::Light(light)) = sector.properties.get("floor_light") {
+                if let Some(center) = sector.center(map) {
+                    let bbox = sector.bounding_box(map);
+                    let light = light.from_sector(Vec3::new(center.x, 0.0, center.y), bbox.1);
+                    scene.lights.push(light);
+                }
+            }
+            // Add Ceiling Light
+            if let Some(Value::Light(light)) = sector.properties.get("ceiling_light") {
+                if let Some(center) = sector.center(map) {
+                    let bbox = sector.bounding_box(map);
+                    let light = light.from_sector(Vec3::new(center.x, 0.0, center.y), bbox.1);
+                    scene.lights.push(light);
+                }
+            }
+
             let mut add_it = true;
 
             // Special cases from the Rect tool
@@ -184,6 +201,24 @@ impl D3Builder {
                             if let Some(linedef) = map.linedefs.get(linedef_id as usize) {
                                 if let Some(start_vertex) = map.find_vertex(linedef.start_vertex) {
                                     if let Some(end_vertex) = map.find_vertex(linedef.end_vertex) {
+                                        // ---
+                                        // Check for wall lights
+                                        //
+                                        for i in 1..=4 {
+                                            let light_name = format!("row{}_light", i);
+                                            if let Some(Value::Light(light)) =
+                                                linedef.properties.get(&light_name)
+                                            {
+                                                let light = light.from_linedef(
+                                                    start_vertex.as_vec2(),
+                                                    end_vertex.as_vec2(),
+                                                    i as f32 - 0.5,
+                                                );
+                                                scene.lights.push(light);
+                                            }
+                                        }
+                                        // --
+
                                         let repeat_sources =
                                             linedef.properties.get_int_default("source_repeat", 0)
                                                 == 0;
@@ -311,7 +346,6 @@ impl D3Builder {
         scene.mapmini = map.as_mini();
         scene.d3_static = batches;
         scene.textures = textures;
-        scene.lights = map.lights.clone();
         scene
     }
 
