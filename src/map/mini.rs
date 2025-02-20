@@ -1,4 +1,4 @@
-use crate::CompiledLinedef;
+use crate::{BBox, CompiledLinedef};
 use vek::Vec2;
 
 /// A miniature version of the Map used for client side lighting calculations during the rasterization process and server side collision detection etc.
@@ -8,6 +8,7 @@ pub struct MapMini {
     pub grid_size: f32,
 
     linedefs: Vec<CompiledLinedef>,
+    occluded_sectors: Vec<(BBox, f32)>,
 }
 
 impl Default for MapMini {
@@ -22,15 +23,32 @@ impl MapMini {
             offset: Vec2::zero(),
             grid_size: 0.0,
             linedefs: vec![],
+            occluded_sectors: vec![],
         }
     }
 
-    pub fn new(offset: Vec2<f32>, grid_size: f32, linedefs: Vec<CompiledLinedef>) -> Self {
+    pub fn new(
+        offset: Vec2<f32>,
+        grid_size: f32,
+        linedefs: Vec<CompiledLinedef>,
+        occluded_sectors: Vec<(BBox, f32)>,
+    ) -> Self {
         Self {
             offset,
             grid_size,
             linedefs,
+            occluded_sectors,
         }
+    }
+
+    /// Returns the sector occlusion at the given position.
+    pub fn get_occlusion(&self, at: Vec2<f32>) -> f32 {
+        for (bbox, occlusion) in &self.occluded_sectors {
+            if bbox.contains(at) {
+                return *occlusion;
+            }
+        }
+        1.0
     }
 
     /// Returns true if the two segments intersect.

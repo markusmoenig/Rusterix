@@ -8,6 +8,8 @@ pub struct Tile {
     pub textures: Vec<Texture>,
     /// For top down 2D scenarios
     pub blocking: bool,
+    /// The scale of the tile (mostly used for billboard rendering)
+    pub scale: f32,
     /// For Rect Tool rendering in 3D
     pub render_mode: u8,
 }
@@ -21,6 +23,7 @@ impl Tile {
             uvs: vec![uv],
             textures: vec![texture],
             blocking: false,
+            scale: 1.0,
             render_mode: 0,
         }
     }
@@ -32,6 +35,7 @@ impl Tile {
             uvs: vec![],
             textures: vec![],
             blocking: false,
+            scale: 1.0,
             render_mode: 0,
         }
     }

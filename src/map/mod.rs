@@ -1,3 +1,4 @@
+pub mod bbox;
 pub mod geometry;
 pub mod light;
 pub mod linedef;
@@ -9,7 +10,7 @@ pub mod state;
 pub mod tile;
 pub mod vertex;
 
-use crate::{MapMini, VertexAnimationSystem};
+use crate::{BBox, MapMini, VertexAnimationSystem};
 use ordered_float::NotNan;
 use pathfinding::prelude::astar;
 
@@ -165,10 +166,17 @@ impl Map {
     /// Return the Map as MapMini
     pub fn as_mini(&self) -> MapMini {
         let mut linedefs: Vec<CompiledLinedef> = vec![];
+        let mut occluded_sectors: Vec<(BBox, f32)> = vec![];
 
         for sector in self.sectors.iter() {
             let mut casts_shadows = true;
             let mut add_it = true;
+
+            // We collect occluded sectors
+            let occlusion = sector.properties.get_float_default("occlusion", 1.0);
+            if occlusion < 1.0 {
+                occluded_sectors.push((sector.bounding_box(self), occlusion));
+            }
 
             if sector.layer.is_some() {
                 let render_mode = sector.properties.get_int_default("rect_rendering", 0);
@@ -220,7 +228,7 @@ impl Map {
             }
         }
 
-        MapMini::new(self.offset, self.grid_size, linedefs)
+        MapMini::new(self.offset, self.grid_size, linedefs, occluded_sectors)
     }
 
     /// Generate a bounding box for all vertices in the map

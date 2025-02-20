@@ -311,12 +311,26 @@ impl Rasterizer {
                                             let world = grid_space_pos / self.mapmini.grid_size;
 
                                             for light in &self.compiled_lights {
-                                                if let Some(light_color) = light.color_at(
+                                                if let Some(mut light_color) = light.color_at(
                                                     Vec3::new(world.x, 0.0, world.y),
                                                     &self.hash_anim,
                                                 ) {
                                                     let mut light_is_visible = true;
+
+                                                    // Sector daylight occlusion
+                                                    if light.light_type
+                                                        == LightType::AmbientDaylight
+                                                    {
+                                                        let occlusion =
+                                                            self.mapmini.get_occlusion(world);
+                                                        light_color[0] *= occlusion;
+                                                        light_color[1] *= occlusion;
+                                                        light_color[2] *= occlusion;
+                                                    }
+
                                                     if light.light_type != LightType::Ambient
+                                                        && light.light_type
+                                                            != LightType::AmbientDaylight
                                                         && !self
                                                             .mapmini
                                                             .is_visible(world, light.position_2d())
@@ -634,7 +648,7 @@ impl Rasterizer {
                                                 let epsilon = 0.01;
 
                                                 for light in &self.compiled_lights {
-                                                    if let Some(light_color) =
+                                                    if let Some(mut light_color) =
                                                         light.color_at(world, &self.hash_anim)
                                                     {
                                                         let direction_to_light =
@@ -643,8 +657,23 @@ impl Rasterizer {
                                                         let offset_world_2d =
                                                             world_2d + direction_to_light * epsilon;
 
+                                                        // Sector daylight occlusion
+                                                        if light.light_type
+                                                            == LightType::AmbientDaylight
+                                                        {
+                                                            let occlusion =
+                                                                self.mapmini.get_occlusion(
+                                                                    Vec2::new(world.x, world.y),
+                                                                );
+                                                            light_color[0] *= occlusion;
+                                                            light_color[1] *= occlusion;
+                                                            light_color[2] *= occlusion;
+                                                        }
+
                                                         let mut light_is_visible = true;
                                                         if light.light_type != LightType::Ambient
+                                                            && light.light_type
+                                                                != LightType::AmbientDaylight
                                                             && !self.mapmini.is_visible(
                                                                 offset_world_2d,
                                                                 light.position_2d(),

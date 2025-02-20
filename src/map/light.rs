@@ -7,6 +7,7 @@ use vek::{Vec2, Vec3};
 pub enum LightType {
     Point,
     Ambient,
+    AmbientDaylight,
     Spot,
     Area,
     Daylight,
@@ -18,6 +19,7 @@ impl LightType {
         match self {
             LightType::Point => "Point",
             LightType::Ambient => "Ambient",
+            LightType::AmbientDaylight => "Ambient Daylight",
             LightType::Spot => "Spot",
             LightType::Area => "Area",
             LightType::Daylight => "Daylight",
@@ -215,7 +217,7 @@ impl Light {
 
                 light
             }
-            LightType::Ambient => self.clone(),
+            LightType::Ambient | LightType::AmbientDaylight => self.clone(),
             LightType::Spot => {
                 let mut light = Light::new(LightType::Spot);
                 light.set_position(Vec3::new(position.x, height, position.y));
@@ -330,7 +332,7 @@ impl Light {
 
                 light
             }
-            LightType::Ambient => self.clone(),
+            LightType::Ambient | LightType::AmbientDaylight => self.clone(),
             LightType::Spot => {
                 let mut light = Light::new(LightType::Spot);
                 light.set_position(position);
@@ -446,7 +448,7 @@ impl CompiledLight {
         };
         match self.light_type {
             LightType::Point => self.calculate_point_light(point, hash),
-            LightType::Ambient => self.calculate_ambient_light(hash),
+            LightType::Ambient | LightType::AmbientDaylight => self.calculate_ambient_light(hash),
             LightType::Spot => self.calculate_spot_light(point, hash),
             LightType::Area => self.calculate_area_light(point, hash),
             LightType::Daylight => self.calculate_daylight_light(point, hash),

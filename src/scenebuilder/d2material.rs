@@ -47,11 +47,11 @@ impl D2MaterialBuilder {
                             if !repeat {
                                 let uv = [
                                     (tile.uvs[index].x as f32
-                                        + ((vertex[0] - bbox.0.x) / (bbox.1.x - bbox.0.x)
+                                        + ((vertex[0] - bbox.min.x) / (bbox.max.x - bbox.min.x)
                                             * tile.uvs[index].z as f32))
                                         / size as f32,
                                     ((tile.uvs[index].y as f32
-                                        + (vertex[1] - bbox.0.y) / (bbox.1.y - bbox.0.y)
+                                        + (vertex[1] - bbox.min.y) / (bbox.max.y - bbox.min.y)
                                             * tile.uvs[index].w as f32)
                                         / size as f32),
                                 ];
@@ -59,8 +59,8 @@ impl D2MaterialBuilder {
                             } else {
                                 let texture_scale = 1.0;
                                 let uv = [
-                                    (vertex[0] - bbox.0.x) / texture_scale,
-                                    (vertex[1] - bbox.0.y) / texture_scale,
+                                    (vertex[0] - bbox.min.x) / texture_scale,
+                                    (vertex[1] - bbox.min.y) / texture_scale,
                                 ];
                                 uvs.push(uv);
                             }

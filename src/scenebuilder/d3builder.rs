@@ -56,7 +56,7 @@ impl D3Builder {
             if let Some(Value::Light(light)) = sector.properties.get("floor_light") {
                 if let Some(center) = sector.center(map) {
                     let bbox = sector.bounding_box(map);
-                    let light = light.from_sector(Vec3::new(center.x, 0.0, center.y), bbox.1);
+                    let light = light.from_sector(Vec3::new(center.x, 0.0, center.y), bbox.size());
                     scene.lights.push(light);
                 }
             }
@@ -64,7 +64,7 @@ impl D3Builder {
             if let Some(Value::Light(light)) = sector.properties.get("ceiling_light") {
                 if let Some(center) = sector.center(map) {
                     let bbox = sector.bounding_box(map);
-                    let light = light.from_sector(Vec3::new(center.x, 0.0, center.y), bbox.1);
+                    let light = light.from_sector(Vec3::new(center.x, 0.0, center.y), bbox.size());
                     scene.lights.push(light);
                 }
             }
@@ -370,13 +370,13 @@ impl D3Builder {
         fn add_billboard(
             start_vertex: &Vec2<f32>,
             end_vertex: &Vec2<f32>,
-            wall_height: f32,
+            scale: f32,
             batch: &mut Batch<[f32; 4]>,
         ) {
             let wall_vertices = vec![
                 [start_vertex.x, 0.0, start_vertex.y, 1.0],
-                [start_vertex.x, wall_height, start_vertex.y, 1.0],
-                [end_vertex.x, wall_height, end_vertex.y, 1.0],
+                [start_vertex.x, scale, start_vertex.y, 1.0],
+                [end_vertex.x, scale, end_vertex.y, 1.0],
                 [end_vertex.x, 0.0, end_vertex.y, 1.0],
             ];
 
@@ -397,19 +397,25 @@ impl D3Builder {
                 if let Some(Value::Source(source)) = sector.properties.get("floor_source") {
                     if render_mode == 0 {
                         // Billboard
+                        let mut scale = 1.0;
+                        if let PixelSource::TileId(tile_id) = source {
+                            if let Some(tile) = tiles.get(tile_id) {
+                                scale = tile.scale;
+                            }
+                        }
                         if let Some(position) = sector.center(&self.map) {
                             let direction_to_camera = (camera_pos - position).normalized();
                             let perpendicular =
                                 Vec2::new(-direction_to_camera.y, direction_to_camera.x);
-                            let start = position + perpendicular * 0.5;
-                            let end = position - perpendicular * 0.5;
+                            let start = position + perpendicular * 0.5 * scale;
+                            let end = position - perpendicular * 0.5 * scale;
 
                             let mut batch = Batch::emptyd3()
                                 .texture_index(index)
                                 .sample_mode(sample_mode)
                                 .repeat_mode(crate::RepeatMode::RepeatXY);
 
-                            add_billboard(&start, &end, 1.0, &mut batch);
+                            add_billboard(&start, &end, scale, &mut batch);
 
                             if let Some(tile) = source.to_tile(tiles, 100, &sector.properties) {
                                 textures.push(tile);

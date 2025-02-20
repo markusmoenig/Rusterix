@@ -125,7 +125,7 @@ impl Client {
             .daylight
             .daylight(self.server_time.total_minutes(), 0.0, 1.0);
 
-        let mut light = Light::new(LightType::Ambient);
+        let mut light = Light::new(LightType::AmbientDaylight);
         light.set_color([ac.x, ac.y, ac.z]);
         light.set_intensity(1.0);
         self.scene_d2.dynamic_lights.push(light);
@@ -143,7 +143,7 @@ impl Client {
             .daylight
             .daylight(self.server_time.total_minutes(), 0.0, 1.0);
 
-        let mut light = Light::new(LightType::Ambient);
+        let mut light = Light::new(LightType::AmbientDaylight);
         light.set_color([ac.x, ac.y, ac.z]);
         light.set_intensity(1.0);
 

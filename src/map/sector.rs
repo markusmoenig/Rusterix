@@ -1,4 +1,4 @@
-use crate::{Map, Value, ValueContainer};
+use crate::{BBox, Map, Value, ValueContainer};
 use earcutr::earcut;
 use rand::seq::SliceRandom;
 use rand::Rng;
@@ -45,7 +45,7 @@ impl Sector {
     }
 
     // Generate a bounding box for the sector
-    pub fn bounding_box(&self, map: &Map) -> (Vec2<f32>, Vec2<f32>) {
+    pub fn bounding_box(&self, map: &Map) -> BBox {
         // Collect all vertices for the sector
         let mut vertices = Vec::new();
         for &linedef_id in &self.linedefs {
@@ -71,8 +71,7 @@ impl Sector {
             .map(|v| v.y)
             .fold(f32::NEG_INFINITY, f32::max);
 
-        // Return the bounding box corners
-        (Vec2::new(min_x, min_y), Vec2::new(max_x, max_y))
+        BBox::new(Vec2::new(min_x, min_y), Vec2::new(max_x, max_y))
     }
 
     /// Calculate the center of the sector
