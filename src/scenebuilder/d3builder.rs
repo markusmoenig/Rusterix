@@ -1,6 +1,6 @@
-use crate::Texture;
 use crate::{
-    Batch, D3Camera, Entity, Item, Map, PixelSource, SampleMode, Scene, Tile, Value, ValueContainer,
+    Assets, Batch, D3Camera, Entity, Item, Map, PixelSource, SampleMode, Scene, Tile, Value,
+    ValueContainer,
 };
 use theframework::prelude::*;
 use vek::Vec2;
@@ -25,8 +25,7 @@ impl D3Builder {
     pub fn build(
         &mut self,
         map: &Map,
-        tiles: &FxHashMap<Uuid, Tile>,
-        atlas: Texture,
+        assets: &Assets,
         _screen_size: Vec2<f32>,
         camera_id: &str,
         properties: &ValueContainer,
@@ -42,7 +41,7 @@ impl D3Builder {
         // let atlas_size = atlas.width as f32;
         let tile_size = 100;
 
-        let mut textures = vec![Tile::from_texture(atlas)];
+        let mut textures = vec![Tile::from_texture(assets.atlas.clone())];
 
         let atlas_batch = Batch::emptyd3();
 
@@ -96,7 +95,7 @@ impl D3Builder {
                             sector.properties.get("floor_source")
                         {
                             if let Some(tile) =
-                                pixelsource.to_tile(tiles, tile_size, &sector.properties)
+                                pixelsource.to_tile(assets, tile_size, &sector.properties)
                             {
                                 let floor_vertices = vertices
                                     .iter()
@@ -154,7 +153,7 @@ impl D3Builder {
                         };
 
                         if let Some(Value::Source(PixelSource::TileId(id))) = &source {
-                            if let Some(tile) = tiles.get(id) {
+                            if let Some(tile) = assets.tiles.get(id) {
                                 let ceiling_vertices = vertices
                                     .iter()
                                     .map(|&v| {
@@ -258,7 +257,7 @@ impl D3Builder {
                                                 None
                                             },
                                             repeat_sources,
-                                            tiles,
+                                            &assets.tiles,
                                             &mut repeated_offsets,
                                             &mut repeated_batches,
                                             &mut textures,
@@ -314,7 +313,7 @@ impl D3Builder {
                                 None
                             },
                             repeat_sources,
-                            tiles,
+                            &assets.tiles,
                             &mut repeated_offsets,
                             &mut repeated_batches,
                             &mut textures,
@@ -330,7 +329,7 @@ impl D3Builder {
             if let Some(sky_texture_id) = map.sky_texture {
                 Self::add_sky(
                     &sky_texture_id,
-                    tiles,
+                    &assets.tiles,
                     &mut repeated_offsets,
                     &mut repeated_batches,
                     &mut textures,
@@ -354,7 +353,7 @@ impl D3Builder {
         entities: &[Entity],
         items: &[Item],
         camera: &dyn D3Camera,
-        tiles: &FxHashMap<Uuid, Tile>,
+        assets: &Assets,
         scene: &mut Scene,
         properties: &ValueContainer,
     ) {
@@ -399,7 +398,7 @@ impl D3Builder {
                         // Billboard
                         let mut scale = 1.0;
                         if let PixelSource::TileId(tile_id) = source {
-                            if let Some(tile) = tiles.get(tile_id) {
+                            if let Some(tile) = assets.tiles.get(tile_id) {
                                 scale = tile.scale;
                             }
                         }
@@ -417,7 +416,7 @@ impl D3Builder {
 
                             add_billboard(&start, &end, scale, &mut batch);
 
-                            if let Some(tile) = source.to_tile(tiles, 100, &sector.properties) {
+                            if let Some(tile) = source.to_tile(assets, 100, &sector.properties) {
                                 textures.push(tile);
                             }
 
@@ -466,7 +465,7 @@ impl D3Builder {
 
                     add_billboard(&start, &end, 2.0, &mut batch);
 
-                    if let Some(tile) = source.to_tile(tiles, 100, &entity.attributes) {
+                    if let Some(tile) = source.to_tile(assets, 100, &entity.attributes) {
                         textures.push(tile);
                     }
 
@@ -502,7 +501,7 @@ impl D3Builder {
 
                     add_billboard(&start, &end, 1.0, &mut batch);
 
-                    if let Some(tile) = source.to_tile(tiles, 100, &item.attributes) {
+                    if let Some(tile) = source.to_tile(assets, 100, &item.attributes) {
                         textures.push(tile);
                     }
 

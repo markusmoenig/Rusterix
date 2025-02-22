@@ -1,4 +1,4 @@
-use crate::{Texture, Tile, ValueContainer};
+use crate::{Assets, Texture, Tile, ValueContainer};
 use theframework::prelude::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -32,14 +32,10 @@ use PixelSource::*;
 
 impl PixelSource {
     /// Generate a tile from the given PixelValue
-    pub fn to_tile(
-        &self,
-        tiles: &FxHashMap<Uuid, Tile>,
-        size: usize,
-        values: &ValueContainer,
-    ) -> Option<Tile> {
+    pub fn to_tile(&self, assets: &Assets, size: usize, values: &ValueContainer) -> Option<Tile> {
         match self {
-            TileId(id) => tiles.get(id).cloned(),
+            TileId(id) => assets.tiles.get(id).cloned(),
+            MaterialId(id) => assets.materials.get(id).cloned(),
             Color(color) => {
                 let apply_to: NoiseTarget = values.get_int_default("noise_target", 0).into();
                 let noise_intensity = values.get_float_default("noise_intensity", 0.0);

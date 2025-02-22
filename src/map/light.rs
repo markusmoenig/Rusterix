@@ -129,6 +129,8 @@ impl Light {
         let height = self.properties.get_float_default("height", 1.0);
         let emitting = self.properties.get_bool_default("emitting", true);
 
+        let from_linedef = self.properties.get_bool_default("from_linedef", false);
+
         CompiledLight {
             light_type: self.light_type,
             // common
@@ -147,6 +149,8 @@ impl Light {
             normal,
             width,
             height,
+
+            from_linedef,
         }
     }
 
@@ -190,9 +194,9 @@ impl Light {
     pub fn from_linedef(&self, p1: Vec2<f32>, p2: Vec2<f32>, height: f32) -> Self {
         let position = (p1 + p2) / 2.0; // Midpoint of the line
         let direction = (p2 - p1).normalized(); // Direction of the line
-        let normal = Vec2::new(-direction.y, direction.x); // Perpendicular normal
+        let normal = Vec2::new(direction.y, -direction.x); // Perpendicular normal
         let width = (p2 - p1).magnitude(); // Line segment length
-        let offset = 0.1; // Small forward push to avoid occlusion
+        let offset = 0.1;
         let position = position + normal * offset;
 
         match self.light_type {
@@ -222,7 +226,6 @@ impl Light {
                 let mut light = Light::new(LightType::Spot);
                 light.set_position(Vec3::new(position.x, height, position.y));
 
-                // Spotlights should shine perpendicular to the linedef (normal direction)
                 light
                     .properties
                     .set("direction", Value::Vec3([normal.x, 0.0, normal.y]));
@@ -249,19 +252,17 @@ impl Light {
             }
             LightType::Area => {
                 let mut light = Light::new(LightType::Area);
+                light.properties.set("from_linedef", Value::Bool(true));
                 light.set_position(Vec3::new(position.x, height, position.y));
 
-                // Set the normal direction (perpendicular to the line)
                 light
                     .properties
                     .set("normal", Value::Vec3([normal.x, 0.0, normal.y]));
 
                 // Set the width to match the line segment
                 light.properties.set("width", Value::Float(width));
+                light.properties.set("height", Value::Float(1.0));
 
-                if let Some(height) = self.properties.get("height") {
-                    light.properties.set("height", height.clone());
-                }
                 if let Some(intensity) = self.properties.get("intensity") {
                     light.properties.set("intensity", intensity.clone());
                 }
@@ -344,8 +345,10 @@ impl Light {
                 if let Some(cone_angle) = self.properties.get("cone_angle") {
                     light.properties.set("cone_angle", cone_angle.clone());
                 }
-                if let Some(intensity) = self.properties.get("intensity") {
-                    light.properties.set("intensity", intensity.clone());
+                if let Some(start_distance) = self.properties.get("start_distance") {
+                    light
+                        .properties
+                        .set("start_distance", start_distance.clone());
                 }
                 if let Some(color) = self.properties.get("color") {
                     light.properties.set("color", color.clone());
@@ -361,6 +364,7 @@ impl Light {
             }
             LightType::Area => {
                 let mut light = Light::new(LightType::Area);
+                light.properties.set("from_sector", Value::Bool(true));
                 light.set_position(position);
 
                 light
@@ -370,11 +374,13 @@ impl Light {
                 light.properties.set("width", Value::Float(size.x));
                 light.properties.set("height", Value::Float(size.y));
 
-                if let Some(intensity) = self.properties.get("intensity") {
-                    light.properties.set("intensity", intensity.clone());
-                }
                 if let Some(color) = self.properties.get("color") {
                     light.properties.set("color", color.clone());
+                }
+                if let Some(start_distance) = self.properties.get("start_distance") {
+                    light
+                        .properties
+                        .set("start_distance", start_distance.clone());
                 }
                 if let Some(end_distance) = self.properties.get("end_distance") {
                     light.properties.set("end_distance", end_distance.clone());
@@ -428,6 +434,8 @@ pub struct CompiledLight {
     pub normal: Vec3<f32>,
     pub width: f32,
     pub height: f32,
+
+    pub from_linedef: bool,
 }
 
 impl CompiledLight {
@@ -442,7 +450,7 @@ impl CompiledLight {
     }
 
     /// Calculate the light's intensity and color at a given point.
-    pub fn color_at(&self, point: Vec3<f32>, hash: &u32) -> Option<[f32; 3]> {
+    pub fn color_at(&self, point: Vec3<f32>, hash: &u32, d2: bool) -> Option<[f32; 3]> {
         if !self.emitting {
             return None;
         };
@@ -450,7 +458,7 @@ impl CompiledLight {
             LightType::Point => self.calculate_point_light(point, hash),
             LightType::Ambient | LightType::AmbientDaylight => self.calculate_ambient_light(hash),
             LightType::Spot => self.calculate_spot_light(point, hash),
-            LightType::Area => self.calculate_area_light(point, hash),
+            LightType::Area => self.calculate_area_light(point, hash, d2),
             LightType::Daylight => self.calculate_daylight_light(point, hash),
         }
     }
@@ -502,16 +510,18 @@ impl CompiledLight {
         Some(self.apply_flicker(self.color, adjusted_intensity, self.flicker, hash))
     }
 
-    fn calculate_area_light(&self, point: Vec3<f32>, _hash: &u32) -> Option<[f32; 3]> {
+    fn calculate_area_light(&self, point: Vec3<f32>, _hash: &u32, d2: bool) -> Option<[f32; 3]> {
         let to_point = point - self.position;
         let distance = to_point.magnitude();
+
+        if distance >= self.end_distance {
+            return None;
+        }
 
         if distance < 0.1 {
             return Some(self.color);
         }
 
-        let direction = to_point.normalized();
-        let angle_attenuation = self.normal.dot(direction).max(0.0).abs();
         let distance_attenuation = if distance <= self.start_distance {
             1.0
         } else {
@@ -519,12 +529,33 @@ impl CompiledLight {
         };
         let area = self.width * self.height;
 
-        let attenuation = angle_attenuation * distance_attenuation * area * self.intensity;
-        Some([
-            self.color[0] * attenuation,
-            self.color[1] * attenuation,
-            self.color[2] * attenuation,
-        ])
+        let direction = to_point.normalized();
+
+        if self.from_linedef {
+            // let angle_attenuation = self.normal.dot(direction).max(0.0);
+            let attenuation = /*angle_attenuation **/ distance_attenuation * area * self.intensity;
+            Some([
+                self.color[0] * attenuation,
+                self.color[1] * attenuation,
+                self.color[2] * attenuation,
+            ])
+        } else {
+            let attenuation = if d2 {
+                let distance_x = (to_point.x / (self.width * 0.5)).abs(); // Normalize by half-width
+                let distance_y = (to_point.y / (self.height * 0.5)).abs(); // Normalize by half-height
+                let attenuation_x = (1.0 - distance_x).max(0.0);
+                let attenuation_y = (1.0 - distance_y).max(0.0);
+                attenuation_x * attenuation_y * distance_attenuation * self.intensity
+            } else {
+                let angle_attenuation = self.normal.dot(direction).max(0.0);
+                angle_attenuation * distance_attenuation * area * self.intensity
+            };
+            Some([
+                self.color[0] * attenuation,
+                self.color[1] * attenuation,
+                self.color[2] * attenuation,
+            ])
+        }
     }
 
     fn calculate_daylight_light(&self, point: Vec3<f32>, _hash: &u32) -> Option<[f32; 3]> {

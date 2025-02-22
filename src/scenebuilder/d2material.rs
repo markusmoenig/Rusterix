@@ -1,7 +1,5 @@
-// use crate::PrimitiveMode::*;
-
 use crate::Texture;
-use crate::{Batch, Map, Rasterizer, Scene, Tile, Value};
+use crate::{Assets, Batch, Map, Rasterizer, Scene, Value};
 use theframework::prelude::*;
 use vek::Vec2;
 
@@ -18,7 +16,7 @@ impl D2MaterialBuilder {
         Self {}
     }
 
-    pub fn build_texture(&self, map: &Map, tiles: &FxHashMap<Uuid, Tile>, texture: &mut Texture) {
+    pub fn build_texture(&self, map: &Map, assets: &Assets, texture: &mut Texture) {
         let mut textures = vec![];
         let mut batches: Vec<Batch<[f32; 3]>> = vec![];
         let size = texture.width;
@@ -40,7 +38,7 @@ impl D2MaterialBuilder {
                 let index = 0;
 
                 if let Some(Value::Source(pixelsource)) = sector.properties.get("floor_source") {
-                    if let Some(tile) = pixelsource.to_tile(tiles, size, &sector.properties) {
+                    if let Some(tile) = pixelsource.to_tile(assets, size, &sector.properties) {
                         for vertex in &geo.0 {
                             let local = to_local(vertex);
 
@@ -85,7 +83,7 @@ impl D2MaterialBuilder {
         for linedef in &map.linedefs {
             if linedef.front_sector.is_none() && linedef.back_sector.is_none() {
                 if let Some(Value::Source(pixelsource)) = linedef.properties.get("row1_source") {
-                    if let Some(tile) = pixelsource.to_tile(tiles, size, &linedef.properties) {
+                    if let Some(tile) = pixelsource.to_tile(assets, size, &linedef.properties) {
                         if let Some(start_vertex) = map.find_vertex(linedef.start_vertex) {
                             let start_pos = to_local(&[start_vertex.x, start_vertex.y]);
                             if let Some(end_vertex) = map.find_vertex(linedef.end_vertex) {

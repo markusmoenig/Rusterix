@@ -138,6 +138,7 @@ impl MapMini {
                     coll_radius,
                 ) {
                     // Keep the closest collision only
+                    #[allow(clippy::unnecessary_map_or)]
                     if closest_collision.map_or(true, |(d, _)| distance < d) {
                         closest_collision = Some((distance, normal));
                     }

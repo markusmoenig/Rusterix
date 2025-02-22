@@ -64,7 +64,8 @@ impl TheTrait for Editor {
             if let Ok(r) = rx.lock() {
                 while let Ok(command) = r.try_recv() {
                     match command {
-                        FocusMap(meta) => {
+                        FocusMap(_meta) => {
+                            /*
                             self.content = MapPreview(meta.clone());
                             let mut builder = D3Builder::new();
 
@@ -75,7 +76,7 @@ impl TheTrait for Editor {
                                 vek::Vec2::new(ctx.width as f32, ctx.height as f32),
                                 &self.camera.id(),
                                 &ValueContainer::default(),
-                            );
+                            );*/
                         }
                         Exit => {
                             // TODO
@@ -88,7 +89,7 @@ impl TheTrait for Editor {
 
         #[allow(clippy::single_match)]
         match &self.content {
-            MapPreview(meta) => match &self.preview_mode {
+            MapPreview(_meta) => match &self.preview_mode {
                 D2 => {
                     let mut builder = D2PreviewBuilder::new();
                     builder.set_camera_info(
@@ -97,6 +98,7 @@ impl TheTrait for Editor {
                     );
                     builder.set_map_tool_type(MapToolType::Selection);
 
+                    /*
                     let mut scene = builder.build(
                         &meta.map,
                         &meta.tiles,
@@ -108,6 +110,7 @@ impl TheTrait for Editor {
 
                     Rasterizer::setup(None, vek::Mat4::identity(), vek::Mat4::identity())
                         .rasterize(&mut scene, pixels, ctx.width, ctx.height, 100);
+                    */
                 }
                 D3 => {
                     match &self.movement {

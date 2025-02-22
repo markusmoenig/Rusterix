@@ -2,7 +2,8 @@
 
 use crate::Texture;
 use crate::{
-    Batch, GridShader, Map, MapToolType, Pixel, Scene, Shader, Tile, Value, ValueContainer, WHITE,
+    Assets, Batch, GridShader, Map, MapToolType, Pixel, Scene, Shader, Tile, Value, ValueContainer,
+    WHITE,
 };
 use theframework::prelude::*;
 use vek::Vec2;
@@ -49,18 +50,17 @@ impl D2PreviewBuilder {
     pub fn build(
         &self,
         map: &Map,
-        tiles: &FxHashMap<Uuid, Tile>,
-        atlas: Texture,
+        assets: &Assets,
         screen_size: Vec2<f32>,
         _camera_id: &str,
         properties: &ValueContainer,
     ) -> Scene {
         let mut scene = Scene::empty();
         let mut grid_shader = GridShader::new();
-        let atlas_size = atlas.width as f32;
+        let atlas_size = assets.atlas.width as f32;
 
         let mut textures = vec![
-            Tile::from_texture(atlas),
+            Tile::from_texture(assets.atlas.clone()),
             Tile::from_texture(Texture::from_color(WHITE)),
             Tile::from_texture(Texture::from_color(self.selection_color)),
             Tile::from_texture(Texture::from_color(vek::Rgba::yellow().into_array())),
@@ -190,10 +190,15 @@ impl D2PreviewBuilder {
                         }
                     }
 
-                    if let Some(Value::Source(pixelsource)) = sector.properties.get("floor_source")
-                    {
+                    // Use the floor or ceiling source
+                    let mut source = sector.properties.get("floor_source");
+                    if source.is_none() {
+                        source = sector.properties.get("ceiling_source");
+                    }
+
+                    if let Some(Value::Source(pixelsource)) = source {
                         if let Some(tile) =
-                            pixelsource.to_tile(tiles, tile_size, &sector.properties)
+                            pixelsource.to_tile(assets, tile_size, &sector.properties)
                         {
                             for vertex in &geo.0 {
                                 let local = self.map_grid_to_local(
@@ -277,7 +282,7 @@ impl D2PreviewBuilder {
 
                         if let Some(pixelsource) = source {
                             if let Some(tile) =
-                                pixelsource.to_tile(tiles, tile_size, &sector.properties)
+                                pixelsource.to_tile(assets, tile_size, &sector.properties)
                             {
                                 for vertex in &geo.0 {
                                     let local = self.map_grid_to_local(
@@ -360,7 +365,7 @@ impl D2PreviewBuilder {
                             let tile_size = 100;
                             if let Some(pixelsource) = source {
                                 if let Some(tile) =
-                                    pixelsource.to_tile(tiles, tile_size, &linedef.properties)
+                                    pixelsource.to_tile(assets, tile_size, &linedef.properties)
                                 {
                                     for vertex in &geo.0 {
                                         let local = self.map_grid_to_local(
@@ -617,7 +622,7 @@ impl D2PreviewBuilder {
                 }
 
                 if let Some(Value::Source(source)) = entity.attributes.get("source") {
-                    if let Some(tile) = source.to_tile(tiles, 100, &entity.attributes) {
+                    if let Some(tile) = source.to_tile(assets, 100, &entity.attributes) {
                         let texture_index = textures.len();
 
                         let mut batch = Batch::emptyd2()
@@ -651,7 +656,7 @@ impl D2PreviewBuilder {
                 }
 
                 if let Some(Value::Source(source)) = item.attributes.get("source") {
-                    if let Some(tile) = source.to_tile(tiles, 100, &item.attributes) {
+                    if let Some(tile) = source.to_tile(assets, 100, &item.attributes) {
                         let texture_index = textures.len();
 
                         let mut batch = Batch::emptyd2()

@@ -314,6 +314,7 @@ impl Rasterizer {
                                                 if let Some(mut light_color) = light.color_at(
                                                     Vec3::new(world.x, 0.0, world.y),
                                                     &self.hash_anim,
+                                                    true,
                                                 ) {
                                                     let mut light_is_visible = true;
 
@@ -648,9 +649,11 @@ impl Rasterizer {
                                                 let epsilon = 0.01;
 
                                                 for light in &self.compiled_lights {
-                                                    if let Some(mut light_color) =
-                                                        light.color_at(world, &self.hash_anim)
-                                                    {
+                                                    if let Some(mut light_color) = light.color_at(
+                                                        world,
+                                                        &self.hash_anim,
+                                                        false,
+                                                    ) {
                                                         let direction_to_light =
                                                             (light.position_2d() - world_2d)
                                                                 .normalized();

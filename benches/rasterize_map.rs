@@ -16,8 +16,7 @@ fn rasterize_map(c: &mut Criterion) {
         let mut builder = D3Builder::new();
         scene = builder.build(
             map,
-            &assets.tiles,
-            Texture::from_color(BLACK),
+            &assets,
             Vec2::zero(), // Only needed for 2D builders
             &camera.id(),
             &ValueContainer::default(),

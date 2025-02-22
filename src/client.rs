@@ -72,14 +72,9 @@ impl Client {
         values: &ValueContainer,
     ) {
         self.curr_map_id = map.id;
-        self.scene_d2 = self.builder_d2.build(
-            map,
-            &assets.tiles,
-            Texture::from_color(crate::BLACK),
-            screen_size,
-            &self.camera_d3.id(),
-            values,
-        );
+        self.scene_d2 =
+            self.builder_d2
+                .build(map, assets, screen_size, &self.camera_d3.id(), values);
     }
 
     /// Build the 3D scene from the map.
@@ -87,8 +82,7 @@ impl Client {
         self.curr_map_id = map.id;
         self.scene_d3 = self.builder_d3.build(
             map,
-            &assets.tiles,
-            Texture::from_color(crate::BLACK),
+            assets,
             Vec2::zero(), // Only needed for 2D builders
             &self.camera_d3.id(),
             values,
@@ -112,7 +106,7 @@ impl Client {
             entities,
             items,
             self.camera_d3.as_ref(),
-            &assets.tiles,
+            assets,
             &mut self.scene_d3,
             values,
         );

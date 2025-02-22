@@ -10,6 +10,7 @@ pub struct Assets {
     pub entities: FxHashMap<String, (String, String)>,
     pub items: FxHashMap<String, (String, String)>,
     pub tiles: FxHashMap<Uuid, Tile>,
+    pub materials: FxHashMap<Uuid, Tile>,
     pub textures: FxHashMap<String, Texture>,
 
     pub atlas: Texture,
@@ -30,6 +31,7 @@ impl Assets {
             items: FxHashMap::default(),
             tiles: FxHashMap::default(),
             textures: FxHashMap::default(),
+            materials: FxHashMap::default(),
 
             atlas: Texture::default(),
         }
@@ -104,6 +106,18 @@ impl Assets {
 
         self.atlas = Texture::new(atlas, atlas_size as usize, atlas_size as usize);
         self.tiles = tiles;
+    }
+
+    /// Compile the materials.
+    pub fn set_materials(&mut self, materials: FxHashMap<Uuid, Map>, size: usize) {
+        let b = D2MaterialBuilder::new();
+        let mut tiles = FxHashMap::default();
+        for map in materials.values() {
+            let mut texture = Texture::new(vec![0_u8; size * size * 4], size, size);
+            b.build_texture(map, self, &mut texture);
+            tiles.insert(map.id, Tile::from_texture(texture));
+        }
+        self.materials = tiles;
     }
 
     /// Collects the assets from a directory.
