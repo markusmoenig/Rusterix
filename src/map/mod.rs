@@ -413,12 +413,14 @@ impl Map {
             return id;
         }
 
-        let id = self.vertices.len() as u32;
-
-        let vertex = Vertex::new(id, x, y);
-        self.vertices.push(vertex);
-
-        id
+        if let Some(id) = self.find_free_vertex_id() {
+            let vertex = Vertex::new(id, x, y);
+            self.vertices.push(vertex);
+            id
+        } else {
+            println!("No free vertex ID available");
+            0
+        }
     }
 
     /// Finds a vertex at the given position and returns its ID if it exists
@@ -461,21 +463,24 @@ impl Map {
 
     // Create a new (or use an existing) linedef for the given vertices.
     pub fn create_linedef(&mut self, start_vertex: u32, end_vertex: u32) -> (u32, Option<u32>) {
-        let id = self.linedefs.len() as u32;
         let mut sector_id: Option<u32> = None;
 
-        let linedef = Linedef::new(id, start_vertex, end_vertex);
-        self.linedefs.push(linedef);
-        self.possible_polygon.push(id);
+        if let Some(id) = self.find_free_linedef_id() {
+            let linedef = Linedef::new(id, start_vertex, end_vertex);
+            self.linedefs.push(linedef);
+            self.possible_polygon.push(id);
 
-        if let Some(sid) = self.create_sector_from_polygon() {
-            if let Some(linedef) = self.find_linedef_mut(id) {
-                linedef.front_sector = Some(sid);
+            if let Some(sid) = self.create_sector_from_polygon() {
+                if let Some(linedef) = self.find_linedef_mut(id) {
+                    linedef.front_sector = Some(sid);
+                }
+                sector_id = Some(sid);
             }
-            sector_id = Some(sid);
+            (id, sector_id)
+        } else {
+            println!("No free linedef ID available");
+            (0, None)
         }
-
-        (id, sector_id)
     }
 
     /// Check if the `possible_polygon` forms a closed loop
@@ -512,33 +517,31 @@ impl Map {
         }
 
         // Create a new sector
-        let sector_id = self.sectors.len() as u32;
-        // println!(
-        //     "Created sector ID: {} with linedefs: {:?}",
-        //     sector_id, self.possible_polygon
-        // );
-
-        for &id in &self.possible_polygon {
-            if let Some(linedef) = self.linedefs.iter_mut().find(|l| l.id == id) {
-                // Assign the sector ID to the front or back
-                if linedef.front_sector.is_none() {
-                    linedef.front_sector = Some(sector_id);
-                } else if linedef.back_sector.is_none() {
-                    linedef.back_sector = Some(sector_id);
-                } else {
-                    println!(
-                        "Warning: Linedef {} already has both front and back sectors assigned.",
-                        linedef.id
-                    );
+        if let Some(sector_id) = self.find_free_sector_id() {
+            for &id in &self.possible_polygon {
+                if let Some(linedef) = self.linedefs.iter_mut().find(|l| l.id == id) {
+                    // Assign the sector ID to the front or back
+                    if linedef.front_sector.is_none() {
+                        linedef.front_sector = Some(sector_id);
+                    } else if linedef.back_sector.is_none() {
+                        linedef.back_sector = Some(sector_id);
+                    } else {
+                        println!(
+                            "Warning: Linedef {} already has both front and back sectors assigned.",
+                            linedef.id
+                        );
+                    }
                 }
             }
+
+            let sector = Sector::new(sector_id, self.possible_polygon.clone());
+            self.sectors.push(sector);
+
+            self.possible_polygon.clear();
+            Some(sector_id)
+        } else {
+            None
         }
-
-        let sector = Sector::new(sector_id, self.possible_polygon.clone());
-        self.sectors.push(sector);
-
-        self.possible_polygon.clear(); // Reset after creating the sector
-        Some(sector_id)
     }
 
     /// Check if a set of linedefs matches any existing sector
@@ -892,6 +895,24 @@ impl Map {
             self.linedefs.len(),
             self.sectors.len()
         )
+    }
+
+    /// Finds a free vertex ID that can be used for creating a new vertex.
+    pub fn find_free_vertex_id(&self) -> Option<u32> {
+        let free_id = (0..).find(|&id| !self.vertices.iter().any(|v| v.id == id));
+        free_id
+    }
+
+    /// Finds a free linedef ID that can be used for creating a new linedef.
+    pub fn find_free_linedef_id(&self) -> Option<u32> {
+        let free_id = (0..).find(|&id| !self.linedefs.iter().any(|l| l.id == id));
+        free_id
+    }
+
+    /// Finds a free sector ID that can be used for creating a new sector.
+    pub fn find_free_sector_id(&self) -> Option<u32> {
+        let free_id = (0..).find(|&id| !self.sectors.iter().any(|s| s.id == id));
+        free_id
     }
 }
 

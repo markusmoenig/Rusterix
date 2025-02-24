@@ -347,14 +347,23 @@ impl Sector {
         let mut result: FxHashMap<u32, (Vec<[f32; 2]>, Vec<(usize, usize, usize)>)> =
             FxHashMap::default();
 
+        let mut all_walls_have_no_width = true;
         let mut polygon = Vec::new();
         for &linedef_id in &self.linedefs {
             if let Some(linedef) = map.linedefs.get(linedef_id as usize) {
                 if let Some(start_vertex) = map.vertices.get(linedef.start_vertex as usize) {
                     let v_start = Vec2::new(start_vertex.x, start_vertex.y);
                     polygon.push(v_start);
+                    if linedef.properties.get_float_default("wall_width", 0.0) > 0.0 {
+                        all_walls_have_no_width = false;
+                    }
                 }
             }
+        }
+
+        // If all walls have no width, return None
+        if all_walls_have_no_width {
+            return None;
         }
 
         // Ensure the polygon is closed

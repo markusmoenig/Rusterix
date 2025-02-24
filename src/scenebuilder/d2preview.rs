@@ -346,7 +346,10 @@ impl D2PreviewBuilder {
 
             // Add standalone walls
             for linedef in &map.linedefs {
-                if linedef.front_sector.is_none() && linedef.back_sector.is_none() {
+                if linedef.front_sector.is_none()
+                    && linedef.back_sector.is_none()
+                    && linedef.properties.get_float_default("wall_width", 0.0) > 0.0
+                {
                     if let Some(hash) =
                         crate::map::geometry::generate_line_segments_d2(map, &[linedef.id])
                     {
@@ -489,58 +492,79 @@ impl D2PreviewBuilder {
             let mut non_selected_lines = vec![];
 
             for linedef in &map.linedefs {
-                if let Some(start_vertex) = map.get_vertex(linedef.start_vertex) {
-                    let start_pos = self.map_grid_to_local(screen_size, start_vertex, map);
-                    if let Some(end_vertex) = map.get_vertex(linedef.end_vertex) {
-                        let end_pos = self.map_grid_to_local(screen_size, end_vertex, map);
+                let mut draw = true;
 
-                        // ---
-                        // Check for wall lights
-                        //
-                        for i in 1..=4 {
-                            let light_name = format!("row{}_light", i);
-                            if let Some(Value::Light(light)) = linedef.properties.get(&light_name) {
-                                let light =
-                                    light.from_linedef(start_vertex, end_vertex, i as f32 - 0.5);
-                                scene.lights.push(light);
-                            }
+                // No outlines for the rect tool based sectors in the minimap, they only mess things up.
+                if self.map_tool_type == MapToolType::MiniMap {
+                    for sector in &map.sectors {
+                        if sector.linedefs.contains(&linedef.id)
+                            && sector.properties.contains("rect_rendering")
+                        {
+                            draw = false;
+                            break;
                         }
-                        // --
+                    }
+                }
 
-                        let mut selected = false;
-                        if self.hover.1 == Some(linedef.id)
-                            || map.selected_linedefs.contains(&linedef.id)
-                        {
-                            selected = true;
-                        } else if self.map_tool_type == MapToolType::Sector
-                            || self.map_tool_type == MapToolType::General
-                            || self.map_tool_type == MapToolType::Selection
-                        {
-                            // Check for sector selection when in sector mode.
-                            if let Some(front_sector) = linedef.front_sector {
-                                if let Some(sector) = map.find_sector(front_sector) {
-                                    if self.hover.2 == Some(sector.id)
-                                        || map.selected_sectors.contains(&sector.id)
-                                    {
-                                        selected = true;
+                if draw {
+                    if let Some(start_vertex) = map.get_vertex(linedef.start_vertex) {
+                        let start_pos = self.map_grid_to_local(screen_size, start_vertex, map);
+                        if let Some(end_vertex) = map.get_vertex(linedef.end_vertex) {
+                            let end_pos = self.map_grid_to_local(screen_size, end_vertex, map);
+
+                            // ---
+                            // Check for wall lights
+                            //
+                            for i in 1..=4 {
+                                let light_name = format!("row{}_light", i);
+                                if let Some(Value::Light(light)) =
+                                    linedef.properties.get(&light_name)
+                                {
+                                    let light = light.from_linedef(
+                                        start_vertex,
+                                        end_vertex,
+                                        i as f32 - 0.5,
+                                    );
+                                    scene.lights.push(light);
+                                }
+                            }
+                            // --
+
+                            let mut selected = false;
+                            if self.hover.1 == Some(linedef.id)
+                                || map.selected_linedefs.contains(&linedef.id)
+                            {
+                                selected = true;
+                            } else if self.map_tool_type == MapToolType::Sector
+                                || self.map_tool_type == MapToolType::General
+                                || self.map_tool_type == MapToolType::Selection
+                            {
+                                // Check for sector selection when in sector mode.
+                                if let Some(front_sector) = linedef.front_sector {
+                                    if let Some(sector) = map.find_sector(front_sector) {
+                                        if self.hover.2 == Some(sector.id)
+                                            || map.selected_sectors.contains(&sector.id)
+                                        {
+                                            selected = true;
+                                        }
+                                    }
+                                }
+                                if let Some(back_sector) = linedef.back_sector {
+                                    if let Some(sector) = map.find_sector(back_sector) {
+                                        if self.hover.2 == Some(sector.id)
+                                            || map.selected_sectors.contains(&sector.id)
+                                        {
+                                            selected = true;
+                                        }
                                     }
                                 }
                             }
-                            if let Some(back_sector) = linedef.back_sector {
-                                if let Some(sector) = map.find_sector(back_sector) {
-                                    if self.hover.2 == Some(sector.id)
-                                        || map.selected_sectors.contains(&sector.id)
-                                    {
-                                        selected = true;
-                                    }
-                                }
-                            }
-                        }
 
-                        if selected {
-                            selected_lines.push((start_pos, end_pos));
-                        } else {
-                            non_selected_lines.push((start_pos, end_pos));
+                            if selected {
+                                selected_lines.push((start_pos, end_pos));
+                            } else {
+                                non_selected_lines.push((start_pos, end_pos));
+                            }
                         }
                     }
                 }
