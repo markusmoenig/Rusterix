@@ -23,6 +23,9 @@ pub struct D2PreviewBuilder {
     pub look_at: Option<Vec3<f32>>,
     /// Material Mode
     pub material_mode: bool,
+
+    /// Draw Grid Switch
+    pub draw_grid: bool,
 }
 
 impl Default for D2PreviewBuilder {
@@ -44,6 +47,7 @@ impl D2PreviewBuilder {
             look_at: None,
 
             material_mode: false,
+            draw_grid: true,
         }
     }
 
@@ -148,10 +152,14 @@ impl D2PreviewBuilder {
         //let mut yellow_rect = Batch::emptyd2().texture_index(1);
 
         // Grid
-        grid_shader.set_parameter_f32("grid_size", map.grid_size);
-        grid_shader.set_parameter_f32("subdivisions", map.subdivisions);
-        grid_shader.set_parameter_vec2("offset", Vec2::new(map.offset.x, -map.offset.y));
-        scene.background = Some(Box::new(grid_shader));
+        if self.draw_grid {
+            grid_shader.set_parameter_f32("grid_size", map.grid_size);
+            grid_shader.set_parameter_f32("subdivisions", map.subdivisions);
+            grid_shader.set_parameter_vec2("offset", Vec2::new(map.offset.x, -map.offset.y));
+            scene.background = Some(Box::new(grid_shader));
+        } else {
+            scene.background = None;
+        }
 
         // Add Sectors
         if self.map_tool_type == MapToolType::General
@@ -496,13 +504,24 @@ impl D2PreviewBuilder {
 
                 // No outlines for the rect tool based sectors in the minimap, they only mess things up.
                 if self.map_tool_type == MapToolType::MiniMap {
+                    let mut found_in_sector = false;
                     for sector in &map.sectors {
-                        if sector.linedefs.contains(&linedef.id)
-                            && sector.properties.contains("rect_rendering")
-                        {
-                            draw = false;
-                            break;
+                        if sector.linedefs.contains(&linedef.id) {
+                            found_in_sector = true;
+                            if sector.properties.contains("rect_rendering") {
+                                draw = false;
+                                break;
+                            }
                         }
+                    }
+
+                    // If the linedef is not found in any sector and has a wall width of 0.0, don't draw it.
+                    // Prevents deleted rect tool based sectors to be drawn.
+                    if draw
+                        && !found_in_sector
+                        && linedef.properties.get_float_default("wall_width", 0.0) == 0.0
+                    {
+                        draw = false;
                     }
                 }
 
@@ -709,10 +728,12 @@ impl D2PreviewBuilder {
         }
 
         // Hover Cursor
-        if let Some(hover_pos) = self.hover_cursor {
-            let pos = self.map_grid_to_local(screen_size, hover_pos, map);
-            let size = 4.0;
-            yellow_batch.add_rectangle(pos.x - size, pos.y - size, size * 2.0, size * 2.0);
+        if self.map_tool_type != MapToolType::Rect {
+            if let Some(hover_pos) = self.hover_cursor {
+                let pos = self.map_grid_to_local(screen_size, hover_pos, map);
+                let size = 4.0;
+                yellow_batch.add_rectangle(pos.x - size, pos.y - size, size * 2.0, size * 2.0);
+            }
         }
 
         // Camera Pos

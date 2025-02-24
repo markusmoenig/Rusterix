@@ -73,9 +73,15 @@ impl Rasterizer {
         }
     }
 
-    /// Sets the sample mode for the batch using the builder pattern.
+    /// Sets the sample mode using the builder pattern.
     pub fn sample_mode(mut self, sample_mode: SampleMode) -> Self {
         self.sample_mode = sample_mode;
+        self
+    }
+
+    /// Sets the background using the builder pattern.
+    pub fn background(mut self, background: Pixel) -> Self {
+        self.background_color = Some(background);
         self
     }
 
