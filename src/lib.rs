@@ -31,22 +31,24 @@ pub type Pixel = [u8; 4];
 /// Convert from Pixel to Vec4<f32>
 #[inline(always)]
 pub fn pixel_to_vec4(pixel: &Pixel) -> vek::Vec4<f32> {
+    let inv_255 = 1.0 / 255.0;
     vek::Vec4::new(
-        pixel[0] as f32 / 255.0,
-        pixel[1] as f32 / 255.0,
-        pixel[2] as f32 / 255.0,
-        pixel[3] as f32 / 255.0,
+        pixel[0] as f32 * inv_255,
+        pixel[1] as f32 * inv_255,
+        pixel[2] as f32 * inv_255,
+        pixel[3] as f32 * inv_255,
     )
 }
 
 /// Convert from Vec4<f32> to Pixel
 #[inline(always)]
 pub fn vec4_to_pixel(vec: &vek::Vec4<f32>) -> Pixel {
+    let scale = 255.0;
     [
-        (vec.x * 255.0) as u8,
-        (vec.y * 255.0) as u8,
-        (vec.z * 255.0) as u8,
-        (vec.w * 255.0) as u8,
+        (vec.x * scale) as u8,
+        (vec.y * scale) as u8,
+        (vec.z * scale) as u8,
+        (vec.w * scale) as u8,
     ]
 }
 
