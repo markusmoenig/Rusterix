@@ -120,6 +120,22 @@ impl Assets {
         self.materials = tiles;
     }
 
+    /// Returns an FxHashSet of Uuid representing the blocking tiles and materials.
+    pub fn blocking_tiles(&self) -> FxHashSet<Uuid> {
+        let mut blocking_tiles = FxHashSet::default();
+        for tile in self.tiles.values() {
+            if tile.blocking {
+                blocking_tiles.insert(tile.id);
+            }
+        }
+        for mat in self.materials.values() {
+            if mat.blocking {
+                blocking_tiles.insert(mat.id);
+            }
+        }
+        blocking_tiles
+    }
+
     /// Collects the assets from a directory.
     pub fn collect_from_directory(&mut self, dir_path: String) {
         let path = Path::new(&dir_path);

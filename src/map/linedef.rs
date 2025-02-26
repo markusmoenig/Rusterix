@@ -51,6 +51,8 @@ impl Linedef {
 /// A "compiled" version which is used in MapMini for lighting, navigation etc
 #[derive(Clone)]
 pub struct CompiledLinedef {
+    pub item_id: Option<u32>,
+
     pub start: Vec2<f32>,
     pub end: Vec2<f32>,
 
@@ -62,6 +64,7 @@ pub struct CompiledLinedef {
 
 impl CompiledLinedef {
     pub fn new(
+        item_id: Option<u32>,
         start: Vec2<f32>,
         end: Vec2<f32>,
         wall_width: f32,
@@ -69,6 +72,7 @@ impl CompiledLinedef {
         casts_shadows: bool,
     ) -> Self {
         Self {
+            item_id,
             start,
             end,
             wall_width,

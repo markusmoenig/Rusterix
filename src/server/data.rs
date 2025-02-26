@@ -25,6 +25,8 @@ pub fn apply_entity_data(entity: &mut Entity, toml: &str) {
                                 } else {
                                     entity.set_attribute(key, crate::Value::Str(value.to_string()));
                                 }
+                            } else if let Some(value) = value.as_bool() {
+                                entity.set_attribute(key, crate::Value::Bool(value));
                             }
                         }
                     }
@@ -64,6 +66,8 @@ pub fn apply_item_data(item: &mut Item, toml: &str) {
                                 } else {
                                     item.set_attribute(key, crate::Value::Str(value.to_string()));
                                 }
+                            } else if let Some(value) = value.as_bool() {
+                                item.set_attribute(key, crate::Value::Bool(value));
                             }
                         }
                     }

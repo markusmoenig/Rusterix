@@ -1,4 +1,5 @@
 use crate::{Light, PixelSource, PlayerCamera, SampleMode, Texture};
+use rustpython::vm::*;
 use std::fmt;
 use theframework::prelude::*;
 
@@ -24,6 +25,84 @@ impl Value {
         match self {
             Value::Source(source) => Some(source),
             _ => None,
+        }
+    }
+
+    /// Convert from a Python object
+    pub fn from_pyobject(value: PyObjectRef, vm: &VirtualMachine) -> Option<Self> {
+        if value.class().is(vm.ctx.types.bool_type) {
+            let val: bool = value.try_into_value(vm).ok()?;
+            Some(Value::Bool(val))
+        } else if value.class().is(vm.ctx.types.int_type) {
+            let val: i32 = value.try_into_value(vm).ok()?;
+            Some(Value::Int(val))
+        } else if value.class().is(vm.ctx.types.float_type) {
+            let val: f32 = value.try_into_value(vm).ok()?;
+            Some(Value::Float(val))
+        } else if value.class().is(vm.ctx.types.str_type) {
+            let val: String = value.try_into_value(vm).ok()?;
+            Some(Value::Str(val))
+        } else if value.class().is(vm.ctx.types.tuple_type) {
+            let tuple: Vec<PyObjectRef> = value.try_into_value(vm).ok()?;
+            match tuple.len() {
+                2 => {
+                    let x: f32 = tuple[0].clone().try_into_value(vm).ok()?;
+                    let y: f32 = tuple[1].clone().try_into_value(vm).ok()?;
+                    Some(Value::Vec2([x, y]))
+                }
+                3 => {
+                    let x: f32 = tuple[0].clone().try_into_value(vm).ok()?;
+                    let y: f32 = tuple[1].clone().try_into_value(vm).ok()?;
+                    let z: f32 = tuple[2].clone().try_into_value(vm).ok()?;
+                    Some(Value::Vec3([x, y, z]))
+                }
+                4 => {
+                    let x: f32 = tuple[0].clone().try_into_value(vm).ok()?;
+                    let y: f32 = tuple[1].clone().try_into_value(vm).ok()?;
+                    let z: f32 = tuple[2].clone().try_into_value(vm).ok()?;
+                    let w: f32 = tuple[3].clone().try_into_value(vm).ok()?;
+                    Some(Value::Vec4([x, y, z, w]))
+                }
+                _ => None,
+            }
+        } else {
+            None
+        }
+    }
+
+    /// Convert to a Python object
+    pub fn to_pyobject(&self, vm: &VirtualMachine) -> PyObjectRef {
+        match self {
+            Value::Bool(val) => vm.ctx.new_bool(*val).into(),
+            Value::Int(val) => vm.ctx.new_int(*val).into(),
+            Value::Float(val) => vm.ctx.new_float(*val as f64).into(),
+            Value::Str(val) => vm.ctx.new_str(val.clone()).into(),
+            Value::Vec2(val) => vm
+                .ctx
+                .new_tuple(vec![
+                    vm.ctx.new_float(val[0] as f64).into(),
+                    vm.ctx.new_float(val[1] as f64).into(),
+                ])
+                .into(),
+            Value::Vec3(val) => vm
+                .ctx
+                .new_tuple(vec![
+                    vm.ctx.new_float(val[0] as f64).into(),
+                    vm.ctx.new_float(val[1] as f64).into(),
+                    vm.ctx.new_float(val[2] as f64).into(),
+                ])
+                .into(),
+            Value::Vec4(val) => vm
+                .ctx
+                .new_tuple(vec![
+                    vm.ctx.new_float(val[0] as f64).into(),
+                    vm.ctx.new_float(val[1] as f64).into(),
+                    vm.ctx.new_float(val[2] as f64).into(),
+                    vm.ctx.new_float(val[3] as f64).into(),
+                ])
+                .into(),
+            Value::Id(uuid) => vm.ctx.new_str(uuid.to_string()).into(), // Convert UUID to string
+            _ => vm.ctx.none(),
         }
     }
 }

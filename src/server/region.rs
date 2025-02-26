@@ -1,13 +1,15 @@
 use crate::server::py_fn::*;
-use crate::{Assets, Entity, EntityAction, Map, MapMini, PixelSource, PlayerCamera, Value};
+use crate::{
+    Assets, CompiledLinedef, Entity, EntityAction, Map, MapMini, PixelSource, PlayerCamera, Value,
+};
 use crossbeam_channel::{select, tick, unbounded, Receiver, Sender};
 use rand::*;
 use ref_thread_local::{ref_thread_local, RefThreadLocal};
-use rustc_hash::FxHashMap;
+
 use rustpython::vm::*;
 use std::sync::{Arc, Mutex, OnceLock};
-use theframework::prelude::{TheTime, Uuid};
-use vek::num_traits::zero;
+use theframework::prelude::{FxHashMap, FxHashSet, TheTime, Uuid};
+use vek::{num_traits::zero, Vec2};
 
 use EntityAction::*;
 
@@ -16,6 +18,11 @@ ref_thread_local! {
     pub static managed REGION: RegionInstance = RegionInstance::default();
     pub static managed MAP: Map = Map::default();
     pub static managed MAPMINI: MapMini = MapMini::default();
+
+    /// The ids of blocking tiles (and materials). We need to know these for collision detection.
+    pub static managed BLOCKING_TILES: FxHashSet<Uuid> = FxHashSet::default();
+
+    /// The server time
     pub static managed TIME: TheTime = TheTime::default();
 
     /// RegionID
@@ -126,6 +133,12 @@ impl RegionInstance {
             );
 
             let _ = scope.globals.set_item(
+                "set_attr",
+                vm.new_function("set_attr", set_attr).into(),
+                vm,
+            );
+
+            let _ = scope.globals.set_item(
                 "random",
                 vm.new_function("random", random_in_range).into(),
                 vm,
@@ -208,6 +221,7 @@ impl RegionInstance {
         *MAP.borrow_mut() = map;
         *NOTIFICATIONS.borrow_mut() = vec![];
         *STARTUP_ERRORS.borrow_mut() = vec![];
+        *BLOCKING_TILES.borrow_mut() = assets.blocking_tiles();
 
         // Installing Entity Class Templates
         for (name, (entity_source, entity_data)) in &assets.entities {
@@ -273,6 +287,7 @@ impl RegionInstance {
         let startup_errors = STARTUP_ERRORS.borrow().clone();
         let entity_class_data = ENTITY_CLASS_DATA.borrow().clone();
         let item_class_data = ITEM_CLASS_DATA.borrow().clone();
+        let blocking_tiles = BLOCKING_TILES.borrow().clone();
 
         std::thread::spawn(move || {
             // Initialize the local thread global storage
@@ -286,13 +301,14 @@ impl RegionInstance {
                 .unwrap();
             *REGIONID.borrow_mut() = self.id;
             *REGION.borrow_mut() = self;
-            *MAPMINI.borrow_mut() = map.as_mini();
+            *MAPMINI.borrow_mut() = map.as_mini(&blocking_tiles);
             *MAP.borrow_mut() = map;
             *TICKS.borrow_mut() = 0;
             // TODO: Make this configurable
             *TICKS_PER_MINUTE.borrow_mut() = 4;
             *ENTITY_CLASS_DATA.borrow_mut() = entity_class_data;
             *ITEM_CLASS_DATA.borrow_mut() = item_class_data;
+            *BLOCKING_TILES.borrow_mut() = blocking_tiles;
 
             // Send startup messages
             *ERROR_COUNT.borrow_mut() = startup_errors.len() as u32;
@@ -520,6 +536,21 @@ impl RegionInstance {
         let mut updates: Vec<Vec<u8>> = vec![];
         let mut item_updates: Vec<Vec<u8>> = vec![];
         let mut entities = MAP.borrow().entities.clone();
+
+        // Create temp geometry for static items
+        let mut dynamic_linedefs: Vec<CompiledLinedef> = vec![];
+        for item in &MAP.borrow().items {
+            if item.attributes.get_bool_default("static", false)
+                && item.attributes.get_bool_default("blocking", false)
+            {
+                let position = item.get_pos_xz();
+                let radius = item.attributes.get_float_default("radius", 0.5);
+                dynamic_linedefs
+                    .extend(self.create_blocking_item_geometry(item.id, position, radius));
+            }
+        }
+        MAPMINI.borrow_mut().dynamic_linedefs = dynamic_linedefs;
+
         for entity in &mut entities {
             match &entity.action {
                 EntityAction::Forward => {
@@ -689,6 +720,62 @@ impl RegionInstance {
         }
     }
 
+    /// Create a square geometry at the given position with the given radius.
+    fn create_blocking_item_geometry(
+        &self,
+        item_id: u32,
+        position: Vec2<f32>,
+        radius: f32,
+    ) -> Vec<CompiledLinedef> {
+        let wall_height = 1.0;
+        let wall_width = 0.0;
+        let casts_shadows = false;
+
+        let mut linedefs = Vec::new();
+
+        // Define four points of a square around the position
+        let top_left = Vec2::new(position.x - radius, position.y - radius);
+        let top_right = Vec2::new(position.x + radius, position.y - radius);
+        let bottom_right = Vec2::new(position.x + radius, position.y + radius);
+        let bottom_left = Vec2::new(position.x - radius, position.y + radius);
+
+        // Create the four edges
+        linedefs.push(CompiledLinedef::new(
+            Some(item_id),
+            top_left,
+            top_right,
+            wall_width,
+            wall_height,
+            casts_shadows,
+        ));
+        linedefs.push(CompiledLinedef::new(
+            Some(item_id),
+            top_right,
+            bottom_right,
+            wall_width,
+            wall_height,
+            casts_shadows,
+        ));
+        linedefs.push(CompiledLinedef::new(
+            Some(item_id),
+            bottom_right,
+            bottom_left,
+            wall_width,
+            wall_height,
+            casts_shadows,
+        ));
+        linedefs.push(CompiledLinedef::new(
+            Some(item_id),
+            bottom_left,
+            top_left,
+            wall_width,
+            wall_height,
+            casts_shadows,
+        ));
+
+        linedefs
+    }
+
     /// Get the position of the entity of the given id.
     pub fn get_entity_position(&self, id: u32) -> Option<[f32; 3]> {
         let cmd = format!("manager.get_entity_position({})", id);
@@ -775,11 +862,14 @@ impl RegionInstance {
     fn move_entity(&self, entity: &mut Entity, dir: f32) -> bool {
         let speed = 0.05 * 2.0;
         let move_vector = entity.orientation * speed * dir;
-        let (end_position, blocked) =
+        let (end_position, blocked, item_id) =
             MAPMINI
                 .borrow()
-                .move_distance(entity.get_pos_xz(), move_vector, 0.5);
+                .move_distance(entity.get_pos_xz(), move_vector, 0.5 - 0.01);
         entity.set_pos_xz(end_position);
+        if let Some(item_id) = item_id {
+            println!("collided with {}", item_id);
+        }
         blocked
     }
 }
@@ -852,7 +942,7 @@ fn player_action(action: String) {
     }
 }
 
-/// Set the tile_id of the entity.
+/// Set the tile_id of the current entity or item.
 fn set_tile(id: String) {
     if let Ok(uuid) = Uuid::try_parse(&id) {
         if let Some(item_id) = *CURR_ITEMID.borrow() {
@@ -873,6 +963,34 @@ fn set_tile(id: String) {
                 .find(|entity| entity.id == entity_id)
             {
                 entity.set_attribute("source", Value::Source(PixelSource::TileId(uuid)));
+            }
+        }
+    }
+}
+
+/// Set the attribute of the current entity or item.
+fn set_attr(key: PyObjectRef, value: PyObjectRef, vm: &VirtualMachine) {
+    if let Ok(key) = String::try_from_object(vm, key) {
+        if let Some(value) = Value::from_pyobject(value, vm) {
+            if let Some(item_id) = *CURR_ITEMID.borrow() {
+                if let Some(item) = MAP
+                    .borrow_mut()
+                    .items
+                    .iter_mut()
+                    .find(|item| item.id == item_id)
+                {
+                    item.set_attribute(&key, value);
+                }
+            } else {
+                let entity_id = *CURR_ENTITYID.borrow();
+                if let Some(entity) = MAP
+                    .borrow_mut()
+                    .entities
+                    .iter_mut()
+                    .find(|entity| entity.id == entity_id)
+                {
+                    entity.set_attribute(&key, value);
+                }
             }
         }
     }

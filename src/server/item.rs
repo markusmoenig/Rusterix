@@ -1,4 +1,3 @@
-use rustc_hash::FxHashSet;
 use theframework::prelude::*;
 
 use crate::prelude::*;
@@ -52,6 +51,11 @@ impl Item {
             dirty_flags: 0,
             dirty_attributes: FxHashSet::default(),
         }
+    }
+
+    /// Get the XZ position.
+    pub fn get_pos_xz(&self) -> Vec2<f32> {
+        Vec2::new(self.position.x, self.position.z)
     }
 
     /// Set the position and mark it as dirty

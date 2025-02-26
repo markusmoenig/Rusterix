@@ -779,7 +779,8 @@ impl D2PreviewBuilder {
             treasure_off_batch,
         ]);
 
-        scene.mapmini = map.as_mini();
+        let tiles = assets.blocking_tiles();
+        scene.mapmini = map.as_mini(&tiles);
         scene.d2 = batches;
         scene.textures = textures;
         scene

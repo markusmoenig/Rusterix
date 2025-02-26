@@ -342,7 +342,7 @@ impl D3Builder {
         let mut batches = repeated_batches;
         batches.extend(vec![atlas_batch]);
 
-        scene.mapmini = map.as_mini();
+        scene.mapmini = map.as_mini(&assets.blocking_tiles());
         scene.d3_static = batches;
         scene.textures = textures;
         scene

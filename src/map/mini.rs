@@ -7,7 +7,12 @@ pub struct MapMini {
     pub offset: Vec2<f32>,
     pub grid_size: f32,
 
+    /// Static blocking geometry
     linedefs: Vec<CompiledLinedef>,
+
+    /// Dynamic blocking geometry (items, etc)
+    pub dynamic_linedefs: Vec<CompiledLinedef>,
+
     occluded_sectors: Vec<(BBox, f32)>,
 }
 
@@ -23,6 +28,7 @@ impl MapMini {
             offset: Vec2::zero(),
             grid_size: 0.0,
             linedefs: vec![],
+            dynamic_linedefs: vec![],
             occluded_sectors: vec![],
         }
     }
@@ -37,6 +43,7 @@ impl MapMini {
             offset,
             grid_size,
             linedefs,
+            dynamic_linedefs: vec![],
             occluded_sectors,
         }
     }
@@ -106,19 +113,20 @@ impl MapMini {
         true // No intersection, so fully visible and lit
     }
 
-    /// Returns collision distance if collision occurs
+    /// Returns target position (and if the move was blocked) and, if the move was blocked by an item, returns the item ID.
     pub fn move_distance(
         &self,
         start_pos: Vec2<f32>,
         move_vector: Vec2<f32>,
         radius: f32,
-    ) -> (Vec2<f32>, bool) {
+    ) -> (Vec2<f32>, bool, Option<u32>) {
         const MAX_ITERATIONS: usize = 3;
         const EPSILON: f32 = 0.001;
 
         let mut current_pos = start_pos;
         let mut remaining = move_vector;
         let mut blocked = false;
+        let mut item_id = None;
         let mut iterations = 0;
 
         while remaining.magnitude_squared() > EPSILON * EPSILON && iterations < MAX_ITERATIONS {
@@ -126,7 +134,7 @@ impl MapMini {
 
             // Find earliest collision in remaining path
             let mut closest_collision = None;
-            for linedef in &self.linedefs {
+            for linedef in self.linedefs.iter().chain(self.dynamic_linedefs.iter()) {
                 // Add any 'wall_width' to the player's collision radius
                 let coll_radius = radius + linedef.wall_width / 2.0;
 
@@ -141,6 +149,7 @@ impl MapMini {
                     #[allow(clippy::unnecessary_map_or)]
                     if closest_collision.map_or(true, |(d, _)| distance < d) {
                         closest_collision = Some((distance, normal));
+                        item_id = linedef.item_id;
                     }
                 }
             }
@@ -185,7 +194,7 @@ impl MapMini {
         }
 
         // Final "push out" pass
-        for linedef in &self.linedefs {
+        for linedef in self.linedefs.iter().chain(self.dynamic_linedefs.iter()) {
             let coll_radius = radius + linedef.wall_width / 2.0;
 
             if let Some((dist, normal)) = self.check_point_against_segment(
@@ -203,7 +212,7 @@ impl MapMini {
             }
         }
 
-        (current_pos, blocked)
+        (current_pos, blocked, item_id)
     }
 
     /// Precise collision detection with corner handling

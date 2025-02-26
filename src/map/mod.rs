@@ -10,9 +10,10 @@ pub mod state;
 pub mod tile;
 pub mod vertex;
 
-use crate::{BBox, MapMini, VertexAnimationSystem};
+use crate::{BBox, MapMini, PixelSource, Value, VertexAnimationSystem};
 use ordered_float::NotNan;
 use pathfinding::prelude::astar;
+use theframework::prelude::FxHashSet;
 
 use linedef::*;
 use sector::*;
@@ -164,7 +165,7 @@ impl Map {
     }
 
     /// Return the Map as MapMini
-    pub fn as_mini(&self) -> MapMini {
+    pub fn as_mini(&self, blocking_tiles: &FxHashSet<Uuid>) -> MapMini {
         let mut linedefs: Vec<CompiledLinedef> = vec![];
         let mut occluded_sectors: Vec<(BBox, f32)> = vec![];
 
@@ -184,6 +185,20 @@ impl Map {
                     casts_shadows = false;
                     add_it = false;
                 }
+                // If the tile is explicitly set to blocking we have to add the geometry
+                match sector.properties.get("floor_source") {
+                    Some(Value::Source(PixelSource::TileId(id))) => {
+                        if blocking_tiles.contains(id) {
+                            add_it = true;
+                        }
+                    }
+                    Some(Value::Source(PixelSource::MaterialId(id))) => {
+                        if blocking_tiles.contains(id) {
+                            add_it = true;
+                        }
+                    }
+                    _ => {}
+                }
             }
 
             if add_it {
@@ -197,6 +212,7 @@ impl Map {
                         if let Some(start) = self.find_vertex(linedef.start_vertex) {
                             if let Some(end) = self.find_vertex(linedef.end_vertex) {
                                 let cl = CompiledLinedef::new(
+                                    None,
                                     start.as_vec2(),
                                     end.as_vec2(),
                                     linedef.properties.get_float_default("wall_width", 0.0),
@@ -216,6 +232,7 @@ impl Map {
                 if let Some(start) = self.find_vertex(l.start_vertex) {
                     if let Some(end) = self.find_vertex(l.end_vertex) {
                         let cl = CompiledLinedef::new(
+                            None,
                             start.as_vec2(),
                             end.as_vec2(),
                             l.properties.get_float_default("wall_width", 0.0),

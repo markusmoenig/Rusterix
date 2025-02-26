@@ -1,6 +1,5 @@
 use rusterix::{prelude::*, rusterix::Rusterix};
 use std::path::Path;
-use std::time::{Duration, Instant};
 use theframework::prelude::*;
 
 fn main() {
@@ -14,8 +13,6 @@ fn main() {
 
 pub struct MiniGame {
     rusterix: Rusterix,
-
-    last_redraw_update: Instant,
 }
 
 impl TheTrait for MiniGame {
@@ -53,11 +50,7 @@ impl TheTrait for MiniGame {
                 "images/logo.png",
             ))));
 
-        Self {
-            rusterix,
-
-            last_redraw_update: Instant::now(),
-        }
+        Self { rusterix }
     }
 
     /// Draw the game.
@@ -85,17 +78,14 @@ impl TheTrait for MiniGame {
         // println!("Execution time: {:?} ms.", _stop - _start);
     }
 
-    // Query if the widget needs a redraw, limit redraws to 30fps
+    // Set the target fps to 60
+    fn target_fps(&self) -> f64 {
+        60.0
+    }
+
+    // Query if the widget needs a redraw
     fn update(&mut self, _ctx: &mut TheContext) -> bool {
-        let target_fps = 60;
-        let mut redraw_update = false;
-
-        if self.last_redraw_update.elapsed() >= Duration::from_millis(1000 / target_fps) {
-            self.last_redraw_update = Instant::now();
-            redraw_update = true;
-        }
-
-        redraw_update
+        true
     }
 
     fn window_title(&self) -> String {
