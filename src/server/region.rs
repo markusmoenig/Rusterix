@@ -907,10 +907,11 @@ impl RegionInstance {
     fn move_entity(&self, entity: &mut Entity, dir: f32) -> bool {
         let speed = 0.05 * 2.0;
         let move_vector = entity.orientation * speed * dir;
-        let (end_position, blocked, item_id) =
-            MAPMINI
-                .borrow()
-                .move_distance(entity.get_pos_xz(), move_vector, 0.5 - 0.01);
+        let (end_position, blocked, item_id) = MAPMINI.borrow().move_distance(
+            entity.get_pos_xz(),
+            move_vector,
+            entity.attributes.get_float_default("radius", 0.5) - 0.01,
+        );
         entity.set_pos_xz(end_position);
         if let Some(item_id) = item_id {
             // If the character bumped into an item, send events to both sides.
