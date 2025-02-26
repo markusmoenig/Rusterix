@@ -57,6 +57,10 @@ ref_thread_local! {
     /// Maps an item class name to its data file.
     pub static managed ITEM_CLASS_DATA: FxHashMap<String, String> = FxHashMap::default();
 
+    /// Cmds which are queued to be executed to either entities or items.
+    pub static managed TO_EXECUTE_ENTITY: Vec<(u32, String)> = vec![];
+    pub static managed TO_EXECUTE_ITEM  : Vec<(u32, String)> = vec![];
+
     /// Errors since starting the region.
     pub static managed ERROR_COUNT: u32 = 0;
     pub static managed STARTUP_ERRORS: Vec<String> = vec![];
@@ -449,6 +453,7 @@ impl RegionInstance {
                 *ERROR_COUNT.borrow(),
             ));
 
+            // Event loop
             loop {
                 select! {
                     recv(system_ticker) -> _ => {
@@ -475,6 +480,7 @@ impl RegionInstance {
                             if *tick <= ticks {
                                 let cmd = format!("manager.event({}, \"{}\", \"\")", id, notification);
                                 *CURR_ENTITYID.borrow_mut() = *id;
+                                *CURR_ITEMID.borrow_mut() = None;
                                 let _ = REGION.borrow_mut().execute(&cmd);
                                 false
                             } else {
@@ -489,21 +495,25 @@ impl RegionInstance {
                         if let Ok(message) = mess {
                             match message {
                                 Event(entity_id, event, value) => {
-                                    let cmd = format!("manager.event({}, '{}', {})", entity_id, event, value);
-                                    *CURR_ENTITYID.borrow_mut() = entity_id;
-                                    if let Err(err) = REGION.borrow().execute(&cmd) {
-                                        send_log_message(format!(
-                                            "{}: Event Error for '{}': {}",
-                                            name,
-                                            get_entity_name(entity_id),
-                                            err,
-                                        ));
+                                    if let Some(class_name) = ENTITY_CLASSES.borrow().get(&entity_id) {
+                                        let cmd = format!("{}.event('{}', {})", class_name, event, value);
+                                        *CURR_ENTITYID.borrow_mut() = entity_id;
+                                        *CURR_ITEMID.borrow_mut() = None;
+                                        if let Err(err) = REGION.borrow().execute(&cmd) {
+                                            send_log_message(format!(
+                                                "{}: Event Error for '{}': {}",
+                                                name,
+                                                get_entity_name(entity_id),
+                                                err,
+                                            ));
+                                        }
                                     }
                                 }
                                 UserEvent(entity_id, event, value) => {
                                     if let Some(class_name) = ENTITY_CLASSES.borrow().get(&entity_id) {
                                         let cmd = format!("{}.user_event('{}', '{}')", class_name, event, value);
                                         *CURR_ENTITYID.borrow_mut() = entity_id;
+                                        *CURR_ITEMID.borrow_mut() = None;
                                         if let Err(err) = REGION.borrow().execute(&cmd) {
                                             send_log_message(format!(
                                                 "{}: User Event Error for '{}': {}",
@@ -523,6 +533,41 @@ impl RegionInstance {
                                     println!("Shutting down '{}'. Goodbye.", MAP.borrow().name);
                                 }
                                 _ => {}
+                            }
+                        }
+
+                        // Execute delayed scripts for entities
+                        // This is because we can only borrow REGION once.
+                        let to_execute_entity = TO_EXECUTE_ENTITY.borrow().clone();
+                        TO_EXECUTE_ENTITY.borrow_mut().clear();
+                        for todo in to_execute_entity {
+                            *CURR_ENTITYID.borrow_mut() = todo.0;
+                            *CURR_ITEMID.borrow_mut() = None;
+                            if let Err(err) = REGION.borrow().execute(&todo.1) {
+                                println!("err {}", err);
+                                send_log_message(format!(
+                                    "TO_EXECUTE_ENTITY: Error for '{}': {}: {}",
+                                    todo.0,
+                                    todo.1,
+                                    err,
+                                ));
+                            }
+                        }
+
+                        // Execute delayed scrips for items.
+                        // This is because we can only borrow REGION once.
+                        let to_execute_items = TO_EXECUTE_ITEM.borrow().clone();
+                        TO_EXECUTE_ITEM.borrow_mut().clear();
+                        for todo in to_execute_items {
+                            *CURR_ITEMID.borrow_mut() = Some(todo.0);
+                            if let Err(err) = REGION.borrow().execute(&todo.1) {
+                                println!("err {}", err);
+                                send_log_message(format!(
+                                    "TO_EXECUTE_ITEM: Error for '{}': {}: {}",
+                                    todo.0,
+                                    todo.1,
+                                    err,
+                                ));
                             }
                         }
                     }
@@ -868,7 +913,15 @@ impl RegionInstance {
                 .move_distance(entity.get_pos_xz(), move_vector, 0.5 - 0.01);
         entity.set_pos_xz(end_position);
         if let Some(item_id) = item_id {
-            println!("collided with {}", item_id);
+            // If the character bumped into an item, send events to both sides.
+            if let Some(class_name) = ENTITY_CLASSES.borrow().get(&entity.id) {
+                let cmd = format!("{}.event('{}', {})", class_name, "bump_item", item_id);
+                TO_EXECUTE_ENTITY.borrow_mut().push((item_id, cmd));
+            }
+            if let Some(class_name) = ITEM_CLASSES.borrow().get(&item_id) {
+                let cmd = format!("{}.event('{}', {})", class_name, "bump_player", entity.id);
+                TO_EXECUTE_ITEM.borrow_mut().push((item_id, cmd));
+            }
         }
         blocked
     }

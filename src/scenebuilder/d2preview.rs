@@ -665,17 +665,19 @@ impl D2PreviewBuilder {
                 }
 
                 if let Some(Value::Source(source)) = entity.attributes.get("source") {
-                    if let Some(tile) = source.to_tile(assets, 100, &entity.attributes) {
-                        let texture_index = textures.len();
+                    if entity.attributes.get_bool_default("visible", false) {
+                        if let Some(tile) = source.to_tile(assets, 100, &entity.attributes) {
+                            let texture_index = textures.len();
 
-                        let mut batch = Batch::emptyd2()
-                            .texture_index(texture_index)
-                            .receives_light(true);
+                            let mut batch = Batch::emptyd2()
+                                .texture_index(texture_index)
+                                .receives_light(true);
 
-                        batch.add_rectangle(pos.x - hsize, pos.y - hsize, size, size);
-                        textures.push(tile.clone());
-                        repeated_offsets.insert(tile.id, repeated_batches.len());
-                        repeated_batches.push(batch);
+                            batch.add_rectangle(pos.x - hsize, pos.y - hsize, size, size);
+                            textures.push(tile.clone());
+                            repeated_offsets.insert(tile.id, repeated_batches.len());
+                            repeated_batches.push(batch);
+                        }
                     }
                 } else if Some(entity.creator_id) == map.selected_entity_item {
                     character_on_batch.add_rectangle(pos.x - hsize, pos.y - hsize, size, size);
@@ -699,17 +701,19 @@ impl D2PreviewBuilder {
                 }
 
                 if let Some(Value::Source(source)) = item.attributes.get("source") {
-                    if let Some(tile) = source.to_tile(assets, 100, &item.attributes) {
-                        let texture_index = textures.len();
+                    if item.attributes.get_bool_default("visible", false) {
+                        if let Some(tile) = source.to_tile(assets, 100, &item.attributes) {
+                            let texture_index = textures.len();
 
-                        let mut batch = Batch::emptyd2()
-                            .texture_index(texture_index)
-                            .receives_light(true);
+                            let mut batch = Batch::emptyd2()
+                                .texture_index(texture_index)
+                                .receives_light(true);
 
-                        batch.add_rectangle(pos.x - hsize, pos.y - hsize, size, size);
-                        textures.push(tile.clone());
-                        repeated_offsets.insert(tile.id, repeated_batches.len());
-                        repeated_batches.push(batch);
+                            batch.add_rectangle(pos.x - hsize, pos.y - hsize, size, size);
+                            textures.push(tile.clone());
+                            repeated_offsets.insert(tile.id, repeated_batches.len());
+                            repeated_batches.push(batch);
+                        }
                     }
                 } else if Some(item.creator_id) == map.selected_entity_item {
                     treasure_on_batch.add_rectangle(pos.x - hsize, pos.y - hsize, size, size);
