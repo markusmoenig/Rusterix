@@ -62,7 +62,7 @@ impl Shader for GridShader {
 
         let bg_color = Vec4::new(0.05, 0.05, 0.05, 1.0);
         let line_color = Vec4::new(0.15, 0.15, 0.15, 1.0);
-        let sub_line_color = Vec4::new(0.1, 0.1, 0.1, 1.0);
+        let sub_line_color = Vec4::new(0.11, 0.11, 0.11, 1.0);
 
         let th = 1.0;
         let sth = 1.0;

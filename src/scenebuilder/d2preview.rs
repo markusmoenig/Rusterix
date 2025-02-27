@@ -62,6 +62,7 @@ impl D2PreviewBuilder {
         let mut scene = Scene::empty();
         let mut grid_shader = GridShader::new();
         let atlas_size = assets.atlas.width as f32;
+        let no_rect_geo = properties.get_bool_default("no_rect_geo", true);
 
         let mut textures = vec![
             Tile::from_texture(assets.atlas.clone()),
@@ -427,6 +428,9 @@ impl D2PreviewBuilder {
             || self.map_tool_type == MapToolType::Linedef
         {
             for vertex in &map.vertices {
+                if no_rect_geo && map.is_vertex_in_rect(vertex.id) {
+                    continue;
+                }
                 if let Some(vertex_pos) = map.get_vertex(vertex.id) {
                     if self.map_tool_type == MapToolType::Linedef {
                         // In linedef mode, only show vertices that are part of selected linedefs
@@ -502,8 +506,8 @@ impl D2PreviewBuilder {
             for linedef in &map.linedefs {
                 let mut draw = true;
 
-                // No outlines for the rect tool based sectors in the minimap, they only mess things up.
-                if self.map_tool_type == MapToolType::MiniMap {
+                // No outlines for the rect tool based sectors in the minimap or if no_rect_geo is enabled.
+                if self.map_tool_type == MapToolType::MiniMap || no_rect_geo {
                     let mut found_in_sector = false;
                     for sector in &map.sectors {
                         if sector.linedefs.contains(&linedef.id) {
@@ -520,6 +524,7 @@ impl D2PreviewBuilder {
                     if draw
                         && !found_in_sector
                         && linedef.properties.get_float_default("wall_width", 0.0) == 0.0
+                        && !map.possible_polygon.contains(&linedef.id)
                     {
                         draw = false;
                     }

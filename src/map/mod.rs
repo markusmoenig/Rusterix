@@ -914,6 +914,37 @@ impl Map {
         )
     }
 
+    /// Returns true if the given vertex is part of a sector with rect rendering enabled.
+    pub fn is_vertex_in_rect(&self, vertex_id: u32) -> bool {
+        for sector in &self.sectors {
+            if !sector.properties.contains("rect_rendering") {
+                continue;
+            }
+            for linedef_id in sector.linedefs.iter() {
+                if let Some(linedef) = self.find_linedef(*linedef_id) {
+                    if linedef.start_vertex == vertex_id || linedef.end_vertex == vertex_id {
+                        return true;
+                    }
+                }
+            }
+        }
+        false
+    }
+
+    /// Returns true if the given linedef is part of a sector with rect rendering enabled.
+    pub fn is_linedef_in_rect(&self, linedef_id: u32) -> bool {
+        for sector in &self.sectors {
+            if !sector.properties.contains("rect_rendering") {
+                continue;
+            }
+
+            if sector.linedefs.contains(&linedef_id) {
+                return true;
+            }
+        }
+        false
+    }
+
     /// Finds a free vertex ID that can be used for creating a new vertex.
     pub fn find_free_vertex_id(&self) -> Option<u32> {
         let free_id = (0..).find(|&id| !self.vertices.iter().any(|v| v.id == id));
