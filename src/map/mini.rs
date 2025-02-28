@@ -119,14 +119,13 @@ impl MapMini {
         start_pos: Vec2<f32>,
         move_vector: Vec2<f32>,
         radius: f32,
-    ) -> (Vec2<f32>, bool, Option<u32>) {
+    ) -> (Vec2<f32>, bool) {
         const MAX_ITERATIONS: usize = 3;
         const EPSILON: f32 = 0.001;
 
         let mut current_pos = start_pos;
         let mut remaining = move_vector;
         let mut blocked = false;
-        let mut item_id = None;
         let mut iterations = 0;
 
         while remaining.magnitude_squared() > EPSILON * EPSILON && iterations < MAX_ITERATIONS {
@@ -149,7 +148,6 @@ impl MapMini {
                     #[allow(clippy::unnecessary_map_or)]
                     if closest_collision.map_or(true, |(d, _)| distance < d) {
                         closest_collision = Some((distance, normal));
-                        item_id = linedef.item_id;
                     }
                 }
             }
@@ -212,7 +210,7 @@ impl MapMini {
             }
         }
 
-        (current_pos, blocked, item_id)
+        (current_pos, blocked)
     }
 
     /// Precise collision detection with corner handling

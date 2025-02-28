@@ -42,3 +42,29 @@ pub fn find_random_position(pos: Vec2<f32>, max_distance: f32) -> Vec2<f32> {
     let dy = max_distance * angle.sin();
     Vec2::new(pos.x + dx, pos.y + dy)
 }
+
+/// Get an i32 value from an Python object with a default fallback.
+pub fn get_i32(value: PyObjectRef, default: i32, vm: &VirtualMachine) -> i32 {
+    if value.class().is(vm.ctx.types.int_type) {
+        value.try_into_value::<i32>(vm).unwrap_or(default)
+    } else if value.class().is(vm.ctx.types.float_type) {
+        value
+            .try_into_value::<f32>(vm)
+            .map(|v| v as i32)
+            .unwrap_or(default) // Convert f32 to i32
+    } else {
+        default
+    }
+}
+
+/// Get an f32 value from an Python object with a default fallback.
+pub fn get_f32(value: PyObjectRef, default: f32, vm: &VirtualMachine) -> f32 {
+    if value.class().is(vm.ctx.types.int_type) {
+        value
+            .try_into_value::<i32>(vm)
+            .map(|v| v as f32)
+            .unwrap_or(default)
+    } else {
+        value.try_into_value::<f32>(vm).unwrap_or(default)
+    }
+}

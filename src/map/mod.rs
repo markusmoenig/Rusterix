@@ -212,7 +212,6 @@ impl Map {
                         if let Some(start) = self.find_vertex(linedef.start_vertex) {
                             if let Some(end) = self.find_vertex(linedef.end_vertex) {
                                 let cl = CompiledLinedef::new(
-                                    None,
                                     start.as_vec2(),
                                     end.as_vec2(),
                                     linedef.properties.get_float_default("wall_width", 0.0),
@@ -232,7 +231,6 @@ impl Map {
                 if let Some(start) = self.find_vertex(l.start_vertex) {
                     if let Some(end) = self.find_vertex(l.end_vertex) {
                         let cl = CompiledLinedef::new(
-                            None,
                             start.as_vec2(),
                             end.as_vec2(),
                             l.properties.get_float_default("wall_width", 0.0),

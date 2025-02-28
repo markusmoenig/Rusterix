@@ -1,7 +1,5 @@
 use crate::server::py_fn::*;
-use crate::{
-    Assets, CompiledLinedef, Entity, EntityAction, Map, MapMini, PixelSource, PlayerCamera, Value,
-};
+use crate::{Assets, Entity, EntityAction, Map, MapMini, PixelSource, PlayerCamera, Value};
 use crossbeam_channel::{select, tick, unbounded, Receiver, Sender};
 use rand::*;
 use ref_thread_local::{ref_thread_local, RefThreadLocal};
@@ -9,7 +7,7 @@ use ref_thread_local::{ref_thread_local, RefThreadLocal};
 use rustpython::vm::*;
 use std::sync::{Arc, Mutex, OnceLock};
 use theframework::prelude::{FxHashMap, FxHashSet, TheTime, Uuid};
-use vek::{num_traits::zero, Vec2};
+use vek::num_traits::zero;
 
 use EntityAction::*;
 
@@ -32,7 +30,10 @@ ref_thread_local! {
     pub static managed ID_GEN: u32 = 0;
 
     /// A list of notifications to send to the given entity at the specified tick.
-    pub static managed NOTIFICATIONS: Vec<(u32, i64, String)> = vec![];
+    pub static managed NOTIFICATIONS_ENTITIES: Vec<(u32, i64, String)> = vec![];
+
+    /// A list of notifications to send to the given items at the specified tick.
+    pub static managed NOTIFICATIONS_ITEMS: Vec<(u32, i64, String)> = vec![];
 
     /// The current tick
     pub static managed TICKS: i64 = 0;
@@ -71,8 +72,6 @@ ref_thread_local! {
 
 use super::data::{apply_entity_data, apply_item_data};
 use super::RegionMessage;
-use vek::Vec3;
-
 use RegionMessage::*;
 
 pub struct RegionInstance {
@@ -182,6 +181,13 @@ impl RegionInstance {
             let _ = scope
                 .globals
                 .set_item("debug", vm.new_function("debug", debug).into(), vm);
+
+            let _ = scope.globals.set_item(
+                "entities_in_radius",
+                vm.new_function("entities_in_radius", entities_in_radius)
+                    .into(),
+                vm,
+            );
         });
 
         let (to_sender, to_receiver) = unbounded::<RegionMessage>();
@@ -223,7 +229,8 @@ impl RegionInstance {
 
         *ID_GEN.borrow_mut() = 0;
         *MAP.borrow_mut() = map;
-        *NOTIFICATIONS.borrow_mut() = vec![];
+        *NOTIFICATIONS_ENTITIES.borrow_mut() = vec![];
+        *NOTIFICATIONS_ITEMS.borrow_mut() = vec![];
         *STARTUP_ERRORS.borrow_mut() = vec![];
         *BLOCKING_TILES.borrow_mut() = assets.blocking_tiles();
 
@@ -475,18 +482,45 @@ impl RegionInstance {
                             }
                         }
 
-                        let mut notifications = NOTIFICATIONS.borrow_mut();
-                        notifications.retain(|(id, tick, notification)| {
-                            if *tick <= ticks {
-                                let cmd = format!("manager.event({}, \"{}\", \"\")", id, notification);
-                                *CURR_ENTITYID.borrow_mut() = *id;
-                                *CURR_ITEMID.borrow_mut() = None;
-                                let _ = REGION.borrow_mut().execute(&cmd);
-                                false
-                            } else {
-                                true
+                        // Process notifications for entities. We have to do this carefully to avoid deadlocks
+                        {
+                            let to_process = {
+                                let notifications = NOTIFICATIONS_ENTITIES.borrow_mut();
+                                notifications.iter()
+                                    .filter(|(_, tick, _)| *tick <= ticks)
+                                    .cloned() // Clone only the relevant items
+                                    .collect::<Vec<_>>() // Store them in a new list
+                            };
+                            for (id, _tick, notification) in &to_process {
+                                if let Some(class_name) = ENTITY_CLASSES.borrow().get(id) {
+                                    let cmd = format!("{}.event(\"{}\", \"\")", class_name, notification);
+                                    *CURR_ENTITYID.borrow_mut() = *id;
+                                    *CURR_ITEMID.borrow_mut() = None;
+                                    let _ = REGION.borrow_mut().execute(&cmd);
+                                }
                             }
-                        });
+                            NOTIFICATIONS_ENTITIES.borrow_mut().retain(|(id, tick, _)| !to_process.iter().any(|(pid, _, _)| pid == id && *tick <= ticks));
+                        }
+
+                        // Process notifications for items. We have to do this carefully to avoid deadlocks
+                        {
+                            let to_process = {
+                                let notifications = NOTIFICATIONS_ITEMS.borrow_mut();
+                                notifications.iter()
+                                    .filter(|(_, tick, _)| *tick <= ticks)
+                                    .cloned()
+                                    .collect::<Vec<_>>()
+                            };
+                            for (id, _tick, notification) in &to_process {
+                                if let Some(class_name) = ITEM_CLASSES.borrow().get(id) {
+                                    let cmd = format!("{}.event(\"{}\", \"\")", class_name, notification);
+                                    *CURR_ITEMID.borrow_mut() = Some(*id);
+                                    let _ = REGION.borrow_mut().execute(&cmd);
+                                    *CURR_ITEMID.borrow_mut() = None;
+                                }
+                            }
+                            NOTIFICATIONS_ITEMS.borrow_mut().retain(|(id, tick, _)| !to_process.iter().any(|(pid, _, _)| pid == id && *tick <= ticks));
+                        }
                     }
                     recv(redraw_ticker) -> _ => {
                         REGION.borrow_mut().handle_redraw_tick();
@@ -581,20 +615,6 @@ impl RegionInstance {
         let mut updates: Vec<Vec<u8>> = vec![];
         let mut item_updates: Vec<Vec<u8>> = vec![];
         let mut entities = MAP.borrow().entities.clone();
-
-        // Create temp geometry for static items
-        let mut dynamic_linedefs: Vec<CompiledLinedef> = vec![];
-        for item in &MAP.borrow().items {
-            if item.attributes.get_bool_default("static", false)
-                && item.attributes.get_bool_default("blocking", false)
-            {
-                let position = item.get_pos_xz();
-                let radius = item.attributes.get_float_default("radius", 0.5);
-                dynamic_linedefs
-                    .extend(self.create_blocking_item_geometry(item.id, position, radius));
-            }
-        }
-        MAPMINI.borrow_mut().dynamic_linedefs = dynamic_linedefs;
 
         for entity in &mut entities {
             match &entity.action {
@@ -765,103 +785,6 @@ impl RegionInstance {
         }
     }
 
-    /// Create a square geometry at the given position with the given radius.
-    fn create_blocking_item_geometry(
-        &self,
-        item_id: u32,
-        position: Vec2<f32>,
-        radius: f32,
-    ) -> Vec<CompiledLinedef> {
-        let wall_height = 1.0;
-        let wall_width = 0.0;
-        let casts_shadows = false;
-
-        let mut linedefs = Vec::new();
-
-        // Define four points of a square around the position
-        let top_left = Vec2::new(position.x - radius, position.y - radius);
-        let top_right = Vec2::new(position.x + radius, position.y - radius);
-        let bottom_right = Vec2::new(position.x + radius, position.y + radius);
-        let bottom_left = Vec2::new(position.x - radius, position.y + radius);
-
-        // Create the four edges
-        linedefs.push(CompiledLinedef::new(
-            Some(item_id),
-            top_left,
-            top_right,
-            wall_width,
-            wall_height,
-            casts_shadows,
-        ));
-        linedefs.push(CompiledLinedef::new(
-            Some(item_id),
-            top_right,
-            bottom_right,
-            wall_width,
-            wall_height,
-            casts_shadows,
-        ));
-        linedefs.push(CompiledLinedef::new(
-            Some(item_id),
-            bottom_right,
-            bottom_left,
-            wall_width,
-            wall_height,
-            casts_shadows,
-        ));
-        linedefs.push(CompiledLinedef::new(
-            Some(item_id),
-            bottom_left,
-            top_left,
-            wall_width,
-            wall_height,
-            casts_shadows,
-        ));
-
-        linedefs
-    }
-
-    /// Get the position of the entity of the given id.
-    pub fn get_entity_position(&self, id: u32) -> Option<[f32; 3]> {
-        let cmd = format!("manager.get_entity_position({})", id);
-        match self.execute(&cmd) {
-            Ok(obj) => self.interp.enter(|vm| {
-                if let Ok(value) = obj.try_into_value::<Vec<f32>>(vm) {
-                    Some([value[0], value[1], value[2]])
-                } else {
-                    None
-                }
-            }),
-            Err(err) => {
-                println!("Error getting entity ({}) position: {}", id, err);
-                None
-            }
-        }
-    }
-
-    /// Get the position of the entity of the given id.
-    pub fn set_entity_position(&self, id: u32, position: Vec3<f32>) {
-        let cmd = format!(
-            "manager.set_entity_position({}, [{:.3}, {:.3}, {:.3}])",
-            id, position.x, position.y, position.z
-        );
-        match self.execute(&cmd) {
-            Ok(_obj) => {}
-            Err(err) => {
-                println!("Error setting entity ({}) position: {}", id, err);
-            }
-        }
-    }
-
-    pub fn add_entity(&mut self, name: String) {
-        // let cmd = format!("manager.create_entity(Entity())", name);
-        let cmd = format!(
-            "entity = Entity(); entity.attributes['name'] = '{}'; manager.add_entity(entity);",
-            name
-        );
-        let _ = self.execute(&cmd);
-    }
-
     /// Execute a script.
     pub fn execute(&self, source: &str) -> Result<PyObjectRef, String> {
         let scope = self.scope.lock().unwrap();
@@ -907,23 +830,95 @@ impl RegionInstance {
     fn move_entity(&self, entity: &mut Entity, dir: f32) -> bool {
         let speed = 0.05 * 2.0;
         let move_vector = entity.orientation * speed * dir;
-        let (end_position, blocked, item_id) = MAPMINI.borrow().move_distance(
-            entity.get_pos_xz(),
-            move_vector,
-            entity.attributes.get_float_default("radius", 0.5) - 0.01,
-        );
-        entity.set_pos_xz(end_position);
-        if let Some(item_id) = item_id {
-            // If the character bumped into an item, send events to both sides.
-            if let Some(class_name) = ENTITY_CLASSES.borrow().get(&entity.id) {
-                let cmd = format!("{}.event('{}', {})", class_name, "bump_item", item_id);
-                TO_EXECUTE_ENTITY.borrow_mut().push((item_id, cmd));
+        let position = entity.get_pos_xz();
+        let radius = entity.attributes.get_float_default("radius", 0.5) - 0.01;
+
+        // Collision detection with other entities and items
+        {
+            let map = &MAP.borrow();
+            let new_position = position + move_vector;
+
+            for other in map.entities.iter() {
+                if other.id == entity.id {
+                    continue;
+                }
+                let other_position = other.get_pos_xz();
+                let other_radius = other.attributes.get_float_default("radius", 0.5) - 0.01;
+
+                let distance_squared = (new_position - other_position).magnitude_squared();
+                let combined_radius = radius + other_radius;
+                let combined_radius_squared = combined_radius * combined_radius;
+
+                // Collision with another entity ?
+                if distance_squared < combined_radius_squared {
+                    // Send "bumped_into_entity" for the moving entity
+                    if let Some(class_name) = ENTITY_CLASSES.borrow().get(&entity.id) {
+                        let cmd = format!(
+                            "{}.event('{}', {})",
+                            class_name, "bumped_into_entity", other.id
+                        );
+                        TO_EXECUTE_ENTITY.borrow_mut().push((entity.id, cmd));
+                    }
+                    // Send "bumped_by_entity" for the other entity
+                    if let Some(class_name) = ENTITY_CLASSES.borrow().get(&other.id) {
+                        let cmd = format!(
+                            "{}.event('{}', {})",
+                            class_name, "bumped_by_entity", entity.id
+                        );
+                        TO_EXECUTE_ENTITY.borrow_mut().push((other.id, cmd));
+                    }
+                    // if the other entity is blocking, stop the movement
+                    if other.attributes.get_bool_default("blocking", false) {
+                        return true;
+                    }
+                }
             }
-            if let Some(class_name) = ITEM_CLASSES.borrow().get(&item_id) {
-                let cmd = format!("{}.event('{}', {})", class_name, "bump_player", entity.id);
-                TO_EXECUTE_ITEM.borrow_mut().push((item_id, cmd));
+
+            // Collision with an item ?
+            for other in map.items.iter() {
+                // Static items are done via linedef based collection below.
+                // if other.attributes.get_bool_default("static", false) {
+                //     continue;
+                // }
+
+                let other_position = other.get_pos_xz();
+                let other_radius = other.attributes.get_float_default("radius", 0.5) - 0.01;
+
+                let distance_squared = (new_position - other_position).magnitude_squared();
+                let combined_radius = radius + other_radius;
+                let combined_radius_squared = combined_radius * combined_radius;
+
+                if distance_squared < combined_radius_squared {
+                    if let Some(class_name) = ENTITY_CLASSES.borrow().get(&entity.id) {
+                        let cmd = format!(
+                            "{}.event('{}', {})",
+                            class_name, "bumped_into_item", other.id
+                        );
+                        TO_EXECUTE_ENTITY.borrow_mut().push((entity.id, cmd));
+                    }
+                    if let Some(class_name) = ITEM_CLASSES.borrow().get(&other.id) {
+                        let cmd = format!(
+                            "{}.event('{}', {})",
+                            class_name, "bumped_by_entity", entity.id
+                        );
+                        TO_EXECUTE_ITEM.borrow_mut().push((other.id, cmd));
+                    }
+                    // If the item is blocking, stop the movement
+                    if other.attributes.get_bool_default("blocking", false) {
+                        return true;
+                    }
+                }
             }
+            entity.set_pos_xz(new_position);
         }
+
+        // Test against geometry (linedefs)
+
+        let (end_position, blocked) = MAPMINI
+            .borrow()
+            .move_distance(position, move_vector, radius);
+        entity.set_pos_xz(end_position);
+
         blocked
     }
 }
@@ -1050,25 +1045,104 @@ fn set_attr(key: PyObjectRef, value: PyObjectRef, vm: &VirtualMachine) {
     }
 }
 
-/// Notify the entity in the given amount of minutes.
-fn notify_in(minutes: i32, notification: String) {
-    let tick = *TICKS.borrow() + (minutes as u32 * *TICKS_PER_MINUTE.borrow()) as i64;
-    NOTIFICATIONS
-        .borrow_mut()
-        .push((*CURR_ENTITYID.borrow(), tick, notification));
+/// Returns the entities in the radius of the character or item.
+fn entities_in_radius(vm: &VirtualMachine) -> PyResult<PyObjectRef> {
+    let mut radius = 0.5;
+    let mut position = None;
+    let mut is_entity = false;
+    let mut id = 0;
+
+    let map = MAP.borrow();
+
+    if let Some(item_id) = *CURR_ITEMID.borrow() {
+        if let Some(item) = map.items.iter().find(|item| item.id == item_id) {
+            id = item_id;
+            position = Some(item.get_pos_xz());
+            radius = item.attributes.get_float_default("radius", 0.5);
+        }
+    } else {
+        let entity_id = *CURR_ENTITYID.borrow();
+        is_entity = true;
+        if let Some(entity) = map.entities.iter().find(|entity| entity.id == entity_id) {
+            id = entity.id;
+            position = Some(entity.get_pos_xz());
+            radius = entity.attributes.get_float_default("radius", 0.5);
+        }
+    }
+
+    let mut entities = Vec::new();
+
+    if let Some(position) = position {
+        for other in map.entities.iter() {
+            if is_entity && other.id == id {
+                continue;
+            }
+            let other_position = other.get_pos_xz();
+            let other_radius = other.attributes.get_float_default("radius", 0.5);
+
+            let distance_squared = (position - other_position).magnitude_squared();
+            let combined_radius = radius + other_radius;
+            let combined_radius_squared = combined_radius * combined_radius;
+
+            // Entity is inside the radius
+            if distance_squared < combined_radius_squared {
+                entities.push(other.id);
+            }
+        }
+    }
+
+    // Convert Vec<u32> to a Python list using `vm.ctx.new_list()`
+    let py_list = vm.ctx.new_list(
+        entities
+            .iter()
+            .map(|&id| vm.ctx.new_int(id).into()) // Convert `PyRef<PyInt>` to `PyObjectRef`
+            .collect::<Vec<PyObjectRef>>(),
+    );
+
+    Ok(py_list.into())
 }
 
-/// Returns the name of the sector the entity is currently in.
+/// Notify the entity / item in the given amount of minutes.
+fn notify_in(minutes: i32, notification: String) {
+    let tick = *TICKS.borrow() + (minutes as u32 * *TICKS_PER_MINUTE.borrow()) as i64;
+    if let Some(item_id) = *CURR_ITEMID.borrow() {
+        NOTIFICATIONS_ITEMS
+            .borrow_mut()
+            .push((item_id, tick, notification));
+    } else {
+        NOTIFICATIONS_ENTITIES
+            .borrow_mut()
+            .push((*CURR_ENTITYID.borrow(), tick, notification));
+    }
+}
+
+/// Returns the name of the sector the entity or item is currently in.
 fn get_sector_name() -> String {
     let map = MAP.borrow();
-    for e in map.entities.iter() {
-        if e.id == *CURR_ENTITYID.borrow() {
-            let pos = e.get_pos_xz();
-            if let Some(s) = map.find_sector_at(pos) {
-                if s.name.is_empty() {
-                    return "Unnamed Sector".to_string();
-                } else {
-                    return s.name.clone();
+
+    if let Some(item_id) = *CURR_ITEMID.borrow() {
+        for e in map.items.iter() {
+            if e.id == item_id {
+                let pos = e.get_pos_xz();
+                if let Some(s) = map.find_sector_at(pos) {
+                    if s.name.is_empty() {
+                        return "Unnamed Sector".to_string();
+                    } else {
+                        return s.name.clone();
+                    }
+                }
+            }
+        }
+    } else {
+        for e in map.entities.iter() {
+            if e.id == *CURR_ENTITYID.borrow() {
+                let pos = e.get_pos_xz();
+                if let Some(s) = map.find_sector_at(pos) {
+                    if s.name.is_empty() {
+                        return "Unnamed Sector".to_string();
+                    } else {
+                        return s.name.clone();
+                    }
                 }
             }
         }
@@ -1088,25 +1162,37 @@ fn face_random() {
     }
 }
 
-/// Faces the entity at a random direction.
-fn random_walk(distance: f32, speed: f32, max_sleep: i32) {
+/// Randomly walks
+fn random_walk(
+    distance: PyObjectRef,
+    speed: PyObjectRef,
+    max_sleep: PyObjectRef,
+    vm: &VirtualMachine,
+) {
+    let distance: f32 = get_f32(distance, 1.0, vm);
+    let speed: f32 = get_f32(speed, 1.0, vm);
+    let max_sleep: i32 = get_i32(max_sleep, 0, vm);
+
     if let Some(entity) = MAP
         .borrow_mut()
         .entities
         .get_mut(*CURR_ENTITYID.borrow() as usize)
     {
-        entity.action = RandomWalk(distance, speed, max_sleep, 0, zero())
+        entity.action = RandomWalk(distance, speed, max_sleep, 0, zero());
     }
 }
 
-/// Faces the entity at a random direction.
-fn random_walk_in_sector(speed: f32, max_sleep: i32) {
+/// Randomly walks within the current sector.
+fn random_walk_in_sector(speed: PyObjectRef, max_sleep: PyObjectRef, vm: &VirtualMachine) {
+    let speed: f32 = get_f32(speed, 1.0, vm); // Default speed: 1.0
+    let max_sleep: i32 = get_i32(max_sleep, 0, vm); // Default max_sleep: 0
+
     if let Some(entity) = MAP
         .borrow_mut()
         .entities
         .get_mut(*CURR_ENTITYID.borrow() as usize)
     {
-        entity.action = RandomWalkInSector(speed, max_sleep, 0, zero())
+        entity.action = RandomWalkInSector(speed, max_sleep, 0, zero());
     }
 }
 
