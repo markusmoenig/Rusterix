@@ -208,21 +208,6 @@ impl RegionInstance {
         }
     }
 
-    // /// Apply the base classes to the Python subsystem.
-    // pub fn apply_base_classes(&mut self) {
-    //     // Apply the base classes
-    //     if let Some(bytes) = crate::Embedded::get("entity.py") {
-    //         if let Ok(source) = std::str::from_utf8(bytes.data.as_ref()) {
-    //             let _ = self.execute(source);
-    //         }
-    //     }
-    //     if let Some(bytes) = crate::Embedded::get("entitymanager.py") {
-    //         if let Ok(source) = std::str::from_utf8(bytes.data.as_ref()) {
-    //             let _ = self.execute(source);
-    //         }
-    //     }
-    // }
-
     /// Initializes the Python bases classes, sets the map and applies entities
     pub fn init(&mut self, name: String, map: Map, assets: &Assets) {
         self.name = name;
@@ -524,6 +509,41 @@ impl RegionInstance {
                     }
                     recv(redraw_ticker) -> _ => {
                         REGION.borrow_mut().handle_redraw_tick();
+
+                        // Execute delayed scripts for entities
+                        // This is because we can only borrow REGION once.
+                        let to_execute_entity = TO_EXECUTE_ENTITY.borrow().clone();
+                        TO_EXECUTE_ENTITY.borrow_mut().clear();
+                        for todo in to_execute_entity {
+                            *CURR_ENTITYID.borrow_mut() = todo.0;
+                            *CURR_ITEMID.borrow_mut() = None;
+                            if let Err(err) = REGION.borrow().execute(&todo.1) {
+                                println!("err {}", err);
+                                send_log_message(format!(
+                                    "TO_EXECUTE_ENTITY: Error for '{}': {}: {}",
+                                    todo.0,
+                                    todo.1,
+                                    err,
+                                ));
+                            }
+                        }
+
+                        // Execute delayed scrips for items.
+                        // This is because we can only borrow REGION once.
+                        let to_execute_items = TO_EXECUTE_ITEM.borrow().clone();
+                        TO_EXECUTE_ITEM.borrow_mut().clear();
+                        for todo in to_execute_items {
+                            *CURR_ITEMID.borrow_mut() = Some(todo.0);
+                            if let Err(err) = REGION.borrow().execute(&todo.1) {
+                                println!("err {}", err);
+                                send_log_message(format!(
+                                    "TO_EXECUTE_ITEM: Error for '{}': {}: {}",
+                                    todo.0,
+                                    todo.1,
+                                    err,
+                                ));
+                            }
+                        }
                     },
                     recv(TO_RECEIVER.borrow().get().unwrap()) -> mess => {
                         if let Ok(message) = mess {
@@ -567,41 +587,6 @@ impl RegionInstance {
                                     println!("Shutting down '{}'. Goodbye.", MAP.borrow().name);
                                 }
                                 _ => {}
-                            }
-                        }
-
-                        // Execute delayed scripts for entities
-                        // This is because we can only borrow REGION once.
-                        let to_execute_entity = TO_EXECUTE_ENTITY.borrow().clone();
-                        TO_EXECUTE_ENTITY.borrow_mut().clear();
-                        for todo in to_execute_entity {
-                            *CURR_ENTITYID.borrow_mut() = todo.0;
-                            *CURR_ITEMID.borrow_mut() = None;
-                            if let Err(err) = REGION.borrow().execute(&todo.1) {
-                                println!("err {}", err);
-                                send_log_message(format!(
-                                    "TO_EXECUTE_ENTITY: Error for '{}': {}: {}",
-                                    todo.0,
-                                    todo.1,
-                                    err,
-                                ));
-                            }
-                        }
-
-                        // Execute delayed scrips for items.
-                        // This is because we can only borrow REGION once.
-                        let to_execute_items = TO_EXECUTE_ITEM.borrow().clone();
-                        TO_EXECUTE_ITEM.borrow_mut().clear();
-                        for todo in to_execute_items {
-                            *CURR_ITEMID.borrow_mut() = Some(todo.0);
-                            if let Err(err) = REGION.borrow().execute(&todo.1) {
-                                println!("err {}", err);
-                                send_log_message(format!(
-                                    "TO_EXECUTE_ITEM: Error for '{}': {}: {}",
-                                    todo.0,
-                                    todo.1,
-                                    err,
-                                ));
                             }
                         }
                     }
@@ -839,9 +824,10 @@ impl RegionInstance {
             let new_position = position + move_vector;
 
             for other in map.entities.iter() {
-                if other.id == entity.id {
+                if other.id == entity.id || !other.attributes.get_bool_default("visible", false) {
                     continue;
                 }
+
                 let other_position = other.get_pos_xz();
                 let other_radius = other.attributes.get_float_default("radius", 0.5) - 0.01;
 
@@ -876,10 +862,10 @@ impl RegionInstance {
 
             // Collision with an item ?
             for other in map.items.iter() {
-                // Static items are done via linedef based collection below.
-                // if other.attributes.get_bool_default("static", false) {
-                //     continue;
-                // }
+                // If not visible, skip
+                if !other.attributes.get_bool_default("visible", false) {
+                    continue;
+                }
 
                 let other_position = other.get_pos_xz();
                 let other_radius = other.attributes.get_float_default("radius", 0.5) - 0.01;
@@ -889,6 +875,7 @@ impl RegionInstance {
                 let combined_radius_squared = combined_radius * combined_radius;
 
                 if distance_squared < combined_radius_squared {
+                    println!("hit");
                     if let Some(class_name) = ENTITY_CLASSES.borrow().get(&entity.id) {
                         let cmd = format!(
                             "{}.event('{}', {})",
