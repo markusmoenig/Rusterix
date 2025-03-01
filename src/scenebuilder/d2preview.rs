@@ -790,7 +790,7 @@ impl D2PreviewBuilder {
 
         let tiles = assets.blocking_tiles();
         scene.mapmini = map.as_mini(&tiles);
-        scene.d2 = batches;
+        scene.d2_static = batches;
         scene.textures = textures;
         scene
     }

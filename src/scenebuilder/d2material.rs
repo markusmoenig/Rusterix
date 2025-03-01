@@ -107,7 +107,7 @@ impl D2MaterialBuilder {
         }
 
         let mut scene = Scene::empty();
-        scene.d2 = batches;
+        scene.d2_static = batches;
         scene.textures = textures;
 
         Rasterizer::setup(None, Mat4::identity(), Mat4::identity()).rasterize(

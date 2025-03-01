@@ -135,6 +135,28 @@ impl RegionInstance {
                 vm,
             );
 
+            let _ = scope
+                .globals
+                .set_item("take", vm.new_function("take", take).into(), vm);
+
+            let _ = scope.globals.set_item(
+                "get_entity_attr",
+                vm.new_function("get_entity_attr", get_entity_attr).into(),
+                vm,
+            );
+
+            let _ = scope.globals.set_item(
+                "get_item_attr",
+                vm.new_function("get_item_attr", get_item_attr).into(),
+                vm,
+            );
+
+            let _ = scope.globals.set_item(
+                "get_attr",
+                vm.new_function("get_attr", get_attr).into(),
+                vm,
+            );
+
             let _ = scope.globals.set_item(
                 "set_attr",
                 vm.new_function("set_attr", set_attr).into(),
@@ -181,6 +203,19 @@ impl RegionInstance {
             let _ = scope
                 .globals
                 .set_item("debug", vm.new_function("debug", debug).into(), vm);
+
+            let _ = scope.globals.set_item(
+                "inventory_items",
+                vm.new_function("inventory_items", inventory_items).into(),
+                vm,
+            );
+
+            let _ = scope.globals.set_item(
+                "inventory_items_of",
+                vm.new_function("inventory_items_of", inventory_items_of)
+                    .into(),
+                vm,
+            );
 
             let _ = scope.globals.set_item(
                 "entities_in_radius",
@@ -518,7 +553,6 @@ impl RegionInstance {
                             *CURR_ENTITYID.borrow_mut() = todo.0;
                             *CURR_ITEMID.borrow_mut() = None;
                             if let Err(err) = REGION.borrow().execute(&todo.1) {
-                                println!("err {}", err);
                                 send_log_message(format!(
                                     "TO_EXECUTE_ENTITY: Error for '{}': {}: {}",
                                     todo.0,
@@ -535,7 +569,6 @@ impl RegionInstance {
                         for todo in to_execute_items {
                             *CURR_ITEMID.borrow_mut() = Some(todo.0);
                             if let Err(err) = REGION.borrow().execute(&todo.1) {
-                                println!("err {}", err);
                                 send_log_message(format!(
                                     "TO_EXECUTE_ITEM: Error for '{}': {}: {}",
                                     todo.0,
@@ -875,7 +908,6 @@ impl RegionInstance {
                 let combined_radius_squared = combined_radius * combined_radius;
 
                 if distance_squared < combined_radius_squared {
-                    println!("hit");
                     if let Some(class_name) = ENTITY_CLASSES.borrow().get(&entity.id) {
                         let cmd = format!(
                             "{}.event('{}', {})",
@@ -1004,6 +1036,102 @@ fn set_tile(id: String) {
     }
 }
 
+/// Take the given item.
+fn take(item_id: u32) {
+    let entity_id = *CURR_ENTITYID.borrow();
+    let mut map = MAP.borrow_mut();
+
+    if let Some(pos) = map
+        .items
+        .iter()
+        .position(|item| item.id == item_id && !item.attributes.get_bool_default("static", false))
+    {
+        let item = map.items.remove(pos);
+
+        if let Some(entity) = map
+            .entities
+            .iter_mut()
+            .find(|entity| entity.id == entity_id)
+        {
+            entity.add_item(item);
+            FROM_SENDER
+                .borrow()
+                .get()
+                .unwrap()
+                .send(RegionMessage::RemoveItem(*REGIONID.borrow(), item_id))
+                .unwrap();
+        }
+    }
+}
+
+/// Get an attribute from the given entity.
+fn get_entity_attr(entity_id: u32, key: String, vm: &VirtualMachine) -> PyResult<PyObjectRef> {
+    let mut value = Value::NoValue;
+
+    if let Some(entity) = MAP
+        .borrow_mut()
+        .items
+        .iter_mut()
+        .find(|entity| entity.id == entity_id)
+    {
+        if let Some(v) = entity.get_attribute(&key) {
+            value = v.clone();
+        }
+    }
+
+    Ok(value.to_pyobject(vm))
+}
+
+/// Get an attribute from the given item.
+fn get_item_attr(item_id: u32, key: String, vm: &VirtualMachine) -> PyResult<PyObjectRef> {
+    let mut value = Value::NoValue;
+
+    if let Some(item) = MAP
+        .borrow_mut()
+        .items
+        .iter_mut()
+        .find(|item| item.id == item_id)
+    {
+        if let Some(v) = item.get_attribute(&key) {
+            value = v.clone();
+        }
+    }
+
+    Ok(value.to_pyobject(vm))
+}
+
+/// Get an attribute from the current item or entity.
+fn get_attr(key: String, vm: &VirtualMachine) -> PyResult<PyObjectRef> {
+    let mut value = Value::NoValue;
+
+    if let Some(item_id) = *CURR_ITEMID.borrow() {
+        if let Some(item) = MAP
+            .borrow_mut()
+            .items
+            .iter_mut()
+            .find(|item| item.id == item_id)
+        {
+            if let Some(v) = item.get_attribute(&key) {
+                value = v.clone();
+            }
+        }
+    } else {
+        let entity_id = *CURR_ENTITYID.borrow();
+        if let Some(entity) = MAP
+            .borrow_mut()
+            .entities
+            .iter_mut()
+            .find(|entity| entity.id == entity_id)
+        {
+            if let Some(v) = entity.attributes.get(&key) {
+                value = v.clone();
+            }
+        }
+    }
+
+    Ok(value.to_pyobject(vm))
+}
+
 /// Set the attribute of the current entity or item.
 fn set_attr(key: PyObjectRef, value: PyObjectRef, vm: &VirtualMachine) {
     if let Ok(key) = String::try_from_object(vm, key) {
@@ -1030,6 +1158,79 @@ fn set_attr(key: PyObjectRef, value: PyObjectRef, vm: &VirtualMachine) {
             }
         }
     }
+}
+
+/// Returns a list of filtered inventory items.
+fn inventory_items_of(
+    entity_id: u32,
+    filter: String,
+    vm: &VirtualMachine,
+) -> PyResult<PyObjectRef> {
+    let mut items = Vec::new();
+
+    let map = MAP.borrow();
+
+    if let Some(entity) = map.entities.iter().find(|entity| entity.id == entity_id) {
+        for (_, item) in entity.inventory.iter() {
+            let mut name = "".to_string();
+            let mut class_name = "".to_string();
+
+            if let Some(n) = item.attributes.get_str("name") {
+                name = n.to_string();
+            }
+            if let Some(cn) = item.attributes.get_str("class_name") {
+                class_name = cn.to_string();
+            }
+
+            if filter.is_empty() || name.contains(&filter) || class_name.contains(&filter) {
+                items.push(item.id);
+            }
+        }
+    }
+
+    let py_list = vm.ctx.new_list(
+        items
+            .iter()
+            .map(|&id| vm.ctx.new_int(id).into())
+            .collect::<Vec<PyObjectRef>>(),
+    );
+
+    Ok(py_list.into())
+}
+
+/// Returns a list of filtered inventory items.
+fn inventory_items(filter: String, vm: &VirtualMachine) -> PyResult<PyObjectRef> {
+    let mut items = Vec::new();
+
+    let map = MAP.borrow();
+
+    let entity_id = *CURR_ENTITYID.borrow();
+    if let Some(entity) = map.entities.iter().find(|entity| entity.id == entity_id) {
+        for (_, item) in entity.inventory.iter() {
+            let mut name = "".to_string();
+            let mut class_name = "".to_string();
+
+            if let Some(n) = item.attributes.get_str("name") {
+                name = n.to_string();
+            }
+            if let Some(cn) = item.attributes.get_str("class_name") {
+                class_name = cn.to_string();
+            }
+
+            if filter.is_empty() || name.contains(&filter) || class_name.contains(&filter) {
+                items.push(item.id);
+            }
+        }
+    }
+
+    let py_list = vm.ctx.new_list(
+        items
+            .iter()
+            .map(|&id| vm.ctx.new_int(id).into())
+            .collect::<Vec<PyObjectRef>>(),
+    );
+
+    Ok(py_list.into())
 }
 
 /// Returns the entities in the radius of the character or item.
@@ -1078,11 +1279,10 @@ fn entities_in_radius(vm: &VirtualMachine) -> PyResult<PyObjectRef> {
         }
     }
 
-    // Convert Vec<u32> to a Python list using `vm.ctx.new_list()`
     let py_list = vm.ctx.new_list(
         entities
             .iter()
-            .map(|&id| vm.ctx.new_int(id).into()) // Convert `PyRef<PyInt>` to `PyObjectRef`
+            .map(|&id| vm.ctx.new_int(id).into())
             .collect::<Vec<PyObjectRef>>(),
     );
 

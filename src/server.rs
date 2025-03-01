@@ -194,6 +194,11 @@ impl Server {
                             self.items.insert(id, items);
                         }
                     }
+                    RegionMessage::RemoveItem(region_id, item_id) => {
+                        if let Some(items) = self.items.get_mut(&region_id) {
+                            items.retain(|item| item.id != item_id);
+                        }
+                    }
                     RegionMessage::LogMessage(message) => {
                         println!("{}", message);
                         if self.log.is_empty() {

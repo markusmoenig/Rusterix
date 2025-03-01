@@ -39,7 +39,7 @@ impl TheTrait for MiniGame {
         }
 
         // Add logo on top of the scene
-        rusterix.client.scene_d3.d2 = vec![Batch::from_rectangle(0.0, 0.0, 200.0, 200.0)
+        rusterix.client.scene_d3.d2_static = vec![Batch::from_rectangle(0.0, 0.0, 200.0, 200.0)
             .receives_light(false)
             .texture_index(rusterix.client.scene_d3.textures.len())];
         rusterix

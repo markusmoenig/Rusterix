@@ -1,3 +1,4 @@
+use indexmap::IndexMap;
 use rand::Rng;
 use std::collections::VecDeque;
 use theframework::prelude::*;
@@ -44,7 +45,7 @@ pub struct Entity {
     pub dirty_attributes: FxHashSet<String>,
 
     /// Inventory: A container for the entity's items
-    pub inventory: FxHashMap<u32, Item>,
+    pub inventory: IndexMap<u32, Item>,
 
     /// Track added items
     pub inventory_additions: FxHashMap<u32, Item>,
@@ -83,7 +84,7 @@ impl Entity {
             dirty_flags: 0,
             dirty_attributes: FxHashSet::default(),
 
-            inventory: FxHashMap::default(),
+            inventory: IndexMap::default(),
             inventory_additions: FxHashMap::default(),
             inventory_removals: FxHashSet::default(),
             inventory_updates: FxHashMap::default(),
@@ -208,7 +209,7 @@ impl Entity {
 
     /// Remove an item from the entity's inventory and track removals
     pub fn remove_item(&mut self, item_id: u32) -> Option<Item> {
-        if let Some(item) = self.inventory.remove(&item_id) {
+        if let Some(item) = self.inventory.shift_remove(&item_id) {
             self.inventory_removals.insert(item_id);
             self.inventory_additions.remove(&item_id); // If it was previously added, undo that
             self.mark_dirty_field(0b1000);
@@ -436,7 +437,7 @@ impl Entity {
         // Apply inventory removals
         if let Some(inventory_removals) = update.inventory_removals {
             for item_id in inventory_removals {
-                self.inventory.remove(&item_id);
+                self.inventory.shift_remove(&item_id);
             }
         }
 

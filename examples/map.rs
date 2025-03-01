@@ -65,7 +65,7 @@ impl TheTrait for Map {
         };
 
         // Add logo on top of the scene
-        scene.d2 = vec![Batch::from_rectangle(0.0, 0.0, 200.0, 200.0)
+        scene.d2_static = vec![Batch::from_rectangle(0.0, 0.0, 200.0, 200.0)
             .receives_light(false)
             .texture_index(scene.textures.len())];
         scene

@@ -3306,6 +3306,7 @@ dependencies = [
  "crossbeam-channel",
  "earcutr",
  "image",
+ "indexmap",
  "ordered-float",
  "pathfinding",
  "rand 0.8.5",

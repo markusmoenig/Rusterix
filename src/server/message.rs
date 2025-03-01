@@ -17,6 +17,8 @@ pub enum RegionMessage {
     EntitiesUpdate(u32, Vec<Vec<u8>>),
     /// Item updates for a given region instance
     ItemsUpdate(u32, Vec<Vec<u8>>),
+    /// Remove the given item from the Region
+    RemoveItem(u32, u32),
     /// Log Message
     LogMessage(String),
     /// Time event of a Region

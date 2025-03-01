@@ -35,7 +35,7 @@ fn rasterize_map(c: &mut Criterion) {
     };
 
     // Add logo on top of the scene
-    scene.d2 =
+    scene.d2_static =
         vec![Batch::from_rectangle(0.0, 0.0, 200.0, 200.0).texture_index(scene.textures.len())];
     scene
         .textures

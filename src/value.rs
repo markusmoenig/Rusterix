@@ -5,6 +5,7 @@ use theframework::prelude::*;
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub enum Value {
+    NoValue,
     Bool(bool),
     Int(i32),
     Float(f32),
@@ -111,6 +112,7 @@ impl Value {
 impl fmt::Display for Value {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Value::NoValue => write!(f, "NoValue"),
             Value::Bool(val) => write!(f, "{}", val),
             Value::Int(val) => write!(f, "{}", val),
             Value::Float(val) => write!(f, "{:.6}", val), // Represent floats with 6 decimals

@@ -174,7 +174,11 @@ impl Rasterizer {
                 }
 
                 // Render 2D geometry on top of the 3D geometry (UI)
-                for batch in scene.d2.iter() {
+                for batch in scene.d2_static.iter() {
+                    self.d2_rasterize(&mut buffer, tile, batch, scene);
+                }
+
+                for batch in scene.d2_dynamic.iter() {
                     self.d2_rasterize(&mut buffer, tile, batch, scene);
                 }
 

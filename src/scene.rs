@@ -13,13 +13,16 @@ pub struct Scene {
     /// The lights in the scene
     pub dynamic_lights: Vec<Light>,
 
-    /// 3D static batches which do not need to be changed, i.e. no animation for textures or the mesh itself.
+    /// 3D static batches which do not need to be changed.
     pub d3_static: Vec<Batch<[f32; 4]>>,
     /// 3D dynamic batches which can be updated dynamically.
     pub d3_dynamic: Vec<Batch<[f32; 4]>>,
 
     /// The 2D batches get rendered on top of the 3D batches (2D game or UI).
-    pub d2: Vec<Batch<[f32; 3]>>,
+    /// Static 2D batches.
+    pub d2_static: Vec<Batch<[f32; 3]>>,
+    /// 2D dynamic batches which can be updated dynamically.
+    pub d2_dynamic: Vec<Batch<[f32; 3]>>,
 
     /// The list of textures which the batches index into.
     pub textures: Vec<Tile>,
@@ -49,7 +52,8 @@ impl Scene {
             dynamic_lights: vec![],
             d3_static: vec![],
             d3_dynamic: vec![],
-            d2: vec![],
+            d2_static: vec![],
+            d2_dynamic: vec![],
             textures: vec![],
             dynamic_textures: vec![],
 
@@ -67,7 +71,8 @@ impl Scene {
             dynamic_lights: vec![],
             d3_static: d3,
             d3_dynamic: vec![],
-            d2,
+            d2_static: d2,
+            d2_dynamic: vec![],
             textures: vec![],
             dynamic_textures: vec![],
 
@@ -109,7 +114,11 @@ impl Scene {
         width: usize,
         height: usize,
     ) {
-        self.d2.par_iter_mut().for_each(|batch| {
+        self.d2_static.par_iter_mut().for_each(|batch| {
+            batch.project(projection_matrix_2d);
+        });
+
+        self.d2_dynamic.par_iter_mut().for_each(|batch| {
             batch.project(projection_matrix_2d);
         });
 
