@@ -244,7 +244,7 @@ impl RegionInstance {
     }
 
     /// Initializes the Python bases classes, sets the map and applies entities
-    pub fn init(&mut self, name: String, map: Map, assets: &Assets) {
+    pub fn init(&mut self, name: String, map: Map, assets: &Assets, _config_toml: String) {
         self.name = name;
 
         *ID_GEN.borrow_mut() = 0;

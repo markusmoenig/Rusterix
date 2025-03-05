@@ -89,7 +89,13 @@ impl Server {
     }
 
     /// Create the given region instance.
-    pub fn create_region_instance(&mut self, name: String, map: Map, assets: &Assets) {
+    pub fn create_region_instance(
+        &mut self,
+        name: String,
+        map: Map,
+        assets: &Assets,
+        config_toml: String,
+    ) {
         let mut region_instance = RegionInstance::default();
         region_instance.id = self.get_next_id();
 
@@ -101,7 +107,7 @@ impl Server {
 
         self.from_region.push(region_instance.from_receiver.clone());
 
-        region_instance.init(name, map, assets);
+        region_instance.init(name, map, assets, config_toml);
         region_instance.run();
     }
 
