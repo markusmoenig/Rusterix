@@ -202,6 +202,10 @@ impl RegionInstance {
 
             let _ = scope
                 .globals
+                .set_item("tell", vm.new_function("tell", tell).into(), vm);
+
+            let _ = scope
+                .globals
                 .set_item("debug", vm.new_function("debug", debug).into(), vm);
 
             let _ = scope.globals.set_item(
@@ -1169,7 +1173,6 @@ fn inventory_items_of(
     let mut items = Vec::new();
 
     let map = MAP.borrow();
-
     if let Some(entity) = map.entities.iter().find(|entity| entity.id == entity_id) {
         for (_, item) in entity.inventory.iter() {
             let mut name = "".to_string();
@@ -1383,11 +1386,54 @@ fn random_walk_in_sector(speed: PyObjectRef, max_sleep: PyObjectRef, vm: &Virtua
     }
 }
 
+/// Tell
+pub fn tell(args: rustpython_vm::function::FuncArgs, vm: &VirtualMachine) -> PyResult<()> {
+    let mut receiver = None;
+    let mut message = None;
+    // let mut minutes = 2;
+
+    for (i, arg) in args.args.iter().enumerate() {
+        if i == 0 {
+            if let Some(Value::Int(v)) = Value::from_pyobject(arg.clone(), vm) {
+                receiver = Some(v);
+            }
+        } else if i == 1 {
+            if let Some(Value::Str(v)) = Value::from_pyobject(arg.clone(), vm) {
+                message = Some(v);
+            }
+        }
+        // else if i == 2 {
+        //     if let Some(Value::Int(v)) = Value::from_pyobject(arg.clone(), vm) {
+        //         minutes = v as u32;
+        //     }
+        // }
+    }
+
+    if receiver.is_some() && message.is_some() {
+        let mut entity_id = Some(*CURR_ENTITYID.borrow() as u32);
+        let item_id = *CURR_ITEMID.borrow();
+        if item_id.is_some() {
+            entity_id = None;
+        }
+
+        let message = message.unwrap();
+        let msg = RegionMessage::Tell(
+            *REGIONID.borrow(),
+            entity_id,
+            item_id,
+            receiver.unwrap() as u32,
+            message,
+        );
+        FROM_SENDER.borrow().get().unwrap().send(msg).unwrap();
+    }
+
+    Ok(())
+}
+
 /// Debug
 pub fn debug(args: rustpython_vm::function::FuncArgs, vm: &VirtualMachine) -> PyResult<()> {
     let mut output = String::new();
     for (i, arg) in args.args.iter().enumerate() {
-        // Convert each argument to a string using Python's `str()` method
         let arg_str = match arg.str(vm) {
             Ok(s) => s.as_str().to_owned(),
             Err(_) => "<error converting to string>".to_owned(),

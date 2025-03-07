@@ -72,7 +72,10 @@ impl TheTrait for MiniGame {
             &ValueContainer::default(),
         );
 
-        self.rusterix.draw_scene(pixels, ctx.width, ctx.height);
+        if let Some(map) = self.rusterix.assets.get_map("world").cloned() {
+            self.rusterix
+                .draw_scene(&map, pixels, ctx.width, ctx.height);
+        }
 
         let _stop = get_time();
         // println!("Execution time: {:?} ms.", _stop - _start);

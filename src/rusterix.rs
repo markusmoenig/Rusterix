@@ -74,6 +74,15 @@ impl Rusterix {
         self.server.set_state(crate::ServerState::Running);
     }
 
+    /// Process messages from the server to be displayed on the client.
+    pub fn process_messages(
+        &mut self,
+        map: &Map,
+        messages: Vec<(Option<u32>, Option<u32>, u32, String)>,
+    ) {
+        self.client.process_messages(map, messages);
+    }
+
     /// Build the client scene based on the maps camera mode, or, if the game is running on the PlayerCamera.
     pub fn build_scene(
         &mut self,
@@ -156,10 +165,10 @@ impl Rusterix {
     }
 
     /// Draw the client scene.
-    pub fn draw_scene(&mut self, pixels: &mut [u8], width: usize, height: usize) {
+    pub fn draw_scene(&mut self, map: &Map, pixels: &mut [u8], width: usize, height: usize) {
         match self.draw_mode {
             D2 => {
-                self.client.draw_d2(pixels, width, height);
+                self.client.draw_d2(map, pixels, width, height);
             }
             D3 => {
                 self.client.draw_d3(pixels, width, height);

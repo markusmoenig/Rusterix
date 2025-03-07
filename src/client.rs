@@ -1,8 +1,11 @@
 pub mod daylight;
+pub mod draw2d;
 
 use crate::prelude::*;
 use crate::D2PreviewBuilder;
 use crate::Daylight;
+use draw2d::Draw2D;
+use fontdue::*;
 use theframework::prelude::*;
 
 pub struct Client {
@@ -20,6 +23,14 @@ pub struct Client {
     pub server_time: TheTime,
 
     pub daylight: Daylight,
+
+    pub messages_font: Option<Font>,
+    pub messages_font_size: f32,
+    pub messages_font_color: Pixel,
+
+    pub draw2d: Draw2D,
+
+    pub messages_to_draw: FxHashMap<u32, (Vec2<f32>, String, usize, TheTime)>,
 }
 
 impl Default for Client {
@@ -45,6 +56,14 @@ impl Client {
             server_time: TheTime::default(),
 
             daylight: Daylight::default(),
+
+            messages_font: None,
+            draw2d: Draw2D::default(),
+
+            messages_font_size: 15.0,
+            messages_font_color: [229, 90, 1, 255],
+
+            messages_to_draw: FxHashMap::default(),
         }
     }
 
@@ -112,8 +131,82 @@ impl Client {
         );
     }
 
+    /// Process messages from the server to be displayed after drawing.
+    pub fn process_messages(
+        &mut self,
+        map: &Map,
+        messages: Vec<(Option<u32>, Option<u32>, u32, String)>,
+    ) {
+        // Remove expired messages
+        let expired_keys: Vec<_> = self
+            .messages_to_draw
+            .iter()
+            .filter(|(_, (_, _, _, expire_time))| *expire_time < self.server_time)
+            .map(|(id, _)| *id)
+            .collect();
+
+        for id in expired_keys {
+            self.messages_to_draw.remove(&id);
+        }
+
+        // Add new messages
+        for (sender_entity_id, sender_item_id, _, message) in messages {
+            if let Some(sender_item_id) = sender_item_id {
+                for item in &map.items {
+                    if item.id == sender_item_id {
+                        if let Some(font) = &self.messages_font {
+                            let text_size =
+                                self.draw2d
+                                    .get_text_size(font, self.messages_font_size, &message);
+
+                            let ticks = self.server_time.to_ticks(4);
+                            let expire_time = TheTime::from_ticks(ticks + 4, 4);
+
+                            self.messages_to_draw.insert(
+                                sender_item_id,
+                                (item.get_pos_xz(), message.clone(), text_size.0, expire_time),
+                            );
+                        }
+                    }
+                }
+            } else if let Some(sender_entity_id) = sender_entity_id {
+                for entity in &map.entities {
+                    if entity.id == sender_entity_id {
+                        if let Some(font) = &self.messages_font {
+                            let text_size =
+                                self.draw2d
+                                    .get_text_size(font, self.messages_font_size, &message);
+
+                            let ticks = self.server_time.to_ticks(4);
+                            let expire_time = TheTime::from_ticks(ticks + 4, 4);
+
+                            self.messages_to_draw.insert(
+                                sender_entity_id,
+                                (
+                                    entity.get_pos_xz(),
+                                    message.clone(),
+                                    text_size.0,
+                                    expire_time,
+                                ),
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     /// Draw the 2D scene.
-    pub fn draw_d2(&mut self, pixels: &mut [u8], width: usize, height: usize) {
+    pub fn draw_d2(&mut self, map: &Map, pixels: &mut [u8], width: usize, height: usize) {
+        pub fn map_grid_to_local(
+            screen_size: Vec2<f32>,
+            grid_pos: Vec2<f32>,
+            map: &Map,
+        ) -> Vec2<f32> {
+            let grid_space_pos = grid_pos * map.grid_size;
+            grid_space_pos + Vec2::new(map.offset.x, -map.offset.y) + screen_size / 2.0
+        }
+
         self.scene_d2.animation_frame = self.animation_frame;
         let ac = self
             .daylight
@@ -128,6 +221,34 @@ impl Client {
         rast.mapmini = self.scene_d2.mapmini.clone();
 
         rast.rasterize(&mut self.scene_d2, pixels, width, height, 200);
+
+        // Draw Messages
+
+        if let Some(font) = &self.messages_font {
+            let screen_size = Vec2::new(width as f32, height as f32);
+            for (grid_pos, message, text_size, _) in self.messages_to_draw.values() {
+                let position = map_grid_to_local(screen_size, *grid_pos, map);
+
+                self.draw2d.text_rect_blend(
+                    pixels,
+                    &(
+                        position.x as usize - text_size / 2 - 25,
+                        position.y as usize
+                            - self.messages_font_size as usize
+                            - map.grid_size as usize,
+                        *text_size + 50,
+                        20,
+                    ),
+                    width,
+                    font,
+                    self.messages_font_size,
+                    message,
+                    &self.messages_font_color,
+                    draw2d::TheHorizontalAlign::Center,
+                    draw2d::TheVerticalAlign::Center,
+                );
+            }
+        }
     }
 
     /// Draw the 3D scene.

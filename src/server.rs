@@ -22,6 +22,9 @@ static REGIONPIPE: LazyLock<RegionRegistry> =
 type Player = Arc<RwLock<Vec<(u32, u32)>>>;
 static LOCAL_PLAYERS: LazyLock<Player> = LazyLock::new(|| Arc::new(RwLock::new(Vec::new())));
 
+// SenderEntityId, SenderItemId, ReceiverId, Message
+pub type Message = (Option<u32>, Option<u32>, u32, String);
+
 #[derive(Clone, Copy, PartialEq)]
 pub enum ServerState {
     Off,
@@ -35,9 +38,10 @@ pub struct Server {
     pub region_id_map: FxHashMap<Uuid, u32>,
     from_region: Vec<Receiver<RegionMessage>>,
 
+    // By region
     pub entities: FxHashMap<u32, Vec<Entity>>,
     pub items: FxHashMap<u32, Vec<Item>>,
-
+    pub messages: FxHashMap<u32, Vec<Message>>,
     pub times: FxHashMap<u32, TheTime>,
 
     pub state: ServerState,
@@ -60,10 +64,10 @@ impl Server {
             region_id_map: FxHashMap::default(),
             from_region: vec![],
 
-            times: FxHashMap::default(),
-
             entities: FxHashMap::default(),
             items: FxHashMap::default(),
+            messages: FxHashMap::default(),
+            times: FxHashMap::default(),
 
             state: ServerState::Off,
 
@@ -131,6 +135,17 @@ impl Server {
         };
 
         rc
+    }
+
+    /// Get messages for a given region and clear them.
+    pub fn get_messages(&mut self, region_id: &Uuid) -> Vec<Message> {
+        if let Some(region_id) = self.region_id_map.get(region_id) {
+            let messages = self.messages.get(region_id).cloned();
+            self.messages.remove(region_id);
+            messages.unwrap_or(vec![])
+        } else {
+            vec![]
+        }
     }
 
     /// Get the current time for the given region.
@@ -213,6 +228,20 @@ impl Server {
                             self.log += &format!("{}{}", "\n", message);
                         }
                         self.log_changed = true;
+                    }
+                    RegionMessage::Tell(id, sender_entity, sender_item, receiver_id, message) => {
+                        // println!(
+                        //     "({:?}, {:?}) -> {}: {}",
+                        //     sender_entity, sender_item, receiver_id, message
+                        // );
+                        //
+
+                        if let Some(messages) = self.messages.get_mut(&id) {
+                            messages.push((sender_entity, sender_item, receiver_id, message));
+                        } else {
+                            let messages = vec![(sender_entity, sender_item, receiver_id, message)];
+                            self.messages.insert(id, messages);
+                        }
                     }
                     RegionMessage::Time(id, time) => {
                         self.times.insert(id, time);
@@ -327,6 +356,7 @@ impl Server {
         }
         self.entities.clear();
         self.items.clear();
+        self.messages.clear();
         self.id_gen = 0;
         self.region_id_map.clear();
         self.state = ServerState::Off;
