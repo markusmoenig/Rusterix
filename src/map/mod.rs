@@ -787,7 +787,7 @@ impl Map {
     pub fn find_sector_at(&self, position: Vec2<f32>) -> Option<&Sector> {
         self.sectors
             .iter()
-            .find(|s| s.is_inside(self, position) && !s.properties.contains("rect_rendering"))
+            .find(|s| s.is_inside(self, position) && s.layer.is_none())
     }
 
     /// Checks if a linedef is passable based on front and back sectors.
@@ -917,7 +917,7 @@ impl Map {
     /// Returns true if the given vertex is part of a sector with rect rendering enabled.
     pub fn is_vertex_in_rect(&self, vertex_id: u32) -> bool {
         for sector in &self.sectors {
-            if !sector.properties.contains("rect_rendering") {
+            if sector.layer.is_none() {
                 continue;
             }
             for linedef_id in sector.linedefs.iter() {
@@ -934,7 +934,7 @@ impl Map {
     /// Returns true if the given linedef is part of a sector with rect rendering enabled.
     pub fn is_linedef_in_rect(&self, linedef_id: u32) -> bool {
         for sector in &self.sectors {
-            if !sector.properties.contains("rect_rendering") {
+            if sector.layer.is_none() {
                 continue;
             }
 

@@ -29,6 +29,9 @@ pub struct D2PreviewBuilder {
 
     /// Stores textures for dynamic access
     pub textures: Vec<Tile>,
+
+    /// Do not draw Rect based geometry
+    no_rect_geo: bool,
 }
 
 impl Default for D2PreviewBuilder {
@@ -53,6 +56,8 @@ impl D2PreviewBuilder {
             draw_grid: true,
 
             textures: Vec::new(),
+
+            no_rect_geo: false,
         }
     }
 
@@ -65,7 +70,7 @@ impl D2PreviewBuilder {
     ) -> Scene {
         let mut scene = Scene::empty();
         let atlas_size = assets.atlas.width as f32;
-        let no_rect_geo = properties.get_bool_default("no_rect_geo", true);
+        self.no_rect_geo = properties.get_bool_default("no_rect_geo", true);
 
         // Grid
         if self.draw_grid {
@@ -90,6 +95,10 @@ impl D2PreviewBuilder {
         self.textures = vec![];
         self.textures
             .push(Tile::from_texture(Texture::from_color(WHITE)));
+
+        self.textures.push(Tile::from_texture(Texture::from_color(
+            self.selection_color,
+        )));
 
         self.textures.push(Tile::from_texture(Texture::from_color([
             128, 128, 128, 255,
@@ -142,12 +151,9 @@ impl D2PreviewBuilder {
 
         // --
 
+        // println!("build");
+
         let mut atlas_batch = Batch::emptyd2();
-        let mut white_batch = Batch::emptyd2()
-            .texture_index(1)
-            .mode(crate::PrimitiveMode::Lines);
-        let mut selected_batch = Batch::emptyd2().texture_index(2);
-        let mut gray_batch = Batch::emptyd2().texture_index(3);
         let mut gray_batch_lines = Batch::emptyd2()
             .texture_index(3)
             .color([128, 128, 128, 255])
@@ -428,6 +434,56 @@ impl D2PreviewBuilder {
             }
         }
 
+        let mut batches = repeated_batches;
+        batches.extend(vec![atlas_batch, gray_batch_lines]);
+
+        let tiles = assets.blocking_tiles();
+        scene.mapmini = map.as_mini(&tiles);
+        scene.d2_static = batches;
+        scene.textures = textures;
+        scene
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn build_entities_items(
+        &self,
+        map: &Map,
+        assets: &Assets,
+        scene: &mut Scene,
+        screen_size: Vec2<f32>,
+    ) {
+        scene.dynamic_lights = vec![];
+
+        // Adjust the grid shader
+        if let Some(grid_shader) = &mut scene.background {
+            grid_shader.set_parameter_f32("grid_size", map.grid_size);
+            grid_shader.set_parameter_f32("subdivisions", map.subdivisions);
+            grid_shader.set_parameter_vec2("offset", Vec2::new(map.offset.x, -map.offset.y));
+        }
+
+        let mut textures = self.textures.clone();
+
+        let mut white_batch = Batch::emptyd2()
+            .texture_index(0)
+            .mode(crate::PrimitiveMode::Lines);
+        let mut selected_batch = Batch::emptyd2().texture_index(1);
+        let mut gray_batch = Batch::emptyd2().texture_index(2);
+        let mut gray_batch_lines = Batch::emptyd2()
+            .texture_index(2)
+            .color([128, 128, 128, 255])
+            .mode(crate::PrimitiveMode::Lines);
+        let mut yellow_batch = Batch::emptyd2().texture_index(3);
+        let mut red_batch = Batch::emptyd2().texture_index(4);
+        let mut character_on_batch = Batch::emptyd2().texture_index(5);
+        let mut character_off_batch = Batch::emptyd2().texture_index(6);
+        let mut treasure_on_batch = Batch::emptyd2().texture_index(7);
+        let mut treasure_off_batch = Batch::emptyd2().texture_index(8);
+        // let mut light_on_batch = Batch::emptyd2().texture_index(10);
+        // let mut light_off_batch = Batch::emptyd2().texture_index(11);
+
+        let mut repeated_batches: Vec<Batch<[f32; 3]>> = vec![];
+        let mut repeated_offsets: FxHashMap<Uuid, usize> = FxHashMap::default();
+
         // Add Vertices
         if self.map_tool_type == MapToolType::Selection
             || self.map_tool_type == MapToolType::Vertex
@@ -435,7 +491,8 @@ impl D2PreviewBuilder {
             || self.map_tool_type == MapToolType::Linedef
         {
             for vertex in &map.vertices {
-                if no_rect_geo && map.is_vertex_in_rect(vertex.id) {
+                if self.no_rect_geo {
+                    //} && map.is_vertex_in_rect(vertex.id) {
                     continue;
                 }
                 if let Some(vertex_pos) = map.get_vertex(vertex.id) {
@@ -479,7 +536,7 @@ impl D2PreviewBuilder {
 
                     let pos = self.map_grid_to_local(screen_size, vertex_pos, map);
 
-                    let size = 4.0;
+                    let size = 0.2;
                     if self.hover.0 == Some(vertex.id) || map.selected_vertices.contains(&vertex.id)
                     {
                         selected_batch.add_rectangle(
@@ -514,7 +571,7 @@ impl D2PreviewBuilder {
                 let mut draw = true;
 
                 // No outlines for the rect tool based sectors in the minimap or if no_rect_geo is enabled.
-                if self.map_tool_type == MapToolType::MiniMap || no_rect_geo {
+                if self.map_tool_type == MapToolType::MiniMap || self.no_rect_geo {
                     let mut found_in_sector = false;
                     for sector in &map.sectors {
                         if sector.linedefs.contains(&linedef.id) {
@@ -603,68 +660,14 @@ impl D2PreviewBuilder {
 
             // Draw non-selected lines first
             for (start_pos, end_pos) in non_selected_lines {
-                white_batch.add_line(start_pos, end_pos, 1.0);
+                white_batch.add_line(start_pos, end_pos, 0.05);
             }
 
             // Draw selected lines last
             for (start_pos, end_pos) in selected_lines {
-                selected_batch.add_line(start_pos, end_pos, 1.0);
+                selected_batch.add_line(start_pos, end_pos, 0.05);
             }
         }
-
-        let mut batches = repeated_batches;
-        batches.extend(vec![
-            atlas_batch,
-            white_batch,
-            selected_batch,
-            gray_batch,
-            gray_batch_lines,
-        ]);
-
-        let tiles = assets.blocking_tiles();
-        scene.mapmini = map.as_mini(&tiles);
-        scene.d2_static = batches;
-        scene.textures = textures;
-        scene
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    pub fn build_entities_items(
-        &self,
-        map: &Map,
-        assets: &Assets,
-        scene: &mut Scene,
-        screen_size: Vec2<f32>,
-    ) {
-        scene.dynamic_lights = vec![];
-
-        // Adjust the grid shader
-        if let Some(grid_shader) = &mut scene.background {
-            grid_shader.set_parameter_f32("grid_size", map.grid_size);
-            grid_shader.set_parameter_f32("subdivisions", map.subdivisions);
-            grid_shader.set_parameter_vec2("offset", Vec2::new(map.offset.x, -map.offset.y));
-        }
-
-        let mut textures = self.textures.clone();
-
-        let mut white_batch = Batch::emptyd2()
-            .texture_index(0)
-            .mode(crate::PrimitiveMode::Lines);
-        let mut gray_batch_lines = Batch::emptyd2()
-            .texture_index(1)
-            .color([128, 128, 128, 255])
-            .mode(crate::PrimitiveMode::Lines);
-        let mut yellow_batch = Batch::emptyd2().texture_index(2);
-        let mut red_batch = Batch::emptyd2().texture_index(3);
-        let mut character_on_batch = Batch::emptyd2().texture_index(4);
-        let mut character_off_batch = Batch::emptyd2().texture_index(5);
-        let mut treasure_on_batch = Batch::emptyd2().texture_index(6);
-        let mut treasure_off_batch = Batch::emptyd2().texture_index(7);
-        // let mut light_on_batch = Batch::emptyd2().texture_index(10);
-        // let mut light_off_batch = Batch::emptyd2().texture_index(11);
-
-        let mut repeated_batches: Vec<Batch<[f32; 3]>> = vec![];
-        let mut repeated_offsets: FxHashMap<Uuid, usize> = FxHashMap::default();
 
         if self.map_tool_type != MapToolType::Effects {
             // We dont show entities and items in Effects Mode to avoid overlapping icons
@@ -821,6 +824,8 @@ impl D2PreviewBuilder {
         let mut batches = repeated_batches;
         batches.extend(vec![
             white_batch,
+            selected_batch,
+            gray_batch,
             gray_batch_lines,
             yellow_batch,
             red_batch,
