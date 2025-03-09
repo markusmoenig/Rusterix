@@ -714,7 +714,7 @@ impl RegionInstance {
                             // Arrived, Sleep
                             let mut rng = rand::thread_rng();
                             entity.action = self.create_sleep_switch_action(
-                                rng.gen_range(0..=*max_sleep) as u32,
+                                rng.gen_range(*max_sleep / 2..=*max_sleep) as u32,
                                 RandomWalk(*distance, *speed, *max_sleep, 0, *target),
                             );
                         } else {
@@ -724,7 +724,7 @@ impl RegionInstance {
                             if blocked {
                                 let mut rng = rand::thread_rng();
                                 entity.action = self.create_sleep_switch_action(
-                                    rng.gen_range(0..=max_sleep) as u32,
+                                    rng.gen_range(max_sleep / 2..=max_sleep) as u32,
                                     t,
                                 );
                             }
@@ -747,7 +747,7 @@ impl RegionInstance {
                             // Arrived, Sleep
                             let mut rng = rand::thread_rng();
                             entity.action = self.create_sleep_switch_action(
-                                rng.gen_range(0..=*max_sleep) as u32,
+                                rng.gen_range(*max_sleep / 2..=*max_sleep) as u32,
                                 RandomWalkInSector(*speed, *max_sleep, 0, *target),
                             );
                         } else {
@@ -757,7 +757,7 @@ impl RegionInstance {
                             if blocked {
                                 let mut rng = rand::thread_rng();
                                 entity.action = self.create_sleep_switch_action(
-                                    rng.gen_range(0..=max_sleep) as u32,
+                                    rng.gen_range(max_sleep / 2..=max_sleep) as u32,
                                     t,
                                 );
                             }
@@ -1410,7 +1410,7 @@ pub fn tell(args: rustpython_vm::function::FuncArgs, vm: &VirtualMachine) -> PyR
     }
 
     if receiver.is_some() && message.is_some() {
-        let mut entity_id = Some(*CURR_ENTITYID.borrow() as u32);
+        let mut entity_id = Some(*CURR_ENTITYID.borrow());
         let item_id = *CURR_ITEMID.borrow();
         if item_id.is_some() {
             entity_id = None;

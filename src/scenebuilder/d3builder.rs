@@ -1,6 +1,5 @@
 use crate::{
-    Assets, Batch, D3Camera, Entity, Item, Map, PixelSource, SampleMode, Scene, Tile, Value,
-    ValueContainer,
+    Assets, Batch, D3Camera, Map, PixelSource, SampleMode, Scene, Tile, Value, ValueContainer,
 };
 use theframework::prelude::*;
 use vek::Vec2;
@@ -348,20 +347,13 @@ impl D3Builder {
         scene
     }
 
-    pub fn build_entities_items_d3(
+    pub fn build_entities_items(
         &self,
-        entities: &[Entity],
-        items: &[Item],
+        map: &Map,
         camera: &dyn D3Camera,
         assets: &Assets,
         scene: &mut Scene,
-        properties: &ValueContainer,
     ) {
-        let mut sample_mode = SampleMode::Nearest;
-        if let Some(Value::SampleMode(sm)) = properties.get("sample_mode") {
-            sample_mode = *sm;
-        }
-
         scene.dynamic_lights = vec![];
         let mut textures = vec![];
         let mut batches = vec![];
@@ -411,7 +403,6 @@ impl D3Builder {
 
                             let mut batch = Batch::emptyd3()
                                 .texture_index(index)
-                                .sample_mode(sample_mode)
                                 .repeat_mode(crate::RepeatMode::RepeatXY);
 
                             add_billboard(&start, &end, scale, &mut batch);
@@ -429,7 +420,7 @@ impl D3Builder {
         }
 
         // Entities
-        for entity in entities {
+        for entity in &map.entities {
             let show_entity = true; // !(entity.is_player() && camera.id() == "firstp");
 
             if show_entity {
@@ -460,7 +451,6 @@ impl D3Builder {
 
                     let mut batch = Batch::emptyd3()
                         .texture_index(index)
-                        .sample_mode(sample_mode)
                         .repeat_mode(crate::RepeatMode::RepeatXY);
 
                     add_billboard(&start, &end, 2.0, &mut batch);
@@ -476,7 +466,7 @@ impl D3Builder {
         }
 
         // Items
-        for item in items {
+        for item in &map.items {
             let show_entity = true; // !(entity.is_player() && camera.id() == "firstp");
 
             if show_entity {

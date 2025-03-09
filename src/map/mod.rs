@@ -785,7 +785,9 @@ impl Map {
 
     /// Returns the sector at the given position (if any).
     pub fn find_sector_at(&self, position: Vec2<f32>) -> Option<&Sector> {
-        self.sectors.iter().find(|s| s.is_inside(self, position))
+        self.sectors
+            .iter()
+            .find(|s| s.is_inside(self, position) && !s.properties.contains("rect_rendering"))
     }
 
     /// Checks if a linedef is passable based on front and back sectors.

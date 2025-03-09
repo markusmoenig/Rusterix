@@ -60,19 +60,12 @@ impl TheTrait for MiniGame {
         // Update the entities on the server.
         self.rusterix.server.update();
 
-        let (entities, items) = self
-            .rusterix
-            .server
-            .get_entities_items(&self.rusterix.client.curr_map_id);
+        if let Some(mut map) = self.rusterix.assets.get_map("world").cloned() {
+            self.rusterix.server.apply_entities_items(&mut map);
+            self.rusterix
+                .client
+                .apply_entities_items_d3(&map, &self.rusterix.assets);
 
-        self.rusterix.client.apply_entities_items_d3(
-            entities.unwrap_or(&vec![]),
-            items.unwrap_or(&vec![]),
-            &self.rusterix.assets,
-            &ValueContainer::default(),
-        );
-
-        if let Some(map) = self.rusterix.assets.get_map("world").cloned() {
             self.rusterix
                 .draw_scene(&map, pixels, ctx.width, ctx.height);
         }

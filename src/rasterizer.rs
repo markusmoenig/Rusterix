@@ -175,11 +175,11 @@ impl Rasterizer {
 
                 // Render 2D geometry on top of the 3D geometry (UI)
                 for batch in scene.d2_static.iter() {
-                    self.d2_rasterize(&mut buffer, tile, batch, scene);
+                    self.d2_rasterize(&mut buffer, tile, batch, scene, false);
                 }
 
                 for batch in scene.d2_dynamic.iter() {
-                    self.d2_rasterize(&mut buffer, tile, batch, scene);
+                    self.d2_rasterize(&mut buffer, tile, batch, scene, true);
                 }
 
                 buffer
@@ -217,6 +217,7 @@ impl Rasterizer {
         tile: &TileRect,
         batch: &Batch<[f32; 3]>,
         scene: &Scene,
+        dynamic: bool,
     ) {
         if let Some(bbox) = batch.bounding_box {
             if bbox.x < (tile.x + tile.width) as f32
@@ -295,7 +296,13 @@ impl Rasterizer {
 
                                         // Sample the texture
 
-                                        let t = &scene.textures[batch.texture_index];
+                                        let textures = if dynamic {
+                                            &scene.dynamic_textures
+                                        } else {
+                                            &scene.textures
+                                        };
+
+                                        let t = &textures[batch.texture_index];
                                         let index = scene.animation_frame % t.textures.len();
 
                                         let mut texel = t.textures[index].sample(

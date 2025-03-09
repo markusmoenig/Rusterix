@@ -137,6 +137,19 @@ impl Server {
         rc
     }
 
+    /// Apply entities and items for a given region.
+    pub fn apply_entities_items(&self, map: &mut Map) {
+        if let Some(region_id) = self.region_id_map.get(&map.id) {
+            if let Some(entities) = self.entities.get(region_id) {
+                map.entities = entities.clone();
+            }
+
+            if let Some(items) = self.items.get(region_id) {
+                map.items = items.clone();
+            }
+        };
+    }
+
     /// Get messages for a given region and clear them.
     pub fn get_messages(&mut self, region_id: &Uuid) -> Vec<Message> {
         if let Some(region_id) = self.region_id_map.get(region_id) {

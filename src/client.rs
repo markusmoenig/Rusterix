@@ -61,7 +61,7 @@ impl Client {
             draw2d: Draw2D::default(),
 
             messages_font_size: 15.0,
-            messages_font_color: [229, 90, 1, 255],
+            messages_font_color: [229, 229, 1, 255],
 
             messages_to_draw: FxHashMap::default(),
         }
@@ -91,9 +91,13 @@ impl Client {
         values: &ValueContainer,
     ) {
         self.curr_map_id = map.id;
-        self.scene_d2 =
-            self.builder_d2
-                .build(map, assets, screen_size, &self.camera_d3.id(), values);
+        self.scene_d2 = self.builder_d2.build(map, assets, screen_size, values);
+    }
+
+    /// Apply the entities to the 2D scene.
+    pub fn apply_entities_items_d2(&mut self, screen_size: Vec2<f32>, map: &Map, assets: &Assets) {
+        self.builder_d2
+            .build_entities_items(map, assets, &mut self.scene_d2, screen_size);
     }
 
     /// Build the 3D scene from the map.
@@ -109,25 +113,17 @@ impl Client {
     }
 
     /// Apply the entities to the 3D scene.
-    pub fn apply_entities_items_d3(
-        &mut self,
-        entities: &[Entity],
-        items: &[Item],
-        assets: &Assets,
-        values: &ValueContainer,
-    ) {
-        for entity in entities {
+    pub fn apply_entities_items_d3(&mut self, map: &Map, assets: &Assets) {
+        for entity in &map.entities {
             if entity.is_player() {
                 entity.apply_to_camera(&mut self.camera_d3);
             }
         }
-        self.builder_d3.build_entities_items_d3(
-            entities,
-            items,
+        self.builder_d3.build_entities_items(
+            map,
             self.camera_d3.as_ref(),
             assets,
             &mut self.scene_d3,
-            values,
         );
     }
 
@@ -207,6 +203,8 @@ impl Client {
             grid_space_pos + Vec2::new(map.offset.x, -map.offset.y) + screen_size / 2.0
         }
 
+        let screen_size = Vec2::new(width as f32, height as f32);
+
         self.scene_d2.animation_frame = self.animation_frame;
         let ac = self
             .daylight
@@ -217,7 +215,24 @@ impl Client {
         light.set_intensity(1.0);
         self.scene_d2.dynamic_lights.push(light);
 
-        let mut rast = Rasterizer::setup(None, Mat4::identity(), Mat4::identity());
+        let translation_matrix = Mat3::<f32>::translation_2d(Vec2::new(
+            map.offset.x + screen_size.x / 2.0,
+            -map.offset.y + screen_size.y / 2.0,
+        ));
+        let scale_matrix = Mat3::new(
+            map.grid_size,
+            0.0,
+            0.0,
+            0.0,
+            map.grid_size,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+        );
+        let transform = translation_matrix * scale_matrix;
+
+        let mut rast = Rasterizer::setup(Some(transform), Mat4::identity(), Mat4::identity());
         rast.mapmini = self.scene_d2.mapmini.clone();
 
         rast.rasterize(&mut self.scene_d2, pixels, width, height, 200);
@@ -225,20 +240,22 @@ impl Client {
         // Draw Messages
 
         if let Some(font) = &self.messages_font {
-            let screen_size = Vec2::new(width as f32, height as f32);
             for (grid_pos, message, text_size, _) in self.messages_to_draw.values() {
                 let position = map_grid_to_local(screen_size, *grid_pos, map);
 
+                let tuple = (
+                    position.x as usize - text_size / 2 - 5,
+                    position.y as usize - self.messages_font_size as usize - map.grid_size as usize,
+                    *text_size + 10,
+                    22,
+                );
+
+                self.draw2d
+                    .blend_rect(pixels, &tuple, width, &[0, 0, 0, 128]);
+
                 self.draw2d.text_rect_blend(
                     pixels,
-                    &(
-                        position.x as usize - text_size / 2 - 25,
-                        position.y as usize
-                            - self.messages_font_size as usize
-                            - map.grid_size as usize,
-                        *text_size + 50,
-                        20,
-                    ),
+                    &tuple,
                     width,
                     font,
                     self.messages_font_size,

@@ -126,15 +126,8 @@ impl Rusterix {
     }
 
     /// Apply the entities to the 3D scene.
-    pub fn apply_entities_items(
-        &mut self,
-        entities: &[Entity],
-        items: &[Item],
-        _map: &Map,
-        assets: &Assets,
-        values: &ValueContainer,
-    ) {
-        for e in entities.iter() {
+    pub fn apply_entities_items(&mut self, screen_size: Vec2<f32>, map: &Map, assets: &Assets) {
+        for e in map.entities.iter() {
             if e.is_player() {
                 if let Some(Value::PlayerCamera(camera)) = e.attributes.get("player_camera") {
                     if *camera != self.player_camera {
@@ -149,9 +142,11 @@ impl Rusterix {
                 }
             }
         }
-        if self.draw_mode == ClientDrawMode::D3 {
+        if self.draw_mode == ClientDrawMode::D2 {
             self.client
-                .apply_entities_items_d3(entities, items, assets, values);
+                .apply_entities_items_d2(screen_size, map, assets);
+        } else if self.draw_mode == ClientDrawMode::D3 {
+            self.client.apply_entities_items_d3(map, assets);
         }
     }
 

@@ -26,6 +26,9 @@ pub struct D2PreviewBuilder {
 
     /// Draw Grid Switch
     pub draw_grid: bool,
+
+    /// Stores textures for dynamic access
+    pub textures: Vec<Tile>,
 }
 
 impl Default for D2PreviewBuilder {
@@ -48,92 +51,107 @@ impl D2PreviewBuilder {
 
             material_mode: false,
             draw_grid: true,
+
+            textures: Vec::new(),
         }
     }
 
     pub fn build(
-        &self,
+        &mut self,
         map: &Map,
         assets: &Assets,
         screen_size: Vec2<f32>,
-        _camera_id: &str,
         properties: &ValueContainer,
     ) -> Scene {
         let mut scene = Scene::empty();
-        let mut grid_shader = GridShader::new();
         let atlas_size = assets.atlas.width as f32;
         let no_rect_geo = properties.get_bool_default("no_rect_geo", true);
+
+        // Grid
+        if self.draw_grid {
+            let mut grid_shader = GridShader::new();
+            grid_shader.set_parameter_f32("grid_size", map.grid_size);
+            grid_shader.set_parameter_f32("subdivisions", map.subdivisions);
+            grid_shader.set_parameter_vec2("offset", Vec2::new(map.offset.x, -map.offset.y));
+            scene.background = Some(Box::new(grid_shader));
+        } else {
+            scene.background = None;
+        }
 
         let mut textures = vec![
             Tile::from_texture(assets.atlas.clone()),
             Tile::from_texture(Texture::from_color(WHITE)),
             Tile::from_texture(Texture::from_color(self.selection_color)),
-            Tile::from_texture(Texture::from_color(vek::Rgba::yellow().into_array())),
-            Tile::from_texture(Texture::from_color(vek::Rgba::red().into_array())),
             Tile::from_texture(Texture::from_color([128, 128, 128, 255])),
         ];
 
-        // Add preview icon textures
+        // Add preview icon textures into the dynamic storage
+
+        self.textures = vec![];
+        self.textures
+            .push(Tile::from_texture(Texture::from_color(WHITE)));
+
+        self.textures.push(Tile::from_texture(Texture::from_color([
+            128, 128, 128, 255,
+        ])));
+
+        self.textures.push(Tile::from_texture(Texture::from_color(
+            vek::Rgba::yellow().into_array(),
+        )));
+        self.textures.push(Tile::from_texture(Texture::from_color(
+            vek::Rgba::red().into_array(),
+        )));
 
         if let Some(Value::Texture(tex)) = properties.get("character_on") {
-            textures.push(Tile::from_texture(tex.clone()));
+            self.textures.push(Tile::from_texture(tex.clone()));
         } else {
-            textures.push(Tile::from_texture(Texture::white()));
+            self.textures.push(Tile::from_texture(Texture::white()));
         }
 
         if let Some(Value::Texture(tex)) = properties.get("character_off") {
-            textures.push(Tile::from_texture(tex.clone()));
+            self.textures.push(Tile::from_texture(tex.clone()));
         } else {
-            textures.push(Tile::from_texture(Texture::black()));
+            self.textures.push(Tile::from_texture(Texture::black()));
         }
 
         if let Some(Value::Texture(tex)) = properties.get("treasure_on") {
-            textures.push(Tile::from_texture(tex.clone()));
+            self.textures.push(Tile::from_texture(tex.clone()));
         } else {
-            textures.push(Tile::from_texture(Texture::white()));
+            self.textures.push(Tile::from_texture(Texture::white()));
         }
 
         if let Some(Value::Texture(tex)) = properties.get("treasure_off") {
-            textures.push(Tile::from_texture(tex.clone()));
+            self.textures.push(Tile::from_texture(tex.clone()));
         } else {
-            textures.push(Tile::from_texture(Texture::black()));
+            self.textures.push(Tile::from_texture(Texture::black()));
         }
 
-        if self.map_tool_type == MapToolType::Effects {
-            if let Some(Value::Texture(tex)) = properties.get("light_on") {
-                textures.push(Tile::from_texture(tex.clone()));
-            } else {
-                textures.push(Tile::from_texture(Texture::white()));
-            }
+        // if self.map_tool_type == MapToolType::Effects {
+        //     if let Some(Value::Texture(tex)) = properties.get("light_on") {
+        //         textures.push(Tile::from_texture(tex.clone()));
+        //     } else {
+        //         textures.push(Tile::from_texture(Texture::white()));
+        //     }
 
-            if let Some(Value::Texture(tex)) = properties.get("light_off") {
-                textures.push(Tile::from_texture(tex.clone()));
-            } else {
-                textures.push(Tile::from_texture(Texture::black()));
-            }
-        }
+        //     if let Some(Value::Texture(tex)) = properties.get("light_off") {
+        //         textures.push(Tile::from_texture(tex.clone()));
+        //     } else {
+        //         textures.push(Tile::from_texture(Texture::black()));
+        //     }
+        // }
+
+        // --
 
         let mut atlas_batch = Batch::emptyd2();
         let mut white_batch = Batch::emptyd2()
             .texture_index(1)
             .mode(crate::PrimitiveMode::Lines);
         let mut selected_batch = Batch::emptyd2().texture_index(2);
-        let mut yellow_batch = Batch::emptyd2().texture_index(3);
-        let mut red_batch = Batch::emptyd2().texture_index(4);
-        let mut gray_batch = Batch::emptyd2().texture_index(5);
+        let mut gray_batch = Batch::emptyd2().texture_index(3);
         let mut gray_batch_lines = Batch::emptyd2()
-            .texture_index(5)
+            .texture_index(3)
             .color([128, 128, 128, 255])
             .mode(crate::PrimitiveMode::Lines);
-
-        let mut character_on_batch = Batch::emptyd2().texture_index(6);
-        let mut character_off_batch = Batch::emptyd2().texture_index(7);
-
-        let mut treasure_on_batch = Batch::emptyd2().texture_index(8);
-        let mut treasure_off_batch = Batch::emptyd2().texture_index(9);
-
-        let mut light_on_batch = Batch::emptyd2().texture_index(10);
-        let mut light_off_batch = Batch::emptyd2().texture_index(11);
 
         // Add the material clipping area
         if self.material_mode {
@@ -150,17 +168,6 @@ impl D2PreviewBuilder {
         // Repeated tile textures have their own batches
         let mut repeated_batches: Vec<Batch<[f32; 3]>> = vec![];
         let mut repeated_offsets: FxHashMap<Uuid, usize> = FxHashMap::default();
-        //let mut yellow_rect = Batch::emptyd2().texture_index(1);
-
-        // Grid
-        if self.draw_grid {
-            grid_shader.set_parameter_f32("grid_size", map.grid_size);
-            grid_shader.set_parameter_f32("subdivisions", map.subdivisions);
-            grid_shader.set_parameter_vec2("offset", Vec2::new(map.offset.x, -map.offset.y));
-            scene.background = Some(Box::new(grid_shader));
-        } else {
-            scene.background = None;
-        }
 
         // Add Sectors
         if self.map_tool_type == MapToolType::General
@@ -605,53 +612,69 @@ impl D2PreviewBuilder {
             }
         }
 
-        // For rectangle selection preview
-        if let Some(rect) = map.curr_rectangle {
-            white_batch.add_line(
-                Vec2::new(rect.0.x, rect.0.y),
-                Vec2::new(rect.1.x, rect.0.y),
-                1.0,
-            );
-            white_batch.add_line(
-                Vec2::new(rect.0.x, rect.0.y),
-                Vec2::new(rect.0.x, rect.1.y),
-                1.0,
-            );
-            white_batch.add_line(
-                Vec2::new(rect.1.x, rect.1.y),
-                Vec2::new(rect.1.x, rect.0.y),
-                1.0,
-            );
-            white_batch.add_line(
-                Vec2::new(rect.1.x, rect.1.y),
-                Vec2::new(rect.0.x, rect.1.y),
-                1.0,
-            );
+        let mut batches = repeated_batches;
+        batches.extend(vec![
+            atlas_batch,
+            white_batch,
+            selected_batch,
+            gray_batch,
+            gray_batch_lines,
+        ]);
+
+        let tiles = assets.blocking_tiles();
+        scene.mapmini = map.as_mini(&tiles);
+        scene.d2_static = batches;
+        scene.textures = textures;
+        scene
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn build_entities_items(
+        &self,
+        map: &Map,
+        assets: &Assets,
+        scene: &mut Scene,
+        screen_size: Vec2<f32>,
+    ) {
+        scene.dynamic_lights = vec![];
+
+        // Adjust the grid shader
+        if let Some(grid_shader) = &mut scene.background {
+            grid_shader.set_parameter_f32("grid_size", map.grid_size);
+            grid_shader.set_parameter_f32("subdivisions", map.subdivisions);
+            grid_shader.set_parameter_vec2("offset", Vec2::new(map.offset.x, -map.offset.y));
         }
 
-        // Lights
-        if self.map_tool_type == MapToolType::Effects {
-            for (index, l) in map.lights.iter().enumerate() {
-                let position = l.position();
-                let pos =
-                    self.map_grid_to_local(screen_size, Vec2::new(position.x, position.z), map);
-                let size = map.grid_size;
-                let hsize = map.grid_size / 2.0;
-                if Some(index as u32) == map.selected_light {
-                    light_on_batch.add_rectangle(pos.x - hsize, pos.y - hsize, size, size);
-                } else {
-                    light_off_batch.add_rectangle(pos.x - hsize, pos.y - hsize, size, size);
-                }
-            }
-        } else {
+        let mut textures = self.textures.clone();
+
+        let mut white_batch = Batch::emptyd2()
+            .texture_index(0)
+            .mode(crate::PrimitiveMode::Lines);
+        let mut gray_batch_lines = Batch::emptyd2()
+            .texture_index(1)
+            .color([128, 128, 128, 255])
+            .mode(crate::PrimitiveMode::Lines);
+        let mut yellow_batch = Batch::emptyd2().texture_index(2);
+        let mut red_batch = Batch::emptyd2().texture_index(3);
+        let mut character_on_batch = Batch::emptyd2().texture_index(4);
+        let mut character_off_batch = Batch::emptyd2().texture_index(5);
+        let mut treasure_on_batch = Batch::emptyd2().texture_index(6);
+        let mut treasure_off_batch = Batch::emptyd2().texture_index(7);
+        // let mut light_on_batch = Batch::emptyd2().texture_index(10);
+        // let mut light_off_batch = Batch::emptyd2().texture_index(11);
+
+        let mut repeated_batches: Vec<Batch<[f32; 3]>> = vec![];
+        let mut repeated_offsets: FxHashMap<Uuid, usize> = FxHashMap::default();
+
+        if self.map_tool_type != MapToolType::Effects {
             // We dont show entities and items in Effects Mode to avoid overlapping icons
             // Entities
             for entity in &map.entities {
                 let entity_pos = Vec2::new(entity.position.x, entity.position.z);
                 let pos =
                     self.map_grid_to_local(screen_size, Vec2::new(entity_pos.x, entity_pos.y), map);
-                let size = map.grid_size;
-                let hsize = map.grid_size / 2.0;
+                let size = 1.0;
+                let hsize = 0.5;
 
                 // Find light on entity
                 if let Some(Value::Light(light)) = entity.attributes.get("light") {
@@ -696,8 +719,8 @@ impl D2PreviewBuilder {
                 let item_pos = Vec2::new(item.position.x, item.position.z);
                 let pos =
                     self.map_grid_to_local(screen_size, Vec2::new(item_pos.x, item_pos.y), map);
-                let size = map.grid_size;
-                let hsize = map.grid_size / 2.0;
+                let size = 1.0;
+                let hsize = 0.5;
 
                 if let Some(Value::Light(light)) = item.attributes.get("light") {
                     let mut light = light.clone();
@@ -728,6 +751,30 @@ impl D2PreviewBuilder {
             }
         }
 
+        // For rectangle selection preview
+        if let Some(rect) = map.curr_rectangle {
+            white_batch.add_line(
+                Vec2::new(rect.0.x, rect.0.y),
+                Vec2::new(rect.1.x, rect.0.y),
+                1.0,
+            );
+            white_batch.add_line(
+                Vec2::new(rect.0.x, rect.0.y),
+                Vec2::new(rect.0.x, rect.1.y),
+                1.0,
+            );
+            white_batch.add_line(
+                Vec2::new(rect.1.x, rect.1.y),
+                Vec2::new(rect.1.x, rect.0.y),
+                1.0,
+            );
+            white_batch.add_line(
+                Vec2::new(rect.1.x, rect.1.y),
+                Vec2::new(rect.0.x, rect.1.y),
+                1.0,
+            );
+        }
+
         // For line action previews
         if let Some(grid_pos) = map.curr_grid_pos {
             let local = self.map_grid_to_local(screen_size, grid_pos, map);
@@ -740,7 +787,7 @@ impl D2PreviewBuilder {
         if self.map_tool_type != MapToolType::Rect {
             if let Some(hover_pos) = self.hover_cursor {
                 let pos = self.map_grid_to_local(screen_size, hover_pos, map);
-                let size = 4.0;
+                let size = 0.2;
                 yellow_batch.add_rectangle(pos.x - size, pos.y - size, size * 2.0, size * 2.0);
             }
         }
@@ -749,7 +796,7 @@ impl D2PreviewBuilder {
         if let Some(camera_pos) = self.camera_pos {
             let camera_grid_pos =
                 self.map_grid_to_local(screen_size, Vec2::new(camera_pos.x, camera_pos.z), map);
-            let size = 4.0;
+            let size = 0.2;
             red_batch.add_rectangle(
                 camera_grid_pos.x - size,
                 camera_grid_pos.y - size,
@@ -773,26 +820,18 @@ impl D2PreviewBuilder {
 
         let mut batches = repeated_batches;
         batches.extend(vec![
-            atlas_batch,
             white_batch,
-            selected_batch,
-            gray_batch,
             gray_batch_lines,
             yellow_batch,
             red_batch,
-            light_on_batch,
-            light_off_batch,
             character_on_batch,
             character_off_batch,
             treasure_on_batch,
             treasure_off_batch,
         ]);
 
-        let tiles = assets.blocking_tiles();
-        scene.mapmini = map.as_mini(&tiles);
-        scene.d2_static = batches;
-        scene.textures = textures;
-        scene
+        scene.d2_dynamic = batches;
+        scene.dynamic_textures = textures;
     }
 
     pub fn set_map_tool_type(&mut self, tool: MapToolType) {
@@ -817,13 +856,15 @@ impl D2PreviewBuilder {
         self.material_mode = material_mode;
     }
 
+    #[inline(always)]
     fn map_grid_to_local(
         &self,
-        screen_size: Vec2<f32>,
+        _screen_size: Vec2<f32>,
         grid_pos: Vec2<f32>,
-        map: &Map,
+        _map: &Map,
     ) -> Vec2<f32> {
-        let grid_space_pos = grid_pos * map.grid_size;
-        grid_space_pos + Vec2::new(map.offset.x, -map.offset.y) + screen_size / 2.0
+        // let grid_space_pos = grid_pos * map.grid_size;
+        // grid_space_pos + Vec2::new(map.offset.x, -map.offset.y) + screen_size / 2.0
+        grid_pos
     }
 }
