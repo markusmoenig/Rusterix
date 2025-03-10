@@ -731,14 +731,31 @@ impl RegionInstance {
                         }
                     }
                 }
-                EntityAction::RandomWalkInSector(speed, max_sleep, state, target) => {
+                EntityAction::RandomWalkInSector(distance, speed, max_sleep, state, target) => {
                     if *state == 0 {
                         // State 0: Uninitialized, find a target location.
                         let map = MAP.borrow();
-                        if let Some(sector) = map.find_sector_at(entity.get_pos_xz()) {
-                            if let Some(pos) = sector.get_random_position(&map) {
-                                entity.action = RandomWalkInSector(*speed, *max_sleep, 1, pos);
-                                entity.face_at(pos);
+                        let curr_pos = entity.get_pos_xz();
+                        if let Some(sector) = map.find_sector_at(curr_pos) {
+                            let mut new_pos = find_random_position(curr_pos, *distance);
+                            let mut found = false;
+
+                            for _ in 0..10 {
+                                if sector.is_inside(&map, new_pos) {
+                                    found = true;
+                                    break;
+                                } else {
+                                    new_pos = find_random_position(curr_pos, *distance);
+                                }
+                            }
+
+                            if found {
+                                entity.action =
+                                    RandomWalkInSector(*distance, *speed, *max_sleep, 1, new_pos);
+                                entity.face_at(new_pos);
+                            } else {
+                                entity.action =
+                                    RandomWalkInSector(*distance, *speed, *max_sleep, 0, curr_pos);
                             }
                         }
                     } else if *state == 1 {
@@ -748,10 +765,10 @@ impl RegionInstance {
                             let mut rng = rand::thread_rng();
                             entity.action = self.create_sleep_switch_action(
                                 rng.gen_range(*max_sleep / 2..=*max_sleep) as u32,
-                                RandomWalkInSector(*speed, *max_sleep, 0, *target),
+                                RandomWalkInSector(*distance, *speed, *max_sleep, 0, *target),
                             );
                         } else {
-                            let t = RandomWalkInSector(*speed, *max_sleep, 0, *target);
+                            let t = RandomWalkInSector(*distance, *speed, *max_sleep, 0, *target);
                             let max_sleep = *max_sleep;
                             let blocked = self.move_entity(entity, 1.0);
                             if blocked {
@@ -1373,7 +1390,13 @@ fn random_walk(
 }
 
 /// Randomly walks within the current sector.
-fn random_walk_in_sector(speed: PyObjectRef, max_sleep: PyObjectRef, vm: &VirtualMachine) {
+fn random_walk_in_sector(
+    distance: PyObjectRef,
+    speed: PyObjectRef,
+    max_sleep: PyObjectRef,
+    vm: &VirtualMachine,
+) {
+    let distance: f32 = get_f32(distance, 1.0, vm); // Default distance: 1.0
     let speed: f32 = get_f32(speed, 1.0, vm); // Default speed: 1.0
     let max_sleep: i32 = get_i32(max_sleep, 0, vm); // Default max_sleep: 0
 
@@ -1382,7 +1405,7 @@ fn random_walk_in_sector(speed: PyObjectRef, max_sleep: PyObjectRef, vm: &Virtua
         .entities
         .get_mut(*CURR_ENTITYID.borrow() as usize)
     {
-        entity.action = RandomWalkInSector(speed, max_sleep, 0, zero());
+        entity.action = RandomWalkInSector(distance, speed, max_sleep, 0, zero());
     }
 }
 

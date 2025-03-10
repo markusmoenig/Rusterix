@@ -49,10 +49,10 @@ impl Sector {
         // Collect all vertices for the sector
         let mut vertices = Vec::new();
         for &linedef_id in &self.linedefs {
-            if let Some(linedef) = map.linedefs.get(linedef_id as usize) {
-                if let Some(start_vertex) = map.vertices.get(linedef.start_vertex as usize) {
+            if let Some(linedef) = map.find_linedef(linedef_id) {
+                if let Some(start_vertex) = map.find_vertex(linedef.start_vertex) {
                     vertices.push(Vec2::new(start_vertex.x, start_vertex.y));
-                    if let Some(end_vertex) = map.vertices.get(linedef.end_vertex as usize) {
+                    if let Some(end_vertex) = map.find_vertex(linedef.end_vertex) {
                         vertices.push(Vec2::new(end_vertex.x, end_vertex.y));
                     }
                 }
@@ -79,10 +79,10 @@ impl Sector {
         // Collect all vertices for the sector
         let mut vertices = Vec::new();
         for &linedef_id in &self.linedefs {
-            if let Some(linedef) = map.linedefs.get(linedef_id as usize) {
-                if let Some(start_vertex) = map.vertices.get(linedef.start_vertex as usize) {
+            if let Some(linedef) = map.find_linedef(linedef_id) {
+                if let Some(start_vertex) = map.find_vertex(linedef.start_vertex) {
                     vertices.push(Vec2::new(start_vertex.x, start_vertex.y));
-                    if let Some(end_vertex) = map.vertices.get(linedef.end_vertex as usize) {
+                    if let Some(end_vertex) = map.find_vertex(linedef.end_vertex) {
                         vertices.push(Vec2::new(end_vertex.x, end_vertex.y));
                     }
                 }
@@ -130,7 +130,7 @@ impl Sector {
         // Collect unique vertices from the Linedefs in order
         let mut vertices = Vec::new();
         for &linedef_id in self.linedefs.iter() {
-            let linedef = map.linedefs.get(linedef_id as usize)?;
+            let linedef = map.find_linedef(linedef_id)?;
             let start_vertex = map.get_vertex(linedef.start_vertex)?;
             let vertex = [start_vertex.x, start_vertex.y];
 
@@ -205,8 +205,8 @@ impl Sector {
         // Collect the polygon vertices
         let mut polygon = Vec::new();
         for &linedef_id in &self.linedefs {
-            if let Some(linedef) = map.linedefs.get(linedef_id as usize) {
-                if let Some(start_vertex) = map.vertices.get(linedef.start_vertex as usize) {
+            if let Some(linedef) = map.find_linedef(linedef_id) {
+                if let Some(start_vertex) = map.find_vertex(linedef.start_vertex) {
                     polygon.push(Vec2::new(start_vertex.x, start_vertex.y));
                 }
             }
@@ -249,8 +249,8 @@ impl Sector {
         // Collect ordered unique vertices of the sector
         let mut polygon = Vec::new();
         for &linedef_id in &self.linedefs {
-            if let Some(linedef) = map.linedefs.get(linedef_id as usize) {
-                if let Some(start_vertex) = map.vertices.get(linedef.start_vertex as usize) {
+            if let Some(linedef) = map.find_linedef(linedef_id) {
+                if let Some(start_vertex) = map.find_vertex(linedef.start_vertex) {
                     let v_start = Vec2::new(start_vertex.x, start_vertex.y);
                     polygon.push(v_start);
                 }
@@ -350,8 +350,8 @@ impl Sector {
         let mut all_walls_have_no_width = true;
         let mut polygon = Vec::new();
         for &linedef_id in &self.linedefs {
-            if let Some(linedef) = map.linedefs.get(linedef_id as usize) {
-                if let Some(start_vertex) = map.vertices.get(linedef.start_vertex as usize) {
+            if let Some(linedef) = map.find_linedef(linedef_id) {
+                if let Some(start_vertex) = map.find_vertex(linedef.start_vertex) {
                     let v_start = Vec2::new(start_vertex.x, start_vertex.y);
                     polygon.push(v_start);
                     if linedef.properties.get_float_default("wall_width", 0.0) > 0.0 {

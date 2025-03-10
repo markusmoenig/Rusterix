@@ -209,16 +209,20 @@ impl Map {
                         if cs == 1 {
                             casts_shadows = false;
                         }
-                        if let Some(start) = self.find_vertex(linedef.start_vertex) {
-                            if let Some(end) = self.find_vertex(linedef.end_vertex) {
-                                let cl = CompiledLinedef::new(
-                                    start.as_vec2(),
-                                    end.as_vec2(),
-                                    linedef.properties.get_float_default("wall_width", 0.0),
-                                    linedef.properties.get_float_default("wall_height", 0.0),
-                                    casts_shadows,
-                                );
-                                linedefs.push(cl);
+                        let wall_height = linedef.properties.get_float_default("wall_height", 0.0);
+
+                        if wall_height > 0.5 {
+                            if let Some(start) = self.find_vertex(linedef.start_vertex) {
+                                if let Some(end) = self.find_vertex(linedef.end_vertex) {
+                                    let cl = CompiledLinedef::new(
+                                        start.as_vec2(),
+                                        end.as_vec2(),
+                                        linedef.properties.get_float_default("wall_width", 0.0),
+                                        linedef.properties.get_float_default("wall_height", 0.0),
+                                        casts_shadows,
+                                    );
+                                    linedefs.push(cl);
+                                }
                             }
                         }
                     }
@@ -228,16 +232,37 @@ impl Map {
 
         for l in self.linedefs.iter() {
             if l.front_sector.is_none() && l.back_sector.is_none() {
-                if let Some(start) = self.find_vertex(l.start_vertex) {
-                    if let Some(end) = self.find_vertex(l.end_vertex) {
-                        let cl = CompiledLinedef::new(
-                            start.as_vec2(),
-                            end.as_vec2(),
-                            l.properties.get_float_default("wall_width", 0.0),
-                            l.properties.get_float_default("wall_height", 0.0),
-                            true,
-                        );
-                        linedefs.push(cl);
+                let wall_height = l.properties.get_float_default("wall_height", 0.0);
+
+                let mut add_it = false;
+
+                // If the tile is explicitly set to blocking we have to add the geometry
+                match l.properties.get("row1_source") {
+                    Some(Value::Source(PixelSource::TileId(id))) => {
+                        if blocking_tiles.contains(id) {
+                            add_it = true;
+                        }
+                    }
+                    Some(Value::Source(PixelSource::MaterialId(id))) => {
+                        if blocking_tiles.contains(id) {
+                            add_it = true;
+                        }
+                    }
+                    _ => {}
+                }
+
+                if add_it {
+                    if let Some(start) = self.find_vertex(l.start_vertex) {
+                        if let Some(end) = self.find_vertex(l.end_vertex) {
+                            let cl = CompiledLinedef::new(
+                                start.as_vec2(),
+                                end.as_vec2(),
+                                l.properties.get_float_default("wall_width", 0.0),
+                                wall_height,
+                                true,
+                            );
+                            linedefs.push(cl);
+                        }
                     }
                 }
             }
@@ -764,7 +789,7 @@ impl Map {
             let mut sector_vertex_indices = Vec::new();
 
             for &linedef_id in &sector.linedefs {
-                if let Some(linedef) = self.linedefs.get(linedef_id as usize) {
+                if let Some(linedef) = self.find_linedef(linedef_id) {
                     sector_vertex_indices.push(linedef.start_vertex);
                     sector_vertex_indices.push(linedef.end_vertex);
                 }

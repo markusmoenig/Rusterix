@@ -120,6 +120,33 @@ impl Draw2D {
         }
     }
 
+    /// Blend the given rectangle
+    pub fn blend_rect_safe(
+        &self,
+        frame: &mut [u8],
+        rect: &(isize, isize, isize, isize),
+        stride: usize,
+        color: &[u8; 4],
+        safe_rect: &(isize, isize, isize, isize),
+    ) {
+        for y in rect.1..rect.1 + rect.3 {
+            if y >= safe_rect.1 && y < (safe_rect.1 + safe_rect.3) {
+                for x in rect.0..rect.0 + rect.2 {
+                    if x >= safe_rect.0 && x < (safe_rect.0 + safe_rect.2) {
+                        let i = x as usize * 4 + y as usize * stride * 4;
+
+                        let background = &[frame[i], frame[i + 1], frame[i + 2], frame[i + 3]];
+                        frame[i..i + 4].copy_from_slice(&self.mix_color(
+                            background,
+                            color,
+                            color[3] as f32 / 255.0,
+                        ));
+                    }
+                }
+            }
+        }
+    }
+
     /// Draws the outline of a given rectangle
     pub fn rect_outline(
         &self,
@@ -689,10 +716,10 @@ impl Draw2D {
 
     #[allow(clippy::too_many_arguments)]
     /// Blends a text aligned inside a rect and blends it with the existing background
-    pub fn text_rect_blend(
+    pub fn text_rect_blend_safe(
         &self,
         frame: &mut [u8],
-        rect: &(usize, usize, usize, usize),
+        rect: &(isize, isize, isize, isize),
         stride: usize,
         font: &Font,
         size: f32,
@@ -700,6 +727,7 @@ impl Draw2D {
         color: &[u8; 4],
         halign: TheHorizontalAlign,
         valign: TheVerticalAlign,
+        safe_rect: &(isize, isize, isize, isize),
     ) {
         let mut text_to_use = text.trim_end().to_string().clone();
         if text_to_use.trim_end().is_empty() {
@@ -710,7 +738,7 @@ impl Draw2D {
 
         let mut add_trail = false;
         // Text is too long ??
-        while text_size.0 >= rect.2 {
+        while text_size.0 >= rect.2 as usize {
             text_to_use.pop();
             text_size = self.get_text_size(font, size, (text_to_use.clone() + "...").as_str());
             add_trail = true;
@@ -749,23 +777,32 @@ impl Draw2D {
             //println!("Metrics: {:?}", glyph);
 
             for y in 0..metrics.height {
-                for x in 0..metrics.width {
-                    // if (y + rect.1) >= rect.1
-                    //     && (y + rect.1) < (rect.1 + rect.3)
-                    //     && (x + rect.0) >= rect.0
-                    //     && (x + rect.0) < (rect.0 + rect.2)
-                    // {
+                if rect.1 + y as isize + glyph.y as isize >= safe_rect.1
+                    && rect.1 + y as isize + (glyph.y as isize) < (safe_rect.1 + safe_rect.3)
+                {
+                    for x in 0..metrics.width {
+                        if rect.0 + x as isize + glyph.x as isize >= safe_rect.0
+                            && rect.0 + x as isize + (glyph.x as isize)
+                                < (safe_rect.0 + safe_rect.2)
+                        {
+                            // if (y + rect.1) >= rect.1
+                            //     && (y + rect.1) < (rect.1 + rect.3)
+                            //     && (x + rect.0) >= rect.0
+                            //     && (x + rect.0) < (rect.0 + rect.2)
+                            // {
 
-                    let i = (x + rect.0 + glyph.x as usize) * 4
-                        + (y + rect.1 + glyph.y as usize) * stride * 4;
-                    let m = alphamap[x + y * metrics.width];
+                            let i = (x + rect.0 as usize + glyph.x as usize) * 4
+                                + (y + rect.1 as usize + glyph.y as usize) * stride * 4;
+                            let m = alphamap[x + y * metrics.width];
 
-                    let background = &[frame[i], frame[i + 1], frame[i + 2], frame[i + 3]];
-                    frame[i..i + 4].copy_from_slice(&self.mix_color(
-                        background,
-                        color,
-                        m as f32 / 255.0,
-                    ));
+                            let background = &[frame[i], frame[i + 1], frame[i + 2], frame[i + 3]];
+                            frame[i..i + 4].copy_from_slice(&self.mix_color(
+                                background,
+                                color,
+                                m as f32 / 255.0,
+                            ));
+                        }
+                    }
                 }
             }
         }

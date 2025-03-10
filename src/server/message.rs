@@ -41,8 +41,8 @@ pub enum EntityAction {
     SleepAndSwitch(i64, Box<EntityAction>),
     /// User: Distance, Speed, Max Min Sleep. System: State, Target
     RandomWalk(f32, f32, i32, i32, Vec2<f32>),
-    /// User: Speed, Max Min Sleep. System: State, Target
-    RandomWalkInSector(f32, i32, i32, Vec2<f32>),
+    /// User: Distance, Speed, Max Min Sleep. System: State, Target
+    RandomWalkInSector(f32, f32, i32, i32, Vec2<f32>),
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]

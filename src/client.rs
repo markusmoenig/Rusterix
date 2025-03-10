@@ -244,16 +244,21 @@ impl Client {
                 let position = map_grid_to_local(screen_size, *grid_pos, map);
 
                 let tuple = (
-                    position.x as usize - text_size / 2 - 5,
-                    position.y as usize - self.messages_font_size as usize - map.grid_size as usize,
-                    *text_size + 10,
+                    position.x as isize - *text_size as isize / 2 - 5,
+                    position.y as isize - self.messages_font_size as isize - map.grid_size as isize,
+                    *text_size as isize + 10,
                     22,
                 );
 
-                self.draw2d
-                    .blend_rect(pixels, &tuple, width, &[0, 0, 0, 128]);
+                self.draw2d.blend_rect_safe(
+                    pixels,
+                    &tuple,
+                    width,
+                    &[0, 0, 0, 128],
+                    &(0, 0, width as isize, height as isize),
+                );
 
-                self.draw2d.text_rect_blend(
+                self.draw2d.text_rect_blend_safe(
                     pixels,
                     &tuple,
                     width,
@@ -263,6 +268,7 @@ impl Client {
                     &self.messages_font_color,
                     draw2d::TheHorizontalAlign::Center,
                     draw2d::TheVerticalAlign::Center,
+                    &(0, 0, width as isize, height as isize),
                 );
             }
         }
