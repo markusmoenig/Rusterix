@@ -353,7 +353,7 @@ impl Server {
     pub fn stop(&mut self) {
         if let Ok(pipes) = REGIONPIPE.read() {
             for sender in pipes.values() {
-                sender.send(RegionMessage::Quit).unwrap();
+                _ = sender.send(RegionMessage::Quit);
             }
         }
         self.clear();

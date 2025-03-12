@@ -58,6 +58,12 @@ ref_thread_local! {
     /// Maps an item class name to its data file.
     pub static managed ITEM_CLASS_DATA: FxHashMap<String, String> = FxHashMap::default();
 
+    /// Proximity alerts for entities.
+    pub static managed ENTITY_PROXIMITY_ALERTS: FxHashMap<u32, f32> = FxHashMap::default();
+
+    /// Proximity alerts for items.
+    pub static managed ITEM_PROXIMITY_ALERTS: FxHashMap<u32, f32> = FxHashMap::default();
+
     /// Cmds which are queued to be executed to either entities or items.
     pub static managed TO_EXECUTE_ENTITY: Vec<(u32, String)> = vec![];
     pub static managed TO_EXECUTE_ITEM  : Vec<(u32, String)> = vec![];
@@ -65,6 +71,9 @@ ref_thread_local! {
     /// Errors since starting the region.
     pub static managed ERROR_COUNT: u32 = 0;
     pub static managed STARTUP_ERRORS: Vec<String> = vec![];
+
+    /// Config TOML
+    pub static managed CONFIG: toml::Table = toml::Table::default();
 
     pub static managed TO_RECEIVER: OnceLock<Receiver<RegionMessage>> = OnceLock::new();
     pub static managed FROM_SENDER: OnceLock<Sender<RegionMessage>> = OnceLock::new();
@@ -227,6 +236,13 @@ impl RegionInstance {
                     .into(),
                 vm,
             );
+
+            let _ = scope.globals.set_item(
+                "set_proximity_tracking",
+                vm.new_function("set_proximity_tracking", set_proximity_tracking)
+                    .into(),
+                vm,
+            );
         });
 
         let (to_sender, to_receiver) = unbounded::<RegionMessage>();
@@ -248,8 +264,12 @@ impl RegionInstance {
     }
 
     /// Initializes the Python bases classes, sets the map and applies entities
-    pub fn init(&mut self, name: String, map: Map, assets: &Assets, _config_toml: String) {
+    pub fn init(&mut self, name: String, map: Map, assets: &Assets, config_toml: String) {
         self.name = name;
+
+        if let Ok(toml) = config_toml.parse::<toml::Table>() {
+            *CONFIG.borrow_mut() = toml;
+        }
 
         *ID_GEN.borrow_mut() = 0;
         *MAP.borrow_mut() = map;
@@ -313,16 +333,14 @@ impl RegionInstance {
 
     /// Run this instance
     pub fn run(self) {
-        let system_ticker = tick(std::time::Duration::from_millis(250));
-        let redraw_ticker = tick(std::time::Duration::from_millis(16));
-
-        // We have to reassign map inside the thread
+        // We have to reassign stuff inside the thread
         let map = MAP.borrow_mut().clone();
         let name = map.name.clone();
         let startup_errors = STARTUP_ERRORS.borrow().clone();
         let entity_class_data = ENTITY_CLASS_DATA.borrow().clone();
         let item_class_data = ITEM_CLASS_DATA.borrow().clone();
         let blocking_tiles = BLOCKING_TILES.borrow().clone();
+        let config = CONFIG.borrow_mut().clone();
 
         std::thread::spawn(move || {
             // Initialize the local thread global storage
@@ -339,11 +357,29 @@ impl RegionInstance {
             *MAPMINI.borrow_mut() = map.as_mini(&blocking_tiles);
             *MAP.borrow_mut() = map;
             *TICKS.borrow_mut() = 0;
-            // TODO: Make this configurable
             *TICKS_PER_MINUTE.borrow_mut() = 4;
             *ENTITY_CLASS_DATA.borrow_mut() = entity_class_data;
             *ITEM_CLASS_DATA.borrow_mut() = item_class_data;
             *BLOCKING_TILES.borrow_mut() = blocking_tiles;
+            *CONFIG.borrow_mut() = config;
+
+            *TICKS_PER_MINUTE.borrow_mut() =
+                get_config_i32_default("game", "ticks_per_minute", 4) as u32;
+
+            let game_tick_ms = get_config_i32_default("game", "game_tick_ms", 250) as u64;
+            let target_fps = 1000.0 / get_config_i32_default("game", "target_fps", 30) as f32;
+
+            let system_ticker = tick(std::time::Duration::from_millis(game_tick_ms));
+            let redraw_ticker = tick(std::time::Duration::from_millis(target_fps as u64));
+
+            let entity_block_mode = {
+                let mode = get_config_string_default("game", "entity_block_mode", "always");
+                if mode == "always" {
+                    1
+                } else {
+                    0
+                }
+            };
 
             // Send startup messages
             *ERROR_COUNT.borrow_mut() = startup_errors.len() as u32;
@@ -545,9 +581,23 @@ impl RegionInstance {
                             }
                             NOTIFICATIONS_ITEMS.borrow_mut().retain(|(id, tick, _)| !to_process.iter().any(|(pid, _, _)| pid == id && *tick <= ticks));
                         }
+
+                        // Check Proximity Alerts
+                        {
+                            for (id, radius) in ENTITY_PROXIMITY_ALERTS.borrow().iter() {
+                                let entities = entities_in_radius_internal(Some(*id), None, *radius);
+                                if !entities.is_empty() {
+                                    if let Some(class_name) = ENTITY_CLASSES.borrow().get(id) {
+                                        let cmd = format!("{}.event(\"{}\", [{}])", class_name, "proximity_warning",
+                                            entities.iter().map(|e| e.to_string()).collect::<Vec<_>>().join(","));
+                                        TO_EXECUTE_ENTITY.borrow_mut().push((*id, cmd));
+                                    }
+                                }
+                            }
+                        }
                     }
                     recv(redraw_ticker) -> _ => {
-                        REGION.borrow_mut().handle_redraw_tick();
+                        REGION.borrow_mut().handle_redraw_tick(entity_block_mode);
 
                         // Execute delayed scripts for entities
                         // This is because we can only borrow REGION once.
@@ -633,7 +683,7 @@ impl RegionInstance {
     }
 
     /// Redraw tick
-    fn handle_redraw_tick(&mut self) {
+    fn handle_redraw_tick(&mut self, entity_block_mode: i32) {
         let mut updates: Vec<Vec<u8>> = vec![];
         let mut item_updates: Vec<Vec<u8>> = vec![];
         let mut entities = MAP.borrow().entities.clone();
@@ -648,10 +698,10 @@ impl RegionInstance {
                             if *player_camera != PlayerCamera::D3FirstP {
                                 entity.face_north();
                             }
-                            self.move_entity(entity, 1.0);
+                            self.move_entity(entity, 1.0, entity_block_mode);
                         }
                     } else {
-                        self.move_entity(entity, 1.0);
+                        self.move_entity(entity, 1.0, entity_block_mode);
                     }
                 }
                 EntityAction::Left => {
@@ -661,7 +711,7 @@ impl RegionInstance {
                         {
                             if *player_camera != PlayerCamera::D3FirstP {
                                 entity.face_west();
-                                self.move_entity(entity, 1.0);
+                                self.move_entity(entity, 1.0, entity_block_mode);
                             } else {
                                 entity.turn_left(2.0);
                             }
@@ -677,7 +727,7 @@ impl RegionInstance {
                         {
                             if *player_camera != PlayerCamera::D3FirstP {
                                 entity.face_east();
-                                self.move_entity(entity, 1.0);
+                                self.move_entity(entity, 1.0, entity_block_mode);
                             } else {
                                 entity.turn_right(2.0);
                             }
@@ -693,13 +743,13 @@ impl RegionInstance {
                         {
                             if *player_camera != PlayerCamera::D3FirstP {
                                 entity.face_south();
-                                self.move_entity(entity, 1.0);
+                                self.move_entity(entity, 1.0, entity_block_mode);
                             } else {
-                                self.move_entity(entity, -1.0);
+                                self.move_entity(entity, -1.0, entity_block_mode);
                             }
                         }
                     } else {
-                        self.move_entity(entity, -1.0);
+                        self.move_entity(entity, -1.0, entity_block_mode);
                     }
                 }
                 EntityAction::RandomWalk(distance, speed, max_sleep, state, target) => {
@@ -720,7 +770,7 @@ impl RegionInstance {
                         } else {
                             let t = RandomWalk(*distance, *speed, *max_sleep, 0, *target);
                             let max_sleep = *max_sleep;
-                            let blocked = self.move_entity(entity, 1.0);
+                            let blocked = self.move_entity(entity, 1.0, entity_block_mode);
                             if blocked {
                                 let mut rng = rand::thread_rng();
                                 entity.action = self.create_sleep_switch_action(
@@ -770,7 +820,7 @@ impl RegionInstance {
                         } else {
                             let t = RandomWalkInSector(*distance, *speed, *max_sleep, 0, *target);
                             let max_sleep = *max_sleep;
-                            let blocked = self.move_entity(entity, 1.0);
+                            let blocked = self.move_entity(entity, 1.0, entity_block_mode);
                             if blocked {
                                 let mut rng = rand::thread_rng();
                                 entity.action = self.create_sleep_switch_action(
@@ -866,7 +916,7 @@ impl RegionInstance {
     }
 
     /// Moves an entity forward or backward. Returns true if blocked.
-    fn move_entity(&self, entity: &mut Entity, dir: f32) -> bool {
+    fn move_entity(&self, entity: &mut Entity, dir: f32, entity_block_mode: i32) -> bool {
         let speed = 0.05 * 2.0;
         let move_vector = entity.orientation * speed * dir;
         let position = entity.get_pos_xz();
@@ -908,7 +958,10 @@ impl RegionInstance {
                         TO_EXECUTE_ENTITY.borrow_mut().push((other.id, cmd));
                     }
                     // if the other entity is blocking, stop the movement
-                    if other.attributes.get_bool_default("blocking", false) {
+                    // if other.attributes.get_bool_default("blocking", false) {
+                    //     return true;
+                    // }
+                    if entity_block_mode > 0 {
                         return true;
                     }
                 }
@@ -1254,6 +1307,55 @@ fn inventory_items(filter: String, vm: &VirtualMachine) -> PyResult<PyObjectRef>
 }
 
 /// Returns the entities in the radius of the character or item.
+fn entities_in_radius_internal(
+    entity_id: Option<u32>,
+    item_id: Option<u32>,
+    radius: f32,
+) -> Vec<u32> {
+    let mut position = None;
+    let mut is_entity = false;
+    let mut id = 0;
+
+    let map = MAP.borrow();
+
+    if let Some(item_id) = item_id {
+        if let Some(item) = map.items.iter().find(|item| item.id == item_id) {
+            id = item_id;
+            position = Some(item.get_pos_xz());
+        }
+    } else if let Some(entity_id) = entity_id {
+        is_entity = true;
+        if let Some(entity) = map.entities.iter().find(|entity| entity.id == entity_id) {
+            id = entity.id;
+            position = Some(entity.get_pos_xz());
+        }
+    }
+
+    let mut entities = Vec::new();
+
+    if let Some(position) = position {
+        for other in map.entities.iter() {
+            if is_entity && other.id == id {
+                continue;
+            }
+            let other_position = other.get_pos_xz();
+            let other_radius = other.attributes.get_float_default("radius", 0.5);
+
+            let distance_squared = (position - other_position).magnitude_squared();
+            let combined_radius = radius + other_radius;
+            let combined_radius_squared = combined_radius * combined_radius;
+
+            // Entity is inside the radius
+            if distance_squared < combined_radius_squared {
+                entities.push(other.id);
+            }
+        }
+    }
+
+    entities
+}
+
+/// Returns the entities in the radius of the character or item.
 fn entities_in_radius(vm: &VirtualMachine) -> PyResult<PyObjectRef> {
     let mut radius = 0.5;
     let mut position = None;
@@ -1409,6 +1511,46 @@ fn random_walk_in_sector(
     }
 }
 
+/// Set Proximity Tracking
+pub fn set_proximity_tracking(
+    args: rustpython_vm::function::FuncArgs,
+    vm: &VirtualMachine,
+) -> PyResult<()> {
+    let mut turn_on = false;
+    let mut distance = 5.0;
+
+    for (i, arg) in args.args.iter().enumerate() {
+        if i == 0 {
+            if let Some(Value::Bool(v)) = Value::from_pyobject(arg.clone(), vm) {
+                turn_on = v;
+            }
+        } else if i == 1 {
+            if let Some(Value::Float(v)) = Value::from_pyobject(arg.clone(), vm) {
+                distance = v;
+            }
+        }
+    }
+
+    if let Some(item_id) = *CURR_ITEMID.borrow() {
+        if turn_on {
+            ITEM_PROXIMITY_ALERTS.borrow_mut().insert(item_id, distance);
+        } else {
+            ITEM_PROXIMITY_ALERTS.borrow_mut().remove(&item_id);
+        }
+    } else {
+        let entity_id = *CURR_ENTITYID.borrow();
+        if turn_on {
+            ENTITY_PROXIMITY_ALERTS
+                .borrow_mut()
+                .insert(entity_id, distance);
+        } else {
+            ENTITY_PROXIMITY_ALERTS.borrow_mut().remove(&entity_id);
+        }
+    }
+
+    Ok(())
+}
+
 /// Tell
 pub fn tell(args: rustpython_vm::function::FuncArgs, vm: &VirtualMachine) -> PyResult<()> {
     let mut receiver = None;
@@ -1469,4 +1611,53 @@ pub fn debug(args: rustpython_vm::function::FuncArgs, vm: &VirtualMachine) -> Py
 
     send_log_message(output);
     Ok(())
+}
+
+/// Get an i32 config value
+pub fn get_config_i32_default(table: &str, key: &str, default: i32) -> i32 {
+    let tab = CONFIG.borrow();
+    if let Some(game) = tab.get(table).and_then(toml::Value::as_table) {
+        if let Some(value) = game.get(key) {
+            if let Some(v) = value.as_integer() {
+                return v as i32;
+            }
+        }
+    }
+    default
+}
+
+pub fn get_config_f32_default(table: &str, key: &str, default: f32) -> f32 {
+    let tab = CONFIG.borrow();
+    if let Some(game) = tab.get(table).and_then(toml::Value::as_table) {
+        if let Some(value) = game.get(key) {
+            if let Some(v) = value.as_float() {
+                return v as f32;
+            }
+        }
+    }
+    default
+}
+
+pub fn get_config_bool_default(table: &str, key: &str, default: bool) -> bool {
+    let tab = CONFIG.borrow();
+    if let Some(game) = tab.get(table).and_then(toml::Value::as_table) {
+        if let Some(value) = game.get(key) {
+            if let Some(v) = value.as_bool() {
+                return v;
+            }
+        }
+    }
+    default
+}
+
+pub fn get_config_string_default(table: &str, key: &str, default: &str) -> String {
+    let tab = CONFIG.borrow();
+    if let Some(game) = tab.get(table).and_then(toml::Value::as_table) {
+        if let Some(value) = game.get(key) {
+            if let Some(v) = value.as_str() {
+                return v.to_string();
+            }
+        }
+    }
+    default.to_string()
 }
