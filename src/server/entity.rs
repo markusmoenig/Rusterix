@@ -354,6 +354,7 @@ impl Entity {
     pub fn get_update(&self) -> EntityUpdate {
         EntityUpdate {
             id: self.id,
+            creator_id: self.creator_id,
             position: if self.dirty_flags & 0b0001 != 0 {
                 Some(self.position)
             } else {
@@ -409,6 +410,8 @@ impl Entity {
             eprintln!("Update ID does not match Entity ID!");
             return;
         }
+
+        self.creator_id = update.creator_id;
 
         // Update static fields
         if let Some(new_position) = update.position {
@@ -517,6 +520,7 @@ impl Entity {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EntityUpdate {
     pub id: u32,
+    pub creator_id: Uuid,
     pub position: Option<Vec3<f32>>,
     pub orientation: Option<Vec2<f32>>,
     pub tilt: Option<f32>,
@@ -538,6 +542,7 @@ impl EntityUpdate {
     pub fn unpack(data: &[u8]) -> Self {
         bincode::deserialize(data).unwrap_or_else(|_| Self {
             id: 0,
+            creator_id: Uuid::nil(),
             position: None,
             orientation: None,
             tilt: None,

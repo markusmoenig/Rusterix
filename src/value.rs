@@ -8,6 +8,7 @@ pub enum Value {
     NoValue,
     Bool(bool),
     Int(i32),
+    Int64(i64),
     Float(f32),
     Vec2([f32; 2]),
     Vec3([f32; 3]),
@@ -25,6 +26,14 @@ impl Value {
     pub fn to_source(&self) -> Option<&PixelSource> {
         match self {
             Value::Source(source) => Some(source),
+            _ => None,
+        }
+    }
+
+    pub fn to_f32(&self) -> Option<f32> {
+        match self {
+            Value::Int(f) => Some(*f as f32),
+            Value::Float(f) => Some(*f),
             _ => None,
         }
     }
@@ -115,11 +124,12 @@ impl fmt::Display for Value {
             Value::NoValue => write!(f, "NoValue"),
             Value::Bool(val) => write!(f, "{}", val),
             Value::Int(val) => write!(f, "{}", val),
-            Value::Float(val) => write!(f, "{:.6}", val), // Represent floats with 6 decimals
+            Value::Int64(val) => write!(f, "{}", val),
+            Value::Float(val) => write!(f, "{:.2}", val),
             Value::Vec2(val) => write!(f, "[{}, {}]", val[0], val[1]),
             Value::Vec3(val) => write!(f, "[{}, {}, {}]", val[0], val[1], val[2]),
             Value::Vec4(val) => write!(f, "[{}, {}, {}, {}]", val[0], val[1], val[2], val[3]),
-            Value::Str(val) => write!(f, "{}", val.replace("'", "\\'")), // Escape single quotes
+            Value::Str(val) => write!(f, "{}", val),
             Value::Id(val) => write!(f, "{}", val),
             Value::Source(val) => write!(f, "{:?}", val),
             Value::Texture(val) => {
@@ -291,6 +301,46 @@ impl ValueContainer {
     // Get all keys
     pub fn keys(&self) -> impl Iterator<Item = &String> {
         self.values.keys()
+    }
+
+    // Get all keys sorted
+    pub fn keys_sorted(&self) -> Vec<&String> {
+        let mut keys: Vec<&String> = self.values.keys().collect();
+
+        keys.sort_by(|a, b| {
+            let type_a = self.get_type_order(a);
+            let type_b = self.get_type_order(b);
+
+            // First, sort by Value type order
+            match type_a.cmp(&type_b) {
+                std::cmp::Ordering::Equal => a.cmp(b), // If same type, sort by key name
+                other => other,
+            }
+        });
+
+        keys
+    }
+
+    /// Helper function to assign sorting order for Value types
+    fn get_type_order(&self, key: &String) -> usize {
+        match self.values.get(key) {
+            Some(Value::Str(_)) => 0, // Strings come first
+            Some(Value::Bool(_)) => 1,
+            Some(Value::Int(_)) => 2,
+            Some(Value::Int64(_)) => 2,
+            Some(Value::Float(_)) => 3,
+            Some(Value::Vec2(_)) => 4,
+            Some(Value::Vec3(_)) => 5,
+            Some(Value::Vec4(_)) => 6,
+            Some(Value::Id(_)) => 7,
+            Some(Value::Source(_)) => 8,
+            Some(Value::Texture(_)) => 9,
+            Some(Value::SampleMode(_)) => 10,
+            Some(Value::PlayerCamera(_)) => 11,
+            Some(Value::Light(_)) => 12,
+            Some(Value::NoValue) => 13,
+            None => 99, // If key is missing, push to the end
+        }
     }
 
     // Get all values

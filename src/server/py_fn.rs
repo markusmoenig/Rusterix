@@ -2,6 +2,61 @@ use rand::*;
 use rustpython::vm::*;
 use vek::Vec2;
 
+use rustpython_vm::builtins::PyDict;
+
+/// Extracts a dictionary to a string from a Python object.
+pub fn extract_dictionary(py_dict: PyObjectRef, vm: &VirtualMachine) -> PyResult<String> {
+    // Helper function to format Python values correctly
+    fn format_python_value(value: PyObjectRef, vm: &VirtualMachine) -> PyResult<String> {
+        if value.class().is(vm.ctx.types.bool_type) {
+            let val: bool = bool::try_from_object(vm, value)?;
+            Ok(if val {
+                "True".to_string()
+            } else {
+                "False".to_string()
+            }) // Convert to Python True/False
+        } else if value.class().is(vm.ctx.types.int_type) {
+            let val: i32 = i32::try_from_object(vm, value)?;
+            Ok(val.to_string()) // Convert integer to string
+        } else if value.class().is(vm.ctx.types.float_type) {
+            let val: f64 = f64::try_from_object(vm, value)?;
+            Ok(format!("{}", val)) // Convert float to string
+        } else if value.class().is(vm.ctx.types.str_type) {
+            let val: String = String::try_from_object(vm, value)?;
+            Ok(format!("\"{}\"", val)) // Strings need quotes
+        } else if value.class().is(vm.ctx.types.dict_type) {
+            extract_dictionary(value, vm) // Recursive conversion for nested dicts
+        } else if value.class().is(vm.ctx.types.tuple_type) {
+            let tuple: Vec<PyObjectRef> = Vec::<PyObjectRef>::try_from_object(vm, value)?;
+            let elements: Vec<String> = tuple
+                .into_iter()
+                .map(|item| format_python_value(item, vm))
+                .collect::<PyResult<Vec<String>>>()?;
+            Ok(format!("({})", elements.join(", "))) // Format as a Python tuple
+        } else {
+            Ok(format!("{}", value.str(vm)?)) // Default: Use Python str() representation
+        }
+    }
+
+    let dict = py_dict
+        .downcast::<PyDict>()
+        .map_err(|_| vm.new_type_error("Expected a dictionary".to_string()))?;
+
+    let mut output = String::from("{\n");
+
+    // Iterate over dictionary items and format as Python dictionary syntax
+    for (key, value) in dict.into_iter() {
+        let key_str = key.str(vm)?.to_string(); // Convert key to a Python-valid string
+        let value_str = format_python_value(value, vm)?; // Convert value properly
+
+        output.push_str(&format!("    \"{}\": {},\n", key_str, value_str));
+    }
+
+    output.push('}');
+
+    Ok(output) // Return as Python-formatted string
+}
+
 /// Generate an i32 or f32 random number within the given range.
 pub fn random_in_range(
     from: PyObjectRef,

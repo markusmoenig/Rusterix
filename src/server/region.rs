@@ -1,5 +1,7 @@
 use crate::server::py_fn::*;
-use crate::{Assets, Entity, EntityAction, Map, MapMini, PixelSource, PlayerCamera, Value};
+use crate::{
+    Assets, Entity, EntityAction, Map, MapMini, PixelSource, PlayerCamera, Value, ValueContainer,
+};
 use crossbeam_channel::{select, tick, unbounded, Receiver, Sender};
 use rand::*;
 use ref_thread_local::{ref_thread_local, RefThreadLocal};
@@ -64,9 +66,14 @@ ref_thread_local! {
     /// Proximity alerts for items.
     pub static managed ITEM_PROXIMITY_ALERTS: FxHashMap<u32, f32> = FxHashMap::default();
 
+    /// ENTITY and ITEM state data, for example which events got last executed in what tick
+    pub static managed ENTITY_STATE_DATA: FxHashMap<u32, ValueContainer> = FxHashMap::default();
+    pub static managed ITEM_STATE_DATA: FxHashMap<u32, ValueContainer> = FxHashMap::default();
+
     /// Cmds which are queued to be executed to either entities or items.
-    pub static managed TO_EXECUTE_ENTITY: Vec<(u32, String)> = vec![];
-    pub static managed TO_EXECUTE_ITEM  : Vec<(u32, String)> = vec![];
+    /// First String is the Cmd Id, which is used to make sure the command is executed only once a tick.
+    pub static managed TO_EXECUTE_ENTITY: Vec<(u32, String, String)> = vec![];
+    pub static managed TO_EXECUTE_ITEM  : Vec<(u32, String, String)> = vec![];
 
     /// Errors since starting the region.
     pub static managed ERROR_COUNT: u32 = 0;
@@ -241,6 +248,18 @@ impl RegionInstance {
                 "set_proximity_tracking",
                 vm.new_function("set_proximity_tracking", set_proximity_tracking)
                     .into(),
+                vm,
+            );
+
+            let _ = scope.globals.set_item(
+                "deal_damage",
+                vm.new_function("deal_damage", deal_damage).into(),
+                vm,
+            );
+
+            let _ = scope.globals.set_item(
+                "block_events",
+                vm.new_function("block_events", block_events).into(),
                 vm,
             );
         });
@@ -590,7 +609,7 @@ impl RegionInstance {
                                     if let Some(class_name) = ENTITY_CLASSES.borrow().get(id) {
                                         let cmd = format!("{}.event(\"{}\", [{}])", class_name, "proximity_warning",
                                             entities.iter().map(|e| e.to_string()).collect::<Vec<_>>().join(","));
-                                        TO_EXECUTE_ENTITY.borrow_mut().push((*id, cmd));
+                                        TO_EXECUTE_ENTITY.borrow_mut().push((*id, "proximity_warning".into(), cmd));
                                     }
                                 }
                             }
@@ -606,7 +625,26 @@ impl RegionInstance {
                         for todo in to_execute_entity {
                             *CURR_ENTITYID.borrow_mut() = todo.0;
                             *CURR_ITEMID.borrow_mut() = None;
-                            if let Err(err) = REGION.borrow().execute(&todo.1) {
+
+                            {
+                                let mut state_data = ENTITY_STATE_DATA.borrow_mut().clone();
+                                if let Some(state_data) = state_data.get_mut(&todo.0) {
+                                    // Check if we have already executed this script in this tick
+                                    if let Some(Value::Int64(tick)) = state_data.get(&todo.1) {
+                                        if *tick >= *TICKS.borrow() {
+                                            continue;
+                                        }
+                                    }
+                                    // Store the tick we executed this in
+                                    state_data.set(&todo.1, Value::Int64(*TICKS.borrow()));
+                                } else {
+                                    let mut vc = ValueContainer::default();
+                                    vc.set(&todo.1, Value::Int64(*TICKS.borrow()));
+                                    state_data.insert(todo.0, vc);
+                                }
+                            }
+
+                            if let Err(err) = REGION.borrow().execute(&todo.2) {
                                 send_log_message(format!(
                                     "TO_EXECUTE_ENTITY: Error for '{}': {}: {}",
                                     todo.0,
@@ -622,7 +660,24 @@ impl RegionInstance {
                         TO_EXECUTE_ITEM.borrow_mut().clear();
                         for todo in to_execute_items {
                             *CURR_ITEMID.borrow_mut() = Some(todo.0);
-                            if let Err(err) = REGION.borrow().execute(&todo.1) {
+                            {
+                                let mut state_data = ITEM_STATE_DATA.borrow_mut();
+                                if let Some(state_data) = state_data.get_mut(&todo.0) {
+                                    // Check if we have already executed this script in this tick
+                                    if let Some(Value::Int64(tick)) = state_data.get(&todo.1) {
+                                        if *tick >= *TICKS.borrow() {
+                                            continue;
+                                        }
+                                    }
+                                    // Store the tick we executed this in
+                                    state_data.set(&todo.1, Value::Int64(*TICKS.borrow()));
+                                } else {
+                                    let mut vc = ValueContainer::default();
+                                    vc.set(&todo.1, Value::Int64(*TICKS.borrow()));
+                                    state_data.insert(todo.0, vc);
+                                }
+                            }
+                            if let Err(err) = REGION.borrow().execute(&todo.2) {
                                 send_log_message(format!(
                                     "TO_EXECUTE_ITEM: Error for '{}': {}: {}",
                                     todo.0,
@@ -947,7 +1002,11 @@ impl RegionInstance {
                             "{}.event('{}', {})",
                             class_name, "bumped_into_entity", other.id
                         );
-                        TO_EXECUTE_ENTITY.borrow_mut().push((entity.id, cmd));
+                        TO_EXECUTE_ENTITY.borrow_mut().push((
+                            entity.id,
+                            "bumped_into_entity".into(),
+                            cmd,
+                        ));
                     }
                     // Send "bumped_by_entity" for the other entity
                     if let Some(class_name) = ENTITY_CLASSES.borrow().get(&other.id) {
@@ -955,7 +1014,11 @@ impl RegionInstance {
                             "{}.event('{}', {})",
                             class_name, "bumped_by_entity", entity.id
                         );
-                        TO_EXECUTE_ENTITY.borrow_mut().push((other.id, cmd));
+                        TO_EXECUTE_ENTITY.borrow_mut().push((
+                            other.id,
+                            "bumped_by_entity".into(),
+                            cmd,
+                        ));
                     }
                     // if the other entity is blocking, stop the movement
                     // if other.attributes.get_bool_default("blocking", false) {
@@ -987,14 +1050,22 @@ impl RegionInstance {
                             "{}.event('{}', {})",
                             class_name, "bumped_into_item", other.id
                         );
-                        TO_EXECUTE_ENTITY.borrow_mut().push((entity.id, cmd));
+                        TO_EXECUTE_ENTITY.borrow_mut().push((
+                            entity.id,
+                            "bumped_into_item".into(),
+                            cmd,
+                        ));
                     }
                     if let Some(class_name) = ITEM_CLASSES.borrow().get(&other.id) {
                         let cmd = format!(
                             "{}.event('{}', {})",
                             class_name, "bumped_by_entity", entity.id
                         );
-                        TO_EXECUTE_ITEM.borrow_mut().push((other.id, cmd));
+                        TO_EXECUTE_ITEM.borrow_mut().push((
+                            other.id,
+                            "bumped_by_entity".into(),
+                            cmd,
+                        ));
                     }
                     // If the item is blocking, stop the movement
                     if other.attributes.get_bool_default("blocking", false) {
@@ -1138,17 +1209,89 @@ fn take(item_id: u32) {
     }
 }
 
+/// Block the events for the entity / item for the given amount of minutes.
+pub fn block_events(args: rustpython_vm::function::FuncArgs, vm: &VirtualMachine) {
+    let mut minutes: f32 = 4.0;
+    let mut events: Vec<String> = Vec::new();
+
+    for (i, arg) in args.args.iter().enumerate() {
+        if i == 0 {
+            if let Some(v) = Value::from_pyobject(arg.clone(), vm).and_then(|v| v.to_f32()) {
+                minutes = v;
+            }
+        } else if let Some(Value::Str(v)) = Value::from_pyobject(arg.clone(), vm) {
+            events.push(v);
+        }
+    }
+
+    let target_tick =
+        Value::Int64(*TICKS.borrow() + (*TICKS_PER_MINUTE.borrow() as f32 * minutes) as i64);
+
+    if let Some(item_id) = *CURR_ITEMID.borrow() {
+        let mut state_data = ITEM_STATE_DATA.borrow_mut();
+        if let Some(state_data) = state_data.get_mut(&item_id) {
+            for event in events {
+                state_data.set(&event, target_tick.clone());
+            }
+        } else {
+            let mut vc = ValueContainer::default();
+            for event in events {
+                vc.set(&event, target_tick.clone());
+            }
+            state_data.insert(item_id, vc);
+        }
+    } else {
+        let entity_id = *CURR_ENTITYID.borrow();
+
+        let mut state_data = ENTITY_STATE_DATA.borrow_mut();
+        if let Some(state_data) = state_data.get_mut(&entity_id) {
+            for event in events {
+                state_data.set(&event, target_tick.clone());
+            }
+        } else {
+            let mut vc = ValueContainer::default();
+            for event in events {
+                vc.set(&event, target_tick.clone());
+            }
+            state_data.insert(entity_id, vc);
+        }
+    }
+}
+
+/// Deal damage to the given entity. Sends an "take_damage" event to the other entity.
+fn deal_damage(id: u32, dict: PyObjectRef, vm: &VirtualMachine) {
+    let dict = extract_dictionary(dict, vm);
+
+    if let Ok(dict) = dict {
+        if let Some(entity) = MAP.borrow().entities.iter().find(|entity| entity.id == id) {
+            if let Some(class_name) = entity.attributes.get_str("class_name") {
+                let cmd = format!("{}.event('{}', {})", class_name, "take_damage", dict);
+                TO_EXECUTE_ITEM
+                    .borrow_mut()
+                    .push((id, "take_damage".into(), cmd));
+            }
+        } else if let Some(item) = MAP.borrow_mut().items.iter_mut().find(|item| item.id == id) {
+            if let Some(class_name) = item.attributes.get_str("class_name") {
+                let cmd = format!("{}.event('{}', {})", class_name, "take_damage", dict);
+                TO_EXECUTE_ITEM
+                    .borrow_mut()
+                    .push((id, "take_damage".into(), cmd));
+            }
+        }
+    }
+}
+
 /// Get an attribute from the given entity.
 fn get_entity_attr(entity_id: u32, key: String, vm: &VirtualMachine) -> PyResult<PyObjectRef> {
     let mut value = Value::NoValue;
 
     if let Some(entity) = MAP
         .borrow_mut()
-        .items
+        .entities
         .iter_mut()
         .find(|entity| entity.id == entity_id)
     {
-        if let Some(v) = entity.get_attribute(&key) {
+        if let Some(v) = entity.attributes.get(&key) {
             value = v.clone();
         }
     }
@@ -1609,6 +1752,10 @@ pub fn debug(args: rustpython_vm::function::FuncArgs, vm: &VirtualMachine) -> Py
         output.push_str(&arg_str);
     }
 
+    if let Some(name) = get_attr_internal("name") {
+        output = format!("{}: {}", name, output);
+    }
+
     send_log_message(output);
     Ok(())
 }
@@ -1660,4 +1807,20 @@ pub fn get_config_string_default(table: &str, key: &str, default: &str) -> Strin
         }
     }
     default.to_string()
+}
+
+/// Get an attribute value from the current item or entity.
+fn get_attr_internal(key: &str) -> Option<Value> {
+    if let Some(id) = *CURR_ITEMID.borrow() {
+        if let Some(item) = MAP.borrow().items.iter().find(|item| item.id == id) {
+            return item.attributes.get(key).cloned();
+        }
+    } else {
+        let id = *CURR_ENTITYID.borrow();
+        if let Some(entity) = MAP.borrow().entities.iter().find(|entity| entity.id == id) {
+            return entity.attributes.get(key).cloned();
+        }
+    };
+
+    None
 }

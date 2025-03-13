@@ -207,6 +207,7 @@ impl Item {
 
         ItemUpdate {
             id: self.id,
+            creator_id: self.creator_id,
             item_type: if self.dirty_flags & 0b0001 != 0 {
                 Some(self.item_type.clone())
             } else {
@@ -234,6 +235,8 @@ impl Item {
             eprintln!("Update ID does not match Item ID!");
             return;
         }
+
+        self.creator_id = update.creator_id;
 
         // Update static fields
         if let Some(new_item_type) = update.item_type {
@@ -268,6 +271,7 @@ impl Item {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ItemUpdate {
     pub id: u32,
+    pub creator_id: Uuid,
     pub item_type: Option<String>,
     pub max_capacity: Option<u32>,
     pub position: Option<Vec3<f32>>,
@@ -285,6 +289,7 @@ impl ItemUpdate {
     pub fn unpack(data: &[u8]) -> Self {
         bincode::deserialize(data).unwrap_or_else(|_| Self {
             id: 0,
+            creator_id: Uuid::nil(),
             item_type: None,
             max_capacity: None,
             position: None,
