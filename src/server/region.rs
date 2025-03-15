@@ -1,6 +1,7 @@
 use crate::server::py_fn::*;
 use crate::{
-    Assets, Entity, EntityAction, Map, MapMini, PixelSource, PlayerCamera, Value, ValueContainer,
+    Assets, Entity, EntityAction, Item, Map, MapMini, PixelSource, PlayerCamera, Value,
+    ValueContainer,
 };
 use crossbeam_channel::{select, tick, unbounded, Receiver, Sender};
 use rand::*;
@@ -81,6 +82,9 @@ ref_thread_local! {
 
     /// Config TOML
     pub static managed CONFIG: toml::Table = toml::Table::default();
+
+    /// Game Assets
+    pub static managed ASSETS: Assets = Assets::default();
 
     pub static managed TO_RECEIVER: OnceLock<Receiver<RegionMessage>> = OnceLock::new();
     pub static managed FROM_SENDER: OnceLock<Sender<RegionMessage>> = OnceLock::new();
@@ -262,6 +266,18 @@ impl RegionInstance {
                 vm.new_function("block_events", block_events).into(),
                 vm,
             );
+
+            let _ = scope.globals.set_item(
+                "add_item",
+                vm.new_function("add_item", add_item).into(),
+                vm,
+            );
+
+            let _ = scope.globals.set_item(
+                "drop_items",
+                vm.new_function("drop_items", drop_items).into(),
+                vm,
+            );
         });
 
         let (to_sender, to_receiver) = unbounded::<RegionMessage>();
@@ -296,6 +312,7 @@ impl RegionInstance {
         *NOTIFICATIONS_ITEMS.borrow_mut() = vec![];
         *STARTUP_ERRORS.borrow_mut() = vec![];
         *BLOCKING_TILES.borrow_mut() = assets.blocking_tiles();
+        *ASSETS.borrow_mut() = assets.clone();
 
         // Installing Entity Class Templates
         for (name, (entity_source, entity_data)) in &assets.entities {
@@ -359,7 +376,9 @@ impl RegionInstance {
         let entity_class_data = ENTITY_CLASS_DATA.borrow().clone();
         let item_class_data = ITEM_CLASS_DATA.borrow().clone();
         let blocking_tiles = BLOCKING_TILES.borrow().clone();
-        let config = CONFIG.borrow_mut().clone();
+        let config = CONFIG.borrow().clone();
+        let assets = ASSETS.borrow().clone();
+        let id_gen = ID_GEN.borrow().clone();
 
         std::thread::spawn(move || {
             // Initialize the local thread global storage
@@ -381,6 +400,8 @@ impl RegionInstance {
             *ITEM_CLASS_DATA.borrow_mut() = item_class_data;
             *BLOCKING_TILES.borrow_mut() = blocking_tiles;
             *CONFIG.borrow_mut() = config;
+            *ASSETS.borrow_mut() = assets;
+            *ID_GEN.borrow_mut() = id_gen;
 
             *TICKS_PER_MINUTE.borrow_mut() =
                 get_config_i32_default("game", "ticks_per_minute", 4) as u32;
@@ -1092,7 +1113,12 @@ fn register_player() {
     let region_id = *REGIONID.borrow();
     let entity_id = *CURR_ENTITYID.borrow();
 
-    if let Some(entity) = MAP.borrow_mut().entities.get_mut(entity_id as usize) {
+    if let Some(entity) = MAP
+        .borrow_mut()
+        .entities
+        .iter_mut()
+        .find(|entity| entity.id == entity_id)
+    {
         entity.set_attribute("is_player", Value::Bool(true));
         entity.set_attribute("player_camera", Value::PlayerCamera(PlayerCamera::D2));
     }
@@ -1115,7 +1141,12 @@ fn set_player_camera(camera: String) {
 
     let entity_id = *CURR_ENTITYID.borrow();
 
-    if let Some(entity) = MAP.borrow_mut().entities.get_mut(entity_id as usize) {
+    if let Some(entity) = MAP
+        .borrow_mut()
+        .entities
+        .iter_mut()
+        .find(|entity| entity.id == entity_id)
+    {
         entity.set_attribute("player_camera", Value::PlayerCamera(player_camera));
     }
 }
@@ -1145,10 +1176,12 @@ pub fn send_log_message(message: String) {
 /// Perform the given action on the next update().
 fn player_action(action: String) {
     if let Ok(parsed_action) = action.parse::<EntityAction>() {
+        let entity_id = *CURR_ENTITYID.borrow();
         if let Some(entity) = MAP
             .borrow_mut()
             .entities
-            .get_mut(*CURR_ENTITYID.borrow() as usize)
+            .iter_mut()
+            .find(|entity| entity.id == entity_id)
         {
             entity.action = parsed_action;
         }
@@ -1198,6 +1231,10 @@ fn take(item_id: u32) {
             .iter_mut()
             .find(|entity| entity.id == entity_id)
         {
+            let mut item_name = "Unknown".to_string();
+            if let Some(name) = item.attributes.get_str("name") {
+                item_name = name.to_string();
+            }
             entity.add_item(item);
             FROM_SENDER
                 .borrow()
@@ -1205,6 +1242,16 @@ fn take(item_id: u32) {
                 .unwrap()
                 .send(RegionMessage::RemoveItem(*REGIONID.borrow(), item_id))
                 .unwrap();
+
+            let message = format!("You take a {}", item_name);
+            let msg = RegionMessage::Tell(
+                *REGIONID.borrow(),
+                Some(entity_id),
+                None,
+                entity_id,
+                message,
+            );
+            FROM_SENDER.borrow().get().unwrap().send(msg).unwrap();
         }
     }
 }
@@ -1266,7 +1313,7 @@ fn deal_damage(id: u32, dict: PyObjectRef, vm: &VirtualMachine) {
         if let Some(entity) = MAP.borrow().entities.iter().find(|entity| entity.id == id) {
             if let Some(class_name) = entity.attributes.get_str("class_name") {
                 let cmd = format!("{}.event('{}', {})", class_name, "take_damage", dict);
-                TO_EXECUTE_ITEM
+                TO_EXECUTE_ENTITY
                     .borrow_mut()
                     .push((id, "take_damage".into(), cmd));
             }
@@ -1449,6 +1496,48 @@ fn inventory_items(filter: String, vm: &VirtualMachine) -> PyResult<PyObjectRef>
     Ok(py_list.into())
 }
 
+/// Drop the given items.
+fn drop_items(filter: String) {
+    let mut map = MAP.borrow_mut();
+
+    let entity_id = *CURR_ENTITYID.borrow();
+    if let Some(entity) = map
+        .entities
+        .iter_mut()
+        .find(|entity| entity.id == entity_id)
+    {
+        let mut items = Vec::new();
+        for (_, item) in entity.inventory.iter() {
+            let mut name = "".to_string();
+            let mut class_name = "".to_string();
+
+            if let Some(n) = item.attributes.get_str("name") {
+                name = n.to_string();
+            }
+            if let Some(cn) = item.attributes.get_str("class_name") {
+                class_name = cn.to_string();
+            }
+
+            if filter.is_empty() || name.contains(&filter) || class_name.contains(&filter) {
+                items.push(item.id);
+            }
+        }
+
+        let mut removed_items = Vec::new();
+        for item_id in items {
+            if let Some(mut item) = entity.inventory.shift_remove(&item_id) {
+                item.position = entity.position;
+                item.mark_all_dirty();
+                removed_items.push(item);
+            }
+        }
+
+        for item in removed_items {
+            map.items.push(item);
+        }
+    }
+}
+
 /// Returns the entities in the radius of the character or item.
 fn entities_in_radius_internal(
     entity_id: Option<u32>,
@@ -1554,6 +1643,22 @@ fn entities_in_radius(vm: &VirtualMachine) -> PyResult<PyObjectRef> {
     Ok(py_list.into())
 }
 
+/// Add an item to the characters inventory
+fn add_item(class_name: String) {
+    if let Some(item) = create_item(class_name) {
+        let id = *CURR_ENTITYID.borrow();
+        if let Some(entity) = MAP
+            .borrow_mut()
+            .entities
+            .iter_mut()
+            .find(|entity| entity.id == id)
+        {
+            entity.add_item(item);
+            println!("item added");
+        }
+    }
+}
+
 /// Notify the entity / item in the given amount of minutes.
 fn notify_in(minutes: i32, notification: String) {
     let tick = *TICKS.borrow() + (minutes as u32 * *TICKS_PER_MINUTE.borrow()) as i64;
@@ -1605,10 +1710,12 @@ fn get_sector_name() -> String {
 
 /// Faces the entity at a random direction.
 fn face_random() {
+    let entity_id = *CURR_ENTITYID.borrow();
     if let Some(entity) = MAP
         .borrow_mut()
         .entities
-        .get_mut(*CURR_ENTITYID.borrow() as usize)
+        .iter_mut()
+        .find(|entity| entity.id == entity_id)
     {
         entity.face_random();
     }
@@ -1625,10 +1732,12 @@ fn random_walk(
     let speed: f32 = get_f32(speed, 1.0, vm);
     let max_sleep: i32 = get_i32(max_sleep, 0, vm);
 
+    let entity_id = *CURR_ENTITYID.borrow();
     if let Some(entity) = MAP
         .borrow_mut()
         .entities
-        .get_mut(*CURR_ENTITYID.borrow() as usize)
+        .iter_mut()
+        .find(|entity| entity.id == entity_id)
     {
         entity.action = RandomWalk(distance, speed, max_sleep, 0, zero());
     }
@@ -1645,10 +1754,12 @@ fn random_walk_in_sector(
     let speed: f32 = get_f32(speed, 1.0, vm); // Default speed: 1.0
     let max_sleep: i32 = get_i32(max_sleep, 0, vm); // Default max_sleep: 0
 
+    let entity_id = *CURR_ENTITYID.borrow();
     if let Some(entity) = MAP
         .borrow_mut()
         .entities
-        .get_mut(*CURR_ENTITYID.borrow() as usize)
+        .iter_mut()
+        .find(|entity| entity.id == entity_id)
     {
         entity.action = RandomWalkInSector(distance, speed, max_sleep, 0, zero());
     }
@@ -1822,5 +1933,37 @@ fn get_attr_internal(key: &str) -> Option<Value> {
         }
     };
 
+    println!(
+        "None {:?}, {:?}",
+        *CURR_ITEMID.borrow(),
+        CURR_ENTITYID.borrow(),
+    );
+
     None
+}
+
+/// Create a new item with the given class name.
+fn create_item(class_name: String) -> Option<Item> {
+    if !ASSETS.borrow().items.contains_key(&class_name) {
+        return None;
+    }
+
+    let id = *ID_GEN.borrow();
+    println!("Creating item with ID {}", id);
+    *ID_GEN.borrow_mut() += 1;
+
+    let mut item = Item {
+        id,
+        ..Default::default()
+    };
+
+    item.set_attribute("class_name", Value::Str(class_name.clone()));
+    item.set_attribute("name", Value::Str(class_name.clone()));
+
+    // Setting the data for the item.
+    if let Some(data) = ITEM_CLASS_DATA.borrow().get(&class_name) {
+        apply_item_data(&mut item, data);
+    }
+
+    Some(item)
 }
