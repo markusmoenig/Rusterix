@@ -378,7 +378,7 @@ impl RegionInstance {
         let blocking_tiles = BLOCKING_TILES.borrow().clone();
         let config = CONFIG.borrow().clone();
         let assets = ASSETS.borrow().clone();
-        let id_gen = ID_GEN.borrow().clone();
+        let id_gen = *ID_GEN.borrow();
 
         std::thread::spawn(move || {
             // Initialize the local thread global storage
