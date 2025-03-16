@@ -34,6 +34,9 @@ pub struct Rasterizer {
 
     /// Background color (Sky etc.)
     pub background_color: Option<[u8; 4]>,
+
+    /// 2D Translation
+    pub translationd2: Vec2<f32>,
 }
 
 /// Rasterizes batches of 2D and 3D meshes (and lines).
@@ -49,6 +52,12 @@ impl Rasterizer {
             inverse_view_matrix.cols[3].y,
             inverse_view_matrix.cols[3].z,
         );
+
+        let mut translationd2 = Vec2::new(0.0, 0.0);
+        if let Some(projection_matrix_2d) = projection_matrix_2d {
+            translationd2.x = projection_matrix_2d[(0, 2)];
+            translationd2.y = projection_matrix_2d[(1, 2)];
+        }
 
         Self {
             inverse_view_matrix,
@@ -70,6 +79,8 @@ impl Rasterizer {
             hash_anim: 0,
 
             background_color: None,
+
+            translationd2,
         }
     }
 
@@ -322,8 +333,10 @@ impl Rasterizer {
                                             let grid_space_pos = Vec2::new(tx as f32, ty as f32)
                                                 - Vec2::new(self.width, self.height) / 2.0
                                                 - Vec2::new(
-                                                    self.mapmini.offset.x,
-                                                    -self.mapmini.offset.y,
+                                                    // self.mapmini.offset.x,
+                                                    // -self.mapmini.offset.y,
+                                                    self.translationd2.x - self.width / 2.0,
+                                                    self.translationd2.y - self.height / 2.0,
                                                 );
                                             let world = grid_space_pos / self.mapmini.grid_size;
 
