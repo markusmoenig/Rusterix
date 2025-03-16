@@ -151,8 +151,6 @@ impl D2PreviewBuilder {
 
         // --
 
-        // println!("build");
-
         let mut atlas_batch = Batch::emptyd2();
         let mut gray_batch_lines = Batch::emptyd2()
             .texture_index(3)
@@ -613,7 +611,7 @@ impl D2PreviewBuilder {
                                         end_vertex,
                                         i as f32 - 0.5,
                                     );
-                                    scene.lights.push(light);
+                                    scene.dynamic_lights.push(light);
                                 }
                             }
                             // --

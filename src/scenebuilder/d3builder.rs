@@ -441,26 +441,29 @@ impl D3Builder {
                 }
 
                 if let Some(Value::Source(source)) = entity.attributes.get("source") {
-                    let entity_pos = Vec2::new(entity.position.x, entity.position.z);
-                    let direction_to_camera = (camera_pos - entity_pos).normalized();
+                    if entity.attributes.get_bool_default("visible", false) {
+                        let entity_pos = Vec2::new(entity.position.x, entity.position.z);
+                        let direction_to_camera = (camera_pos - entity_pos).normalized();
 
-                    // Calculate perpendicular vector on the XZ plane
-                    let perpendicular = Vec2::new(-direction_to_camera.y, direction_to_camera.x);
-                    let start = entity_pos + perpendicular * 0.5;
-                    let end = entity_pos - perpendicular * 0.5;
+                        // Calculate perpendicular vector on the XZ plane
+                        let perpendicular =
+                            Vec2::new(-direction_to_camera.y, direction_to_camera.x);
+                        let start = entity_pos + perpendicular * 0.5;
+                        let end = entity_pos - perpendicular * 0.5;
 
-                    let mut batch = Batch::emptyd3()
-                        .texture_index(index)
-                        .repeat_mode(crate::RepeatMode::RepeatXY);
+                        let mut batch = Batch::emptyd3()
+                            .texture_index(index)
+                            .repeat_mode(crate::RepeatMode::RepeatXY);
 
-                    add_billboard(&start, &end, 2.0, &mut batch);
+                        add_billboard(&start, &end, 2.0, &mut batch);
 
-                    if let Some(tile) = source.to_tile(assets, 100, &entity.attributes) {
-                        textures.push(tile);
+                        if let Some(tile) = source.to_tile(assets, 100, &entity.attributes) {
+                            textures.push(tile);
+                        }
+
+                        batches.push(batch);
+                        index += 1;
                     }
-
-                    batches.push(batch);
-                    index += 1;
                 }
             }
         }
@@ -477,26 +480,29 @@ impl D3Builder {
                 }
 
                 if let Some(Value::Source(source)) = item.attributes.get("source") {
-                    let item_pos = Vec2::new(item.position.x, item.position.z);
-                    let direction_to_camera = (camera_pos - item_pos).normalized();
+                    if item.attributes.get_bool_default("visible", false) {
+                        let item_pos = Vec2::new(item.position.x, item.position.z);
+                        let direction_to_camera = (camera_pos - item_pos).normalized();
 
-                    // Calculate perpendicular vector on the XZ plane
-                    let perpendicular = Vec2::new(-direction_to_camera.y, direction_to_camera.x);
-                    let start = item_pos + perpendicular * 0.5;
-                    let end = item_pos - perpendicular * 0.5;
+                        // Calculate perpendicular vector on the XZ plane
+                        let perpendicular =
+                            Vec2::new(-direction_to_camera.y, direction_to_camera.x);
+                        let start = item_pos + perpendicular * 0.5;
+                        let end = item_pos - perpendicular * 0.5;
 
-                    let mut batch = Batch::emptyd3()
-                        .texture_index(index)
-                        .repeat_mode(crate::RepeatMode::RepeatXY);
+                        let mut batch = Batch::emptyd3()
+                            .texture_index(index)
+                            .repeat_mode(crate::RepeatMode::RepeatXY);
 
-                    add_billboard(&start, &end, 1.0, &mut batch);
+                        add_billboard(&start, &end, 1.0, &mut batch);
 
-                    if let Some(tile) = source.to_tile(assets, 100, &item.attributes) {
-                        textures.push(tile);
+                        if let Some(tile) = source.to_tile(assets, 100, &item.attributes) {
+                            textures.push(tile);
+                        }
+
+                        batches.push(batch);
+                        index += 1;
                     }
-
-                    batches.push(batch);
-                    index += 1;
                 }
             }
         }
