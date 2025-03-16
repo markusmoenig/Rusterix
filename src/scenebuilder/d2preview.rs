@@ -465,6 +465,9 @@ impl D2PreviewBuilder {
             .texture_index(0)
             .mode(crate::PrimitiveMode::Lines);
         let mut selected_batch = Batch::emptyd2().texture_index(1);
+        let mut selected_batch_lines = Batch::emptyd2()
+            .color(self.selection_color)
+            .mode(crate::PrimitiveMode::Lines);
         let mut gray_batch = Batch::emptyd2().texture_index(2);
         let mut gray_batch_lines = Batch::emptyd2()
             .texture_index(2)
@@ -663,7 +666,7 @@ impl D2PreviewBuilder {
 
             // Draw selected lines last
             for (start_pos, end_pos) in selected_lines {
-                selected_batch.add_line(start_pos, end_pos, 0.05);
+                selected_batch_lines.add_line(start_pos, end_pos, 0.05);
             }
         }
 
@@ -823,6 +826,7 @@ impl D2PreviewBuilder {
         batches.extend(vec![
             white_batch,
             selected_batch,
+            selected_batch_lines,
             gray_batch,
             gray_batch_lines,
             yellow_batch,
