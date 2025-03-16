@@ -696,10 +696,9 @@ impl Rasterizer {
                                                         if light.light_type
                                                             == LightType::AmbientDaylight
                                                         {
-                                                            let occlusion =
-                                                                self.mapmini.get_occlusion(
-                                                                    Vec2::new(world.x, world.y),
-                                                                );
+                                                            let occlusion = self
+                                                                .mapmini
+                                                                .get_occlusion(world_2d);
                                                             light_color[0] *= occlusion;
                                                             light_color[1] *= occlusion;
                                                             light_color[2] *= occlusion;

@@ -789,11 +789,11 @@ impl RegionInstance {
                                 entity.face_west();
                                 self.move_entity(entity, 1.0, entity_block_mode);
                             } else {
-                                entity.turn_left(2.0);
+                                entity.turn_left(4.0);
                             }
                         }
                     } else {
-                        entity.turn_left(2.0);
+                        entity.turn_left(4.0);
                     }
                 }
                 EntityAction::Right => {
@@ -805,11 +805,11 @@ impl RegionInstance {
                                 entity.face_east();
                                 self.move_entity(entity, 1.0, entity_block_mode);
                             } else {
-                                entity.turn_right(2.0);
+                                entity.turn_right(4.0);
                             }
                         }
                     } else {
-                        entity.turn_right(2.0);
+                        entity.turn_right(4.0);
                     }
                 }
                 EntityAction::Backward => {
@@ -993,7 +993,7 @@ impl RegionInstance {
 
     /// Moves an entity forward or backward. Returns true if blocked.
     fn move_entity(&self, entity: &mut Entity, dir: f32, entity_block_mode: i32) -> bool {
-        let speed = 0.05 * 2.0;
+        let speed = 0.15;
         let move_vector = entity.orientation * speed * dir;
         let position = entity.get_pos_xz();
         let radius = entity.attributes.get_float_default("radius", 0.5) - 0.01;

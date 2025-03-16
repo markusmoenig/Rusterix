@@ -176,7 +176,9 @@ impl Map {
             // We collect occluded sectors
             let occlusion = sector.properties.get_float_default("occlusion", 1.0);
             if occlusion < 1.0 {
-                occluded_sectors.push((sector.bounding_box(self), occlusion));
+                let mut bbox = sector.bounding_box(self);
+                bbox.expand(Vec2::new(0.1, 0.1));
+                occluded_sectors.push((bbox, occlusion));
             }
 
             if sector.layer.is_some() {
