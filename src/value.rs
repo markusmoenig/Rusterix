@@ -268,6 +268,19 @@ impl ValueContainer {
         })
     }
 
+    pub fn get_str_default(&self, key: &str, def: String) -> String {
+        self.values
+            .get(key)
+            .map(|v| {
+                if let Value::Str(val) = v {
+                    val.clone()
+                } else {
+                    def.clone()
+                }
+            })
+            .unwrap_or(def)
+    }
+
     pub fn get_id(&self, key: &str) -> Option<Uuid> {
         self.values.get(key).and_then(|v| {
             if let Value::Id(val) = v {
