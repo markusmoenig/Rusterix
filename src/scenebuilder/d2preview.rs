@@ -2,8 +2,8 @@
 
 use crate::Texture;
 use crate::{
-    Assets, Batch, GridShader, Map, MapToolType, Pixel, Scene, Shader, Tile, Value, ValueContainer,
-    WHITE,
+    Assets, Batch, GridShader, Map, MapToolType, Pixel, Rect, Scene, Shader, Tile, Value,
+    ValueContainer, WHITE,
 };
 use theframework::prelude::*;
 use vek::Vec2;
@@ -21,8 +21,9 @@ pub struct D2PreviewBuilder {
     pub camera_pos: Option<vek::Vec3<f32>>,
     /// Camera Center
     pub look_at: Option<Vec3<f32>>,
-    /// Material Mode
-    pub material_mode: bool,
+
+    /// Clipping rectangle
+    pub clip_rect: Option<Rect>,
 
     /// Draw Grid Switch
     pub draw_grid: bool,
@@ -52,7 +53,7 @@ impl D2PreviewBuilder {
             camera_pos: None,
             look_at: None,
 
-            material_mode: false,
+            clip_rect: None,
             draw_grid: true,
 
             textures: Vec::new(),
@@ -104,6 +105,9 @@ impl D2PreviewBuilder {
             128, 128, 128, 255,
         ])));
 
+        self.textures
+            .push(Tile::from_texture(Texture::from_color([255, 255, 255, 30])));
+
         self.textures.push(Tile::from_texture(Texture::from_color(
             vek::Rgba::yellow().into_array(),
         )));
@@ -152,22 +156,6 @@ impl D2PreviewBuilder {
         // --
 
         let mut atlas_batch = Batch::emptyd2();
-        let mut gray_batch_lines = Batch::emptyd2()
-            .texture_index(3)
-            .color([128, 128, 128, 255])
-            .mode(crate::PrimitiveMode::Lines);
-
-        // Add the material clipping area
-        if self.material_mode {
-            let tl = self.map_grid_to_local(screen_size, Vec2::new(-5.0, -5.0), map);
-            let tr = self.map_grid_to_local(screen_size, Vec2::new(5.0, -5.0), map);
-            let bl = self.map_grid_to_local(screen_size, Vec2::new(-5.0, 5.0), map);
-            let br = self.map_grid_to_local(screen_size, Vec2::new(5.0, 5.0), map);
-            gray_batch_lines.add_line(tl, tr, 1.0);
-            gray_batch_lines.add_line(tl, bl, 1.0);
-            gray_batch_lines.add_line(tr, br, 1.0);
-            gray_batch_lines.add_line(bl, br, 1.0);
-        }
 
         // Repeated tile textures have their own batches
         let mut repeated_batches: Vec<Batch<[f32; 3]>> = vec![];
@@ -433,7 +421,7 @@ impl D2PreviewBuilder {
         }
 
         let mut batches = repeated_batches;
-        batches.extend(vec![atlas_batch, gray_batch_lines]);
+        batches.extend(vec![atlas_batch]);
 
         let tiles = assets.blocking_tiles();
         scene.mapmini = map.as_mini(&tiles);
@@ -473,17 +461,29 @@ impl D2PreviewBuilder {
             .texture_index(2)
             .color([128, 128, 128, 255])
             .mode(crate::PrimitiveMode::Lines);
-        let mut yellow_batch = Batch::emptyd2().texture_index(3);
-        let mut red_batch = Batch::emptyd2().texture_index(4);
-        let mut character_on_batch = Batch::emptyd2().texture_index(5);
-        let mut character_off_batch = Batch::emptyd2().texture_index(6);
-        let mut treasure_on_batch = Batch::emptyd2().texture_index(7);
-        let mut treasure_off_batch = Batch::emptyd2().texture_index(8);
+        let mut clip_batch = Batch::emptyd2().texture_index(3);
+        let mut yellow_batch = Batch::emptyd2().texture_index(4);
+        let mut red_batch = Batch::emptyd2().texture_index(5);
+        let mut character_on_batch = Batch::emptyd2().texture_index(6);
+        let mut character_off_batch = Batch::emptyd2().texture_index(7);
+        let mut treasure_on_batch = Batch::emptyd2().texture_index(8);
+        let mut treasure_off_batch = Batch::emptyd2().texture_index(9);
         // let mut light_on_batch = Batch::emptyd2().texture_index(10);
         // let mut light_off_batch = Batch::emptyd2().texture_index(11);
 
         let mut repeated_batches: Vec<Batch<[f32; 3]>> = vec![];
         let mut repeated_offsets: FxHashMap<Uuid, usize> = FxHashMap::default();
+
+        // Add the clipping area
+        if let Some(clip_rect) = self.clip_rect {
+            let tl = self.map_grid_to_local(screen_size, Vec2::new(clip_rect.x, clip_rect.y), map);
+            let size = self.map_grid_to_local(
+                screen_size,
+                Vec2::new(clip_rect.width, clip_rect.height),
+                map,
+            );
+            clip_batch.add_rectangle(tl.x, tl.y, size.x, size.y);
+        }
 
         // Add Vertices
         if self.map_tool_type == MapToolType::Selection
@@ -573,10 +573,10 @@ impl D2PreviewBuilder {
 
                 // No outlines for the rect tool based sectors in the minimap or if no_rect_geo is enabled.
                 if self.map_tool_type == MapToolType::MiniMap || self.no_rect_geo {
-                    let mut found_in_sector = false;
+                    // let mut found_in_sector = false;
                     for sector in &map.sectors {
                         if sector.linedefs.contains(&linedef.id) {
-                            found_in_sector = true;
+                            // found_in_sector = true;
                             if sector.properties.contains("rect_rendering") {
                                 draw = false;
                                 break;
@@ -586,13 +586,14 @@ impl D2PreviewBuilder {
 
                     // If the linedef is not found in any sector and has a wall width of 0.0, don't draw it.
                     // Prevents deleted rect tool based sectors to be drawn.
-                    if draw
-                        && !found_in_sector
-                        && linedef.properties.get_float_default("wall_width", 0.0) == 0.0
-                        && !map.possible_polygon.contains(&linedef.id)
-                    {
-                        draw = false;
-                    }
+                    // Problem: Also hides standalone walls
+                    // if draw
+                    //     && !found_in_sector
+                    //     && linedef.properties.get_float_default("wall_width", 0.0) == 0.0
+                    //     && !map.possible_polygon.contains(&linedef.id)
+                    // {
+                    //     draw = false;
+                    // }
                 }
 
                 if draw {
@@ -824,6 +825,7 @@ impl D2PreviewBuilder {
 
         let mut batches = repeated_batches;
         batches.extend(vec![
+            clip_batch,
             white_batch,
             selected_batch,
             selected_batch_lines,
@@ -859,8 +861,8 @@ impl D2PreviewBuilder {
         self.look_at = look_at;
     }
 
-    pub fn set_material_mode(&mut self, material_mode: bool) {
-        self.material_mode = material_mode;
+    pub fn set_clip_rect(&mut self, clip_rect: Option<Rect>) {
+        self.clip_rect = clip_rect;
     }
 
     #[inline(always)]

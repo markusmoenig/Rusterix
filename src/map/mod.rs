@@ -600,39 +600,69 @@ impl Map {
 
     /// Deletes the specified vertices, linedefs, and sectors, along with their associated geometry.
     pub fn delete_elements(&mut self, vertex_ids: &[u32], linedef_ids: &[u32], sector_ids: &[u32]) {
-        // 1. Delete specified vertices
-        if !vertex_ids.is_empty() {
-            // Remove vertices
-            self.vertices
-                .retain(|vertex| !vertex_ids.contains(&vertex.id));
+        let mut all_linedef_ids = linedef_ids.to_vec();
+        let mut all_vertex_ids = vertex_ids.to_vec();
 
-            // Remove any linedefs that depend on the deleted vertices
+        // 1. Collect linedefs and vertices from the sectors to delete
+        if !sector_ids.is_empty() {
+            for sector in &self.sectors {
+                if sector_ids.contains(&sector.id) {
+                    for &linedef_id in &sector.linedefs {
+                        // Check if the linedef is used by other sectors
+                        let used_elsewhere = self
+                            .sectors
+                            .iter()
+                            .any(|s| s.id != sector.id && s.linedefs.contains(&linedef_id));
+
+                        if !used_elsewhere && !all_linedef_ids.contains(&linedef_id) {
+                            all_linedef_ids.push(linedef_id);
+                        }
+
+                        // Collect vertices only if not used by other linedefs
+                        if let Some(linedef) = self.find_linedef(linedef_id) {
+                            for &vertex_id in &[linedef.start_vertex, linedef.end_vertex] {
+                                let used_elsewhere = self.linedefs.iter().any(|l| {
+                                    l.id != linedef_id
+                                        && (l.start_vertex == vertex_id
+                                            || l.end_vertex == vertex_id)
+                                });
+
+                                if !used_elsewhere && !all_vertex_ids.contains(&vertex_id) {
+                                    all_vertex_ids.push(vertex_id);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 2. Delete vertices (after checking they are not used elsewhere)
+        if !all_vertex_ids.is_empty() {
+            self.vertices
+                .retain(|vertex| !all_vertex_ids.contains(&vertex.id));
+
             self.linedefs.retain(|linedef| {
-                !vertex_ids.contains(&linedef.start_vertex)
-                    && !vertex_ids.contains(&linedef.end_vertex)
+                !all_vertex_ids.contains(&linedef.start_vertex)
+                    && !all_vertex_ids.contains(&linedef.end_vertex)
             });
 
-            // Remove references to these linedefs in sectors
             self.cleanup_sectors();
         }
 
-        // 2. Delete specified linedefs
-        if !linedef_ids.is_empty() {
-            // Remove linedefs
+        // 3. Delete linedefs
+        if !all_linedef_ids.is_empty() {
             self.linedefs
-                .retain(|linedef| !linedef_ids.contains(&linedef.id));
+                .retain(|linedef| !all_linedef_ids.contains(&linedef.id));
 
-            // Remove references to these linedefs in sectors
             self.cleanup_sectors();
         }
 
-        // 3. Delete specified sectors
+        // 4. Delete sectors
         if !sector_ids.is_empty() {
-            // Remove sectors
             self.sectors
                 .retain(|sector| !sector_ids.contains(&sector.id));
 
-            // Remove references to these sectors in linedefs
             for linedef in &mut self.linedefs {
                 if let Some(front_sector) = linedef.front_sector {
                     if sector_ids.contains(&front_sector) {
