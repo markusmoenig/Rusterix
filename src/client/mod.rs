@@ -1,12 +1,13 @@
+pub mod command;
 pub mod daylight;
 pub mod draw2d;
 
 use crate::prelude::*;
-use crate::D2PreviewBuilder;
-use crate::Daylight;
+use crate::{Command, D2PreviewBuilder, Daylight};
 use draw2d::Draw2D;
 use fontdue::*;
 use theframework::prelude::*;
+use toml::*;
 
 pub struct Client {
     pub curr_map_id: Uuid,
@@ -31,6 +32,11 @@ pub struct Client {
     pub draw2d: Draw2D,
 
     pub messages_to_draw: FxHashMap<u32, (Vec2<f32>, String, usize, TheTime)>,
+
+    // Name of player entity templates
+    player_entities: Vec<String>,
+    current_map: Uuid,
+    config: toml::Table,
 }
 
 impl Default for Client {
@@ -64,6 +70,10 @@ impl Client {
             messages_font_color: [229, 229, 1, 255],
 
             messages_to_draw: FxHashMap::default(),
+
+            player_entities: Vec::new(),
+            current_map: Uuid::nil(),
+            config: toml::Table::default(),
         }
     }
 
@@ -295,5 +305,111 @@ impl Client {
         rast.mapmini = self.scene_d2.mapmini.clone();
         rast.background_color = Some(vec4_to_pixel(&Vec4::new(ac.x, ac.y, ac.z, 1.0)));
         rast.rasterize(&mut self.scene_d3, pixels, width, height, 64);
+    }
+
+    /// Get an i32 config value
+    fn _get_config_i32_default(&self, table: &str, key: &str, default: i32) -> i32 {
+        if let Some(game) = self.config.get(table).and_then(toml::Value::as_table) {
+            if let Some(value) = game.get(key) {
+                if let Some(v) = value.as_integer() {
+                    return v as i32;
+                }
+            }
+        }
+        default
+    }
+
+    fn _get_config_f32_default(&self, table: &str, key: &str, default: f32) -> f32 {
+        if let Some(game) = self.config.get(table).and_then(toml::Value::as_table) {
+            if let Some(value) = game.get(key) {
+                if let Some(v) = value.as_float() {
+                    return v as f32;
+                }
+            }
+        }
+        default
+    }
+
+    fn get_config_bool_default(&self, table: &str, key: &str, default: bool) -> bool {
+        if let Some(game) = self.config.get(table).and_then(toml::Value::as_table) {
+            if let Some(value) = game.get(key) {
+                if let Some(v) = value.as_bool() {
+                    return v;
+                }
+            }
+        }
+        default
+    }
+
+    fn get_config_string_default(&self, table: &str, key: &str, default: &str) -> String {
+        if let Some(game) = self.config.get(table).and_then(toml::Value::as_table) {
+            if let Some(value) = game.get(key) {
+                if let Some(v) = value.as_str() {
+                    return v.to_string();
+                }
+            }
+        }
+        default.to_string()
+    }
+
+    /// Setup the client with the given assets.
+    pub fn setup(&mut self, assets: &Assets) -> Vec<Command> {
+        let mut commands = vec![];
+
+        // Init config
+        match assets.config.parse::<Table>() {
+            Ok(data) => {
+                self.config = data;
+            }
+            Err(err) => {
+                eprintln!("Client: Error parsing config: {}", err);
+            }
+        }
+
+        // Get all player entities
+        for (name, character) in assets.entities.iter() {
+            match character.1.parse::<Table>() {
+                Ok(data) => {
+                    if let Some(game) = data.get("attributes").and_then(toml::Value::as_table) {
+                        if let Some(value) = game.get("player") {
+                            if let Some(v) = value.as_bool() {
+                                if v {
+                                    self.player_entities.push(name.to_string());
+                                }
+                            }
+                        }
+                    }
+                }
+                Err(err) => {
+                    eprintln!("Client: Error parsing entity {}: {}", name, err);
+                }
+            }
+        }
+
+        // Find the start region
+        let region_name = self.get_config_string_default("game", "start_region", "");
+        self.current_map = Uuid::nil();
+        for (name, map) in assets.maps.iter() {
+            if region_name == *name {
+                self.current_map = map.id;
+            }
+        }
+
+        // Auto Init Players
+        let auto_init_player = self.get_config_bool_default("game", "auto_create_player", false);
+        if let Some(map) = assets.maps.get(&region_name) {
+            if auto_init_player {
+                for entity in map.entities.iter() {
+                    if let Some(class_name) = entity.get_attr_string("class_name") {
+                        if self.player_entities.contains(&class_name) {
+                            commands.push(Command::CreateEntity(map.id, entity.clone()));
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        commands
     }
 }

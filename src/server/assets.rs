@@ -7,12 +7,17 @@ use theframework::prelude::*;
 pub struct Assets {
     pub map_sources: FxHashMap<String, String>,
     pub maps: FxHashMap<String, Map>,
+
     pub entities: FxHashMap<String, (String, String)>,
     pub items: FxHashMap<String, (String, String)>,
+
     pub tiles: FxHashMap<Uuid, Tile>,
     pub materials: FxHashMap<Uuid, Tile>,
     pub textures: FxHashMap<String, Texture>,
 
+    pub screens: FxHashMap<String, Map>,
+
+    pub config: String,
     pub atlas: Texture,
 }
 
@@ -32,7 +37,8 @@ impl Assets {
             tiles: FxHashMap::default(),
             textures: FxHashMap::default(),
             materials: FxHashMap::default(),
-
+            screens: FxHashMap::default(),
+            config: String::new(),
             atlas: Texture::default(),
         }
     }

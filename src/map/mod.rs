@@ -10,7 +10,7 @@ pub mod state;
 pub mod tile;
 pub mod vertex;
 
-use crate::{BBox, MapMini, PixelSource, Value, VertexAnimationSystem};
+use crate::{BBox, MapMini, PixelSource, Value, ValueContainer, VertexAnimationSystem};
 use ordered_float::NotNan;
 use pathfinding::prelude::astar;
 use theframework::prelude::FxHashSet;
@@ -99,6 +99,10 @@ pub struct Map {
     // Animation
     #[serde(default)]
     pub animation: VertexAnimationSystem,
+
+    // Meta Data
+    #[serde(default)]
+    pub properties: ValueContainer,
 }
 
 impl Default for Map {
@@ -144,6 +148,8 @@ impl Map {
             selected_entity_item: None,
 
             animation: VertexAnimationSystem::default(),
+
+            properties: ValueContainer::default(),
         }
     }
 

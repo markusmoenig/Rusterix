@@ -55,6 +55,9 @@ ref_thread_local! {
     /// Maps the item id to its class name.
     pub static managed ITEM_CLASSES: FxHashMap<u32, String> = FxHashMap::default();
 
+    /// All Entity Classes for Players (we do not instantiate them)
+    pub static managed ENTITY_PLAYER_CLASSES: FxHashSet<String> = FxHashSet::default();
+
     /// Maps an entity class name to its data file.
     pub static managed ENTITY_CLASS_DATA: FxHashMap<String, String> = FxHashMap::default();
 
@@ -328,6 +331,28 @@ impl RegionInstance {
                     self.name, name, err,
                 ));
             }
+
+            // Store entity classes which handle player
+            match entity_data.parse::<toml::Table>() {
+                Ok(data) => {
+                    if let Some(game) = data.get("attributes").and_then(toml::Value::as_table) {
+                        if let Some(value) = game.get("player") {
+                            if let Some(v) = value.as_bool() {
+                                if v {
+                                    ENTITY_PLAYER_CLASSES.borrow_mut().insert(name.clone());
+                                }
+                            }
+                        }
+                    }
+                }
+                Err(err) => {
+                    STARTUP_ERRORS.borrow_mut().push(format!(
+                        "{}: Error Parsing {} Entity Class: {}",
+                        self.name, name, err,
+                    ));
+                }
+            }
+
             ENTITY_CLASS_DATA
                 .borrow_mut()
                 .insert(name.clone(), entity_data.clone());
@@ -351,6 +376,15 @@ impl RegionInstance {
                 .borrow_mut()
                 .insert(name.clone(), item_data.clone());
         }
+
+        // Remove player based entities, these only get created on demand from a client
+        let player_classes = ENTITY_PLAYER_CLASSES.borrow().clone();
+        MAP.borrow_mut()
+            .entities
+            .retain(|entity| match entity.get_attr_string("class_name") {
+                Some(class_name) => !player_classes.contains(&class_name),
+                None => true,
+            });
 
         // Set an entity id and mark all fields dirty for the first transmission to the server.
         for e in MAP.borrow_mut().entities.iter_mut() {
@@ -740,6 +774,9 @@ impl RegionInstance {
                                             ));
                                         }
                                     }
+                                }
+                                CreateEntity(_id, entity) => {
+                                    create_entity_instance(entity)
                                 }
                                 Time(_id, time) => {
                                     // User manually set the server time
@@ -1872,7 +1909,7 @@ pub fn debug(args: rustpython_vm::function::FuncArgs, vm: &VirtualMachine) -> Py
 }
 
 /// Get an i32 config value
-pub fn get_config_i32_default(table: &str, key: &str, default: i32) -> i32 {
+fn get_config_i32_default(table: &str, key: &str, default: i32) -> i32 {
     let tab = CONFIG.borrow();
     if let Some(game) = tab.get(table).and_then(toml::Value::as_table) {
         if let Some(value) = game.get(key) {
@@ -1884,7 +1921,7 @@ pub fn get_config_i32_default(table: &str, key: &str, default: i32) -> i32 {
     default
 }
 
-pub fn get_config_f32_default(table: &str, key: &str, default: f32) -> f32 {
+fn _get_config_f32_default(table: &str, key: &str, default: f32) -> f32 {
     let tab = CONFIG.borrow();
     if let Some(game) = tab.get(table).and_then(toml::Value::as_table) {
         if let Some(value) = game.get(key) {
@@ -1896,7 +1933,7 @@ pub fn get_config_f32_default(table: &str, key: &str, default: f32) -> f32 {
     default
 }
 
-pub fn get_config_bool_default(table: &str, key: &str, default: bool) -> bool {
+fn _get_config_bool_default(table: &str, key: &str, default: bool) -> bool {
     let tab = CONFIG.borrow();
     if let Some(game) = tab.get(table).and_then(toml::Value::as_table) {
         if let Some(value) = game.get(key) {
@@ -1908,7 +1945,7 @@ pub fn get_config_bool_default(table: &str, key: &str, default: bool) -> bool {
     default
 }
 
-pub fn get_config_string_default(table: &str, key: &str, default: &str) -> String {
+fn get_config_string_default(table: &str, key: &str, default: &str) -> String {
     let tab = CONFIG.borrow();
     if let Some(game) = tab.get(table).and_then(toml::Value::as_table) {
         if let Some(value) = game.get(key) {
@@ -1949,7 +1986,7 @@ fn create_item(class_name: String) -> Option<Item> {
     }
 
     let id = *ID_GEN.borrow();
-    println!("Creating item with ID {}", id);
+    // println!("Creating item with ID {}", id);
     *ID_GEN.borrow_mut() += 1;
 
     let mut item = Item {
@@ -1966,4 +2003,79 @@ fn create_item(class_name: String) -> Option<Item> {
     }
 
     Some(item)
+}
+
+/// Create a new entity instance.
+pub fn create_entity_instance(mut entity: Entity) {
+    entity.id = *ID_GEN.borrow();
+    *ID_GEN.borrow_mut() += 1;
+
+    entity.mark_all_dirty();
+    MAP.borrow_mut().entities.push(entity.clone());
+
+    let name = MAP.borrow().name.clone();
+
+    // Send "startup" event
+    if let Some(class_name) = entity.get_attr_string("class_name") {
+        let cmd = format!("{}.event(\"startup\", \"\")", class_name);
+        ENTITY_CLASSES.borrow_mut().insert(entity.id, class_name);
+        *CURR_ENTITYID.borrow_mut() = entity.id;
+        if let Err(err) = REGION.borrow_mut().execute(&cmd) {
+            send_log_message(format!(
+                "{}: Event Error ({}) for '{}': {}",
+                name,
+                "startup",
+                get_entity_name(entity.id),
+                err,
+            ));
+        }
+    }
+
+    // Running the character setup script
+    if let Some(setup) = entity.get_attr_string("setup") {
+        if let Err(err) = REGION.borrow_mut().execute(&setup) {
+            send_log_message(format!(
+                "{}: Setup '{}/{}': {}",
+                name,
+                entity.get_attr_string("name").unwrap_or("Unknown".into()),
+                entity
+                    .get_attr_string("class_name")
+                    .unwrap_or("Unknown".into()),
+                err,
+            ));
+            *ERROR_COUNT.borrow_mut() += 1;
+        }
+
+        *CURR_ENTITYID.borrow_mut() = entity.id;
+        if let Err(err) = REGION.borrow_mut().execute("setup()") {
+            send_log_message(format!(
+                "{}: Setup '{}/{}': {}",
+                name,
+                entity.get_attr_string("name").unwrap_or("Unknown".into()),
+                entity
+                    .get_attr_string("class_name")
+                    .unwrap_or("Unknown".into()),
+                err,
+            ));
+            *ERROR_COUNT.borrow_mut() += 1;
+        }
+
+        // Setting the data for the entity.
+        if let Some(class_name) = entity.get_attr_string("class_name") {
+            if let Some(data) = ENTITY_CLASS_DATA.borrow().get(&class_name) {
+                let mut map = MAP.borrow_mut();
+                for e in map.entities.iter_mut() {
+                    if e.id == entity.id {
+                        apply_entity_data(e, data);
+                    }
+                }
+            }
+        }
+    }
+
+    send_log_message(format!(
+        "{}: Spawned `{}`",
+        name,
+        get_entity_name(entity.id),
+    ));
 }

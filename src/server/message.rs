@@ -1,4 +1,4 @@
-use crate::Value;
+use crate::{Entity, Value};
 use theframework::prelude::*;
 
 /// Messages to the Region
@@ -11,6 +11,8 @@ pub enum RegionMessage {
     Event(u32, String, Value),
     /// A user event
     UserEvent(u32, String, Value),
+    /// Create the entity in the region.
+    CreateEntity(u32, Entity),
     /// A user action
     UserAction(u32, EntityAction),
     /// Entity updates for a given region instance

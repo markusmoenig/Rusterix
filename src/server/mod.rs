@@ -10,6 +10,7 @@ pub mod region;
 use crossbeam_channel::{Receiver, Sender};
 
 use crate::prelude::*;
+use crate::Command;
 use std::sync::{Arc, LazyLock, RwLock};
 use theframework::prelude::*;
 
@@ -113,6 +114,28 @@ impl Server {
 
         region_instance.init(name, map, assets, config_toml);
         region_instance.run();
+    }
+
+    /// Process a set of commands from a client.
+    pub fn process_client_commands(&mut self, commands: Vec<Command>) {
+        for cmd in commands {
+            match cmd {
+                Command::CreateEntity(id, entity) => {
+                    if let Some(region_id) = self.region_id_map.get(&id) {
+                        if let Ok(pipe) = REGIONPIPE.read() {
+                            if let Some(sender) = pipe.get(region_id) {
+                                match sender.send(RegionMessage::CreateEntity(*region_id, entity)) {
+                                    Ok(_) => {}
+                                    Err(err) => {
+                                        println!("{:?}", err.to_string());
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 
     /// Get entities and items for a given region.
