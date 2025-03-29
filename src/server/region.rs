@@ -408,6 +408,7 @@ impl RegionInstance {
         let name = map.name.clone();
         let startup_errors = STARTUP_ERRORS.borrow().clone();
         let entity_class_data = ENTITY_CLASS_DATA.borrow().clone();
+        let entity_player_classes = ENTITY_PLAYER_CLASSES.borrow().clone();
         let item_class_data = ITEM_CLASS_DATA.borrow().clone();
         let blocking_tiles = BLOCKING_TILES.borrow().clone();
         let config = CONFIG.borrow().clone();
@@ -431,6 +432,7 @@ impl RegionInstance {
             *TICKS.borrow_mut() = 0;
             *TICKS_PER_MINUTE.borrow_mut() = 4;
             *ENTITY_CLASS_DATA.borrow_mut() = entity_class_data;
+            *ENTITY_PLAYER_CLASSES.borrow_mut() = entity_player_classes;
             *ITEM_CLASS_DATA.borrow_mut() = item_class_data;
             *BLOCKING_TILES.borrow_mut() = blocking_tiles;
             *CONFIG.borrow_mut() = config;
@@ -2017,9 +2019,15 @@ pub fn create_entity_instance(mut entity: Entity) {
 
     // Send "startup" event
     if let Some(class_name) = entity.get_attr_string("class_name") {
+        *CURR_ENTITYID.borrow_mut() = entity.id;
+
+        // Register player
+        if ENTITY_PLAYER_CLASSES.borrow().contains(&class_name) {
+            register_player()
+        }
+
         let cmd = format!("{}.event(\"startup\", \"\")", class_name);
         ENTITY_CLASSES.borrow_mut().insert(entity.id, class_name);
-        *CURR_ENTITYID.borrow_mut() = entity.id;
         if let Err(err) = REGION.borrow_mut().execute(&cmd) {
             send_log_message(format!(
                 "{}: Event Error ({}) for '{}': {}",

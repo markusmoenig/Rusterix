@@ -49,6 +49,15 @@ impl Texture {
         }
     }
 
+    /// Creates a new texture with the given width, height, and allocates the data.
+    pub fn alloc(width: usize, height: usize) -> Self {
+        Texture {
+            data: vec![0; width * height * 4],
+            width,
+            height,
+        }
+    }
+
     /// Creates a default 100x100 checkerboard texture
     pub fn checkerboard(size: usize, square_size: usize) -> Self {
         let width = size;
