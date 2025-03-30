@@ -1,10 +1,10 @@
 pub mod command;
 pub mod daylight;
 pub mod draw2d;
-pub mod meta;
+pub mod widget;
 
 use crate::prelude::*;
-use crate::{client::meta::WidgetGameMeta, Command, D2PreviewBuilder, Daylight};
+use crate::{client::widget::GameWidget, Command, D2PreviewBuilder, Daylight};
 use draw2d::Draw2D;
 use fontdue::*;
 use theframework::prelude::*;
@@ -20,8 +20,6 @@ pub struct Client {
 
     pub scene_d2: Scene,
     pub scene_d3: Scene,
-
-    pub scene_game: Scene,
 
     pub animation_frame: usize,
     pub server_time: TheTime,
@@ -39,7 +37,7 @@ pub struct Client {
     // Name of player entity templates
     player_entities: Vec<String>,
 
-    current_map: String,
+    pub current_map: String,
     current_screen: String,
 
     config: toml::Table,
@@ -52,8 +50,8 @@ pub struct Client {
     // The target we render into
     target: TheRGBABuffer,
 
-    // The meta data for widgets
-    game_widgets: FxHashMap<Uuid, WidgetGameMeta>,
+    // The widgets
+    game_widgets: FxHashMap<Uuid, GameWidget>,
     widgets: FxHashMap<Uuid, bool>,
 }
 
@@ -75,7 +73,6 @@ impl Client {
 
             scene_d2: Scene::default(),
             scene_d3: Scene::default(),
-            scene_game: Scene::default(),
 
             animation_frame: 0,
             server_time: TheTime::default(),
@@ -109,6 +106,15 @@ impl Client {
     /// Increase the anim counter.
     pub fn inc_animation_frame(&mut self) {
         self.animation_frame += 1;
+
+        for widget in self.game_widgets.values_mut() {
+            widget.scene.animation_frame += 1;
+        }
+    }
+
+    /// Set the server time
+    pub fn set_server_time(&mut self, time: TheTime) {
+        self.server_time = time;
     }
 
     /// Set the current map id.
@@ -449,6 +455,16 @@ impl Client {
         self.widgets.clear();
         if let Some(screen) = assets.screens.get(&self.current_screen) {
             for widget in screen.sectors.iter() {
+                let bb = widget.bounding_box(screen);
+                let x = ((bb.min.x + self.viewport.x as f32 / screen.grid_size / 2.0)
+                    * screen.grid_size)
+                    .floor() as i32;
+                let y = ((bb.min.y + self.viewport.y as f32 / screen.grid_size / 2.0)
+                    * screen.grid_size)
+                    .floor() as i32;
+                let width = ((bb.max.x - bb.min.x) * screen.grid_size).floor() as i32;
+                let height = ((bb.max.y - bb.min.y) * screen.grid_size).floor() as i32;
+
                 if let Some(crate::Value::Str(data)) = widget.properties.get("data") {
                     if let Ok(table) = data.parse::<Table>() {
                         let mut role = "none";
@@ -461,9 +477,17 @@ impl Client {
                         }
 
                         if role == "game" {
-                            let mut game_meta = WidgetGameMeta {};
+                            let mut game_widget = GameWidget {
+                                position: Vec2::new(x, y),
+                                size: Vec2::new(width as f32, height as f32),
+                                buffer: TheRGBABuffer::new(TheDim::sized(width, height)),
+                                ..Default::default()
+                            };
 
-                            self.game_widgets.insert(widget.creator_id, game_meta);
+                            if let Some(map) = assets.maps.get(&self.current_map) {
+                                game_widget.build(map, assets, &ValueContainer::default());
+                            }
+                            self.game_widgets.insert(widget.creator_id, game_widget);
                         }
                     }
                 }
@@ -474,34 +498,24 @@ impl Client {
     }
 
     /// Draw the game into the internal buffer
-    pub fn draw_game(&mut self, assets: &Assets) {
-        if let Some(screen) = assets.screens.get(&self.current_screen) {
-            for sector in screen.sectors.iter() {
-                let bb = sector.bounding_box(screen);
-                let x = ((bb.min.x + self.viewport.x as f32 / screen.grid_size / 2.0)
-                    * screen.grid_size)
-                    .floor() as i32;
-                let y = ((bb.min.y + self.viewport.y as f32 / screen.grid_size / 2.0)
-                    * screen.grid_size)
-                    .floor() as i32;
-                let width = ((bb.max.x - bb.min.x) * screen.grid_size).floor() as i32;
-                let height = ((bb.max.y - bb.min.y) * screen.grid_size).floor() as i32;
+    pub fn draw_game(&mut self, map: &Map, assets: &Assets) {
+        //if let Some(screen) = assets.screens.get(&self.current_screen) {
+        // for sector in screen.sectors.iter() {
+        // buffer.fill([255, 255, 255, 255]);
 
-                let mut buffer = TheRGBABuffer::new(TheDim::sized(width, height));
-                // buffer.fill([255, 255, 255, 255]);
+        // First process the game widgets
+        for widget in self.game_widgets.values_mut() {
+            widget.apply_entities(map, assets);
+            widget.draw(map, &self.server_time);
 
-                // First process the game widgets
-                if let Some(widget) = self.game_widgets.get(&sector.creator_id) {
-                    if let Some(map) = assets.maps.get(&self.current_map) {
-                        self.draw_d2(map, buffer.pixels_mut(), width as usize, height as usize);
-                    }
-                }
-
-                self.target.copy_into(x, y, &buffer);
-                // println!("{} {} {} {}", x, y, width, height);
-            }
+            self.target
+                .copy_into(widget.position.x, widget.position.y, &widget.buffer);
         }
+
+        // println!("{} {} {} {}", x, y, width, height);
     }
+    // }
+    // }
 
     /// Copy the game buffer into the external buffer
     pub fn insert_game_buffer(&mut self, buffer: &mut TheRGBABuffer) {

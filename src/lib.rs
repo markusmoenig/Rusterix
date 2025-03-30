@@ -74,7 +74,9 @@ pub use crate::{
     rect::Rect,
     rusterix::Rusterix,
     scene::Scene,
-    scenebuilder::{d2material::D2MaterialBuilder, d2preview::D2PreviewBuilder},
+    scenebuilder::{
+        d2builder::D2Builder, d2material::D2MaterialBuilder, d2preview::D2PreviewBuilder,
+    },
     script::mapscript::MapScript,
     server::{
         assets::Assets,
@@ -96,7 +98,8 @@ pub use crate::{
 // Prelude
 pub mod prelude {
     pub use crate::scenebuilder::{
-        d2material::D2MaterialBuilder, d2preview::D2PreviewBuilder, d3builder::D3Builder,
+        d2builder::D2Builder, d2material::D2MaterialBuilder, d2preview::D2PreviewBuilder,
+        d3builder::D3Builder,
     };
     pub use crate::Client;
     pub use crate::IntoDataInput;
