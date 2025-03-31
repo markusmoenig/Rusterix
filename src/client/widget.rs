@@ -17,6 +17,10 @@ pub struct GameWidget {
     pub buffer: TheRGBABuffer,
 
     pub player_pos: Vec2<f32>,
+
+    pub map_bbox: Vec4<f32>,
+
+    pub grid_size: f32,
 }
 
 impl Default for GameWidget {
@@ -42,10 +46,17 @@ impl GameWidget {
             buffer: TheRGBABuffer::default(),
 
             player_pos: Vec2::zero(),
+
+            map_bbox: Vec4::zero(),
+
+            grid_size: 32.0,
         }
     }
 
     pub fn build(&mut self, map: &Map, assets: &Assets, properties: &ValueContainer) {
+        if let Some(bbox) = map.bounding_box() {
+            self.map_bbox = bbox;
+        }
         self.scene = self.builder_d2.build(map, assets, self.size, properties);
     }
 
@@ -65,16 +76,7 @@ impl GameWidget {
     }
 
     /// Draw the 2D scene.
-    pub fn draw_d2(&mut self, map: &Map, time: &TheTime) {
-        pub fn map_grid_to_local(
-            screen_size: Vec2<f32>,
-            grid_pos: Vec2<f32>,
-            map: &Map,
-        ) -> Vec2<f32> {
-            let grid_space_pos = grid_pos * map.grid_size;
-            grid_space_pos + Vec2::new(map.offset.x, -map.offset.y) + screen_size / 2.0
-        }
-
+    pub fn draw_d2(&mut self, _map: &Map, time: &TheTime) {
         let width = self.buffer.dim().width as usize;
         let height = self.buffer.dim().height as usize;
 
@@ -87,19 +89,65 @@ impl GameWidget {
         light.set_intensity(1.0);
         self.scene.dynamic_lights.push(light);
 
-        let player_offset =
-            map_grid_to_local(screen_size, self.player_pos + Vec2::new(-0.5, 0.5), map);
+        //println!("draw grid_size {}", map.grid_size);
 
-        let translation_matrix = Mat3::<f32>::translation_2d(Vec2::new(
-            -player_offset.x + screen_size.x / 2.0,
-            -player_offset.y + screen_size.y / 1.0,
-        ));
+        // let player_world_pos = self.player_pos * map.grid_size;
+        // let translation_matrix =
+        //     Mat3::<f32>::translation_2d((screen_size / 2.0 - player_world_pos).floor());
+
+        let bbox = self.map_bbox;
+
+        let start = Vec2::new(bbox.x, bbox.y);
+        let end = Vec2::new(bbox.x + bbox.z, bbox.y + bbox.w);
+
+        let start_pixels = start * self.grid_size;
+        let end_pixels = end * self.grid_size;
+
+        // Ensure min < max even if grid_size has negative components
+        let min_world = Vec2::new(
+            start_pixels.x.min(end_pixels.x),
+            start_pixels.y.min(end_pixels.y),
+        );
+        let max_world = Vec2::new(
+            start_pixels.x.max(end_pixels.x),
+            start_pixels.y.max(end_pixels.y),
+        );
+
+        let half_screen = screen_size / 2.0;
+
+        // Compute unclamped camera center in world space
+        let mut camera_pos = self.player_pos * self.grid_size;
+
+        let map_width_px = max_world.x - min_world.x;
+        let map_height_px = max_world.y - min_world.y;
+
+        if map_width_px > screen_size.x {
+            camera_pos.x = camera_pos
+                .x
+                .clamp(min_world.x + half_screen.x, max_world.x - half_screen.x);
+        } else {
+            // Center map horizontally
+            camera_pos.x = (min_world.x + max_world.x) / 2.0;
+        }
+
+        if map_height_px > screen_size.y {
+            camera_pos.y = camera_pos
+                .y
+                .clamp(min_world.y + half_screen.y, max_world.y - half_screen.y);
+        } else {
+            // Center map vertically
+            camera_pos.y = (min_world.y + max_world.y) / 2.0;
+        }
+
+        let translation_matrix =
+            Mat3::<f32>::translation_2d((screen_size / 2.0 - camera_pos).floor());
+
         let scale_matrix = Mat3::new(
-            map.grid_size,
+            self.grid_size,
             0.0,
             0.0,
             0.0,
-            map.grid_size,
+            self.grid_size,
             0.0,
             0.0,
             0.0,
@@ -110,13 +158,7 @@ impl GameWidget {
         let mut rast = Rasterizer::setup(Some(transform), Mat4::identity(), Mat4::identity());
         rast.mapmini = self.scene.mapmini.clone();
 
-        rast.rasterize(
-            &mut self.scene,
-            self.buffer.pixels_mut(),
-            width,
-            height,
-            200,
-        );
+        rast.rasterize(&mut self.scene, self.buffer.pixels_mut(), width, height, 40);
 
         // Draw Messages
 

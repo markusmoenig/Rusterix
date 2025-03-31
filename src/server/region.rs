@@ -1693,7 +1693,6 @@ fn add_item(class_name: String) {
             .find(|entity| entity.id == id)
         {
             entity.add_item(item);
-            println!("item added");
         }
     }
 }

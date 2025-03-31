@@ -16,6 +16,7 @@ pub mod script;
 pub mod server;
 pub mod shader;
 pub mod texture;
+pub mod utils;
 pub mod value;
 pub mod wavefront;
 

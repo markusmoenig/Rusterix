@@ -43,6 +43,7 @@ pub struct Client {
     config: toml::Table,
 
     viewport: Vec2<i32>,
+    grid_size: f32,
 
     // The offset we copy the target into
     pub target_offset: Vec2<i32>,
@@ -94,6 +95,7 @@ impl Client {
 
             config: toml::Table::default(),
             viewport: Vec2::zero(),
+            grid_size: 32.0,
 
             target_offset: Vec2::zero(),
             target: TheRGBABuffer::default(),
@@ -426,6 +428,8 @@ impl Client {
             self.get_config_i32_default("viewport", "height", 720),
         );
 
+        self.grid_size = self.get_config_i32_default("viewport", "grid_size", 32) as f32;
+
         // Create the target buffer
         self.target = TheRGBABuffer::new(TheDim::sized(self.viewport.x, self.viewport.y));
 
@@ -456,17 +460,24 @@ impl Client {
         if let Some(screen) = assets.screens.get(&self.current_screen) {
             for widget in screen.sectors.iter() {
                 let bb = widget.bounding_box(screen);
-                let x = ((bb.min.x + self.viewport.x as f32 / screen.grid_size / 2.0)
-                    * screen.grid_size)
-                    .floor() as i32;
-                let y = ((bb.min.y + self.viewport.y as f32 / screen.grid_size / 2.0)
-                    * screen.grid_size)
-                    .floor() as i32;
-                let width = ((bb.max.x - bb.min.x) * screen.grid_size).floor() as i32;
-                let height = ((bb.max.y - bb.min.y) * screen.grid_size).floor() as i32;
+
+                let (start_x, start_y) = crate::utils::align_screen_to_grid(
+                    self.viewport.x as f32,
+                    self.viewport.y as f32,
+                    self.grid_size,
+                );
+
+                let x = (bb.min.x - start_x) * self.grid_size;
+                let y = (bb.min.y - start_y) * self.grid_size;
+                let width = bb.size().x * self.grid_size;
+                let height = bb.size().y * self.grid_size;
+
+                // println!("{} {} {} {}", x, y, width, height);
 
                 if let Some(crate::Value::Str(data)) = widget.properties.get("data") {
                     if let Ok(table) = data.parse::<Table>() {
+                        let grid_size = self.grid_size;
+
                         let mut role = "none";
                         if let Some(ui) = table.get("ui").and_then(toml::Value::as_table) {
                             if let Some(value) = ui.get("role") {
@@ -478,9 +489,13 @@ impl Client {
 
                         if role == "game" {
                             let mut game_widget = GameWidget {
-                                position: Vec2::new(x, y),
-                                size: Vec2::new(width as f32, height as f32),
-                                buffer: TheRGBABuffer::new(TheDim::sized(width, height)),
+                                position: Vec2::new(x as i32, y as i32),
+                                size: Vec2::new(width, height),
+                                buffer: TheRGBABuffer::new(TheDim::sized(
+                                    width as i32,
+                                    height as i32,
+                                )),
+                                grid_size,
                                 ..Default::default()
                             };
 
@@ -499,10 +514,6 @@ impl Client {
 
     /// Draw the game into the internal buffer
     pub fn draw_game(&mut self, map: &Map, assets: &Assets) {
-        //if let Some(screen) = assets.screens.get(&self.current_screen) {
-        // for sector in screen.sectors.iter() {
-        // buffer.fill([255, 255, 255, 255]);
-
         // First process the game widgets
         for widget in self.game_widgets.values_mut() {
             widget.apply_entities(map, assets);
@@ -511,15 +522,11 @@ impl Client {
             self.target
                 .copy_into(widget.position.x, widget.position.y, &widget.buffer);
         }
-
-        // println!("{} {} {} {}", x, y, width, height);
     }
-    // }
-    // }
 
     /// Copy the game buffer into the external buffer
     pub fn insert_game_buffer(&mut self, buffer: &mut TheRGBABuffer) {
-        buffer.fill([0, 0, 0, 255]);
+        buffer.fill([255, 0, 0, 255]);
         buffer.copy_into(self.target_offset.x, self.target_offset.y, &self.target);
     }
 }
