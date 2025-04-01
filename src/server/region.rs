@@ -777,6 +777,16 @@ impl RegionInstance {
                                         }
                                     }
                                 }
+                                UserAction(entity_id, action) => {
+                                    if let Some(entity) = MAP
+                                        .borrow_mut()
+                                        .entities
+                                        .iter_mut()
+                                        .find(|entity| entity.id == entity_id)
+                                    {
+                                        entity.action = action;
+                                    }
+                                }
                                 CreateEntity(_id, entity) => {
                                     create_entity_instance(entity)
                                 }

@@ -1,11 +1,13 @@
 // use crate::PrimitiveMode::*;
 
 // use crate::Texture;
-use crate::{Assets, Batch, Map, Scene, Tile, Value, ValueContainer};
+use crate::{Assets, Batch, Map, Scene, Tile, Value};
 use theframework::prelude::*;
 use vek::Vec2;
 
-pub struct D2Builder {}
+pub struct D2Builder {
+    pub activated_widgets: Vec<u32>,
+}
 
 impl Default for D2Builder {
     fn default() -> Self {
@@ -15,16 +17,12 @@ impl Default for D2Builder {
 
 impl D2Builder {
     pub fn new() -> Self {
-        Self {}
+        Self {
+            activated_widgets: vec![],
+        }
     }
 
-    pub fn build(
-        &mut self,
-        map: &Map,
-        assets: &Assets,
-        screen_size: Vec2<f32>,
-        _properties: &ValueContainer,
-    ) -> Scene {
+    pub fn build(&mut self, map: &Map, assets: &Assets, screen_size: Vec2<f32>) -> Scene {
         let mut scene = Scene::empty();
         let atlas_size = assets.atlas.width as f32;
 
@@ -66,7 +64,7 @@ impl D2Builder {
 
                 // Use the floor or ceiling source
                 let mut source = sector.properties.get("floor_source");
-                if source.is_none() {
+                if source.is_none() || self.activated_widgets.contains(&sector.id) {
                     source = sector.properties.get("ceiling_source");
                 }
 

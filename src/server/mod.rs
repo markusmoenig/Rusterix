@@ -11,6 +11,7 @@ use crossbeam_channel::{Receiver, Sender};
 
 use crate::prelude::*;
 use crate::Command;
+use crate::EntityAction;
 use std::sync::{Arc, LazyLock, RwLock};
 use theframework::prelude::*;
 
@@ -361,6 +362,24 @@ impl Server {
                             event.clone(),
                             value.clone(),
                         )) {
+                            Ok(_) => {}
+                            Err(err) => {
+                                println!("{:?}", err.to_string());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Send a local player action to the registered players
+    pub fn local_player_action(&mut self, action: EntityAction) {
+        if let Ok(local_players) = LOCAL_PLAYERS.read() {
+            if let Ok(pipe) = REGIONPIPE.read() {
+                for (region_id, entity_id) in local_players.iter() {
+                    if let Some(sender) = pipe.get(region_id) {
+                        match sender.send(RegionMessage::UserAction(*entity_id, action.clone())) {
                             Ok(_) => {}
                             Err(err) => {
                                 println!("{:?}", err.to_string());

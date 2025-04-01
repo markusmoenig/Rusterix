@@ -3,8 +3,13 @@ pub mod daylight;
 pub mod draw2d;
 pub mod widget;
 
+use std::str::FromStr;
+
 use crate::prelude::*;
-use crate::{client::widget::GameWidget, Command, D2PreviewBuilder, Daylight};
+use crate::{
+    client::widget::{GameWidget, ScreenWidget, Widget},
+    Command, D2PreviewBuilder, Daylight, EntityAction, Rect,
+};
 use draw2d::Draw2D;
 use fontdue::*;
 use theframework::prelude::*;
@@ -51,9 +56,15 @@ pub struct Client {
     // The target we render into
     target: TheRGBABuffer,
 
+    // The UI overlay
+    overlay: TheRGBABuffer,
+
     // The widgets
     game_widgets: FxHashMap<Uuid, GameWidget>,
-    widgets: FxHashMap<Uuid, bool>,
+    widgets: FxHashMap<u32, Widget>,
+
+    // Widgets which are active (clicked)
+    activated_widgets: Vec<u32>,
 }
 
 impl Default for Client {
@@ -99,9 +110,11 @@ impl Client {
 
             target_offset: Vec2::zero(),
             target: TheRGBABuffer::default(),
+            overlay: TheRGBABuffer::default(),
 
             game_widgets: FxHashMap::default(),
             widgets: FxHashMap::default(),
+            activated_widgets: vec![],
         }
     }
 
@@ -432,6 +445,8 @@ impl Client {
 
         // Create the target buffer
         self.target = TheRGBABuffer::new(TheDim::sized(self.viewport.x, self.viewport.y));
+        // Create the overlay buffer
+        self.overlay = TheRGBABuffer::new(TheDim::sized(self.viewport.x, self.viewport.y));
 
         // Find the start region
         self.current_map = self.get_config_string_default("game", "start_region", "");
@@ -500,9 +515,30 @@ impl Client {
                             };
 
                             if let Some(map) = assets.maps.get(&self.current_map) {
-                                game_widget.build(map, assets, &ValueContainer::default());
+                                game_widget.build(map, assets);
                             }
                             self.game_widgets.insert(widget.creator_id, game_widget);
+                        }
+                        if role == "button" {
+                            let mut action = "";
+                            if let Some(ui) = table.get("ui").and_then(toml::Value::as_table) {
+                                if let Some(value) = ui.get("action") {
+                                    if let Some(v) = value.as_str() {
+                                        action = v;
+                                    }
+                                }
+                            }
+                            let button_widget = Widget {
+                                rect: Rect::new(
+                                    x + self.grid_size / 2.0,
+                                    y - self.grid_size / 2.0,
+                                    width,
+                                    height,
+                                ),
+                                action: action.into(),
+                            };
+
+                            self.widgets.insert(widget.id, button_widget);
                         }
                     }
                 }
@@ -522,11 +558,56 @@ impl Client {
             self.target
                 .copy_into(widget.position.x, widget.position.y, &widget.buffer);
         }
+
+        if let Some(screen) = assets.screens.get(&self.current_screen) {
+            let mut widget = ScreenWidget {
+                buffer: TheRGBABuffer::new(TheDim::sized(self.viewport.x, self.viewport.y)),
+                ..Default::default()
+            };
+
+            let (start_x, start_y) = crate::utils::align_screen_to_grid(
+                self.viewport.x as f32,
+                self.viewport.y as f32,
+                self.grid_size,
+            );
+
+            widget.builder_d2.activated_widgets = self.activated_widgets.clone();
+            widget.offset = Vec2::new(start_x, start_y);
+
+            widget.build(screen, assets);
+            widget.draw(screen, &self.server_time);
+
+            self.target.blend_into(0, 0, &widget.buffer);
+        }
     }
 
     /// Copy the game buffer into the external buffer
     pub fn insert_game_buffer(&mut self, buffer: &mut TheRGBABuffer) {
-        buffer.fill([255, 0, 0, 255]);
+        buffer.fill([128, 128, 128, 255]);
         buffer.copy_into(self.target_offset.x, self.target_offset.y, &self.target);
+    }
+
+    /// Click / touch down event
+    pub fn touch_down(&mut self, coord: Vec2<i32>) -> Option<EntityAction> {
+        let mut action = None;
+
+        let p = coord - self.target_offset;
+
+        for (id, widget) in self.widgets.iter() {
+            if widget.rect.contains(Vec2::new(p.x as f32, p.y as f32)) {
+                self.activated_widgets.push(*id);
+                if let Ok(act) = EntityAction::from_str(&widget.action) {
+                    action = Some(act);
+                    break;
+                }
+            }
+        }
+
+        action
+    }
+
+    /// Click / touch up event
+    pub fn touch_up(&mut self, _coord: Vec2<i32>) {
+        self.activated_widgets = vec![];
     }
 }
