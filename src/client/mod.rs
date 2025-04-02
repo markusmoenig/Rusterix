@@ -1,3 +1,4 @@
+pub mod action;
 pub mod command;
 pub mod daylight;
 pub mod draw2d;
@@ -7,11 +8,13 @@ use std::str::FromStr;
 
 use crate::prelude::*;
 use crate::{
+    client::action::ClientAction,
     client::widget::{GameWidget, ScreenWidget, Widget},
-    Command, D2PreviewBuilder, Daylight, EntityAction, Rect,
+    Command, D2PreviewBuilder, Daylight, EntityAction, Rect, Value,
 };
 use draw2d::Draw2D;
 use fontdue::*;
+use std::sync::{Arc, Mutex};
 use theframework::prelude::*;
 use toml::*;
 
@@ -65,6 +68,9 @@ pub struct Client {
 
     // Widgets which are active (clicked)
     activated_widgets: Vec<u32>,
+
+    // Client Action
+    client_action: Arc<Mutex<ClientAction>>,
 }
 
 impl Default for Client {
@@ -115,6 +121,8 @@ impl Client {
             game_widgets: FxHashMap::default(),
             widgets: FxHashMap::default(),
             activated_widgets: vec![],
+
+            client_action: Arc::new(Mutex::new(ClientAction::default())),
         }
     }
 
@@ -462,6 +470,9 @@ impl Client {
                     if let Some(class_name) = entity.get_attr_string("class_name") {
                         if self.player_entities.contains(&class_name) {
                             commands.push(Command::CreateEntity(map.id, entity.clone()));
+                            // Init scripting for this entity
+                            self.client_action = Arc::new(Mutex::new(ClientAction::default()));
+                            self.client_action.lock().unwrap().init(class_name, assets);
                             break;
                         }
                     }
@@ -609,5 +620,22 @@ impl Client {
     /// Click / touch up event
     pub fn touch_up(&mut self, _coord: Vec2<i32>) {
         self.activated_widgets = vec![];
+    }
+
+    pub fn user_event(&mut self, event: String, value: Value) -> EntityAction {
+        let action = self.client_action.lock().unwrap().user_event(event, value);
+
+        let action_str: String = action.to_string();
+        if action_str == "none" {
+            self.activated_widgets = vec![];
+        } else {
+            for (id, widget) in self.widgets.iter_mut() {
+                if widget.action == action_str && !self.activated_widgets.contains(id) {
+                    self.activated_widgets.push(*id);
+                }
+            }
+        }
+
+        action
     }
 }

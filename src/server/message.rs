@@ -55,6 +55,7 @@ pub enum PlayerCamera {
     D3FirstP,
 }
 
+use std::fmt;
 use std::str::FromStr;
 impl FromStr for EntityAction {
     type Err = ();
@@ -69,6 +70,20 @@ impl FromStr for EntityAction {
             "backward" => Ok(EntityAction::Backward),
             _ => Err(()), // Return an error for invalid values
         }
+    }
+}
+
+impl fmt::Display for EntityAction {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let s = match self {
+            EntityAction::Off => "none",
+            EntityAction::Left => "left",
+            EntityAction::Forward => "forward",
+            EntityAction::Right => "right",
+            EntityAction::Backward => "backward",
+            _ => "none",
+        };
+        write!(f, "{}", s)
     }
 }
 
