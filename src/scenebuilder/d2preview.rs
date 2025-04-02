@@ -496,10 +496,12 @@ impl D2PreviewBuilder {
             || self.map_tool_type == MapToolType::Linedef
         {
             for vertex in &map.vertices {
-                // if self.no_rect_geo {
-                //     //} && map.is_vertex_in_rect(vertex.id) {
-                //     continue;
-                // }
+                if self.map_tool_type == MapToolType::Vertex
+                    && self.no_rect_geo
+                    && map.is_vertex_in_rect(vertex.id)
+                {
+                    continue;
+                }
                 if let Some(vertex_pos) = map.get_vertex(vertex.id) {
                     if self.map_tool_type == MapToolType::Linedef {
                         // In linedef mode, only show vertices that are part of selected linedefs
