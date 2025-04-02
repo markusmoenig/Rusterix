@@ -38,6 +38,9 @@ pub struct Rasterizer {
     /// 2D Translation / Scaling
     translationd2: Vec2<f32>,
     scaled2: f32,
+
+    /// Useful when the resulting framebuffer is used as an blended overlay
+    pub preserve_transparency: bool,
 }
 
 /// Rasterizes batches of 2D and 3D meshes (and lines).
@@ -85,6 +88,8 @@ impl Rasterizer {
 
             translationd2,
             scaled2,
+
+            preserve_transparency: false,
         }
     }
 
@@ -409,7 +414,11 @@ impl Rasterizer {
                                                     + (buffer[idx + i] as f32 * dst_alpha))
                                                     as u8;
                                             }
-                                            buffer[idx + 3] = 255;
+                                            if !self.preserve_transparency {
+                                                buffer[idx + 3] = 255;
+                                            } else {
+                                                buffer[idx + 3] = texel[3];
+                                            }
                                         }
                                     }
                                 }

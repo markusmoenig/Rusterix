@@ -537,18 +537,21 @@ impl Map {
             return false; // A polygon needs at least 3 edges
         }
 
-        let first_linedef = &self.linedefs[self.possible_polygon[0] as usize];
-        let last_linedef =
-            &self.linedefs[self.possible_polygon[self.possible_polygon.len() - 1] as usize];
-
-        // Check if the last linedef's end_vertex matches the first linedef's start_vertex
-        last_linedef.end_vertex == first_linedef.start_vertex
+        if let Some(first_linedef) = self.find_linedef(self.possible_polygon[0]) {
+            if let Some(last_linedef) =
+                self.find_linedef(self.possible_polygon[self.possible_polygon.len() - 1])
+            {
+                // Check if the last linedef's end_vertex matches the first linedef's start_vertex
+                return last_linedef.end_vertex == first_linedef.start_vertex;
+            }
+        }
+        false
     }
 
     /// Tries to create a polyon from the tracked vertices in possible_polygon
     pub fn create_sector_from_polygon(&mut self) -> Option<u32> {
         if !self.test_for_closed_polygon() {
-            //println!("Polygon is not closed. Cannot create sector.");
+            // println!("Polygon is not closed. Cannot create sector.");
             return None;
         }
 

@@ -9,7 +9,7 @@ use std::str::FromStr;
 use crate::prelude::*;
 use crate::{
     client::action::ClientAction,
-    client::widget::{GameWidget, ScreenWidget, Widget},
+    client::widget::{game::GameWidget, screen::ScreenWidget, Widget},
     Command, D2PreviewBuilder, Daylight, EntityAction, Rect, Value,
 };
 use draw2d::Draw2D;
@@ -541,10 +541,9 @@ impl Client {
                             }
                             let button_widget = Widget {
                                 rect: Rect::new(
-                                    x + self.grid_size / 2.0,
-                                    y - self.grid_size / 2.0,
-                                    width,
-                                    height,
+                                    x, // + self.grid_size / 2.0,
+                                    y, // - self.grid_size / 2.0,
+                                    width, height,
                                 ),
                                 action: action.into(),
                             };
@@ -583,7 +582,10 @@ impl Client {
             );
 
             widget.builder_d2.activated_widgets = self.activated_widgets.clone();
-            widget.offset = Vec2::new(start_x, start_y);
+            widget.offset = Vec2::new(
+                start_x + self.grid_size / 2.0,
+                start_y - self.grid_size / 2.0,
+            );
 
             widget.build(screen, assets);
             widget.draw(screen, &self.server_time);

@@ -178,8 +178,12 @@ impl D2PreviewBuilder {
                     let mut uvs: Vec<[f32; 2]> = vec![];
                     let bbox = sector.bounding_box(map);
 
-                    let repeat = true;
+                    let mut repeat = true;
                     let tile_size = 100;
+
+                    if sector.properties.get_int_default("tile_mode", 1) == 0 {
+                        repeat = false;
+                    }
 
                     // Add Floor Light
                     if let Some(Value::Light(light)) = sector.properties.get("floor_light") {
