@@ -40,4 +40,8 @@ impl Rect {
             && point.y >= self.y
             && point.y <= self.y + self.height
     }
+
+    pub fn size(&self) -> Vec2<f32> {
+        Vec2::new(self.width, self.height)
+    }
 }

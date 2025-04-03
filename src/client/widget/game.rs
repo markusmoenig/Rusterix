@@ -1,5 +1,5 @@
 use crate::prelude::*;
-use crate::{D2Builder, Daylight};
+use crate::{D2Builder, Daylight, Rect};
 use theframework::prelude::*;
 use vek::Vec2;
 
@@ -8,8 +8,7 @@ pub struct GameWidget {
     pub camera_d3: Box<dyn D3Camera>,
     pub builder_d3: D3Builder,
 
-    pub position: Vec2<i32>,
-    pub size: Vec2<f32>,
+    pub rect: Rect,
 
     pub scene: Scene,
     pub daylight: Daylight,
@@ -21,6 +20,7 @@ pub struct GameWidget {
     pub map_bbox: Vec4<f32>,
 
     pub grid_size: f32,
+    pub top_left: Vec2<f32>,
 }
 
 impl Default for GameWidget {
@@ -37,8 +37,7 @@ impl GameWidget {
             camera_d3: Box::new(D3FirstPCamera::new()),
             builder_d3: D3Builder::new(),
 
-            position: Vec2::zero(),
-            size: Vec2::zero(),
+            rect: Rect::default(),
 
             scene: Scene::default(),
             daylight: Daylight::default(),
@@ -50,6 +49,7 @@ impl GameWidget {
             map_bbox: Vec4::zero(),
 
             grid_size: 32.0,
+            top_left: Vec2::zero(),
         }
     }
 
@@ -57,7 +57,7 @@ impl GameWidget {
         if let Some(bbox) = map.bounding_box() {
             self.map_bbox = bbox;
         }
-        self.scene = self.builder_d2.build(map, assets, self.size);
+        self.scene = self.builder_d2.build(map, assets, self.rect.size());
     }
 
     pub fn apply_entities(&mut self, map: &Map, assets: &Assets) {
@@ -68,7 +68,7 @@ impl GameWidget {
             }
         }
         self.builder_d2
-            .build_entities_items(map, assets, &mut self.scene, self.size);
+            .build_entities_items(map, assets, &mut self.scene, self.rect.size());
     }
 
     pub fn draw(&mut self, map: &Map, time: &TheTime) {
@@ -141,6 +141,8 @@ impl GameWidget {
 
         let translation_matrix =
             Mat3::<f32>::translation_2d((screen_size / 2.0 - camera_pos).floor());
+
+        self.top_left = (camera_pos - screen_size / 2.0) / self.grid_size;
 
         let scale_matrix = Mat3::new(
             self.grid_size,

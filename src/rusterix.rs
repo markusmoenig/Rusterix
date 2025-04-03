@@ -177,7 +177,7 @@ impl Rusterix {
     }
 
     /// Draw the game as the client sees it.
-    pub fn draw_game(&mut self, map: &Map) {
-        self.client.draw_game(map, &self.assets);
+    pub fn draw_game(&mut self, map: &Map, messages: Vec<(Option<u32>, Option<u32>, u32, String)>) {
+        self.client.draw_game(map, &self.assets, messages);
     }
 }

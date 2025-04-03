@@ -9,7 +9,7 @@ use std::str::FromStr;
 use crate::prelude::*;
 use crate::{
     client::action::ClientAction,
-    client::widget::{game::GameWidget, screen::ScreenWidget, Widget},
+    client::widget::{game::GameWidget, messages::MessagesWidget, screen::ScreenWidget, Widget},
     Command, D2PreviewBuilder, Daylight, EntityAction, Rect, Value,
 };
 use draw2d::Draw2D;
@@ -66,6 +66,8 @@ pub struct Client {
     game_widgets: FxHashMap<Uuid, GameWidget>,
     widgets: FxHashMap<u32, Widget>,
 
+    messages_widget: Option<MessagesWidget>,
+
     // Widgets which are active (clicked)
     activated_widgets: Vec<u32>,
 
@@ -120,6 +122,8 @@ impl Client {
 
             game_widgets: FxHashMap::default(),
             widgets: FxHashMap::default(),
+            messages_widget: None,
+
             activated_widgets: vec![],
 
             client_action: Arc::new(Mutex::new(ClientAction::default())),
@@ -483,6 +487,7 @@ impl Client {
         // Init the meta data for widgets
         self.game_widgets.clear();
         self.widgets.clear();
+        self.messages_widget = None;
         if let Some(screen) = assets.screens.get(&self.current_screen) {
             for widget in screen.sectors.iter() {
                 let bb = widget.bounding_box(screen);
@@ -515,8 +520,7 @@ impl Client {
 
                         if role == "game" {
                             let mut game_widget = GameWidget {
-                                position: Vec2::new(x as i32, y as i32),
-                                size: Vec2::new(width, height),
+                                rect: Rect::new(x, y, width, height),
                                 buffer: TheRGBABuffer::new(TheDim::sized(
                                     width as i32,
                                     height as i32,
@@ -550,6 +554,19 @@ impl Client {
 
                             self.widgets.insert(widget.id, button_widget);
                         }
+                        if role == "messages" {
+                            let mut widget = MessagesWidget {
+                                rect: Rect::new(x, y, width, height),
+                                toml_str: data.clone(),
+                                buffer: TheRGBABuffer::new(TheDim::sized(
+                                    width as i32,
+                                    height as i32,
+                                )),
+                                ..Default::default()
+                            };
+                            widget.init(assets);
+                            self.messages_widget = Some(widget);
+                        }
                     }
                 }
             }
@@ -559,14 +576,20 @@ impl Client {
     }
 
     /// Draw the game into the internal buffer
-    pub fn draw_game(&mut self, map: &Map, assets: &Assets) {
+    pub fn draw_game(
+        &mut self,
+        map: &Map,
+        assets: &Assets,
+        messages: Vec<(Option<u32>, Option<u32>, u32, String)>,
+    ) {
+        self.target.fill([0, 0, 0, 255]);
         // First process the game widgets
         for widget in self.game_widgets.values_mut() {
             widget.apply_entities(map, assets);
             widget.draw(map, &self.server_time);
 
             self.target
-                .copy_into(widget.position.x, widget.position.y, &widget.buffer);
+                .copy_into(widget.rect.x as i32, widget.rect.y as i32, &widget.buffer);
         }
 
         if let Some(screen) = assets.screens.get(&self.current_screen) {
@@ -592,6 +615,13 @@ impl Client {
 
             self.target.blend_into(0, 0, &widget.buffer);
         }
+
+        // Draw the messages on top
+        if let Some(widget) = &mut self.messages_widget {
+            widget.update_draw(&mut self.target, assets, messages);
+            self.target
+                .blend_into(widget.rect.x as i32, widget.rect.y as i32, &widget.buffer);
+        }
     }
 
     /// Copy the game buffer into the external buffer
@@ -601,7 +631,7 @@ impl Client {
     }
 
     /// Click / touch down event
-    pub fn touch_down(&mut self, coord: Vec2<i32>) -> Option<EntityAction> {
+    pub fn touch_down(&mut self, coord: Vec2<i32>, map: &Map) -> Option<EntityAction> {
         let mut action = None;
 
         let p = coord - self.target_offset;
@@ -616,11 +646,43 @@ impl Client {
             }
         }
 
+        if action.is_none() {
+            for (_, widget) in self.game_widgets.iter() {
+                if widget.rect.contains(Vec2::new(p.x as f32, p.y as f32)) {
+                    let dx = p.x as f32 - widget.rect.x;
+                    let dy = p.y as f32 - widget.rect.y;
+
+                    let gx = widget.top_left.x + dx / widget.grid_size;
+                    let gy = widget.top_left.y + dy / widget.grid_size;
+
+                    let pos = Vec2::new(gx, gy);
+
+                    for entity in map.entities.iter() {
+                        let p = entity.get_pos_xz();
+                        if pos.floor() == p.floor() {
+                            let distance = pos.distance(p);
+                            // println!("hit {:?}", entity.attributes.get("name"));
+                            return Some(EntityAction::EntityClicked(entity.id, distance));
+                        }
+                    }
+
+                    for item in map.items.iter() {
+                        let p = item.get_pos_xz();
+                        if pos.floor() == p.floor() {
+                            let distance = pos.distance(p);
+                            // println!("hit {:?}", item.attributes.get("name"));
+                            return Some(EntityAction::ItemClicked(item.id, distance));
+                        }
+                    }
+                }
+            }
+        }
+
         action
     }
 
     /// Click / touch up event
-    pub fn touch_up(&mut self, _coord: Vec2<i32>) {
+    pub fn touch_up(&mut self, _coord: Vec2<i32>, _map: &Map) {
         self.activated_widgets = vec![];
     }
 

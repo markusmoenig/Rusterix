@@ -19,6 +19,8 @@ pub struct Assets {
 
     pub config: String,
     pub atlas: Texture,
+
+    pub fonts: FxHashMap<String, fontdue::Font>,
 }
 
 impl Default for Assets {
@@ -40,6 +42,7 @@ impl Assets {
             screens: FxHashMap::default(),
             config: String::new(),
             atlas: Texture::default(),
+            fonts: FxHashMap::default(),
         }
     }
 

@@ -778,13 +778,33 @@ impl RegionInstance {
                                     }
                                 }
                                 UserAction(entity_id, action) => {
-                                    if let Some(entity) = MAP
-                                        .borrow_mut()
-                                        .entities
-                                        .iter_mut()
-                                        .find(|entity| entity.id == entity_id)
-                                    {
-                                        entity.action = action;
+
+                                    match action {
+                                        ItemClicked(item_id, _distance) => {
+                                            if let Some(class_name) = ITEM_CLASSES.borrow().get(&item_id) {
+                                                let cmd = format!("{}.event('{}', '{}')", class_name, "clicked", entity_id);
+                                                *CURR_ENTITYID.borrow_mut() = entity_id;
+                                                *CURR_ITEMID.borrow_mut() = Some(item_id);
+                                                if let Err(err) = REGION.borrow().execute(&cmd) {
+                                                    send_log_message(format!(
+                                                        "{}: Event Error for '{}': {}",
+                                                        name,
+                                                        get_entity_name(item_id),
+                                                        err,
+                                                    ));
+                                                }
+                                            }
+                                        }
+                                        _ => {
+                                            if let Some(entity) = MAP
+                                                .borrow_mut()
+                                                .entities
+                                                .iter_mut()
+                                                .find(|entity| entity.id == entity_id)
+                                            {
+                                                entity.action = action;
+                                            }
+                                        }
                                     }
                                 }
                                 CreateEntity(_id, entity) => {
