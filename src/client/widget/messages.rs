@@ -1,4 +1,4 @@
-use crate::{client::draw2d, Assets, Rect};
+use crate::{client::draw2d, Assets, Pixel, Rect, WHITE};
 use draw2d::Draw2D;
 use theframework::prelude::*;
 
@@ -8,9 +8,10 @@ pub struct MessagesWidget {
     pub buffer: TheRGBABuffer,
     pub font: Option<fontdue::Font>,
     pub font_size: f32,
-    pub messages: Vec<String>,
+    pub messages: Vec<(String, Pixel)>,
     pub draw2d: Draw2D,
     pub spacing: f32,
+    pub table: toml::Table,
 }
 
 impl Default for MessagesWidget {
@@ -30,6 +31,7 @@ impl MessagesWidget {
             messages: vec![],
             draw2d: Draw2D::default(),
             spacing: 1.0,
+            table: toml::Table::default(),
         }
     }
 
@@ -53,6 +55,7 @@ impl MessagesWidget {
                     }
                 }
             }
+            self.table = table;
         }
 
         if let Some(font) = assets.fonts.get(&font_name) {
@@ -64,11 +67,19 @@ impl MessagesWidget {
         &mut self,
         buffer: &mut TheRGBABuffer,
         _assets: &Assets,
-        messages: Vec<(Option<u32>, Option<u32>, u32, String)>,
+        messages: Vec<crate::server::Message>,
     ) {
         // Append new messages
-        for message in &messages {
-            self.messages.push(message.3.clone());
+        for (_, _, _, message, category) in &messages {
+            let mut color = WHITE;
+            if let Some(ui) = self.table.get("ui").and_then(toml::Value::as_table) {
+                if let Some(value) = ui.get(category) {
+                    if let Some(v) = value.as_str() {
+                        color = self.hex_to_rgba_u8(v);
+                    }
+                }
+            }
+            self.messages.push((message.clone(), color));
         }
 
         // Purge the messages which are scrolled out of scope
@@ -83,7 +94,7 @@ impl MessagesWidget {
             let stride = buffer.stride();
             let mut y = self.rect.y + self.rect.height - self.font_size.ceil();
 
-            for message in self.messages.iter().rev() {
+            for (message, color) in self.messages.iter().rev() {
                 if y + self.font_size < self.rect.y {
                     break;
                 }
@@ -102,7 +113,7 @@ impl MessagesWidget {
                     font,
                     self.font_size,
                     message,
-                    &[128, 128, 128, 255],
+                    color,
                     draw2d::TheHorizontalAlign::Left,
                     draw2d::TheVerticalAlign::Center,
                     &(
@@ -115,6 +126,33 @@ impl MessagesWidget {
 
                 y -= self.font_size + self.spacing;
             }
+        }
+    }
+
+    /// Converts a hex color string to a [u8; 4] (RGBA).
+    /// Accepts "#RRGGBB" or "#RRGGBBAA" formats.
+    fn hex_to_rgba_u8(&self, hex: &str) -> [u8; 4] {
+        let hex = hex.trim_start_matches('#');
+
+        match hex.len() {
+            6 => match (
+                u8::from_str_radix(&hex[0..2], 16),
+                u8::from_str_radix(&hex[2..4], 16),
+                u8::from_str_radix(&hex[4..6], 16),
+            ) {
+                (Ok(r), Ok(g), Ok(b)) => [r, g, b, 255],
+                _ => [255, 255, 255, 255],
+            },
+            8 => match (
+                u8::from_str_radix(&hex[0..2], 16),
+                u8::from_str_radix(&hex[2..4], 16),
+                u8::from_str_radix(&hex[4..6], 16),
+                u8::from_str_radix(&hex[6..8], 16),
+            ) {
+                (Ok(r), Ok(g), Ok(b), Ok(a)) => [r, g, b, a],
+                _ => [255, 255, 255, 255],
+            },
+            _ => [255, 255, 255, 255],
         }
     }
 }

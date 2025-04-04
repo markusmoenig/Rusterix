@@ -360,6 +360,33 @@ impl ValueContainer {
     pub fn values(&self) -> impl Iterator<Item = &Value> {
         self.values.values()
     }
+
+    /// Convert the container into a Python dict string representation
+    pub fn to_python_dict_string(&self) -> String {
+        let mut items = Vec::new();
+
+        for (key, value) in &self.values {
+            let key_str = format!("{:?}", key);
+            let value_str = match value {
+                Value::NoValue => "None".to_string(),
+                Value::Bool(b) => b.to_string(),
+                Value::Int(i) => i.to_string(),
+                Value::Int64(i) => i.to_string(),
+                Value::Float(f) => f.to_string(),
+                Value::Vec2(v) => format!("[{}, {}]", v[0], v[1]),
+                Value::Vec3(v) => format!("[{}, {}, {}]", v[0], v[1], v[2]),
+                Value::Vec4(v) => format!("[{}, {}, {}, {}]", v[0], v[1], v[2], v[3]),
+                Value::Str(s) => format!("{:?}", s),
+                Value::Id(u) => format!("{:?}", u.to_string()),
+                _ => continue, // Skip unsupported types
+            };
+
+            // Always end with a comma
+            items.push(format!("    {}: {},", key_str, value_str));
+        }
+
+        format!("{{\n{}\n}}", items.join("\n"))
+    }
 }
 
 // Implement Display for ValueContainer

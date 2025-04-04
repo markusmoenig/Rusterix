@@ -26,7 +26,7 @@ pub enum RegionMessage {
     /// Time event of a Region
     Time(u32, TheTime),
     /// Tell: RegionId, SenderId_entity, SenderId_item, ReceiverId, Message
-    Tell(u32, Option<u32>, Option<u32>, u32, String),
+    Message(u32, Option<u32>, Option<u32>, u32, String, String),
     /// Stop processing and quit
     Quit,
 }

@@ -25,7 +25,7 @@ type Player = Arc<RwLock<Vec<(u32, u32)>>>;
 static LOCAL_PLAYERS: LazyLock<Player> = LazyLock::new(|| Arc::new(RwLock::new(Vec::new())));
 
 // SenderEntityId, SenderItemId, ReceiverId, Message
-pub type Message = (Option<u32>, Option<u32>, u32, String);
+pub type Message = (Option<u32>, Option<u32>, u32, String, String);
 
 #[derive(Clone, Copy, PartialEq)]
 pub enum ServerState {
@@ -266,7 +266,14 @@ impl Server {
                         }
                         self.log_changed = true;
                     }
-                    RegionMessage::Tell(id, sender_entity, sender_item, receiver_id, message) => {
+                    RegionMessage::Message(
+                        id,
+                        sender_entity,
+                        sender_item,
+                        receiver_id,
+                        message,
+                        category,
+                    ) => {
                         // println!(
                         //     "({:?}, {:?}) -> {}: {}",
                         //     sender_entity, sender_item, receiver_id, message
@@ -274,9 +281,16 @@ impl Server {
                         //
 
                         if let Some(messages) = self.messages.get_mut(&id) {
-                            messages.push((sender_entity, sender_item, receiver_id, message));
+                            messages.push((
+                                sender_entity,
+                                sender_item,
+                                receiver_id,
+                                message,
+                                category,
+                            ));
                         } else {
-                            let messages = vec![(sender_entity, sender_item, receiver_id, message)];
+                            let messages =
+                                vec![(sender_entity, sender_item, receiver_id, message, category)];
                             self.messages.insert(id, messages);
                         }
                     }

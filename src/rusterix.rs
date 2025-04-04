@@ -75,11 +75,7 @@ impl Rusterix {
     }
 
     /// Process messages from the server to be displayed on the client.
-    pub fn process_messages(
-        &mut self,
-        map: &Map,
-        messages: Vec<(Option<u32>, Option<u32>, u32, String)>,
-    ) {
+    pub fn process_messages(&mut self, map: &Map, messages: Vec<crate::server::Message>) {
         self.client.process_messages(map, messages);
     }
 
@@ -177,7 +173,7 @@ impl Rusterix {
     }
 
     /// Draw the game as the client sees it.
-    pub fn draw_game(&mut self, map: &Map, messages: Vec<(Option<u32>, Option<u32>, u32, String)>) {
+    pub fn draw_game(&mut self, map: &Map, messages: Vec<crate::server::Message>) {
         self.client.draw_game(map, &self.assets, messages);
     }
 }

@@ -223,9 +223,10 @@ impl RegionInstance {
                 vm,
             );
 
-            let _ = scope
-                .globals
-                .set_item("tell", vm.new_function("tell", tell).into(), vm);
+            let _ =
+                scope
+                    .globals
+                    .set_item("message", vm.new_function("message", message).into(), vm);
 
             let _ = scope
                 .globals
@@ -780,9 +781,12 @@ impl RegionInstance {
                                 UserAction(entity_id, action) => {
 
                                     match action {
-                                        ItemClicked(item_id, _distance) => {
+                                        ItemClicked(item_id, distance) => {
                                             if let Some(class_name) = ITEM_CLASSES.borrow().get(&item_id) {
-                                                let cmd = format!("{}.event('{}', '{}')", class_name, "clicked", entity_id);
+                                                let mut cont = ValueContainer::default();
+                                                cont.set("distance", Value::Float(distance));
+                                                cont.set("entity", Value::Int(entity_id as i32));
+                                                let cmd = format!("{}.event('{}', {})", class_name, "clicked", cont.to_python_dict_string());
                                                 *CURR_ENTITYID.borrow_mut() = entity_id;
                                                 *CURR_ITEMID.borrow_mut() = Some(item_id);
                                                 if let Err(err) = REGION.borrow().execute(&cmd) {
@@ -1313,12 +1317,13 @@ fn take(item_id: u32) {
                 .unwrap();
 
             let message = format!("You take a {}", item_name);
-            let msg = RegionMessage::Tell(
+            let msg = RegionMessage::Message(
                 *REGIONID.borrow(),
                 Some(entity_id),
                 None,
                 entity_id,
                 message,
+                "system".into(),
             );
             FROM_SENDER.borrow().get().unwrap().send(msg).unwrap();
         }
@@ -1873,11 +1878,11 @@ pub fn set_proximity_tracking(
     Ok(())
 }
 
-/// Tell
-pub fn tell(args: rustpython_vm::function::FuncArgs, vm: &VirtualMachine) -> PyResult<()> {
+/// Message
+pub fn message(args: rustpython_vm::function::FuncArgs, vm: &VirtualMachine) -> PyResult<()> {
     let mut receiver = None;
     let mut message = None;
-    // let mut minutes = 2;
+    let mut category = String::new();
 
     for (i, arg) in args.args.iter().enumerate() {
         if i == 0 {
@@ -1888,12 +1893,11 @@ pub fn tell(args: rustpython_vm::function::FuncArgs, vm: &VirtualMachine) -> PyR
             if let Some(Value::Str(v)) = Value::from_pyobject(arg.clone(), vm) {
                 message = Some(v);
             }
+        } else if i == 2 {
+            if let Some(Value::Str(v)) = Value::from_pyobject(arg.clone(), vm) {
+                category = v.clone();
+            }
         }
-        // else if i == 2 {
-        //     if let Some(Value::Int(v)) = Value::from_pyobject(arg.clone(), vm) {
-        //         minutes = v as u32;
-        //     }
-        // }
     }
 
     if receiver.is_some() && message.is_some() {
@@ -1904,12 +1908,13 @@ pub fn tell(args: rustpython_vm::function::FuncArgs, vm: &VirtualMachine) -> PyR
         }
 
         let message = message.unwrap();
-        let msg = RegionMessage::Tell(
+        let msg = RegionMessage::Message(
             *REGIONID.borrow(),
             entity_id,
             item_id,
             receiver.unwrap() as u32,
             message,
+            category,
         );
         FROM_SENDER.borrow().get().unwrap().send(msg).unwrap();
     }

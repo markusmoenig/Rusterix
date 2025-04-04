@@ -200,11 +200,7 @@ impl Client {
     }
 
     /// Process messages from the server to be displayed after drawing.
-    pub fn process_messages(
-        &mut self,
-        map: &Map,
-        messages: Vec<(Option<u32>, Option<u32>, u32, String)>,
-    ) {
+    pub fn process_messages(&mut self, map: &Map, messages: Vec<crate::server::Message>) {
         // Remove expired messages
         let expired_keys: Vec<_> = self
             .messages_to_draw
@@ -218,7 +214,7 @@ impl Client {
         }
 
         // Add new messages
-        for (sender_entity_id, sender_item_id, _, message) in messages {
+        for (sender_entity_id, sender_item_id, _, message, _category) in messages {
             if let Some(sender_item_id) = sender_item_id {
                 for item in &map.items {
                     if item.id == sender_item_id {
@@ -576,12 +572,7 @@ impl Client {
     }
 
     /// Draw the game into the internal buffer
-    pub fn draw_game(
-        &mut self,
-        map: &Map,
-        assets: &Assets,
-        messages: Vec<(Option<u32>, Option<u32>, u32, String)>,
-    ) {
+    pub fn draw_game(&mut self, map: &Map, assets: &Assets, messages: Vec<crate::server::Message>) {
         self.target.fill([0, 0, 0, 255]);
         // First process the game widgets
         for widget in self.game_widgets.values_mut() {
@@ -647,6 +638,13 @@ impl Client {
         }
 
         if action.is_none() {
+            let mut player_pos: Vec2<f32> = Vec2::zero();
+            for entity in map.entities.iter() {
+                if entity.is_player() {
+                    player_pos = entity.get_pos_xz();
+                }
+            }
+
             for (_, widget) in self.game_widgets.iter() {
                 if widget.rect.contains(Vec2::new(p.x as f32, p.y as f32)) {
                     let dx = p.x as f32 - widget.rect.x;
@@ -660,7 +658,7 @@ impl Client {
                     for entity in map.entities.iter() {
                         let p = entity.get_pos_xz();
                         if pos.floor() == p.floor() {
-                            let distance = pos.distance(p);
+                            let distance = player_pos.distance(p);
                             // println!("hit {:?}", entity.attributes.get("name"));
                             return Some(EntityAction::EntityClicked(entity.id, distance));
                         }
@@ -669,7 +667,7 @@ impl Client {
                     for item in map.items.iter() {
                         let p = item.get_pos_xz();
                         if pos.floor() == p.floor() {
-                            let distance = pos.distance(p);
+                            let distance = player_pos.distance(p);
                             // println!("hit {:?}", item.attributes.get("name"));
                             return Some(EntityAction::ItemClicked(item.id, distance));
                         }
