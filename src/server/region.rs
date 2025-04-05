@@ -785,7 +785,7 @@ impl RegionInstance {
                                             if let Some(class_name) = ITEM_CLASSES.borrow().get(&item_id) {
                                                 let mut cont = ValueContainer::default();
                                                 cont.set("distance", Value::Float(distance));
-                                                cont.set("entity", Value::Int(entity_id as i32));
+                                                cont.set("entity_id", Value::Int(entity_id as i32));
                                                 let cmd = format!("{}.event('{}', {})", class_name, "clicked", cont.to_python_dict_string());
                                                 *CURR_ENTITYID.borrow_mut() = entity_id;
                                                 *CURR_ITEMID.borrow_mut() = Some(item_id);

@@ -12,6 +12,7 @@ pub struct MessagesWidget {
     pub draw2d: Draw2D,
     pub spacing: f32,
     pub table: toml::Table,
+    pub top_down: bool,
 }
 
 impl Default for MessagesWidget {
@@ -32,6 +33,7 @@ impl MessagesWidget {
             draw2d: Draw2D::default(),
             spacing: 1.0,
             table: toml::Table::default(),
+            top_down: false,
         }
     }
 
@@ -52,6 +54,11 @@ impl MessagesWidget {
                 if let Some(value) = ui.get("spacing") {
                     if let Some(v) = value.as_float() {
                         self.spacing = v as f32;
+                    }
+                }
+                if let Some(value) = ui.get("top_down") {
+                    if let Some(v) = value.as_bool() {
+                        self.top_down = v;
                     }
                 }
             }
@@ -92,7 +99,11 @@ impl MessagesWidget {
         // Draw bottom up
         if let Some(font) = &self.font {
             let stride = buffer.stride();
-            let mut y = self.rect.y + self.rect.height - self.font_size.ceil();
+            let mut y = if self.top_down {
+                self.rect.y
+            } else {
+                self.rect.y + self.rect.height - self.font_size.ceil()
+            };
 
             for (message, color) in self.messages.iter().rev() {
                 if y + self.font_size < self.rect.y {
@@ -124,7 +135,11 @@ impl MessagesWidget {
                     ),
                 );
 
-                y -= self.font_size + self.spacing;
+                if self.top_down {
+                    y += self.font_size + self.spacing;
+                } else {
+                    y -= self.font_size + self.spacing;
+                }
             }
         }
     }
