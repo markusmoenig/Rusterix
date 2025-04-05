@@ -9,7 +9,9 @@ use std::str::FromStr;
 use crate::prelude::*;
 use crate::{
     client::action::ClientAction,
-    client::widget::{game::GameWidget, messages::MessagesWidget, screen::ScreenWidget, Widget},
+    client::widget::{
+        game::GameWidget, messages::MessagesWidget, screen::ScreenWidget, text::TextWidget, Widget,
+    },
     Command, D2PreviewBuilder, Daylight, EntityAction, Rect, Value,
 };
 use draw2d::Draw2D;
@@ -64,11 +66,12 @@ pub struct Client {
 
     // The widgets
     game_widgets: FxHashMap<Uuid, GameWidget>,
-    widgets: FxHashMap<u32, Widget>,
+    button_widgets: FxHashMap<u32, Widget>,
+    text_widgets: FxHashMap<Uuid, TextWidget>,
 
     messages_widget: Option<MessagesWidget>,
 
-    // Widgets which are active (clicked)
+    // Button widgets which are active (clicked)
     activated_widgets: Vec<u32>,
 
     // Client Action
@@ -121,7 +124,8 @@ impl Client {
             overlay: TheRGBABuffer::default(),
 
             game_widgets: FxHashMap::default(),
-            widgets: FxHashMap::default(),
+            button_widgets: FxHashMap::default(),
+            text_widgets: FxHashMap::default(),
             messages_widget: None,
 
             activated_widgets: vec![],
@@ -482,7 +486,8 @@ impl Client {
 
         // Init the meta data for widgets
         self.game_widgets.clear();
-        self.widgets.clear();
+        self.button_widgets.clear();
+        self.text_widgets.clear();
         self.messages_widget = None;
         if let Some(screen) = assets.screens.get(&self.current_screen) {
             for widget in screen.sectors.iter() {
@@ -529,8 +534,7 @@ impl Client {
                                 game_widget.build(map, assets);
                             }
                             self.game_widgets.insert(widget.creator_id, game_widget);
-                        }
-                        if role == "button" {
+                        } else if role == "button" {
                             let mut action = "";
                             if let Some(ui) = table.get("ui").and_then(toml::Value::as_table) {
                                 if let Some(value) = ui.get("action") {
@@ -548,9 +552,8 @@ impl Client {
                                 action: action.into(),
                             };
 
-                            self.widgets.insert(widget.id, button_widget);
-                        }
-                        if role == "messages" {
+                            self.button_widgets.insert(widget.id, button_widget);
+                        } else if role == "messages" {
                             let mut widget = MessagesWidget {
                                 rect: Rect::new(x, y, width, height),
                                 toml_str: data.clone(),
@@ -562,6 +565,18 @@ impl Client {
                             };
                             widget.init(assets);
                             self.messages_widget = Some(widget);
+                        } else if role == "text" {
+                            let mut text_widget = TextWidget {
+                                rect: Rect::new(x, y, width, height),
+                                toml_str: data.clone(),
+                                buffer: TheRGBABuffer::new(TheDim::sized(
+                                    width as i32,
+                                    height as i32,
+                                )),
+                                ..Default::default()
+                            };
+                            text_widget.init(assets);
+                            self.text_widgets.insert(widget.creator_id, text_widget);
                         }
                     }
                 }
@@ -597,8 +612,8 @@ impl Client {
 
             widget.builder_d2.activated_widgets = self.activated_widgets.clone();
             widget.offset = Vec2::new(
-                start_x + self.grid_size / 2.0,
-                start_y - self.grid_size / 2.0,
+                start_x, // + self.grid_size / 2.0,
+                start_y, // - self.grid_size / 2.0,
             );
 
             widget.build(screen, assets);
@@ -610,6 +625,13 @@ impl Client {
         // Draw the messages on top
         if let Some(widget) = &mut self.messages_widget {
             widget.update_draw(&mut self.target, assets, messages);
+            self.target
+                .blend_into(widget.rect.x as i32, widget.rect.y as i32, &widget.buffer);
+        }
+
+        // Draw the text widgets on top
+        for widget in self.text_widgets.values_mut() {
+            widget.update_draw(&mut self.target, map, assets);
             self.target
                 .blend_into(widget.rect.x as i32, widget.rect.y as i32, &widget.buffer);
         }
@@ -627,7 +649,7 @@ impl Client {
 
         let p = coord - self.target_offset;
 
-        for (id, widget) in self.widgets.iter() {
+        for (id, widget) in self.button_widgets.iter() {
             if widget.rect.contains(Vec2::new(p.x as f32, p.y as f32)) {
                 self.activated_widgets.push(*id);
                 if let Ok(act) = EntityAction::from_str(&widget.action) {
@@ -659,7 +681,6 @@ impl Client {
                         let p = entity.get_pos_xz();
                         if pos.floor() == p.floor() {
                             let distance = player_pos.distance(p);
-                            // println!("hit {:?}", entity.attributes.get("name"));
                             return Some(EntityAction::EntityClicked(entity.id, distance));
                         }
                     }
@@ -668,7 +689,6 @@ impl Client {
                         let p = item.get_pos_xz();
                         if pos.floor() == p.floor() {
                             let distance = player_pos.distance(p);
-                            // println!("hit {:?}", item.attributes.get("name"));
                             return Some(EntityAction::ItemClicked(item.id, distance));
                         }
                     }
@@ -691,7 +711,7 @@ impl Client {
         if action_str == "none" {
             self.activated_widgets = vec![];
         } else {
-            for (id, widget) in self.widgets.iter_mut() {
+            for (id, widget) in self.button_widgets.iter_mut() {
                 if widget.action == action_str && !self.activated_widgets.contains(id) {
                     self.activated_widgets.push(*id);
                 }

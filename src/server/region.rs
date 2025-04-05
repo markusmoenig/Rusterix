@@ -1925,11 +1925,16 @@ pub fn message(args: rustpython_vm::function::FuncArgs, vm: &VirtualMachine) -> 
 /// Debug
 pub fn debug(args: rustpython_vm::function::FuncArgs, vm: &VirtualMachine) -> PyResult<()> {
     let mut output = String::new();
+
     for (i, arg) in args.args.iter().enumerate() {
-        let arg_str = match arg.str(vm) {
-            Ok(s) => s.as_str().to_owned(),
-            Err(_) => "<error converting to string>".to_owned(),
+        let arg_str = match vm.call_method(arg.as_object(), "__repr__", ()) {
+            Ok(repr_obj) => match repr_obj.str(vm) {
+                Ok(s) => s.as_str().to_owned(),
+                Err(_) => "<error converting repr to str>".to_owned(),
+            },
+            Err(_) => "<error calling __repr__>".to_owned(),
         };
+
         if i > 0 {
             output.push(' ');
         }

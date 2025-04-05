@@ -256,11 +256,30 @@ impl Texture {
     //         self.data[idx + 3],
     //     ]
     // }
+    // #[inline(always)]
+    // pub fn sample_nearest(&self, u: f32, v: f32) -> [u8; 4] {
+    //     let mut tx = (u * self.width as f32 + 0.5).floor() as usize;
+    //     let mut ty = (v * self.height as f32 + 0.5).floor() as usize;
+
+    //     tx = tx.clamp(0, self.width - 1);
+    //     ty = ty.clamp(0, self.height - 1);
+
+    //     let idx = (ty * self.width + tx) * 4;
+    //     [
+    //         self.data[idx],
+    //         self.data[idx + 1],
+    //         self.data[idx + 2],
+    //         self.data[idx + 3],
+    //     ]
+    // }
+    //
     #[inline(always)]
     pub fn sample_nearest(&self, u: f32, v: f32) -> [u8; 4] {
-        let mut tx = (u * self.width as f32 + 0.5).floor() as usize;
-        let mut ty = (v * self.height as f32 + 0.5).floor() as usize;
+        // Properly map [0.0, 1.0] to texel centers
+        let mut tx = (u * (self.width as f32 - 1.0)).round() as usize;
+        let mut ty = (v * (self.height as f32 - 1.0)).round() as usize;
 
+        // Clamp to prevent out-of-bounds
         tx = tx.clamp(0, self.width - 1);
         ty = ty.clamp(0, self.height - 1);
 

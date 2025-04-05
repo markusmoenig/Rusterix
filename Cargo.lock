@@ -3326,6 +3326,7 @@ dependencies = [
  "rayon",
  "rect_packer",
  "ref_thread_local",
+ "regex",
  "rust-embed",
  "rustpython",
  "rustpython-vm",

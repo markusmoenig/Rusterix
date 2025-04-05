@@ -1,8 +1,23 @@
-use crate::{client::draw2d, Assets, Pixel, Rect};
+use crate::{client::draw2d, Assets, Map, Pixel, Rect, WHITE};
 use draw2d::Draw2D;
+use regex::Regex;
 use theframework::prelude::*;
 
-pub struct MessagesWidget {
+fn substitute_placeholders<F>(input: &str, mut resolver: F) -> String
+where
+    F: FnMut(&str, &str) -> Option<String>,
+{
+    let re = Regex::new(r"\{([A-Z_]+)\.([A-Z0-9_]+)\}").unwrap();
+
+    re.replace_all(input, |caps: &regex::Captures| {
+        let category = &caps[1];
+        let key = &caps[2];
+        resolver(category, key).unwrap_or_else(|| format!("{{{}.{}?}}", category, key))
+    })
+    .to_string()
+}
+
+pub struct TextWidget {
     pub rect: Rect,
     pub toml_str: String,
     pub buffer: TheRGBABuffer,
@@ -12,15 +27,17 @@ pub struct MessagesWidget {
     pub draw2d: Draw2D,
     pub spacing: f32,
     pub table: toml::Table,
+    pub text: String,
+    pub color: Pixel,
 }
 
-impl Default for MessagesWidget {
+impl Default for TextWidget {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl MessagesWidget {
+impl TextWidget {
     pub fn new() -> Self {
         Self {
             rect: Rect::default(),
@@ -32,6 +49,8 @@ impl MessagesWidget {
             draw2d: Draw2D::default(),
             spacing: 1.0,
             table: toml::Table::default(),
+            text: String::new(),
+            color: WHITE,
         }
     }
 
@@ -54,6 +73,16 @@ impl MessagesWidget {
                         self.spacing = v as f32;
                     }
                 }
+                if let Some(value) = ui.get("text") {
+                    if let Some(v) = value.as_str() {
+                        self.text = v.into();
+                    }
+                }
+                if let Some(value) = ui.get("color") {
+                    if let Some(v) = value.as_str() {
+                        self.color = self.hex_to_rgba_u8(v);
+                    }
+                }
             }
             self.table = table;
         }
@@ -63,41 +92,28 @@ impl MessagesWidget {
         }
     }
 
-    pub fn update_draw(
-        &mut self,
-        buffer: &mut TheRGBABuffer,
-        _assets: &Assets,
-        messages: Vec<crate::server::Message>,
-    ) {
-        // Append new messages
-        for (_, _, _, message, category) in &messages {
-            let mut color = [170, 170, 170, 255];
-            if let Some(ui) = self.table.get("ui").and_then(toml::Value::as_table) {
-                if let Some(value) = ui.get(category) {
-                    if let Some(v) = value.as_str() {
-                        color = self.hex_to_rgba_u8(v);
-                    }
-                }
-            }
-            self.messages.push((message.clone(), color));
-        }
-
-        // Purge the messages which are scrolled out of scope
-        let max_messages = 100;
-        if self.messages.len() > max_messages {
-            let excess = self.messages.len() - max_messages;
-            self.messages.drain(0..excess);
-        }
-
-        // Draw bottom up
+    pub fn update_draw(&mut self, buffer: &mut TheRGBABuffer, map: &Map, _assets: &Assets) {
         if let Some(font) = &self.font {
             let stride = buffer.stride();
-            let mut y = self.rect.y + self.rect.height - self.font_size.ceil();
+            let mut y = self.rect.y;
 
-            for (message, color) in self.messages.iter().rev() {
-                if y + self.font_size < self.rect.y {
-                    break;
-                }
+            for line in self.text.lines() {
+                let resolved = substitute_placeholders(line, |cat, key| {
+                    match cat {
+                        "PLAYER" => {
+                            for entity in &map.entities {
+                                if entity.is_player() {
+                                    if let Some(value) = entity.attributes.get(key) {
+                                        return Some(value.to_string());
+                                    }
+                                }
+                            }
+                            None
+                        }
+                        // "WORLD" => map.world.get_value(key),
+                        _ => None,
+                    }
+                });
 
                 let tuple = (
                     self.rect.x as isize,
@@ -112,8 +128,8 @@ impl MessagesWidget {
                     stride,
                     font,
                     self.font_size,
-                    message,
-                    color,
+                    &resolved,
+                    &self.color,
                     draw2d::TheHorizontalAlign::Left,
                     draw2d::TheVerticalAlign::Center,
                     &(
@@ -124,7 +140,7 @@ impl MessagesWidget {
                     ),
                 );
 
-                y -= self.font_size + self.spacing;
+                y += self.font_size + self.spacing;
             }
         }
     }

@@ -442,6 +442,11 @@ impl D2PreviewBuilder {
         scene: &mut Scene,
         screen_size: Vec2<f32>,
     ) {
+        let screen_aspect = screen_size.x / screen_size.y;
+        let screen_pixel_size = 4.0;
+        let size_x = screen_pixel_size / map.grid_size;
+        let size_y = size_x * screen_aspect / 2.0;
+
         scene.dynamic_lights = vec![];
 
         // Adjust the grid shader
@@ -543,21 +548,20 @@ impl D2PreviewBuilder {
 
                     let pos = self.map_grid_to_local(screen_size, vertex_pos, map);
 
-                    let size = 0.2;
                     if self.hover.0 == Some(vertex.id) || map.selected_vertices.contains(&vertex.id)
                     {
                         selected_batch.add_rectangle(
-                            pos.x - size,
-                            pos.y - size,
-                            size * 2.0,
-                            size * 2.0,
+                            pos.x - size_x,
+                            pos.y - size_y,
+                            size_x * 2.0,
+                            size_y * 2.0,
                         );
                     } else {
                         gray_batch.add_rectangle(
-                            pos.x - size,
-                            pos.y - size,
-                            size * 2.0,
-                            size * 2.0,
+                            pos.x - size_x,
+                            pos.y - size_y,
+                            size_x * 2.0,
+                            size_y * 2.0,
                         );
                     }
                 }
@@ -798,8 +802,13 @@ impl D2PreviewBuilder {
         if self.map_tool_type != MapToolType::Rect {
             if let Some(hover_pos) = self.hover_cursor {
                 let pos = self.map_grid_to_local(screen_size, hover_pos, map);
-                let size = 0.2;
-                yellow_batch.add_rectangle(pos.x - size, pos.y - size, size * 2.0, size * 2.0);
+
+                yellow_batch.add_rectangle(
+                    pos.x - size_x,
+                    pos.y - size_y,
+                    size_x * 2.0,
+                    size_y * 2.0,
+                );
             }
         }
 
@@ -807,12 +816,11 @@ impl D2PreviewBuilder {
         if let Some(camera_pos) = self.camera_pos {
             let camera_grid_pos =
                 self.map_grid_to_local(screen_size, Vec2::new(camera_pos.x, camera_pos.z), map);
-            let size = 0.2;
             red_batch.add_rectangle(
-                camera_grid_pos.x - size,
-                camera_grid_pos.y - size,
-                size * 2.0,
-                size * 2.0,
+                camera_grid_pos.x - size_x,
+                camera_grid_pos.y - size_y,
+                size_x * 2.0,
+                size_y * 2.0,
             );
 
             // Look At Pos
@@ -821,10 +829,10 @@ impl D2PreviewBuilder {
                     self.map_grid_to_local(screen_size, Vec2::new(look_at.x, look_at.z), map);
                 gray_batch_lines.add_line(camera_grid_pos, look_at_grid_pos, 1.0);
                 yellow_batch.add_rectangle(
-                    look_at_grid_pos.x - size,
-                    look_at_grid_pos.y - size,
-                    size * 2.0,
-                    size * 2.0,
+                    look_at_grid_pos.x - size_x,
+                    look_at_grid_pos.y - size_y,
+                    size_x * 2.0,
+                    size_y * 2.0,
                 );
             }
         }
