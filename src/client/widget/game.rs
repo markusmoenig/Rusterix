@@ -139,8 +139,7 @@ impl GameWidget {
             camera_pos.y = (min_world.y + max_world.y) / 2.0;
         }
 
-        let translation_matrix =
-            Mat3::<f32>::translation_2d((screen_size / 2.0 - camera_pos).floor());
+        let translation_matrix = Mat3::<f32>::translation_2d(screen_size / 2.0 - camera_pos);
 
         self.top_left = (camera_pos - screen_size / 2.0) / self.grid_size;
 

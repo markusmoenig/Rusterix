@@ -54,6 +54,8 @@ pub struct Client {
 
     viewport: Vec2<i32>,
     grid_size: f32,
+    pub target_fps: i32,
+    pub game_tick_ms: i32,
 
     // The offset we copy the target into
     pub target_offset: Vec2<i32>,
@@ -118,6 +120,8 @@ impl Client {
             config: toml::Table::default(),
             viewport: Vec2::zero(),
             grid_size: 32.0,
+            target_fps: 30,
+            game_tick_ms: 250,
 
             target_offset: Vec2::zero(),
             target: TheRGBABuffer::default(),
@@ -453,6 +457,8 @@ impl Client {
             self.get_config_i32_default("viewport", "height", 720),
         );
 
+        self.target_fps = self.get_config_i32_default("game", "target_fps", 30);
+        self.game_tick_ms = self.get_config_i32_default("game", "game_tick_ms", 250);
         self.grid_size = self.get_config_i32_default("viewport", "grid_size", 32) as f32;
 
         // Create the target buffer

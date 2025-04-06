@@ -11,10 +11,15 @@ keywords = ["software", "rendering", "graphics", "game", "engine"]
 members = [".", "rusteria"]
 
 [dependencies]
+rustpython = { version = "0.4.0", features = [
+    "stdlib",
+    "threading",
+    "freeze-stdlib",
+], default-features = false }
+fontdue = "0.9.3"
 theframework = { version = "0.1.40", git = "https://github.com/markusmoenig/theframework" }
 # theframework = "0.1.33"
 # theframework = { path = "../TheFramework", default-features = false }
-fontdue = "0.9.3"
 rayon = "1.10"
 vek = { version = "0.17.1", default-features = true }
 earcutr = "0.4"
@@ -22,10 +27,6 @@ rect_packer = "0.2.1"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 image = "0.25.5"
-rustpython = { version = "0.4.0", features = [
-    "stdlib",
-    "freeze-stdlib",
-], default-features = true }
 rustpython-vm = { version = "0.4.0" }
 walkdir = "2.5.0"
 crossbeam-channel = "0.5.14"

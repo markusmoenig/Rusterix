@@ -444,10 +444,12 @@ impl RegionInstance {
                 get_config_i32_default("game", "ticks_per_minute", 4) as u32;
 
             let game_tick_ms = get_config_i32_default("game", "game_tick_ms", 250) as u64;
-            let target_fps = 1000.0 / get_config_i32_default("game", "target_fps", 30) as f32;
+            let target_fps = get_config_i32_default("game", "target_fps", 30) as f32;
 
             let system_ticker = tick(std::time::Duration::from_millis(game_tick_ms));
-            let redraw_ticker = tick(std::time::Duration::from_millis(target_fps as u64));
+            let redraw_ticker = tick(std::time::Duration::from_millis(
+                (1000.0 / target_fps) as u64,
+            ));
 
             let entity_block_mode = {
                 let mode = get_config_string_default("game", "entity_block_mode", "always");
