@@ -3,9 +3,9 @@ use crate::{
     Assets, Entity, EntityAction, Item, Map, MapMini, PixelSource, PlayerCamera, Value,
     ValueContainer,
 };
-use crossbeam_channel::{select, tick, unbounded, Receiver, Sender};
+use crossbeam_channel::{Receiver, Sender, select, tick, unbounded};
 use rand::*;
-use ref_thread_local::{ref_thread_local, RefThreadLocal};
+use ref_thread_local::{RefThreadLocal, ref_thread_local};
 
 use rustpython::vm::*;
 use std::sync::{Arc, Mutex, OnceLock};
@@ -93,8 +93,8 @@ ref_thread_local! {
     pub static managed FROM_SENDER: OnceLock<Sender<RegionMessage>> = OnceLock::new();
 }
 
-use super::data::{apply_entity_data, apply_item_data};
 use super::RegionMessage;
+use super::data::{apply_entity_data, apply_item_data};
 use RegionMessage::*;
 
 pub struct RegionInstance {
@@ -453,11 +453,7 @@ impl RegionInstance {
 
             let entity_block_mode = {
                 let mode = get_config_string_default("game", "entity_block_mode", "always");
-                if mode == "always" {
-                    1
-                } else {
-                    0
-                }
+                if mode == "always" { 1 } else { 0 }
             };
 
             // Send startup messages
@@ -913,9 +909,9 @@ impl RegionInstance {
                         // State 1: Walk towards
                         if target.distance(entity.get_pos_xz()) < 0.1 {
                             // Arrived, Sleep
-                            let mut rng = rand::thread_rng();
+                            let mut rng = rand::rng();
                             entity.action = self.create_sleep_switch_action(
-                                rng.gen_range(*max_sleep / 2..=*max_sleep) as u32,
+                                rng.random_range(*max_sleep / 2..=*max_sleep) as u32,
                                 RandomWalk(*distance, *speed, *max_sleep, 0, *target),
                             );
                         } else {
@@ -923,9 +919,9 @@ impl RegionInstance {
                             let max_sleep = *max_sleep;
                             let blocked = self.move_entity(entity, 1.0, entity_block_mode);
                             if blocked {
-                                let mut rng = rand::thread_rng();
+                                let mut rng = rand::rng();
                                 entity.action = self.create_sleep_switch_action(
-                                    rng.gen_range(max_sleep / 2..=max_sleep) as u32,
+                                    rng.random_range(max_sleep / 2..=max_sleep) as u32,
                                     t,
                                 );
                             }
@@ -963,9 +959,9 @@ impl RegionInstance {
                         // State 1: Walk towards
                         if target.distance(entity.get_pos_xz()) < 0.1 {
                             // Arrived, Sleep
-                            let mut rng = rand::thread_rng();
+                            let mut rng = rand::rng();
                             entity.action = self.create_sleep_switch_action(
-                                rng.gen_range(*max_sleep / 2..=*max_sleep) as u32,
+                                rng.random_range(*max_sleep / 2..=*max_sleep) as u32,
                                 RandomWalkInSector(*distance, *speed, *max_sleep, 0, *target),
                             );
                         } else {
@@ -973,9 +969,9 @@ impl RegionInstance {
                             let max_sleep = *max_sleep;
                             let blocked = self.move_entity(entity, 1.0, entity_block_mode);
                             if blocked {
-                                let mut rng = rand::thread_rng();
+                                let mut rng = rand::rng();
                                 entity.action = self.create_sleep_switch_action(
-                                    rng.gen_range(max_sleep / 2..=max_sleep) as u32,
+                                    rng.random_range(max_sleep / 2..=max_sleep) as u32,
                                     t,
                                 );
                             }

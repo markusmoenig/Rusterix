@@ -1,10 +1,9 @@
+use super::pixelsource::PixelSource;
 use crate::{BBox, Map, Value, ValueContainer};
 use earcutr::earcut;
-use rand::seq::SliceRandom;
-use rand::Rng;
+// use rand::Rng;
+// use rand::seq::SliceRandom;
 use theframework::prelude::*;
-
-use super::pixelsource::PixelSource;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Sector {
@@ -165,40 +164,40 @@ impl Sector {
         }
     }
 
-    /// Returns a random position inside the sector.
-    pub fn get_random_position(&self, map: &Map) -> Option<Vec2<f32>> {
-        // Generate geometry for the sector
-        if let Some((vertices, indices)) = self.generate_geometry(map) {
-            // Create a random number generator
-            let mut rng = rand::thread_rng();
+    // Returns a random position inside the sector.
+    // pub fn get_random_position(&self, map: &Map) -> Option<Vec2<f32>> {
+    //     // Generate geometry for the sector
+    //     if let Some((vertices, indices)) = self.generate_geometry(map) {
+    //         // Create a random number generator
+    //         let mut rng = rand::rng();
 
-            // Randomly select a triangle from the indices
-            if let Some(&(i1, i2, i3)) = indices.choose(&mut rng) {
-                let v1 = vertices[i1];
-                let v2 = vertices[i2];
-                let v3 = vertices[i3];
+    //         // Randomly select a triangle from the indices
+    //         if let Some(&(i1, i2, i3)) = indices.choose(&mut rng) {
+    //             let v1 = vertices[i1];
+    //             let v2 = vertices[i2];
+    //             let v3 = vertices[i3];
 
-                // Generate random barycentric coordinates
-                let r1: f32 = rng.gen();
-                let r2: f32 = rng.gen();
+    //             // Generate random barycentric coordinates
+    //             let r1: f32 = rng.random();
+    //             let r2: f32 = rng.random();
 
-                // Ensure they are constrained to the triangle
-                let sqrt_r1 = r1.sqrt();
-                let u = 1.0 - sqrt_r1;
-                let v = r2 * sqrt_r1;
+    //             // Ensure they are constrained to the triangle
+    //             let sqrt_r1 = r1.sqrt();
+    //             let u = 1.0 - sqrt_r1;
+    //             let v = r2 * sqrt_r1;
 
-                // Compute the random position as a weighted sum of the triangle's vertices
-                let x = u * v1[0] + v * v2[0] + (1.0 - u - v) * v3[0];
-                let y = u * v1[1] + v * v2[1] + (1.0 - u - v) * v3[1];
+    //             // Compute the random position as a weighted sum of the triangle's vertices
+    //             let x = u * v1[0] + v * v2[0] + (1.0 - u - v) * v3[0];
+    //             let y = u * v1[1] + v * v2[1] + (1.0 - u - v) * v3[1];
 
-                Some(Vec2::new(x, y))
-            } else {
-                None // Return None if no triangles are available
-            }
-        } else {
-            None // Return None if geometry couldn't be generated
-        }
-    }
+    //             Some(Vec2::new(x, y))
+    //         } else {
+    //             None // Return None if no triangles are available
+    //         }
+    //     } else {
+    //         None // Return None if geometry couldn't be generated
+    //     }
+    // }
 
     /// Checks if a point is inside the sector polygon using the ray-casting algorithm.
     pub fn is_inside(&self, map: &Map, point: Vec2<f32>) -> bool {

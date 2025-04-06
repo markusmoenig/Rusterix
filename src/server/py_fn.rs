@@ -69,8 +69,8 @@ pub fn random_in_range(
         let end: i32 = to.try_into_value(vm)?;
 
         // Generate a random i32 within the range
-        let mut rng = rand::thread_rng();
-        let result = rng.gen_range(start..=end);
+        let mut rng = rand::rng();
+        let result = rng.random_range(start..=end);
 
         Ok(vm.ctx.new_int(result).into())
     } else if from.class().is(vm.ctx.types.float_type) && to.class().is(vm.ctx.types.float_type) {
@@ -79,8 +79,8 @@ pub fn random_in_range(
         let end: f64 = to.try_into_value(vm)?;
 
         // Generate a random f64 within the range
-        let mut rng = rand::thread_rng();
-        let result = rng.gen_range(start..=end);
+        let mut rng = rand::rng();
+        let result = rng.random_range(start..=end);
 
         Ok(vm.ctx.new_float(result).into())
     } else {
@@ -91,8 +91,8 @@ pub fn random_in_range(
 
 /// Find a random poition max_distance away from pos.
 pub fn find_random_position(pos: Vec2<f32>, max_distance: f32) -> Vec2<f32> {
-    let mut rng = rand::thread_rng();
-    let angle = rng.gen_range(0.0..std::f32::consts::TAU);
+    let mut rng = rand::rng();
+    let angle = rng.random_range(0.0..std::f32::consts::TAU);
     let dx = max_distance * angle.cos();
     let dy = max_distance * angle.sin();
     Vec2::new(pos.x + dx, pos.y + dy)

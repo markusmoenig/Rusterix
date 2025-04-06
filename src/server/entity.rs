@@ -4,7 +4,7 @@ use std::collections::VecDeque;
 use theframework::prelude::*;
 use vek::{Vec2, Vec3};
 
-use crate::{prelude::*, EntityAction};
+use crate::{EntityAction, prelude::*};
 
 /// The Rust representation of an Entity. The real entity class lives in Python, this class is the Rust side
 /// instantiation (to avoid unnecessary Python look ups for common attributes). The class gets synced with the Python side.
@@ -499,8 +499,8 @@ impl Entity {
 
     /// Sets the orientation to face a random direction.
     pub fn face_random(&mut self) {
-        let mut rng = rand::thread_rng();
-        let angle = rng.gen_range(0.0..std::f32::consts::TAU); // TAU is 2π
+        let mut rng = rand::rng();
+        let angle = rng.random_range(0.0..std::f32::consts::TAU); // TAU is 2π
         let direction = Vec2::new(angle.cos(), angle.sin());
         self.set_orientation(direction);
     }

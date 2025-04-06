@@ -260,7 +260,7 @@ impl ValueContainer {
 
     pub fn get_str(&self, key: &str) -> Option<&str> {
         self.values.get(key).and_then(|v| {
-            if let Value::Str(ref val) = v {
+            if let Value::Str(val) = v {
                 Some(val.as_str())
             } else {
                 None
@@ -293,7 +293,7 @@ impl ValueContainer {
 
     pub fn get_source(&self, key: &str) -> Option<&PixelSource> {
         self.values.get(key).and_then(|v| {
-            if let Value::Source(ref val) = v {
+            if let Value::Source(val) = v {
                 Some(val)
             } else {
                 None
