@@ -608,6 +608,7 @@ impl Map {
     }
 
     /// Deletes the specified vertices, linedefs, and sectors, along with their associated geometry.
+    /*
     pub fn delete_elements(&mut self, vertex_ids: &[u32], linedef_ids: &[u32], sector_ids: &[u32]) {
         let mut all_linedef_ids = linedef_ids.to_vec();
         let mut all_vertex_ids = vertex_ids.to_vec();
@@ -684,6 +685,79 @@ impl Map {
                     }
                 }
             }
+        }
+    }*/
+    pub fn delete_elements(&mut self, vertex_ids: &[u32], linedef_ids: &[u32], sector_ids: &[u32]) {
+        let mut all_linedef_ids = linedef_ids.to_vec();
+        let mut all_vertex_ids = vertex_ids.to_vec();
+
+        // Step 1: Collect linedefs (and eventually vertices) from sectors to delete
+        if !sector_ids.is_empty() {
+            for sector in &self.sectors {
+                if sector_ids.contains(&sector.id) {
+                    for &linedef_id in &sector.linedefs {
+                        // If this linedef is not used by other sectors, we can delete it
+                        let used_elsewhere = self
+                            .sectors
+                            .iter()
+                            .any(|s| s.id != sector.id && s.linedefs.contains(&linedef_id));
+
+                        if !used_elsewhere && !all_linedef_ids.contains(&linedef_id) {
+                            all_linedef_ids.push(linedef_id);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Step 2: Collect vertices used *only* by linedefs being deleted
+        for &linedef_id in &all_linedef_ids {
+            if let Some(linedef) = self.find_linedef(linedef_id) {
+                for &vertex_id in &[linedef.start_vertex, linedef.end_vertex] {
+                    let used_elsewhere = self.linedefs.iter().any(|l| {
+                        l.id != linedef_id
+                            && (l.start_vertex == vertex_id || l.end_vertex == vertex_id)
+                            && !all_linedef_ids.contains(&l.id)
+                    });
+
+                    if !used_elsewhere && !all_vertex_ids.contains(&vertex_id) {
+                        all_vertex_ids.push(vertex_id);
+                    }
+                }
+            }
+        }
+
+        // Step 3: Delete sectors
+        if !sector_ids.is_empty() {
+            self.sectors
+                .retain(|sector| !sector_ids.contains(&sector.id));
+
+            for linedef in &mut self.linedefs {
+                if let Some(front) = linedef.front_sector {
+                    if sector_ids.contains(&front) {
+                        linedef.front_sector = None;
+                    }
+                }
+                if let Some(back) = linedef.back_sector {
+                    if sector_ids.contains(&back) {
+                        linedef.back_sector = None;
+                    }
+                }
+            }
+        }
+
+        // Step 4: Delete linedefs
+        if !all_linedef_ids.is_empty() {
+            self.linedefs
+                .retain(|linedef| !all_linedef_ids.contains(&linedef.id));
+        }
+
+        self.cleanup_sectors();
+
+        // Step 5: Delete vertices (only if explicitly requested or now truly orphaned)
+        if !all_vertex_ids.is_empty() {
+            self.vertices
+                .retain(|vertex| !all_vertex_ids.contains(&vertex.id));
         }
     }
 
