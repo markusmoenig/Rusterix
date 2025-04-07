@@ -2,17 +2,18 @@ pub mod action;
 pub mod command;
 pub mod daylight;
 pub mod draw2d;
+pub mod interpolation;
 pub mod widget;
 
 use std::str::FromStr;
 
 use crate::prelude::*;
 use crate::{
+    Command, D2PreviewBuilder, Daylight, EntityAction, Rect, Value,
     client::action::ClientAction,
     client::widget::{
-        game::GameWidget, messages::MessagesWidget, screen::ScreenWidget, text::TextWidget, Widget,
+        Widget, game::GameWidget, messages::MessagesWidget, screen::ScreenWidget, text::TextWidget,
     },
-    Command, D2PreviewBuilder, Daylight, EntityAction, Rect, Value,
 };
 use draw2d::Draw2D;
 use fontdue::*;
@@ -52,7 +53,7 @@ pub struct Client {
 
     config: toml::Table,
 
-    viewport: Vec2<i32>,
+    pub viewport: Vec2<i32>,
     grid_size: f32,
     pub target_fps: i32,
     pub game_tick_ms: i32,
@@ -78,6 +79,8 @@ pub struct Client {
 
     // Client Action
     client_action: Arc<Mutex<ClientAction>>,
+
+    first_game_draw: bool,
 }
 
 impl Default for Client {
@@ -135,6 +138,7 @@ impl Client {
             activated_widgets: vec![],
 
             client_action: Arc::new(Mutex::new(ClientAction::default())),
+            first_game_draw: false,
         }
     }
 
@@ -421,6 +425,7 @@ impl Client {
     /// Setup the client with the given assets.
     pub fn setup(&mut self, assets: &Assets) -> Vec<Command> {
         let mut commands = vec![];
+        self.first_game_draw = true;
 
         // Init config
         match assets.config.parse::<Table>() {
@@ -510,8 +515,6 @@ impl Client {
                 let width = bb.size().x * self.grid_size;
                 let height = bb.size().y * self.grid_size;
 
-                // println!("{} {} {} {}", x, y, width, height);
-
                 if let Some(crate::Value::Str(data)) = widget.properties.get("data") {
                     if let Ok(table) = data.parse::<Table>() {
                         let grid_size = self.grid_size;
@@ -550,11 +553,7 @@ impl Client {
                                 }
                             }
                             let button_widget = Widget {
-                                rect: Rect::new(
-                                    x, // + self.grid_size / 2.0,
-                                    y, // - self.grid_size / 2.0,
-                                    width, height,
-                                ),
+                                rect: Rect::new(x, y, width, height),
                                 action: action.into(),
                             };
 
@@ -617,10 +616,7 @@ impl Client {
             );
 
             widget.builder_d2.activated_widgets = self.activated_widgets.clone();
-            widget.offset = Vec2::new(
-                start_x, // + self.grid_size / 2.0,
-                start_y, // - self.grid_size / 2.0,
-            );
+            widget.offset = Vec2::new(start_x, start_y);
 
             widget.build(screen, assets);
             widget.draw(screen, &self.server_time);
@@ -645,7 +641,17 @@ impl Client {
 
     /// Copy the game buffer into the external buffer
     pub fn insert_game_buffer(&mut self, buffer: &mut TheRGBABuffer) {
-        buffer.fill([128, 128, 128, 255]);
+        buffer.fill([30, 30, 30, 255]);
+        if self.first_game_draw {
+            let dim = buffer.dim();
+            if dim.width > self.viewport.x {
+                self.target_offset.x = (dim.width - self.viewport.x) / 2;
+            }
+            if dim.height > self.viewport.y {
+                self.target_offset.y = (dim.height - self.viewport.y) / 2;
+            }
+            self.first_game_draw = false;
+        }
         buffer.copy_into(self.target_offset.x, self.target_offset.y, &self.target);
     }
 

@@ -1,3 +1,4 @@
+use crate::client::interpolation::*;
 use crate::prelude::*;
 use crate::{D2Builder, Daylight, Rect};
 use theframework::prelude::*;
@@ -15,12 +16,12 @@ pub struct GameWidget {
 
     pub buffer: TheRGBABuffer,
 
-    pub player_pos: Vec2<f32>,
-
     pub map_bbox: Vec4<f32>,
 
     pub grid_size: f32,
     pub top_left: Vec2<f32>,
+
+    pub interpolation: InterpolationBuffer,
 }
 
 impl Default for GameWidget {
@@ -44,12 +45,12 @@ impl GameWidget {
 
             buffer: TheRGBABuffer::default(),
 
-            player_pos: Vec2::zero(),
-
             map_bbox: Vec4::zero(),
 
             grid_size: 32.0,
             top_left: Vec2::zero(),
+
+            interpolation: InterpolationBuffer::default(),
         }
     }
 
@@ -63,7 +64,7 @@ impl GameWidget {
     pub fn apply_entities(&mut self, map: &Map, assets: &Assets) {
         for entity in map.entities.iter() {
             if entity.is_player() {
-                self.player_pos = entity.get_pos_xz();
+                self.interpolation.add_position(entity.get_pos_xz());
                 break;
             }
         }
@@ -116,7 +117,7 @@ impl GameWidget {
         let half_screen = screen_size / 2.0;
 
         // Compute unclamped camera center in world space
-        let mut camera_pos = self.player_pos * self.grid_size;
+        let mut camera_pos = self.interpolation.get_interpolated() * self.grid_size;
 
         let map_width_px = max_world.x - min_world.x;
         let map_height_px = max_world.y - min_world.y;
@@ -139,9 +140,10 @@ impl GameWidget {
             camera_pos.y = (min_world.y + max_world.y) / 2.0;
         }
 
-        let translation_matrix = Mat3::<f32>::translation_2d(screen_size / 2.0 - camera_pos);
+        let translation_matrix =
+            Mat3::<f32>::translation_2d((screen_size / 2.0 - camera_pos).floor());
 
-        self.top_left = (camera_pos - screen_size / 2.0) / self.grid_size;
+        self.top_left = (camera_pos - screen_size / 2.0).floor() / self.grid_size;
 
         let scale_matrix = Mat3::new(
             self.grid_size,

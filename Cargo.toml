@@ -16,10 +16,10 @@ rustpython = { version = "0.4.0", features = [
     "threading",
     "freeze-stdlib",
 ], default-features = false }
-fontdue = "0.9.3"
 theframework = { version = "0.1.40", git = "https://github.com/markusmoenig/theframework" }
 # theframework = "0.1.33"
 # theframework = { path = "../TheFramework", default-features = false }
+fontdue = "0.9.3"
 rayon = "1.10"
 vek = { version = "0.17.1", default-features = true }
 earcutr = "0.4"
@@ -41,6 +41,7 @@ rust-embed = { version = "8.5", default-features = true, features = [
 ] }
 indexmap = "2.7.1"
 regex = "1.11.1"
+instant = { version = "0.1", features = ["wasm-bindgen"] }
 
 [dependencies.uuid]
 version = "1.1.2"

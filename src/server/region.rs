@@ -83,6 +83,8 @@ ref_thread_local! {
     pub static managed ERROR_COUNT: u32 = 0;
     pub static managed STARTUP_ERRORS: Vec<String> = vec![];
 
+    pub static managed DELTA_TIME: f32 = 0.0;
+
     /// Config TOML
     pub static managed CONFIG: toml::Table = toml::Table::default();
 
@@ -91,6 +93,8 @@ ref_thread_local! {
 
     pub static managed TO_RECEIVER: OnceLock<Receiver<RegionMessage>> = OnceLock::new();
     pub static managed FROM_SENDER: OnceLock<Sender<RegionMessage>> = OnceLock::new();
+
+
 }
 
 use super::RegionMessage;
@@ -450,6 +454,8 @@ impl RegionInstance {
             let redraw_ticker = tick(std::time::Duration::from_millis(
                 (1000.0 / target_fps) as u64,
             ));
+
+            *DELTA_TIME.borrow_mut() = 1.0 / target_fps;
 
             let entity_block_mode = {
                 let mode = get_config_string_default("game", "entity_block_mode", "always");
@@ -1064,7 +1070,7 @@ impl RegionInstance {
 
     /// Moves an entity forward or backward. Returns true if blocked.
     fn move_entity(&self, entity: &mut Entity, dir: f32, entity_block_mode: i32) -> bool {
-        let speed = 0.15;
+        let speed = 4.0 * *DELTA_TIME.borrow();
         let move_vector = entity.orientation * speed * dir;
         let position = entity.get_pos_xz();
         let radius = entity.attributes.get_float_default("radius", 0.5) - 0.01;

@@ -1,5 +1,5 @@
-use crate::prelude::*;
 use crate::D2Builder;
+use crate::prelude::*;
 use num_traits::zero;
 use theframework::prelude::*;
 use vek::Vec2;
@@ -63,9 +63,8 @@ impl ScreenWidget {
 
         let screen_size = Vec2::new(width as f32, height as f32);
 
-        // let translation_matrix = Mat3::<f32>::identity();
-        let translation_matrix =
-            Mat3::<f32>::translation_2d((screen_size / 2.0 - self.offset).floor());
+        //let offset = screen_size / (2.0 * self.grid_size);
+        let translation_matrix = Mat3::<f32>::translation_2d(screen_size / 2.0 + self.offset / 2.0);
 
         let scale_matrix = Mat3::new(
             self.grid_size,

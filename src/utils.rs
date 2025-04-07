@@ -8,13 +8,13 @@ pub fn align_screen_to_grid(screen_width: f32, screen_height: f32, grid_size: f3
     let top_left_y = 0.0 - half_height;
 
     // Snap top-left to grid
-    let snapped_top_left_x = (top_left_x / grid_size).floor(); // * grid_size;
-    let snapped_top_left_y = (top_left_y / grid_size).floor(); // * grid_size;
+    //let snapped_top_left_x = (top_left_x / grid_size).floor(); // * grid_size;
+    //let snapped_top_left_y = (top_left_y / grid_size).floor(); // * grid_size;
 
     // New aligned center
     // let aligned_center_x = snapped_top_left_x + half_width;
     // let aligned_center_y = snapped_top_left_y + half_height;
 
     // (aligned_center_x, aligned_center_y)
-    (snapped_top_left_x, snapped_top_left_y)
+    (top_left_x / grid_size, top_left_y / grid_size)
 }
