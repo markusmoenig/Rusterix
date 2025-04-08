@@ -372,7 +372,7 @@ impl Client {
             self.camera_d3
                 .projection_matrix(width as f32, height as f32),
         );
-        rast.mapmini = self.scene_d2.mapmini.clone();
+        rast.mapmini = self.scene_d3.mapmini.clone();
         rast.background_color = Some(vec4_to_pixel(&Vec4::new(ac.x, ac.y, ac.z, 1.0)));
         rast.rasterize(&mut self.scene_d3, pixels, width, height, 64);
     }
@@ -493,6 +493,8 @@ impl Client {
                     }
                 }
             }
+        } else {
+            eprintln!("Did not find start map");
         }
 
         // Init the meta data for widgets
@@ -531,6 +533,7 @@ impl Client {
                         if role == "game" {
                             let mut game_widget = GameWidget {
                                 rect: Rect::new(x, y, width, height),
+                                toml_str: data.clone(),
                                 buffer: TheRGBABuffer::new(TheDim::sized(
                                     width as i32,
                                     height as i32,
@@ -542,6 +545,7 @@ impl Client {
                             if let Some(map) = assets.maps.get(&self.current_map) {
                                 game_widget.build(map, assets);
                             }
+                            game_widget.init();
                             self.game_widgets.insert(widget.creator_id, game_widget);
                         } else if role == "button" {
                             let mut action = "";
@@ -586,6 +590,8 @@ impl Client {
                     }
                 }
             }
+        } else {
+            eprintln!("Did not find start screen");
         }
 
         commands

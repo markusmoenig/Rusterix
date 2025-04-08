@@ -1,4 +1,4 @@
-use crate::{client::draw2d, Assets, Map, Pixel, Rect, WHITE};
+use crate::{Assets, Map, Pixel, Rect, WHITE, client::draw2d};
 use draw2d::Draw2D;
 use regex::Regex;
 use theframework::prelude::*;
@@ -97,6 +97,9 @@ impl TextWidget {
             let stride = buffer.stride();
             let mut y = self.rect.y;
 
+            let width = buffer.dim().width;
+            let height = buffer.dim().height;
+
             for line in self.text.lines() {
                 let resolved = substitute_placeholders(line, |cat, key| {
                     match cat {
@@ -132,12 +135,7 @@ impl TextWidget {
                     &self.color,
                     draw2d::TheHorizontalAlign::Left,
                     draw2d::TheVerticalAlign::Center,
-                    &(
-                        self.rect.x as isize,
-                        self.rect.y as isize,
-                        self.rect.width as isize,
-                        self.rect.height as isize,
-                    ),
+                    &(0, 0, width as isize, height as isize),
                 );
 
                 y += self.font_size + self.spacing;

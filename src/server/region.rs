@@ -1068,7 +1068,8 @@ impl RegionInstance {
         SleepAndSwitch(tick, Box::new(switchback))
     }
 
-    /// Moves an entity forward or backward. Returns true if blocked.
+    // Moves an entity forward or backward. Returns true if blocked.
+    /*
     fn move_entity(&self, entity: &mut Entity, dir: f32, entity_block_mode: i32) -> bool {
         let speed = 4.0 * *DELTA_TIME.borrow();
         let move_vector = entity.orientation * speed * dir;
@@ -1182,6 +1183,176 @@ impl RegionInstance {
         entity.set_pos_xz(end_position);
 
         blocked
+    }*/
+
+    /// Moves an entity forward or backward. Returns true if blocked.
+    fn move_entity(&self, entity: &mut Entity, dir: f32, entity_block_mode: i32) -> bool {
+        let speed = 4.0 * *DELTA_TIME.borrow();
+        let move_vector = entity.orientation * speed * dir;
+        let position = entity.get_pos_xz();
+        let radius = entity.attributes.get_float_default("radius", 0.5) - 0.01;
+
+        let mut new_position = position + move_vector;
+        let map = &MAP.borrow();
+
+        // We'll do up to N attempts to resolve collisions via sliding
+        const MAX_ITERATIONS: usize = 5;
+
+        for _attempt in 0..MAX_ITERATIONS {
+            let mut pushed = false; // Track if we had to push/slide this iteration
+
+            // 1) Check collisions with ENTITIES
+            for other in map.entities.iter() {
+                if other.id == entity.id || !other.attributes.get_bool_default("visible", false) {
+                    continue;
+                }
+
+                let other_pos = other.get_pos_xz();
+                let other_radius = other.attributes.get_float_default("radius", 0.5) - 0.01;
+                let combined_radius = radius + other_radius;
+                let combined_radius_sq = combined_radius * combined_radius;
+
+                // Are we colliding now?
+                let dist_vec = new_position - other_pos;
+                let dist_sq = dist_vec.magnitude_squared();
+                if dist_sq < combined_radius_sq {
+                    // Send events
+                    if let Some(class_name) = ENTITY_CLASSES.borrow().get(&entity.id) {
+                        let cmd = format!(
+                            "{}.event('{}', {})",
+                            class_name, "bumped_into_entity", other.id
+                        );
+                        TO_EXECUTE_ENTITY.borrow_mut().push((
+                            entity.id,
+                            "bumped_into_entity".into(),
+                            cmd,
+                        ));
+                    }
+                    if let Some(class_name) = ENTITY_CLASSES.borrow().get(&other.id) {
+                        let cmd = format!(
+                            "{}.event('{}', {})",
+                            class_name, "bumped_by_entity", entity.id
+                        );
+                        TO_EXECUTE_ENTITY.borrow_mut().push((
+                            other.id,
+                            "bumped_by_entity".into(),
+                            cmd,
+                        ));
+                    }
+
+                    // If blocking, we attempt to slide
+                    if entity_block_mode > 0 {
+                        // Normal from the obstacle center to the entity
+                        let normal = dist_vec.normalized();
+
+                        let total_move = new_position - position;
+                        let slide = total_move - normal * total_move.dot(normal);
+
+                        let slide_pos = position + slide;
+                        let slide_dist_sq = (slide_pos - other_pos).magnitude_squared();
+
+                        if slide_dist_sq >= combined_radius_sq {
+                            // We successfully slid away
+                            new_position = slide_pos;
+                        } else {
+                            // If even after sliding we still collide, we push out just enough
+                            // to stand exactly at the boundary
+                            let actual_dist = (slide_pos - other_pos).magnitude();
+                            if actual_dist < combined_radius {
+                                let push_amount = combined_radius - actual_dist;
+                                new_position = slide_pos + normal * push_amount;
+                                // Re-check again next iteration
+                            }
+                        }
+                        pushed = true;
+                    }
+                }
+            }
+
+            // 2) Check collisions with ITEMS
+            for other in map.items.iter() {
+                if !other.attributes.get_bool_default("visible", false) {
+                    continue;
+                }
+
+                let other_pos = other.get_pos_xz();
+                let other_radius = other.attributes.get_float_default("radius", 0.5) - 0.01;
+                let combined_radius = radius + other_radius;
+                let combined_radius_sq = combined_radius * combined_radius;
+
+                let dist_vec = new_position - other_pos;
+                let dist_sq = dist_vec.magnitude_squared();
+                if dist_sq < combined_radius_sq {
+                    // Send events
+                    if let Some(class_name) = ENTITY_CLASSES.borrow().get(&entity.id) {
+                        let cmd = format!(
+                            "{}.event('{}', {})",
+                            class_name, "bumped_into_item", other.id
+                        );
+                        TO_EXECUTE_ENTITY.borrow_mut().push((
+                            entity.id,
+                            "bumped_into_item".into(),
+                            cmd,
+                        ));
+                    }
+                    if let Some(class_name) = ITEM_CLASSES.borrow().get(&other.id) {
+                        let cmd = format!(
+                            "{}.event('{}', {})",
+                            class_name, "bumped_by_entity", entity.id
+                        );
+                        TO_EXECUTE_ITEM.borrow_mut().push((
+                            other.id,
+                            "bumped_by_entity".into(),
+                            cmd,
+                        ));
+                    }
+
+                    // If item is blocking, we attempt to slide
+                    if other.attributes.get_bool_default("blocking", false) {
+                        let normal = dist_vec.normalized();
+
+                        let total_move = new_position - position;
+                        let slide = total_move - normal * total_move.dot(normal);
+
+                        let slide_pos = position + slide;
+                        let slide_dist_sq = (slide_pos - other_pos).magnitude_squared();
+
+                        if slide_dist_sq >= combined_radius_sq {
+                            // we successfully slid away
+                            new_position = slide_pos;
+                        } else {
+                            // If still colliding, push to boundary
+                            let actual_dist = (slide_pos - other_pos).magnitude();
+                            if actual_dist < combined_radius {
+                                let push_amount = combined_radius - actual_dist;
+                                new_position = slide_pos + normal * push_amount;
+                                // We'll re-check next iteration
+                            }
+                        }
+                        pushed = true;
+                    }
+                }
+            }
+
+            // If we didn't have to push at all, we’re clear => break early
+            if !pushed {
+                break;
+            }
+        }
+
+        // Now we set the new position after we've done all the entity/item collision resolution
+        entity.set_pos_xz(new_position);
+
+        // Finally, let the geometry/linedef collision do its thing
+        let (end_position, geometry_blocked) =
+            MAPMINI
+                .borrow()
+                .move_distance(position, new_position - position, radius);
+
+        // Move the entity after geometry
+        entity.set_pos_xz(end_position);
+
+        geometry_blocked
     }
 }
 
@@ -1320,7 +1491,7 @@ fn take(item_id: u32) {
                 .send(RegionMessage::RemoveItem(*REGIONID.borrow(), item_id))
                 .unwrap();
 
-            let message = format!("You take a {}", item_name);
+            let message = format!("You take a {}", item_name.to_lowercase());
             let msg = RegionMessage::Message(
                 *REGIONID.borrow(),
                 Some(entity_id),

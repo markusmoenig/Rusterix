@@ -1,6 +1,6 @@
 use crate::client::interpolation::*;
 use crate::prelude::*;
-use crate::{D2Builder, Daylight, Rect};
+use crate::{D2Builder, Daylight, PlayerCamera, Rect};
 use theframework::prelude::*;
 use vek::Vec2;
 
@@ -22,6 +22,11 @@ pub struct GameWidget {
     pub top_left: Vec2<f32>,
 
     pub interpolation: InterpolationBuffer,
+
+    pub toml_str: String,
+    pub table: toml::Table,
+
+    pub camera: PlayerCamera,
 }
 
 impl Default for GameWidget {
@@ -51,6 +56,24 @@ impl GameWidget {
             top_left: Vec2::zero(),
 
             interpolation: InterpolationBuffer::default(),
+
+            toml_str: String::new(),
+            table: toml::Table::default(),
+
+            camera: PlayerCamera::D2,
+        }
+    }
+
+    pub fn init(&mut self) {
+        if let Ok(table) = self.toml_str.parse::<toml::Table>() {
+            if let Some(ui) = table.get("ui").and_then(toml::Value::as_table) {
+                if let Some(value) = ui.get("grid_size") {
+                    if let Some(v) = value.as_integer() {
+                        self.grid_size = v as f32;
+                    }
+                }
+            }
+            self.table = table;
         }
     }
 
@@ -58,22 +81,80 @@ impl GameWidget {
         if let Some(bbox) = map.bounding_box() {
             self.map_bbox = bbox;
         }
-        self.scene = self.builder_d2.build(map, assets, self.rect.size());
+
+        if self.camera == PlayerCamera::D2 {
+            self.scene = self.builder_d2.build(map, assets, self.rect.size());
+        } else {
+            self.scene = self.builder_d3.build(
+                map,
+                assets,
+                Vec2::zero(),
+                &self.camera_d3.id(),
+                &ValueContainer::default(),
+            );
+        }
     }
 
     pub fn apply_entities(&mut self, map: &Map, assets: &Assets) {
         for entity in map.entities.iter() {
             if entity.is_player() {
+                if let Some(Value::PlayerCamera(camera)) = entity.attributes.get("player_camera") {
+                    if *camera != self.camera {
+                        self.camera = camera.clone();
+                        if self.camera == PlayerCamera::D3Iso {
+                            self.camera_d3 = Box::new(D3IsoCamera::new())
+                        } else if self.camera == PlayerCamera::D3FirstP {
+                            self.camera_d3 = Box::new(D3FirstPCamera::new());
+                        }
+                        self.build(map, assets);
+                    }
+                }
+
+                if self.camera != PlayerCamera::D2 {
+                    entity.apply_to_camera(&mut self.camera_d3);
+                }
+
                 self.interpolation.add_position(entity.get_pos_xz());
                 break;
             }
         }
-        self.builder_d2
-            .build_entities_items(map, assets, &mut self.scene, self.rect.size());
+
+        if self.camera == PlayerCamera::D2 {
+            self.builder_d2
+                .build_entities_items(map, assets, &mut self.scene, self.rect.size());
+        } else {
+            self.builder_d3.build_entities_items(
+                map,
+                self.camera_d3.as_ref(),
+                assets,
+                &mut self.scene,
+            );
+        }
     }
 
     pub fn draw(&mut self, map: &Map, time: &TheTime) {
-        self.draw_d2(map, time);
+        if self.camera == PlayerCamera::D2 {
+            self.draw_d2(map, time);
+        } else {
+            let width = self.buffer.dim().width as usize;
+            let height = self.buffer.dim().height as usize;
+            let ac = self.daylight.daylight(time.total_minutes(), 0.0, 1.0);
+
+            let mut light = Light::new(LightType::AmbientDaylight);
+            light.set_color([ac.x, ac.y, ac.z]);
+            light.set_intensity(1.0);
+
+            self.scene.dynamic_lights.push(light);
+            let mut rast = Rasterizer::setup(
+                None,
+                self.camera_d3.view_matrix(),
+                self.camera_d3
+                    .projection_matrix(width as f32, height as f32),
+            );
+            rast.mapmini = self.scene.mapmini.clone();
+            rast.background_color = Some(vec4_to_pixel(&Vec4::new(ac.x, ac.y, ac.z, 1.0)));
+            rast.rasterize(&mut self.scene, self.buffer.pixels_mut(), width, height, 40);
+        }
     }
 
     /// Draw the 2D scene.

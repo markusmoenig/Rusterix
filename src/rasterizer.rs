@@ -1,7 +1,7 @@
 use crate::SampleMode;
 use crate::{
-    pixel_to_vec4, vec4_to_pixel, Batch, CompiledLight, LightType, MapMini, Pixel, PrimitiveMode,
-    Scene,
+    Batch, CompiledLight, LightType, MapMini, Pixel, PrimitiveMode, Scene, pixel_to_vec4,
+    vec4_to_pixel,
 };
 use rayon::prelude::*;
 use vek::{Mat3, Mat4, Vec2, Vec3, Vec4};

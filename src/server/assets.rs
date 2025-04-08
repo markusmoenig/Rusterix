@@ -54,7 +54,7 @@ impl Assets {
             width: atlas_size,
             height: atlas_size,
             border_padding: 0,
-            rectangle_padding: 0,
+            rectangle_padding: 1,
         });
 
         let mut tiles: FxHashMap<Uuid, Tile> = FxHashMap::default();

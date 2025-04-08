@@ -1,4 +1,4 @@
-use crate::{client::draw2d, Assets, Pixel, Rect};
+use crate::{Assets, Pixel, Rect, client::draw2d};
 use draw2d::Draw2D;
 use theframework::prelude::*;
 
@@ -76,6 +76,9 @@ impl MessagesWidget {
         _assets: &Assets,
         messages: Vec<crate::server::Message>,
     ) {
+        let width = buffer.dim().width;
+        let height = buffer.dim().height;
+
         // Append new messages
         for (_, _, _, message, category) in &messages {
             let mut color = [170, 170, 170, 255];
@@ -127,12 +130,7 @@ impl MessagesWidget {
                     color,
                     draw2d::TheHorizontalAlign::Left,
                     draw2d::TheVerticalAlign::Center,
-                    &(
-                        self.rect.x as isize,
-                        self.rect.y as isize,
-                        self.rect.width as isize,
-                        self.rect.height as isize,
-                    ),
+                    &(0, 0, width as isize, height as isize),
                 );
 
                 if self.top_down {
