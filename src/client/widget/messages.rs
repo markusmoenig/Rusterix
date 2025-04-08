@@ -13,6 +13,7 @@ pub struct MessagesWidget {
     pub spacing: f32,
     pub table: toml::Table,
     pub top_down: bool,
+    pub default_color: Pixel,
 }
 
 impl Default for MessagesWidget {
@@ -34,6 +35,7 @@ impl MessagesWidget {
             spacing: 1.0,
             table: toml::Table::default(),
             top_down: false,
+            default_color: [170, 170, 170, 255],
         }
     }
 
@@ -61,6 +63,11 @@ impl MessagesWidget {
                         self.top_down = v;
                     }
                 }
+                if let Some(value) = ui.get("default") {
+                    if let Some(v) = value.as_str() {
+                        self.default_color = self.hex_to_rgba_u8(v);
+                    }
+                }
             }
             self.table = table;
         }
@@ -81,7 +88,7 @@ impl MessagesWidget {
 
         // Append new messages
         for (_, _, _, message, category) in &messages {
-            let mut color = [170, 170, 170, 255];
+            let mut color = self.default_color;
             if let Some(ui) = self.table.get("ui").and_then(toml::Value::as_table) {
                 if let Some(value) = ui.get(category) {
                     if let Some(v) = value.as_str() {
