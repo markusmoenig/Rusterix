@@ -1,4 +1,4 @@
-use crate::{Assets, Map, Pixel, Rect, WHITE, client::draw2d};
+use crate::{Assets, Currencies, Map, Pixel, Rect, WHITE, client::draw2d};
 use draw2d::Draw2D;
 use regex::Regex;
 use theframework::prelude::*;
@@ -92,7 +92,13 @@ impl TextWidget {
         }
     }
 
-    pub fn update_draw(&mut self, buffer: &mut TheRGBABuffer, map: &Map, _assets: &Assets) {
+    pub fn update_draw(
+        &mut self,
+        buffer: &mut TheRGBABuffer,
+        map: &Map,
+        currencies: &Currencies,
+        _assets: &Assets,
+    ) {
         if let Some(font) = &self.font {
             let stride = buffer.stride();
             let mut y = self.rect.y;
@@ -106,7 +112,11 @@ impl TextWidget {
                         "PLAYER" => {
                             for entity in &map.entities {
                                 if entity.is_player() {
-                                    if let Some(value) = entity.attributes.get(key) {
+                                    if key == "FUNDS" {
+                                        return Some(
+                                            entity.wallet.get_balance(currencies).to_string(),
+                                        );
+                                    } else if let Some(value) = entity.attributes.get(key) {
                                         return Some(value.to_string());
                                     }
                                 }

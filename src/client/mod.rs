@@ -80,6 +80,8 @@ pub struct Client {
     // Client Action
     client_action: Arc<Mutex<ClientAction>>,
 
+    currencies: Currencies,
+
     first_game_draw: bool,
 }
 
@@ -138,6 +140,8 @@ impl Client {
             activated_widgets: vec![],
 
             client_action: Arc::new(Mutex::new(ClientAction::default())),
+            currencies: Currencies::default(),
+
             first_game_draw: false,
         }
     }
@@ -437,6 +441,16 @@ impl Client {
             }
         }
 
+        let mut currencies = Currencies::default();
+        _ = currencies.add_currency(Currency {
+            name: "Gold".into(),
+            symbol: "G".into(),
+            exchange_rate: 1.0,
+            max_limit: None,
+        });
+        currencies.base_currency = "G".to_string();
+        self.currencies = currencies;
+
         // Get all player entities
         for (name, character) in assets.entities.iter() {
             match character.1.parse::<Table>() {
@@ -639,7 +653,7 @@ impl Client {
 
         // Draw the text widgets on top
         for widget in self.text_widgets.values_mut() {
-            widget.update_draw(&mut self.target, map, assets);
+            widget.update_draw(&mut self.target, map, &self.currencies, assets);
             self.target
                 .blend_into(widget.rect.x as i32, widget.rect.y as i32, &widget.buffer);
         }

@@ -55,6 +55,23 @@ impl Currencies {
 }
 
 impl Wallet {
+    /// Add currency in base currency units
+    pub fn add_base_currency(
+        &mut self,
+        base_amount: i64,
+        currencies: &Currencies,
+    ) -> Result<(), String> {
+        if base_amount < 0 {
+            return Err("Cannot add a negative amount.".to_string());
+        }
+
+        // Get the base currency symbol
+        let base_symbol = &currencies.base_currency;
+
+        // Convert base_amount to the base currency symbol, then use `add()` which handles overflow
+        self.add(base_symbol, base_amount, currencies)
+    }
+
     /// Add currency to the wallet using the currency symbol, handling overflow into higher currencies
     pub fn add(
         &mut self,
@@ -108,23 +125,34 @@ impl Wallet {
         Ok(())
     }
 
-    /// Spend currency from the wallet using base currency amount
+    /// Spend funds in the base amount.
     pub fn spend(&mut self, base_amount: i64, currencies: &Currencies) -> Result<(), String> {
-        for symbol in currencies.currencies.keys() {
-            let converted_amount = currencies.convert_from_base(base_amount, symbol)?;
+        let mut remaining_base = base_amount;
+
+        // Sort currencies by descending exchange_rate (high to low value)
+        let mut sorted = currencies.currencies.values().collect::<Vec<_>>();
+        sorted.sort_by(|a, b| b.exchange_rate.partial_cmp(&a.exchange_rate).unwrap());
+
+        for currency in sorted {
+            let symbol = &currency.symbol;
             if let Some(balance) = self.balances.get_mut(symbol) {
-                if *balance >= converted_amount {
-                    *balance -= converted_amount;
-                } else {
-                    return Err(format!(
-                        "Insufficient balance for {}. Current: {}, Attempted: {}",
-                        symbol, *balance, converted_amount
-                    ));
+                let available_base = currencies.convert_to_base(*balance, symbol)?;
+                let to_spend_base = remaining_base.min(available_base);
+                let to_spend = currencies.convert_from_base(to_spend_base, symbol)?;
+
+                *balance -= to_spend;
+                remaining_base -= to_spend_base;
+
+                if remaining_base <= 0 {
+                    break;
                 }
-            } else {
-                return Err(format!("Currency {} does not exist in the wallet.", symbol));
             }
         }
+
+        if remaining_base > 0 {
+            return Err("Insufficient funds.".to_string());
+        }
+
         Ok(())
     }
 

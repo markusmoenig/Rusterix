@@ -274,6 +274,17 @@ impl Entity {
         Ok(())
     }
 
+    /// Add the given base currency to the wallet.
+    pub fn add_base_currency(
+        &mut self,
+        amount: i64,
+        currencies: &Currencies,
+    ) -> Result<(), String> {
+        self.wallet.add_base_currency(amount, currencies)?;
+        self.dirty_flags |= 0b100000;
+        Ok(())
+    }
+
     /// Spend the given currency.
     pub fn spend_currency(
         &mut self,

@@ -1,7 +1,7 @@
 use crate::server::py_fn::*;
 use crate::{
-    Assets, Entity, EntityAction, Item, Map, MapMini, PixelSource, PlayerCamera, Value,
-    ValueContainer,
+    Assets, Currencies, Currency, Entity, EntityAction, Item, Map, MapMini, PixelSource,
+    PlayerCamera, Value, ValueContainer,
 };
 use crossbeam_channel::{Receiver, Sender, select, tick, unbounded};
 use rand::*;
@@ -1483,7 +1483,26 @@ fn take(item_id: u32) {
             if let Some(name) = item.attributes.get_str("name") {
                 item_name = name.to_string();
             }
-            entity.add_item(item);
+            let mut message = format!("You take a {}", item_name.to_lowercase());
+
+            if item.attributes.get_bool_default("monetary", false) {
+                // This is not a standalone item but money
+                let amount = item.attributes.get_float_default("worth", 0.0);
+                if amount > 0.0 {
+                    message = format!("You take {} gold.", amount);
+                    let mut currencies = Currencies::default();
+                    _ = currencies.add_currency(Currency {
+                        name: "Gold".into(),
+                        symbol: "G".into(),
+                        exchange_rate: 1.0,
+                        max_limit: None,
+                    });
+                    currencies.base_currency = "G".to_string();
+                    _ = entity.add_base_currency(amount as i64, &currencies);
+                }
+            } else {
+                entity.add_item(item);
+            }
             FROM_SENDER
                 .borrow()
                 .get()
@@ -1491,7 +1510,6 @@ fn take(item_id: u32) {
                 .send(RegionMessage::RemoveItem(*REGIONID.borrow(), item_id))
                 .unwrap();
 
-            let message = format!("You take a {}", item_name.to_lowercase());
             let msg = RegionMessage::Message(
                 *REGIONID.borrow(),
                 Some(entity_id),
