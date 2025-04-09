@@ -501,9 +501,8 @@ impl D2PreviewBuilder {
             || self.map_tool_type == MapToolType::Linedef
         {
             for vertex in &map.vertices {
-                if self.map_tool_type == MapToolType::Vertex
-                    && self.no_rect_geo
-                    && map.is_vertex_in_rect(vertex.id)
+                if self.map_tool_type == MapToolType::Vertex && self.no_rect_geo
+                //&& map.is_vertex_in_rect(vertex.id)
                 {
                     continue;
                 }
