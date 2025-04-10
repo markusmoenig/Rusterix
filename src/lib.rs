@@ -15,6 +15,7 @@ pub mod scenebuilder;
 pub mod script;
 pub mod server;
 pub mod shader;
+pub mod shape;
 pub mod texture;
 pub mod utils;
 pub mod value;
@@ -60,16 +61,16 @@ pub const WHITE: Pixel = [255, 255, 255, 255];
 // Re-exports
 pub use crate::{
     batch::{Batch, CullMode, PrimitiveMode},
-    camera::{d3firstp::D3FirstPCamera, d3iso::D3IsoCamera, d3orbit::D3OrbitCamera, D3Camera},
-    client::{command::Command, daylight::Daylight, Client},
+    camera::{D3Camera, d3firstp::D3FirstPCamera, d3iso::D3IsoCamera, d3orbit::D3OrbitCamera},
+    client::{Client, command::Command, daylight::Daylight},
     edge::Edges,
     intodata::IntoDataInput,
     map::{
-        bbox::BBox, light::CompiledLight, light::Light, light::LightType, linedef::CompiledLinedef,
-        linedef::Linedef, meta::MapMeta, mini::MapMini, pixelsource::NoiseTarget,
-        pixelsource::PixelSource, sector::Sector, state::AnimationVertexState,
-        state::InterpolationType, state::VertexAnimationSystem, state::VertexState, tile::Tile,
-        vertex::Vertex, Map, MapCamera, MapToolType,
+        Map, MapCamera, MapToolType, bbox::BBox, light::CompiledLight, light::Light,
+        light::LightType, linedef::CompiledLinedef, linedef::Linedef, meta::MapMeta, mini::MapMini,
+        pixelsource::NoiseTarget, pixelsource::PixelSource, sector::Sector,
+        state::AnimationVertexState, state::InterpolationType, state::VertexAnimationSystem,
+        state::VertexState, tile::Tile, vertex::Vertex,
     },
     rasterizer::Rasterizer,
     rect::Rect,
@@ -80,6 +81,7 @@ pub use crate::{
     },
     script::mapscript::MapScript,
     server::{
+        Server, ServerState,
         assets::Assets,
         currency::{Currencies, Currency, Wallet},
         entity::Entity,
@@ -89,24 +91,23 @@ pub use crate::{
         message::PlayerCamera,
         message::RegionMessage,
         region::RegionInstance,
-        Server, ServerState,
     },
-    shader::{grid::GridShader, vgradient::VGrayGradientShader, Shader},
+    shader::{Shader, grid::GridShader, vgradient::VGrayGradientShader},
+    shape::{Shape, ShapeType},
     texture::{RepeatMode, SampleMode, Texture},
     value::{Value, ValueContainer},
 };
 
 // Prelude
 pub mod prelude {
-    pub use crate::scenebuilder::{
-        d2builder::D2Builder, d2material::D2MaterialBuilder, d2preview::D2PreviewBuilder,
-        d3builder::D3Builder,
-    };
     pub use crate::Client;
     pub use crate::IntoDataInput;
     pub use crate::MapScript;
     pub use crate::Rasterizer;
-    pub use crate::{pixel_to_vec4, vec4_to_pixel};
+    pub use crate::scenebuilder::{
+        d2builder::D2Builder, d2material::D2MaterialBuilder, d2preview::D2PreviewBuilder,
+        d3builder::D3Builder,
+    };
     pub use crate::{
         AnimationVertexState, Light, LightType, Map, MapMeta, MapToolType, NoiseTarget,
         PixelSource, Sector, Tile, Vertex, VertexAnimationSystem, VertexState,
@@ -115,10 +116,11 @@ pub mod prelude {
         Assets, Currencies, Currency, Entity, EntityUpdate, Item, ItemUpdate, RegionInstance,
         RegionMessage, Server, Wallet,
     };
+    pub use crate::{BLACK, Pixel, TRANSPARENT, WHITE};
     pub use crate::{Batch, CullMode, PrimitiveMode};
     pub use crate::{D3Camera, D3FirstPCamera, D3IsoCamera, D3OrbitCamera};
     pub use crate::{GridShader, Shader, VGrayGradientShader};
-    pub use crate::{Pixel, BLACK, TRANSPARENT, WHITE};
     pub use crate::{Rect, Scene, Value, ValueContainer};
     pub use crate::{RepeatMode, SampleMode, Texture};
+    pub use crate::{pixel_to_vec4, vec4_to_pixel};
 }
