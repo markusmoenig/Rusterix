@@ -158,7 +158,7 @@ impl D2PreviewBuilder {
         let mut atlas_batch = Batch::emptyd2();
 
         // Repeated tile textures have their own batches
-        let mut repeated_batches: Vec<Batch<[f32; 3]>> = vec![];
+        let mut repeated_batches: Vec<Batch<[f32; 2]>> = vec![];
         let mut repeated_offsets: FxHashMap<Uuid, usize> = FxHashMap::default();
 
         // Add Sectors
@@ -174,7 +174,7 @@ impl D2PreviewBuilder {
         {
             for sector in &map.sectors {
                 if let Some(geo) = sector.generate_geometry(map) {
-                    let mut vertices: Vec<[f32; 3]> = vec![];
+                    let mut vertices: Vec<[f32; 2]> = vec![];
                     let mut uvs: Vec<[f32; 2]> = vec![];
                     let bbox = sector.bounding_box(map);
 
@@ -243,7 +243,7 @@ impl D2PreviewBuilder {
                                     ];
                                     uvs.push(uv);
                                 }
-                                vertices.push([local.x, local.y, 1.0]);
+                                vertices.push([local.x, local.y]);
                             }
 
                             if repeat {
@@ -285,7 +285,7 @@ impl D2PreviewBuilder {
                             }
                         }
 
-                        let mut vertices: Vec<[f32; 3]> = vec![];
+                        let mut vertices: Vec<[f32; 2]> = vec![];
                         let mut uvs: Vec<[f32; 2]> = vec![];
                         let bbox = sector.bounding_box(map);
 
@@ -327,7 +327,7 @@ impl D2PreviewBuilder {
                                         ];
                                         uvs.push(uv);
                                     }
-                                    vertices.push([local.x, local.y, 1.0]);
+                                    vertices.push([local.x, local.y]);
                                 }
 
                                 if repeat {
@@ -374,7 +374,7 @@ impl D2PreviewBuilder {
                                 source = Some(pixelsource);
                             }
 
-                            let mut vertices: Vec<[f32; 3]> = vec![];
+                            let mut vertices: Vec<[f32; 2]> = vec![];
                             let mut uvs: Vec<[f32; 2]> = vec![];
 
                             let tile_size = 100;
@@ -395,7 +395,7 @@ impl D2PreviewBuilder {
                                             (vertex[1]) / texture_scale,
                                         ];
                                         uvs.push(uv);
-                                        vertices.push([local.x, local.y, 1.0]);
+                                        vertices.push([local.x, local.y]);
                                     }
 
                                     if let Some(offset) = repeated_offsets.get(&tile.id) {
@@ -480,7 +480,7 @@ impl D2PreviewBuilder {
         // let mut light_on_batch = Batch::emptyd2().texture_index(10);
         // let mut light_off_batch = Batch::emptyd2().texture_index(11);
 
-        let mut repeated_batches: Vec<Batch<[f32; 3]>> = vec![];
+        let mut repeated_batches: Vec<Batch<[f32; 2]>> = vec![];
         let mut repeated_offsets: FxHashMap<Uuid, usize> = FxHashMap::default();
 
         // Add the clipping area

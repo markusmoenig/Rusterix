@@ -18,7 +18,7 @@ impl D2MaterialBuilder {
 
     pub fn build_texture(&self, map: &Map, assets: &Assets, texture: &mut Texture) {
         let mut textures = vec![];
-        let mut batches: Vec<Batch<[f32; 3]>> = vec![];
+        let mut batches: Vec<Batch<[f32; 2]>> = vec![];
         let size = texture.width;
 
         let to_local = |vertex: &[f32; 2]| -> Vec2<f32> {
@@ -30,7 +30,7 @@ impl D2MaterialBuilder {
         let sorted_sectors = map.sorted_sectors_by_area();
         for sector in &sorted_sectors {
             if let Some(geo) = sector.generate_geometry(map) {
-                let mut vertices: Vec<[f32; 3]> = vec![];
+                let mut vertices: Vec<[f32; 2]> = vec![];
                 let mut uvs: Vec<[f32; 2]> = vec![];
                 let bbox = sector.bounding_box(map);
 
@@ -62,7 +62,7 @@ impl D2MaterialBuilder {
                                 ];
                                 uvs.push(uv);
                             }
-                            vertices.push([local.x, local.y, 1.0]);
+                            vertices.push([local.x, local.y]);
                         }
 
                         let texture_index = textures.len();

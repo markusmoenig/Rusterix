@@ -20,9 +20,9 @@ pub struct Scene {
 
     /// The 2D batches get rendered on top of the 3D batches (2D game or UI).
     /// Static 2D batches.
-    pub d2_static: Vec<Batch<[f32; 3]>>,
+    pub d2_static: Vec<Batch<[f32; 2]>>,
     /// 2D dynamic batches which can be updated dynamically.
-    pub d2_dynamic: Vec<Batch<[f32; 3]>>,
+    pub d2_dynamic: Vec<Batch<[f32; 2]>>,
 
     /// The list of textures which the batches index into.
     pub textures: Vec<Tile>,
@@ -64,7 +64,7 @@ impl Scene {
     }
 
     // From static 2D and 3D meshes.
-    pub fn from_static(d2: Vec<Batch<[f32; 3]>>, d3: Vec<Batch<[f32; 4]>>) -> Self {
+    pub fn from_static(d2: Vec<Batch<[f32; 2]>>, d3: Vec<Batch<[f32; 4]>>) -> Self {
         Self {
             background: None,
             lights: vec![],

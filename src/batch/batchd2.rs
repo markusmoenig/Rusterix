@@ -13,7 +13,7 @@ use SampleMode::*;
 // }
 
 /// A batch of 3D vertices, indices and their UVs which make up a 2D polygons.
-impl Batch<[f32; 3]> {
+impl Batch<[f32; 2]> {
     /// Empty constructor (the default)
     pub fn emptyd2() -> Self {
         Batch {
@@ -39,7 +39,7 @@ impl Batch<[f32; 3]> {
 
     /// Constructor for 2D vertices
     pub fn new_2d(
-        vertices: Vec<[f32; 3]>,
+        vertices: Vec<[f32; 2]>,
         indices: Vec<(usize, usize, usize)>,
         uvs: Vec<[f32; 2]>,
     ) -> Self {
@@ -67,10 +67,10 @@ impl Batch<[f32; 3]> {
     /// Create a Batch for a rectangle in 2D.
     pub fn from_rectangle(x: f32, y: f32, width: f32, height: f32) -> Self {
         let vertices = vec![
-            [x, y, 1.0],                  // Bottom-left
-            [x, y + height, 1.0],         // Top-left
-            [x + width, y + height, 1.0], // Top-right
-            [x + width, y, 1.0],          // Bottom-right
+            [x, y],                  // Bottom-left
+            [x, y + height],         // Top-left
+            [x + width, y + height], // Top-right
+            [x + width, y],          // Bottom-right
         ];
 
         let indices = vec![(0, 1, 2), (0, 2, 3)];
@@ -91,10 +91,10 @@ impl Batch<[f32; 3]> {
 
         // Add vertices
         self.vertices.extend(vec![
-            [x, y, 1.0],                  // Bottom-left
-            [x, y + height, 1.0],         // Top-left
-            [x + width, y + height, 1.0], // Top-right
-            [x + width, y, 1.0],          // Bottom-right
+            [x, y],                  // Bottom-left
+            [x, y + height],         // Top-left
+            [x + width, y + height], // Top-right
+            [x + width, y],          // Bottom-right
         ]);
 
         // Add UVs
@@ -115,7 +115,7 @@ impl Batch<[f32; 3]> {
     /// Add a set of geometry to the batch.
     pub fn add(
         &mut self,
-        vertices: Vec<[f32; 3]>,
+        vertices: Vec<[f32; 2]>,
         indices: Vec<(usize, usize, usize)>,
         uvs: Vec<[f32; 2]>,
     ) {
@@ -133,17 +133,13 @@ impl Batch<[f32; 3]> {
     /// Add a set of geometry to the batch with wrapping (to create tilable textures).
     pub fn add_wrapped(
         &mut self,
-        vertices: Vec<[f32; 3]>,
+        vertices: Vec<[f32; 2]>,
         indices: Vec<(usize, usize, usize)>,
         uvs: Vec<[f32; 2]>,
         wrap_size: f32,
     ) {
-        let wrap_vertex = |v: [f32; 3], offset: [f32; 2]| -> [f32; 3] {
-            [
-                v[0] + offset[0] * wrap_size,
-                v[1] + offset[1] * wrap_size,
-                v[2],
-            ]
+        let wrap_vertex = |v: [f32; 2], offset: [f32; 2]| -> [f32; 2] {
+            [v[0] + offset[0] * wrap_size, v[1] + offset[1] * wrap_size]
         };
 
         let offsets = [
@@ -163,7 +159,7 @@ impl Batch<[f32; 3]> {
         let mut all_wrapped_indices = vec![];
 
         for offset in offsets.iter() {
-            let wrapped_vertices: Vec<[f32; 3]> =
+            let wrapped_vertices: Vec<[f32; 2]> =
                 vertices.iter().map(|&v| wrap_vertex(v, *offset)).collect();
 
             // Offset indices for the current set of wrapped vertices
@@ -203,10 +199,10 @@ impl Batch<[f32; 3]> {
         if self.mode == PrimitiveMode::Lines {
             // In line mode we add the start / end vertices directly.
             let vertices = vec![
-                [start[0], start[1], 1.0],
-                [end[0], end[1], 1.0],
-                [end[0], end[1], 1.0],     // Repeated to ensure valid triangles
-                [start[0], start[1], 1.0], // Repeated to ensure valid triangles
+                [start[0], start[1]],
+                [end[0], end[1]],
+                [end[0], end[1]],     // Repeated to ensure valid triangles
+                [start[0], start[1]], // Repeated to ensure valid triangles
             ];
 
             let uvs = vec![[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]];
@@ -220,10 +216,10 @@ impl Batch<[f32; 3]> {
             ]);
         } else {
             let vertices = vec![
-                [start[0] - normal[0], start[1] - normal[1], 1.0],
-                [start[0] + normal[0], start[1] + normal[1], 1.0],
-                [end[0] + normal[0], end[1] + normal[1], 1.0],
-                [end[0] - normal[0], end[1] - normal[1], 1.0],
+                [start[0] - normal[0], start[1] - normal[1]],
+                [start[0] + normal[0], start[1] + normal[1]],
+                [end[0] + normal[0], end[1] + normal[1]],
+                [end[0] - normal[0], end[1] - normal[1]],
             ];
 
             let uvs = vec![[0.0, 1.0], [0.0, 0.0], [1.0, 0.0], [1.0, 1.0]];
@@ -327,8 +323,8 @@ impl Batch<[f32; 3]> {
                 .vertices
                 .iter()
                 .map(|&v| {
-                    let result = matrix * Vec3::new(v[0], v[1], v[2]);
-                    [result.x, result.y, result.z]
+                    let result = matrix * Vec3::new(v[0], v[1], 1.0);
+                    [result.x, result.y]
                 })
                 .collect();
         } else {

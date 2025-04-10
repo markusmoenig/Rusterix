@@ -235,7 +235,7 @@ impl Rasterizer {
         &self,
         buffer: &mut [u8],
         tile: &TileRect,
-        batch: &Batch<[f32; 3]>,
+        batch: &Batch<[f32; 2]>,
         scene: &Scene,
         dynamic: bool,
     ) {
@@ -844,9 +844,9 @@ impl Rasterizer {
     #[inline(always)]
     fn barycentric_weights_2d(
         &self,
-        a: &[f32; 3],
-        b: &[f32; 3],
-        c: &[f32; 3],
+        a: &[f32; 2],
+        b: &[f32; 2],
+        c: &[f32; 2],
         p: &[f32; 2],
     ) -> [f32; 3] {
         let ac = [c[0] - a[0], c[1] - a[1]];
