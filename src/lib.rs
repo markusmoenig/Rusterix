@@ -15,7 +15,7 @@ pub mod scenebuilder;
 pub mod script;
 pub mod server;
 pub mod shader;
-pub mod shape;
+pub mod shapestack;
 pub mod texture;
 pub mod utils;
 pub mod value;
@@ -93,7 +93,10 @@ pub use crate::{
         region::RegionInstance,
     },
     shader::{Shader, grid::GridShader, vgradient::VGrayGradientShader},
-    shape::{Shape, ShapeType},
+    shapestack::ShapeStack,
+    shapestack::shape::{Shape, ShapeType},
+    shapestack::shapecontext::ShapeContext,
+    shapestack::shapeeffect::ShapeEffect,
     texture::{RepeatMode, SampleMode, Texture},
     value::{Value, ValueContainer},
 };

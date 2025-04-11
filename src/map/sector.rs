@@ -235,6 +235,34 @@ impl Sector {
         inside
     }
 
+    /// Generate the signed distance to the
+    pub fn signed_distance(&self, map: &Map, point: Vec2<f32>) -> Option<f32> {
+        let mut min_dist = f32::MAX;
+
+        // Distance to nearest edge
+        for &linedef_id in &self.linedefs {
+            if let Some(ld) = map.find_linedef(linedef_id) {
+                let v0 = map.get_vertex(ld.start_vertex)?;
+                let v1 = map.get_vertex(ld.end_vertex)?;
+                let edge = v1 - v0;
+                let to_point = point - v0;
+
+                let t = to_point.dot(edge) / edge.dot(edge);
+                let t_clamped = t.clamp(0.0, 1.0);
+                let closest = v0 + edge * t_clamped;
+
+                let dist = (point - closest).magnitude();
+                min_dist = min_dist.min(dist);
+            }
+        }
+
+        // Check if point is inside
+        let inside = self.is_inside(map, point);
+
+        // Return signed distance
+        Some(if inside { -min_dist } else { min_dist })
+    }
+
     /// Generate 2D walls with uniform thickness for the sector using mitered joins.
     #[allow(clippy::type_complexity)]
     pub fn generate_wall_geometry(
