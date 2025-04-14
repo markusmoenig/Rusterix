@@ -1,8 +1,9 @@
 pub mod shape;
 pub mod shapecontext;
-pub mod shapeeffect;
+pub mod shapefx;
+pub mod shapefxgraph;
 
-use crate::{Map, ShapeContext, ShapeEffect, ValueContainer};
+use crate::{Map, ShapeContext};
 use rayon::prelude::*;
 use theframework::prelude::*;
 use vek::Vec2;
@@ -26,7 +27,7 @@ impl ShapeStack {
         let px = area_size.x / width as f32;
         // let px = pixel_size.x.max(pixel_size.y);
 
-        let effects = vec![ShapeEffect::VerticalGradient(ValueContainer::default())];
+        // let effects = vec![ShapeFX::new(ShapeFXRole::VerticalGradient)];
 
         buffer
             .pixels_mut()
@@ -46,44 +47,60 @@ impl ShapeStack {
                     let mut color = Vec4::new(0.0, 0.0, 0.0, 1.0);
 
                     let sorted_sectors = map.sorted_sectors_by_area();
-                    for sector in &sorted_sectors {
+                    for sector in sorted_sectors {
                         let bbox = sector.bounding_box(map);
                         let mut found = false;
 
-                        for dx in -1..=1 {
-                            for dy in -1..=1 {
-                                let offset =
-                                    Vec2::new((dx as f32) * area_size.x, (dy as f32) * area_size.y);
+                        if let Some(graph_id) = sector.effect_graph {
+                            if let Some(graph) = map.effect_graphs.get(&graph_id) {
+                                for dx in -1..=1 {
+                                    for dy in -1..=1 {
+                                        let offset = Vec2::new(
+                                            (dx as f32) * area_size.x,
+                                            (dy as f32) * area_size.y,
+                                        );
 
-                                let shifted_point = world - offset;
+                                        let shifted_point = world - offset;
 
-                                let uv = Vec2::new(
-                                    (shifted_point.x - bbox.min.x) / (bbox.max.x - bbox.min.x),
-                                    (shifted_point.y - bbox.min.y) / (bbox.max.y - bbox.min.y),
-                                );
+                                        let uv = Vec2::new(
+                                            (shifted_point.x - bbox.min.x)
+                                                / (bbox.max.x - bbox.min.x),
+                                            (shifted_point.y - bbox.min.y)
+                                                / (bbox.max.y - bbox.min.y),
+                                        );
 
-                                if let Some(distance) = sector.signed_distance(map, shifted_point) {
-                                    let ctx = ShapeContext {
-                                        point_world: shifted_point,
-                                        point: shifted_point / px,
-                                        uv,
-                                        distance_world: distance,
-                                        distance: distance / px,
-                                        shape_id: sector.id,
-                                        px,
-                                    };
+                                        if let Some(distance) =
+                                            sector.signed_distance(map, shifted_point)
+                                        {
+                                            let ctx = ShapeContext {
+                                                point_world: shifted_point,
+                                                point: shifted_point / px,
+                                                uv,
+                                                distance_world: distance,
+                                                distance: distance / px,
+                                                shape_id: sector.id,
+                                                px,
+                                            };
 
-                                    for effect in effects.iter() {
-                                        if let Some(col) = effect.evaluate(&ctx) {
-                                            color = Vec4::lerp(color, col, col.w);
-                                            found = true;
-                                            break;
+                                            if let Some(col) = graph.evaluate(&ctx) {
+                                                color = Vec4::lerp(color, col, col.w);
+                                                found = true;
+                                                break;
+                                            }
+
+                                            // for effect in effects.iter() {
+                                            //     if let Some(col) = effect.evaluate(&ctx) {
+                                            //         color = Vec4::lerp(color, col, col.w);
+                                            //         found = true;
+                                            //         break;
+                                            //     }
+                                            // }
                                         }
                                     }
+                                    if found {
+                                        break;
+                                    }
                                 }
-                            }
-                            if found {
-                                break;
                             }
                         }
                     }

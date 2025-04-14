@@ -10,10 +10,12 @@ pub mod state;
 pub mod tile;
 pub mod vertex;
 
-use crate::{BBox, MapMini, PixelSource, Value, ValueContainer, VertexAnimationSystem};
+use crate::{
+    BBox, MapMini, PixelSource, ShapeFXGraph, Value, ValueContainer, VertexAnimationSystem,
+};
 use ordered_float::NotNan;
 use pathfinding::prelude::astar;
-use theframework::prelude::FxHashSet;
+use theframework::prelude::{FxHashMap, FxHashSet};
 
 use linedef::*;
 use sector::*;
@@ -69,6 +71,9 @@ pub struct Map {
     pub vertices: Vec<Vertex>,
     pub linedefs: Vec<Linedef>,
     pub sectors: Vec<Sector>,
+
+    #[serde(default)]
+    pub effect_graphs: FxHashMap<Uuid, ShapeFXGraph>,
 
     pub sky_texture: Option<Uuid>,
 
@@ -130,6 +135,7 @@ impl Map {
             linedefs: vec![],
             sectors: vec![],
 
+            effect_graphs: FxHashMap::default(),
             sky_texture: None,
 
             camera: MapCamera::TwoD,

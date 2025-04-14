@@ -21,6 +21,9 @@ pub struct Sector {
     /// The rect tool layer for this sector (if created by the rect tool).
     #[serde(default)]
     pub layer: Option<u8>,
+
+    #[serde(default)]
+    pub effect_graph: Option<Uuid>,
 }
 
 impl Sector {
@@ -39,6 +42,7 @@ impl Sector {
             properties,
             neighbours: vec![],
 
+            effect_graph: None,
             layer: None,
         }
     }

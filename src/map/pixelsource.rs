@@ -26,6 +26,7 @@ pub enum PixelSource {
     TileId(Uuid),
     MaterialId(Uuid),
     Color(TheColor),
+    ShapeFXGraphId(Uuid),
 }
 
 use PixelSource::*;

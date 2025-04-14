@@ -4,7 +4,7 @@ use rand::{Rng, SeedableRng};
 use theframework::prelude::*;
 use vek::Vec2;
 
-#[derive(Default, Clone, Copy, PartialEq)]
+#[derive(Default, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ShapeType {
     #[default]
     Circle,
@@ -33,6 +33,7 @@ impl std::fmt::Display for ShapeType {
     }
 }
 
+#[derive(Clone)]
 pub struct Shape {
     pub shape: ShapeType,
     pub center: Vec2<f32>,

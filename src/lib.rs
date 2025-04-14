@@ -96,7 +96,8 @@ pub use crate::{
     shapestack::ShapeStack,
     shapestack::shape::{Shape, ShapeType},
     shapestack::shapecontext::ShapeContext,
-    shapestack::shapeeffect::ShapeEffect,
+    shapestack::shapefx::{ShapeFX, ShapeFXRole},
+    shapestack::shapefxgraph::ShapeFXGraph,
     texture::{RepeatMode, SampleMode, Texture},
     value::{Value, ValueContainer},
 };
