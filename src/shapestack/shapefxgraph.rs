@@ -1,4 +1,4 @@
-use crate::{ShapeContext, ShapeFX, ShapeFXRole};
+use crate::{ShapeContext, ShapeFX, ShapeFXRole, Tile};
 use theframework::prelude::*;
 use uuid::Uuid;
 
@@ -14,8 +14,6 @@ pub struct ShapeFXGraph {
 
     pub scroll_offset: Vec2<i32>,
     pub zoom: f32,
-
-    pub output: TheRGBABuffer,
 }
 
 impl Default for ShapeFXGraph {
@@ -26,8 +24,6 @@ impl Default for ShapeFXGraph {
 
 impl ShapeFXGraph {
     pub fn new() -> Self {
-        let mut output = TheRGBABuffer::new(TheDim::sized(100, 100));
-        output.fill([255, 255, 255, 255]);
         Self {
             id: Uuid::new_v4(),
             effects: vec![],
@@ -35,20 +31,25 @@ impl ShapeFXGraph {
             selected_node: None,
             scroll_offset: Vec2::zero(),
             zoom: 1.0,
-            output,
         }
     }
 
     /// Evaluate the graph
-    pub fn evaluate(&self, ctx: &ShapeContext) -> Option<Vec4<f32>> {
+    pub fn evaluate(&self, ctx: &ShapeContext, palette: &ThePalette) -> Option<Vec4<f32>> {
         for effect in self.effects.iter() {
             if effect.role == ShapeFXRole::Geometry {
                 continue;
             }
-            if let Some(col) = effect.evaluate(ctx) {
+            if let Some(col) = effect.evaluate(ctx, palette) {
                 return Some(col);
             }
         }
         None
+    }
+
+    pub fn load(&mut self, palette: &ThePalette) {
+        for fx in self.effects.iter_mut() {
+            fx.load(palette);
+        }
     }
 }

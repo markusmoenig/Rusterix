@@ -15,9 +15,6 @@ pub struct Linedef {
     pub front_sector: Option<u32>,
     pub back_sector: Option<u32>,
 
-    #[serde(default)]
-    pub effect_graph: Option<Uuid>,
-
     pub properties: ValueContainer,
 }
 
@@ -38,7 +35,6 @@ impl Linedef {
             front_sector: None,
             back_sector: None,
 
-            effect_graph: None,
             properties,
         }
     }

@@ -3,7 +3,7 @@ pub mod shapecontext;
 pub mod shapefx;
 pub mod shapefxgraph;
 
-use crate::{Map, ShapeContext};
+use crate::{Map, PixelSource, ShapeContext, Value};
 use rayon::prelude::*;
 use theframework::prelude::*;
 use vek::Vec2;
@@ -18,7 +18,7 @@ impl ShapeStack {
         Self { area_min, area_max }
     }
 
-    pub fn render(&mut self, buffer: &mut TheRGBABuffer, map: &Map) {
+    pub fn render(&mut self, buffer: &mut TheRGBABuffer, map: &mut Map, palette: &ThePalette) {
         let width = buffer.dim().width as usize;
         let height = buffer.dim().height as usize;
         let area_size = self.area_max - self.area_min;
@@ -28,6 +28,10 @@ impl ShapeStack {
         // let px = pixel_size.x.max(pixel_size.y);
 
         // let effects = vec![ShapeFX::new(ShapeFXRole::VerticalGradient)];
+
+        for (_, fx) in map.effect_graphs.iter_mut() {
+            fx.load(palette);
+        }
 
         buffer
             .pixels_mut()
@@ -51,8 +55,10 @@ impl ShapeStack {
                         let bbox = sector.bounding_box(map);
                         let mut found = false;
 
-                        if let Some(graph_id) = sector.effect_graph {
-                            if let Some(graph) = map.effect_graphs.get(&graph_id) {
+                        if let Some(Value::Source(PixelSource::ShapeFXGraphId(graph_id))) =
+                            sector.properties.get("floor_source")
+                        {
+                            if let Some(graph) = map.effect_graphs.get(graph_id) {
                                 for dx in -1..=1 {
                                     for dy in -1..=1 {
                                         let offset = Vec2::new(
@@ -82,7 +88,7 @@ impl ShapeStack {
                                                 px,
                                             };
 
-                                            if let Some(col) = graph.evaluate(&ctx) {
+                                            if let Some(col) = graph.evaluate(&ctx, palette) {
                                                 color = Vec4::lerp(color, col, col.w);
                                                 found = true;
                                                 break;
