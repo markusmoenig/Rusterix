@@ -210,7 +210,7 @@ impl D2PreviewBuilder {
 
                     if let Some(Value::Source(pixelsource)) = source {
                         if let Some(tile) =
-                            pixelsource.to_tile(assets, tile_size, &sector.properties)
+                            pixelsource.to_tile(assets, tile_size, &sector.properties, map)
                         {
                             for vertex in &geo.0 {
                                 let local = self.map_grid_to_local(
@@ -294,7 +294,7 @@ impl D2PreviewBuilder {
 
                         if let Some(pixelsource) = source {
                             if let Some(tile) =
-                                pixelsource.to_tile(assets, tile_size, &sector.properties)
+                                pixelsource.to_tile(assets, tile_size, &sector.properties, map)
                             {
                                 for vertex in &geo.0 {
                                     let local = self.map_grid_to_local(
@@ -380,7 +380,7 @@ impl D2PreviewBuilder {
                             let tile_size = 100;
                             if let Some(pixelsource) = source {
                                 if let Some(tile) =
-                                    pixelsource.to_tile(assets, tile_size, &linedef.properties)
+                                    pixelsource.to_tile(assets, tile_size, &linedef.properties, map)
                                 {
                                     for vertex in &geo.0 {
                                         let local = self.map_grid_to_local(
@@ -708,7 +708,7 @@ impl D2PreviewBuilder {
 
                 if let Some(Value::Source(source)) = entity.attributes.get("source") {
                     if entity.attributes.get_bool_default("visible", false) {
-                        if let Some(tile) = source.to_tile(assets, 100, &entity.attributes) {
+                        if let Some(tile) = source.to_tile(assets, 100, &entity.attributes, map) {
                             let texture_index = textures.len();
 
                             let mut batch = Batch::emptyd2()
@@ -744,7 +744,7 @@ impl D2PreviewBuilder {
 
                 if let Some(Value::Source(source)) = item.attributes.get("source") {
                     if item.attributes.get_bool_default("visible", false) {
-                        if let Some(tile) = source.to_tile(assets, 100, &item.attributes) {
+                        if let Some(tile) = source.to_tile(assets, 100, &item.attributes, map) {
                             let texture_index = textures.len();
 
                             let mut batch = Batch::emptyd2()

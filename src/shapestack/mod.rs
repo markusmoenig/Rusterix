@@ -3,7 +3,7 @@ pub mod shapecontext;
 pub mod shapefx;
 pub mod shapefxgraph;
 
-use crate::{Map, PixelSource, ShapeContext, Value};
+use crate::{Map, PixelSource, ShapeContext, Texture, Value};
 use rayon::prelude::*;
 use theframework::prelude::*;
 use vek::Vec2;
@@ -18,23 +18,17 @@ impl ShapeStack {
         Self { area_min, area_max }
     }
 
-    pub fn render(&mut self, buffer: &mut TheRGBABuffer, map: &mut Map, palette: &ThePalette) {
-        let width = buffer.dim().width as usize;
-        let height = buffer.dim().height as usize;
+    pub fn render(&mut self, buffer: &mut Texture, map: &Map, palette: &ThePalette) {
+        let width = buffer.width as usize;
+        let height = buffer.height as usize;
         let area_size = self.area_max - self.area_min;
 
         // let pixel_size = Vec2::new(area_size.x / width as f32, area_size.y / height as f32);
         let px = area_size.x / width as f32;
         // let px = pixel_size.x.max(pixel_size.y);
 
-        // let effects = vec![ShapeFX::new(ShapeFXRole::VerticalGradient)];
-
-        for (_, fx) in map.effect_graphs.iter_mut() {
-            fx.load(palette);
-        }
-
         buffer
-            .pixels_mut()
+            .data
             .par_rchunks_exact_mut(width * 4)
             .enumerate()
             .for_each(|(j, line)| {

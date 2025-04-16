@@ -94,7 +94,7 @@ impl D3Builder {
                             sector.properties.get("floor_source")
                         {
                             if let Some(tile) =
-                                pixelsource.to_tile(assets, tile_size, &sector.properties)
+                                pixelsource.to_tile(assets, tile_size, &sector.properties, map)
                             {
                                 let floor_vertices = vertices
                                     .iter()
@@ -407,7 +407,8 @@ impl D3Builder {
 
                             add_billboard(&start, &end, scale, &mut batch);
 
-                            if let Some(tile) = source.to_tile(assets, 100, &sector.properties) {
+                            if let Some(tile) = source.to_tile(assets, 100, &sector.properties, map)
+                            {
                                 textures.push(tile);
                             }
 
@@ -457,7 +458,7 @@ impl D3Builder {
 
                         add_billboard(&start, &end, 2.0, &mut batch);
 
-                        if let Some(tile) = source.to_tile(assets, 100, &entity.attributes) {
+                        if let Some(tile) = source.to_tile(assets, 100, &entity.attributes, map) {
                             textures.push(tile);
                         }
 
@@ -496,7 +497,7 @@ impl D3Builder {
 
                         add_billboard(&start, &end, 1.0, &mut batch);
 
-                        if let Some(tile) = source.to_tile(assets, 100, &item.attributes) {
+                        if let Some(tile) = source.to_tile(assets, 100, &item.attributes, map) {
                             textures.push(tile);
                         }
 

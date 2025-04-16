@@ -21,6 +21,7 @@ pub struct Assets {
     pub atlas: Texture,
 
     pub fonts: FxHashMap<String, fontdue::Font>,
+    pub palette: ThePalette,
 }
 
 impl Default for Assets {
@@ -43,6 +44,7 @@ impl Assets {
             config: String::new(),
             atlas: Texture::default(),
             fonts: FxHashMap::default(),
+            palette: ThePalette::default(),
         }
     }
 
@@ -118,10 +120,10 @@ impl Assets {
     }
 
     /// Compile the materials.
-    pub fn set_materials(&mut self, materials: FxHashMap<Uuid, Map>, size: usize) {
+    pub fn set_materials(&mut self, mut materials: FxHashMap<Uuid, Map>, size: usize) {
         let b = D2MaterialBuilder::new();
         let mut tiles = FxHashMap::default();
-        for map in materials.values() {
+        for map in materials.values_mut() {
             let mut texture = Texture::new(vec![0_u8; size * size * 4], size, size);
             b.build_texture(map, self, &mut texture);
             tiles.insert(map.id, Tile::from_texture(texture));

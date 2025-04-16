@@ -52,9 +52,6 @@ pub struct ShapeFX {
     pub values: ValueContainer,
 
     pub position: Vec2<i32>,
-
-    pub i32_vals: Vec<Vec4<i32>>,
-    pub f32_vals: Vec<Vec4<f32>>,
 }
 
 impl ShapeFX {
@@ -75,9 +72,6 @@ impl ShapeFX {
             role,
             values,
             position: Vec2::new(20, 20),
-
-            i32_vals: vec![],
-            f32_vals: vec![],
         }
     }
 
@@ -134,15 +128,32 @@ impl ShapeFX {
             Gradient => {
                 let alpha = 1.0 - ShapeFX::smoothstep(-2.0, 0.0, ctx.distance);
                 if alpha > 0.0 {
-                    let angle_rad = self.f32_vals[0].x;
+                    let mut from = Vec4::zero();
+                    let top_index = self.values.get_int_default("from", 0);
+                    if let Some(Some(top_color)) = palette.colors.get(top_index as usize) {
+                        from = top_color.to_vec4();
+                    }
+                    let mut to = Vec4::zero();
+                    let bottom_index = self.values.get_int_default("to", 1);
+                    if let Some(Some(bottom_color)) = palette.colors.get(bottom_index as usize) {
+                        to = bottom_color.to_vec4();
+                    }
+
+                    let angle_rad =
+                        (90.0 - self.values.get_float_default("direction", 0.0)).to_radians();
                     let dir = Vec2::new(angle_rad.cos(), angle_rad.sin());
                     let centered_uv = ctx.uv - Vec2::new(0.5, 0.5);
                     let projection = centered_uv.dot(dir);
                     let t =
                         (projection / std::f32::consts::FRAC_1_SQRT_2 * 0.5 + 0.5).clamp(0.0, 1.0);
-                    let mut c = self.f32_vals[1] * (1.0 - t) + self.f32_vals[2] * t;
-                    // c.w = 1.0;
-                    // if let Some(index) - palette.find_closest_color_index(color)
+                    let mut c = from * (1.0 - t) + to * t;
+                    /*
+                    c.w = 1.0;
+                    if let Some(index) = palette.find_closest_color_index(&TheColor::from(c)) {
+                        if let Some(Some(col)) = palette.colors.get(index) {
+                            c = col.to_vec4();
+                        }
+                    }*/
                     c.w = alpha;
                     Some(c)
                 } else {
@@ -156,26 +167,6 @@ impl ShapeFX {
               //     let glow = 1.0 - smoothstep(0.0, radius * ctx.px, ctx.distance.max(0.0));
               //     glow_color * glow
               // }
-        }
-    }
-
-    pub fn load(&mut self, palette: &ThePalette) {
-        self.f32_vals = vec![];
-        match self.role {
-            Gradient => {
-                let d = (90.0 - self.values.get_float_default("direction", 0.0)).to_radians();
-                self.f32_vals.push(Vec4::new(d, d, d, d));
-
-                let top_index = self.values.get_int_default("from", 0);
-                if let Some(Some(top_color)) = palette.colors.get(top_index as usize) {
-                    self.f32_vals.push(top_color.to_vec4());
-                }
-                let bottom_index = self.values.get_int_default("to", 1);
-                if let Some(Some(bottom_color)) = palette.colors.get(bottom_index as usize) {
-                    self.f32_vals.push(bottom_color.to_vec4());
-                }
-            }
-            _ => {}
         }
     }
 

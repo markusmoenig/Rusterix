@@ -1,4 +1,4 @@
-use crate::{Assets, Texture, Tile, ValueContainer};
+use crate::{Assets, Map, ShapeStack, Texture, Tile, ValueContainer};
 use theframework::prelude::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -33,7 +33,13 @@ use PixelSource::*;
 
 impl PixelSource {
     /// Generate a tile from the given PixelValue
-    pub fn to_tile(&self, assets: &Assets, size: usize, values: &ValueContainer) -> Option<Tile> {
+    pub fn to_tile(
+        &self,
+        assets: &Assets,
+        size: usize,
+        values: &ValueContainer,
+        map: &Map,
+    ) -> Option<Tile> {
         match self {
             TileId(id) => assets.tiles.get(id).cloned(),
             MaterialId(id) => assets.materials.get(id).cloned(),
@@ -87,6 +93,18 @@ impl PixelSource {
                     }
                 }
                 tile.append(Texture::new(buffer, size, size));
+                Some(tile)
+            }
+            ShapeFXGraphId(id) => {
+                let mut tile = Tile::empty();
+                let buffer = vec![0u8; size * size * 4];
+                let mut texture = Texture::new(buffer, size, size);
+
+                if let Some(stack) = map.effect_graphs.get(&id) {
+                    let mut stack = ShapeStack::new(Vec2::new(-5.0, -5.0), Vec2::new(5.0, 5.0));
+                    stack.render(&mut texture, map, &assets.palette);
+                }
+                tile.append(texture);
                 Some(tile)
             }
             _ => None,

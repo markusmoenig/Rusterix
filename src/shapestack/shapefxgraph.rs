@@ -46,10 +46,4 @@ impl ShapeFXGraph {
         }
         None
     }
-
-    pub fn load(&mut self, palette: &ThePalette) {
-        for fx in self.effects.iter_mut() {
-            fx.load(palette);
-        }
-    }
 }
