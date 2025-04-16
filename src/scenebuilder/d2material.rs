@@ -1,6 +1,6 @@
 use crate::Texture;
-use crate::{Assets, Batch, Map, Rasterizer, Scene, ShapeStack, Value};
-use theframework::prelude::*;
+use crate::{Assets, Map, ShapeStack};
+// use theframework::prelude::*;
 use vek::Vec2;
 
 pub struct D2MaterialBuilder {}
@@ -16,7 +16,7 @@ impl D2MaterialBuilder {
         Self {}
     }
 
-    pub fn build_texture(&self, map: &mut Map, assets: &Assets, texture: &mut Texture) {
+    pub fn build_texture(&self, map: &Map, assets: &Assets, texture: &mut Texture) {
         let mut stack = ShapeStack::new(Vec2::new(-5.0, -5.0), Vec2::new(5.0, 5.0));
         stack.render(texture, map, &assets.palette);
 

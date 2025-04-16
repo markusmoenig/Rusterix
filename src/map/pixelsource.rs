@@ -100,10 +100,10 @@ impl PixelSource {
                 let buffer = vec![0u8; size * size * 4];
                 let mut texture = Texture::new(buffer, size, size);
 
-                if let Some(stack) = map.effect_graphs.get(&id) {
-                    let mut stack = ShapeStack::new(Vec2::new(-5.0, -5.0), Vec2::new(5.0, 5.0));
-                    stack.render(&mut texture, map, &assets.palette);
-                }
+                // if let Some(stack) = map.effect_graphs.get(&id) {
+                let mut stack = ShapeStack::new(Vec2::new(-5.0, -5.0), Vec2::new(5.0, 5.0));
+                stack.render(&mut texture, map, &assets.palette);
+                // }
                 tile.append(texture);
                 Some(tile)
             }
