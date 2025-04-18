@@ -124,7 +124,7 @@ impl Assets {
         let b = D2MaterialBuilder::new();
         let mut tiles = FxHashMap::default();
         for map in materials.values_mut() {
-            let mut texture = Texture::new(vec![0_u8; size * size * 4], size, size);
+            let mut texture = Texture::alloc(size, size);
             b.build_texture(map, self, &mut texture);
             tiles.insert(map.id, Tile::from_texture(texture));
         }

@@ -1,4 +1,4 @@
-use crate::{Assets, Map, ShapeStack, Texture, Tile, ValueContainer};
+use crate::{Assets, Map, Texture, Tile, ValueContainer};
 use theframework::prelude::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -97,13 +97,11 @@ impl PixelSource {
             }
             ShapeFXGraphId(id) => {
                 let mut tile = Tile::empty();
-                let buffer = vec![0u8; size * size * 4];
-                let mut texture = Texture::new(buffer, size, size);
+                let mut texture = Texture::alloc(size, size);
 
-                // if let Some(stack) = map.effect_graphs.get(&id) {
-                let mut stack = ShapeStack::new(Vec2::new(-5.0, -5.0), Vec2::new(5.0, 5.0));
-                stack.render(&mut texture, map, &assets.palette);
-                // }
+                if let Some(graph) = map.shapefx_graphs.get(id) {
+                    graph.preview(&mut texture, &assets.palette);
+                }
                 tile.append(texture);
                 Some(tile)
             }

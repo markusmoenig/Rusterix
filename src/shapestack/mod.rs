@@ -19,8 +19,8 @@ impl ShapeStack {
     }
 
     pub fn render(&mut self, buffer: &mut Texture, map: &Map, palette: &ThePalette) {
-        let width = buffer.width as usize;
-        let height = buffer.height as usize;
+        let width = buffer.width;
+        let height = buffer.height;
         let area_size = self.area_max - self.area_min;
 
         // let pixel_size = Vec2::new(area_size.x / width as f32, area_size.y / height as f32);
@@ -52,7 +52,7 @@ impl ShapeStack {
                         if let Some(Value::Source(PixelSource::ShapeFXGraphId(graph_id))) =
                             sector.properties.get("floor_source")
                         {
-                            if let Some(graph) = map.effect_graphs.get(graph_id) {
+                            if let Some(graph) = map.shapefx_graphs.get(graph_id) {
                                 for dx in -1..=1 {
                                     for dy in -1..=1 {
                                         let offset = Vec2::new(

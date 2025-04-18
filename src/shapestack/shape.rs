@@ -102,8 +102,8 @@ impl Shape {
                 randomness: 0.0,
                 seed: None,
                 center: Vec2::zero(),
-                content_size: Vec2::new(1.0, 0.5),
-                spacing: Vec2::new(0.2, 0.2),
+                content_size: Vec2::new(4.0, 2.0),
+                spacing: Vec2::new(0.3, 0.3),
             },
         }
     }

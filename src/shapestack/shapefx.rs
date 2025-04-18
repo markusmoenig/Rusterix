@@ -5,6 +5,18 @@ use theframework::prelude::*;
 use uuid::Uuid;
 use vek::Vec4;
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum ShapeFXParam {
+    /// Id, Name, Status, Value, Range
+    Float(String, String, String, f32, std::ops::RangeInclusive<f32>),
+    /// Id, Name, Status, Value, Range
+    Int(String, String, String, i32, std::ops::RangeInclusive<i32>),
+    /// Id, Name, Status, Value
+    PaletteIndex(String, String, String, i32),
+    /// Id, Name, Status, Options, Value
+    Selector(String, String, String, Vec<String>, i32),
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum ShapeFXRole {
     Geometry,
@@ -99,10 +111,16 @@ impl ShapeFX {
     pub fn outputs(&self) -> Vec<TheNodeTerminal> {
         match self.role {
             Geometry => {
-                vec![TheNodeTerminal {
-                    name: "out".into(),
-                    color: TheColor::new(0.5, 0.5, 0.5, 1.0),
-                }]
+                vec![
+                    TheNodeTerminal {
+                        name: "inside".into(),
+                        color: TheColor::new(0.5, 0.5, 0.5, 1.0),
+                    },
+                    TheNodeTerminal {
+                        name: "outside".into(),
+                        color: TheColor::new(0.5, 0.5, 0.5, 1.0),
+                    },
+                ]
             }
             Gradient => {
                 vec![TheNodeTerminal {
@@ -113,7 +131,12 @@ impl ShapeFX {
         }
     }
 
-    pub fn evaluate(&self, ctx: &ShapeContext, palette: &ThePalette) -> Option<Vec4<f32>> {
+    pub fn evaluate(
+        &self,
+        ctx: &ShapeContext,
+        _color: Option<Vec4<f32>>,
+        palette: &ThePalette,
+    ) -> Option<Vec4<f32>> {
         match self.role {
             Geometry => None,
             // ShapeEffect::Outline(props) => {
@@ -142,10 +165,27 @@ impl ShapeFX {
                     let angle_rad =
                         (90.0 - self.values.get_float_default("direction", 0.0)).to_radians();
                     let dir = Vec2::new(angle_rad.cos(), angle_rad.sin());
-                    let centered_uv = ctx.uv - Vec2::new(0.5, 0.5);
+
+                    let pixel_size = self.values.get_float_default("pixelsize", 0.05);
+                    //self.values.get_float_default("pixel_size", 0.05); // in UV units (0..1)
+                    let snapped_uv = Vec2::new(
+                        (ctx.uv.x / pixel_size).floor() * pixel_size,
+                        (ctx.uv.y / pixel_size).floor() * pixel_size,
+                    );
+
+                    let centered_uv = snapped_uv - Vec2::new(0.5, 0.5);
                     let projection = centered_uv.dot(dir);
-                    let t =
+                    let mut t =
                         (projection / std::f32::consts::FRAC_1_SQRT_2 * 0.5 + 0.5).clamp(0.0, 1.0);
+
+                    let dithering = self.values.get_int_default("dithering", 1);
+                    if dithering == 1 {
+                        let px = (ctx.uv.x / pixel_size).floor() as i32;
+                        let py = (ctx.uv.y / pixel_size).floor() as i32;
+                        let checker = ((px + py) % 2) as f32 * 0.03; // small tweak value
+                        t = (t + checker).clamp(0.0, 1.0);
+                    }
+
                     let mut c = from * (1.0 - t) + to * t;
                     /*
                     c.w = 1.0;
@@ -168,6 +208,50 @@ impl ShapeFX {
               //     glow_color * glow
               // }
         }
+    }
+
+    /// The parameters for the shapefx
+    pub fn params(&self) -> Vec<ShapeFXParam> {
+        let mut params = vec![];
+        match self.role {
+            Gradient => {
+                params.push(ShapeFXParam::Float(
+                    "direction".into(),
+                    "Direction".into(),
+                    "The direction of the gradient.".into(),
+                    self.values.get_float_default("direction", 0.0),
+                    0.0..=360.0,
+                ));
+                params.push(ShapeFXParam::Float(
+                    "pixelsize".into(),
+                    "Pixel Size".into(),
+                    "The direction of the gradient.".into(),
+                    self.values.get_float_default("pixelsize", 0.05),
+                    0.0..=1.0,
+                ));
+                params.push(ShapeFXParam::Selector(
+                    "dithering".into(),
+                    "Dithering".into(),
+                    "Dithering options for the gradient.".into(),
+                    vec!["None".into(), "Checker".into()],
+                    self.values.get_int_default("dithering", 1),
+                ));
+                params.push(ShapeFXParam::PaletteIndex(
+                    "from".into(),
+                    "From".into(),
+                    "The start color of the gradient.".into(),
+                    self.values.get_int_default("from", 0),
+                ));
+                params.push(ShapeFXParam::PaletteIndex(
+                    "to".into(),
+                    "To".into(),
+                    "The end color of the gradient.".into(),
+                    self.values.get_int_default("to", 1),
+                ))
+            }
+            _ => {}
+        }
+        params
     }
 
     pub fn smoothstep(edge0: f32, edge1: f32, x: f32) -> f32 {
