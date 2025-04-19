@@ -22,4 +22,11 @@ pub struct ShapeContext {
 
     /// World-space size of a single pixel (for outline thickness, etc.)
     pub px: f32,
+
+    /// Amount of anti-aliasing (default is 1.0)
+    pub anti_aliasing: f32,
+
+    // For linedefs
+    pub t: Option<f32>,              // 0..1 along the line
+    pub line_dir: Option<Vec2<f32>>, // direction of line (normalized)
 }

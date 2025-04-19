@@ -36,7 +36,12 @@ impl ShapeFXGraph {
     }
 
     /// Evaluate the graph
-    pub fn evaluate(&self, ctx: &ShapeContext, palette: &ThePalette) -> Option<Vec4<f32>> {
+    pub fn evaluate(
+        &self,
+        ctx: &ShapeContext,
+        mut incoming: Vec4<f32>,
+        palette: &ThePalette,
+    ) -> Option<Vec4<f32>> {
         // for effect in self.effects.iter() {
         //     if effect.role == ShapeFXRole::Geometry {
         //         continue;
@@ -62,8 +67,11 @@ impl ShapeFXGraph {
             if let Some((next_node, next_terminal)) =
                 self.find_connected_input_node(curr_index, curr_terminal)
             {
-                if let Some(col) = self.nodes[next_node as usize].evaluate(ctx, color, palette) {
+                if let Some(col) =
+                    self.nodes[next_node as usize].evaluate(ctx, Some(incoming), palette)
+                {
                     color = Some(col);
+                    incoming = col;
                 }
                 curr_index = next_node as usize;
                 curr_terminal = next_terminal as usize;
@@ -140,9 +148,14 @@ impl ShapeFXGraph {
                         distance,
                         shape_id: 0,
                         px,
+                        anti_aliasing: 1.0,
+                        t: None,
+                        line_dir: None,
                     };
 
-                    let color = if let Some(col) = self.evaluate(&ctx, palette) {
+                    let color = if let Some(col) =
+                        self.evaluate(&ctx, Vec4::new(0.0, 0.0, 0.0, 1.0), palette)
+                    {
                         col
                     } else {
                         Vec4::new(0.0, 0.0, 0.0, 1.0)
