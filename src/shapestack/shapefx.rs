@@ -31,6 +31,7 @@ pub enum ShapeFXRole {
     Color,
     Outline,
     NoiseOverlay,
+    Glow,
 }
 
 impl fmt::Display for ShapeFXRole {
@@ -41,6 +42,7 @@ impl fmt::Display for ShapeFXRole {
             ShapeFXRole::Color => "Color",
             ShapeFXRole::Outline => "Outline",
             ShapeFXRole::NoiseOverlay => "Noise Overlay",
+            ShapeFXRole::Glow => "Glow",
         };
         write!(f, "{}", s)
     }
@@ -56,6 +58,7 @@ impl FromStr for ShapeFXRole {
             "Color" => Ok(ShapeFXRole::Color),
             "Outline" => Ok(ShapeFXRole::Outline),
             "Noise Overlay" => Ok(ShapeFXRole::NoiseOverlay),
+            "Glow" => Ok(ShapeFXRole::Glow),
             _ => Err(()),
         }
     }
@@ -84,15 +87,6 @@ impl ShapeFX {
     pub fn new(role: ShapeFXRole) -> Self {
         let values = ValueContainer::default();
 
-        // match role {
-        //     // Gradient => {
-        //     //     values.set("direction", Value::Float(0.0));
-        //     //     values.set("from", Value::Int(0));
-        //     //     values.set("to", Value::Int(1));
-        //     // }
-        //     _ => {}
-        // }
-
         Self {
             id: Uuid::new_v4(),
             role,
@@ -108,6 +102,7 @@ impl ShapeFX {
             Color => "Color".into(),
             Outline => "Outline".into(),
             NoiseOverlay => "Noise Overlay".into(),
+            Glow => "Glow".into(),
         }
     }
 
@@ -326,14 +321,27 @@ impl ShapeFX {
                 } else {
                     None
                 }
-            } // ShapeEffect::Glow(props) => {
-              //     let glow_color = props
-              //         .get_color("color")
-              //         .unwrap_or(Vec4::new(1.0, 1.0, 0.5, 1.0));
-              //     let radius = props.get_float("radius").unwrap_or(4.0);
-              //     let glow = 1.0 - smoothstep(0.0, radius * ctx.px, ctx.distance.max(0.0));
-              //     glow_color * glow
-              // }
+            }
+            Glow => {
+                let thickness = self.values.get_float_default("radius", 10.0);
+                if ctx.distance > 0.0 && ctx.distance <= thickness {
+                    let index = self.values.get_int_default("color", 0);
+                    let mut color = palette
+                        .colors
+                        .get(index as usize)
+                        .and_then(|c| c.clone())
+                        .unwrap_or(TheColor::white())
+                        .to_vec4();
+
+                    let t = (ctx.distance / thickness).clamp(0.0, 1.0);
+                    let alpha = 1.0 - ShapeFX::smoothstep(0.0, 1.0, t);
+                    color.w = alpha;
+
+                    Some(color)
+                } else {
+                    None
+                }
+            }
         }
     }
 
@@ -422,20 +430,6 @@ impl ShapeFX {
                     vec!["Outside In".into(), "Line Direction".into()],
                     self.values.get_int_default("line_mode", 0),
                 ));
-                // params.push(ShapeFXParam::Float(
-                //     "light_strength".into(),
-                //     "Light Strength".into(),
-                //     "How much directional lighting affects the shading.".into(),
-                //     self.values.get_float_default("light_strength", 0.4),
-                //     0.0..=1.0,
-                // ));
-                // params.push(ShapeFXParam::Float(
-                //     "noise_strength".into(),
-                //     "Noise Strength".into(),
-                //     "Adds surface variation to the shading.".into(),
-                //     self.values.get_float_default("noise_strength", 0.1),
-                //     0.0..=1.0,
-                // ));
             }
             Color => {
                 params.push(ShapeFXParam::PaletteIndex(
@@ -481,6 +475,21 @@ impl ShapeFX {
                     "Number of noise layers.".into(),
                     self.values.get_int_default("octaves", 3),
                     0..=6,
+                ));
+            }
+            Glow => {
+                params.push(ShapeFXParam::PaletteIndex(
+                    "color".into(),
+                    "Glow Color".into(),
+                    "Color of the glow.".into(),
+                    self.values.get_int_default("color", 0),
+                ));
+                params.push(ShapeFXParam::Float(
+                    "radius".into(),
+                    "Glow Radius".into(),
+                    "How far the glow extends outside the shape.".into(),
+                    self.values.get_float_default("radius", 10.0),
+                    0.0..=100.0,
                 ));
             }
             _ => {}

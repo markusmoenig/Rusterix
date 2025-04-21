@@ -108,6 +108,11 @@ pub struct Map {
     // Meta Data
     #[serde(default)]
     pub properties: ValueContainer,
+
+    // Change counter, right now only used for materials
+    // to indicate when to refresh live updates
+    #[serde(default)]
+    pub changed: u32,
 }
 
 impl Default for Map {
@@ -156,6 +161,8 @@ impl Map {
             animation: VertexAnimationSystem::default(),
 
             properties: ValueContainer::default(),
+
+            changed: 0,
         }
     }
 
@@ -1150,6 +1157,11 @@ impl Map {
             }
         }
 
+        // Add standalone selected vertices
+        for &vid in &self.selected_vertices {
+            vertex_ids.insert(vid);
+        }
+
         // Normalize vertex positions
         let copied_vertices: Vec<Vertex> = vertex_ids
             .iter()
@@ -1245,7 +1257,7 @@ impl Map {
                 new_v.x += position.x;
                 new_v.y += position.y;
                 self.vertices.push(new_v);
-                // self.selected_vertices.push(new_id);
+                self.selected_vertices.push(new_id);
                 vertex_map.insert(v.id, new_id);
             }
         }
@@ -1261,7 +1273,7 @@ impl Map {
                 new_l.front_sector = None;
                 new_l.back_sector = None;
                 self.linedefs.push(new_l);
-                // self.selected_linedefs.push(new_id);
+                self.selected_linedefs.push(new_id);
                 linedef_map.insert(l.id, new_id);
             }
         }
@@ -1296,7 +1308,7 @@ impl Map {
                 }
 
                 self.sectors.push(new_s);
-                // self.selected_sectors.push(new_id);
+                self.selected_sectors.push(new_id);
             }
         }
     }

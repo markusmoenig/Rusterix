@@ -227,36 +227,26 @@ impl D3Builder {
                                             linedef
                                                 .properties
                                                 .get_float_default("wall_height", 0.0),
-                                            if let Some(Value::Source(PixelSource::TileId(id))) =
-                                                linedef.properties.get("row1_source")
-                                            {
-                                                Some(*id)
-                                            } else {
-                                                None
-                                            },
-                                            if let Some(Value::Source(PixelSource::TileId(id))) =
-                                                linedef.properties.get("row2_source")
-                                            {
-                                                Some(*id)
-                                            } else {
-                                                None
-                                            },
-                                            if let Some(Value::Source(PixelSource::TileId(id))) =
-                                                linedef.properties.get("row3_source")
-                                            {
-                                                Some(*id)
-                                            } else {
-                                                None
-                                            },
-                                            if let Some(Value::Source(PixelSource::TileId(id))) =
-                                                linedef.properties.get("row4_source")
-                                            {
-                                                Some(*id)
-                                            } else {
-                                                None
-                                            },
+                                            linedef
+                                                .properties
+                                                .get("row1_source")
+                                                .and_then(|v| v.to_source()),
+                                            linedef
+                                                .properties
+                                                .get("row2_source")
+                                                .and_then(|v| v.to_source()),
+                                            linedef
+                                                .properties
+                                                .get("row3_source")
+                                                .and_then(|v| v.to_source()),
+                                            linedef
+                                                .properties
+                                                .get("row4_source")
+                                                .and_then(|v| v.to_source()),
                                             repeat_sources,
-                                            &assets.tiles,
+                                            assets,
+                                            &linedef.properties,
+                                            map,
                                             &mut repeated_offsets,
                                             &mut repeated_batches,
                                             &mut textures,
@@ -283,36 +273,26 @@ impl D3Builder {
                             &start_vertex.as_vec2(),
                             &end_vertex.as_vec2(),
                             linedef.properties.get_float_default("wall_height", 0.0),
-                            if let Some(Value::Source(PixelSource::TileId(id))) =
-                                linedef.properties.get("row1_source")
-                            {
-                                Some(*id)
-                            } else {
-                                None
-                            },
-                            if let Some(Value::Source(PixelSource::TileId(id))) =
-                                linedef.properties.get("row2_source")
-                            {
-                                Some(*id)
-                            } else {
-                                None
-                            },
-                            if let Some(Value::Source(PixelSource::TileId(id))) =
-                                linedef.properties.get("row3_source")
-                            {
-                                Some(*id)
-                            } else {
-                                None
-                            },
-                            if let Some(Value::Source(PixelSource::TileId(id))) =
-                                linedef.properties.get("row4_source")
-                            {
-                                Some(*id)
-                            } else {
-                                None
-                            },
+                            linedef
+                                .properties
+                                .get("row1_source")
+                                .and_then(|v| v.to_source()),
+                            linedef
+                                .properties
+                                .get("row2_source")
+                                .and_then(|v| v.to_source()),
+                            linedef
+                                .properties
+                                .get("row3_source")
+                                .and_then(|v| v.to_source()),
+                            linedef
+                                .properties
+                                .get("row4_source")
+                                .and_then(|v| v.to_source()),
                             repeat_sources,
-                            &assets.tiles,
+                            assets,
+                            &linedef.properties,
+                            map,
                             &mut repeated_offsets,
                             &mut repeated_batches,
                             &mut textures,
@@ -519,30 +499,30 @@ impl D3Builder {
         start_vertex: &Vec2<f32>,
         end_vertex: &Vec2<f32>,
         wall_height: f32,
-        row1_texture_id: Option<Uuid>, // Optional texture for row 1
-        row2_texture_id: Option<Uuid>, // Optional texture for row 2
-        row3_texture_id: Option<Uuid>, // Optional texture for row 3
-        row4_texture_id: Option<Uuid>, // Optional texture for row 4
-        repeat_last_row: bool,         // If true, repeat the last defined row's texture
-        tiles: &FxHashMap<Uuid, Tile>,
+        row1_source: Option<&PixelSource>,
+        row2_source: Option<&PixelSource>,
+        row3_source: Option<&PixelSource>,
+        row4_source: Option<&PixelSource>,
+        repeat_last_row: bool,
+        assets: &Assets,
+        properties: &ValueContainer,
+        map: &Map,
         repeated_offsets: &mut FxHashMap<Uuid, usize>,
         repeated_batches: &mut Vec<Batch<[f32; 4]>>,
         textures: &mut Vec<Tile>,
         sample_mode: &SampleMode,
     ) {
-        // Calculate dynamic row heights based on wall_height
         let row_heights = if wall_height <= 1.0 {
-            vec![wall_height] // Only row 1 fits
+            vec![wall_height]
         } else if wall_height <= 2.0 {
-            vec![1.0, wall_height - 1.0] // Row 1 + Row 2
+            vec![1.0, wall_height - 1.0]
         } else if wall_height <= 3.0 {
-            vec![1.0, 1.0, wall_height - 2.0] // Row 1 + Row 2 + Row 3
+            vec![1.0, 1.0, wall_height - 2.0]
         } else {
-            vec![1.0, 1.0, 1.0, wall_height - 3.0] // Row 1 + Row 2 + Row 3 + Row 4
+            vec![1.0, 1.0, 1.0, wall_height - 3.0]
         };
 
-        // Function to add a row geometry
-        let mut add_row = |start_height: f32, end_height: f32, texture_id: &Uuid| {
+        let mut add_row = |start_height: f32, end_height: f32, tile: &Tile| {
             let row_vertices = vec![
                 [start_vertex.x, start_height, start_vertex.y, 1.0],
                 [start_vertex.x, end_height, start_vertex.y, 1.0],
@@ -569,124 +549,67 @@ impl D3Builder {
 
             let row_indices = vec![(0, 1, 2), (0, 2, 3)];
 
-            if let Some(tile) = tiles.get(texture_id) {
-                if let Some(offset) = repeated_offsets.get(&tile.id) {
-                    repeated_batches[*offset].add(row_vertices, row_indices, row_uvs);
-                } else {
-                    let texture_index = textures.len();
+            if let Some(offset) = repeated_offsets.get(&tile.id) {
+                repeated_batches[*offset].add(row_vertices, row_indices, row_uvs);
+            } else {
+                let texture_index = textures.len();
 
-                    let mut batch = Batch::emptyd3()
-                        .repeat_mode(crate::RepeatMode::RepeatXY)
-                        .cull_mode(crate::CullMode::Off)
-                        .sample_mode(*sample_mode)
-                        .texture_index(texture_index);
+                let mut batch = Batch::emptyd3()
+                    .repeat_mode(crate::RepeatMode::RepeatXY)
+                    .cull_mode(crate::CullMode::Off)
+                    .sample_mode(*sample_mode)
+                    .texture_index(texture_index);
 
-                    batch.add(row_vertices, row_indices, row_uvs);
-
-                    textures.push(tile.clone());
-                    repeated_offsets.insert(tile.id, repeated_batches.len());
-                    repeated_batches.push(batch);
-                }
+                batch.add(row_vertices, row_indices, row_uvs);
+                textures.push(tile.clone());
+                repeated_offsets.insert(tile.id, repeated_batches.len());
+                repeated_batches.push(batch);
             }
         };
 
-        // Generate rows based on available textures and dynamic row heights
+        let sources = [row1_source, row2_source, row3_source, row4_source];
         let mut current_height = 0.0;
-        let mut last_texture_id = if repeat_last_row {
-            row1_texture_id
-        } else {
-            None
-        };
+        let mut last_tile: Option<Tile> = None;
 
-        // Row 1
-        if let Some(row1_id) = row1_texture_id {
-            let next_height = (current_height + row_heights[0]).min(wall_height);
-            add_row(
-                sector_elevation + current_height,
-                sector_elevation + next_height,
-                &row1_id,
-            );
-            current_height = next_height;
-            if repeat_last_row {
-                last_texture_id = Some(row1_id);
+        for (i, height) in row_heights.iter().enumerate() {
+            if current_height >= wall_height {
+                break;
             }
-        } else {
-            current_height = row_heights[0]; // Skip row 1's height
-        }
 
-        // Row 2
-        if current_height < wall_height {
-            if let Some(row2_id) = row2_texture_id.or(if repeat_last_row {
-                last_texture_id
+            let source_tile =
+                sources[i].and_then(|source| source.to_tile(assets, 100, properties, map));
+
+            let tile_to_use = if let Some(tile) = source_tile {
+                last_tile = Some(tile.clone());
+                Some(tile)
+            } else if repeat_last_row {
+                last_tile.clone()
             } else {
                 None
-            }) {
-                let next_height =
-                    (current_height + row_heights.get(1).cloned().unwrap_or(0.0)).min(wall_height);
+            };
+
+            if let Some(tile) = tile_to_use {
+                let next_height = (current_height + height).min(wall_height);
                 add_row(
                     sector_elevation + current_height,
                     sector_elevation + next_height,
-                    &row2_id,
+                    &tile,
                 );
                 current_height = next_height;
-                if repeat_last_row {
-                    last_texture_id = Some(row2_id);
-                }
             } else {
-                current_height += row_heights.get(1).cloned().unwrap_or(0.0); // Skip row 2's height
+                current_height += height;
             }
         }
 
-        // Row 3
-        if current_height < wall_height {
-            if let Some(row3_id) = row3_texture_id.or(if repeat_last_row {
-                last_texture_id
-            } else {
-                None
-            }) {
-                let next_height =
-                    (current_height + row_heights.get(2).cloned().unwrap_or(0.0)).min(wall_height);
-                add_row(
-                    sector_elevation + current_height,
-                    sector_elevation + next_height,
-                    &row3_id,
-                );
-                current_height = next_height;
-                if repeat_last_row {
-                    last_texture_id = Some(row3_id);
-                }
-            } else {
-                current_height += row_heights.get(2).cloned().unwrap_or(0.0); // Skip row 3's height
-            }
-        }
-
-        // Row 4
-        if current_height < wall_height {
-            if let Some(row4_id) = row4_texture_id.or(if repeat_last_row {
-                last_texture_id
-            } else {
-                None
-            }) {
-                let next_height =
-                    (current_height + row_heights.get(3).cloned().unwrap_or(0.0)).min(wall_height);
-                add_row(
-                    sector_elevation + current_height,
-                    sector_elevation + next_height,
-                    &row4_id,
-                );
-                current_height = next_height;
-            }
-        }
-
-        // Repeat the last row's texture until the wall height is filled
-        if repeat_last_row && current_height < wall_height {
-            if let Some(last_id) = last_texture_id {
+        // Fill to the top with the last tile if repeat_last_row is enabled
+        if repeat_last_row {
+            if let Some(tile) = last_tile {
                 while current_height < wall_height {
-                    let next_height = (current_height + 1.0).min(wall_height); // Use 1.0 as a default segment height
+                    let next_height = (current_height + 1.0).min(wall_height);
                     add_row(
                         sector_elevation + current_height,
                         sector_elevation + next_height,
-                        &last_id,
+                        &tile,
                     );
                     current_height = next_height;
                 }
