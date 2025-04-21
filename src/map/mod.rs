@@ -1108,25 +1108,242 @@ impl Map {
         let free_id = (0..).find(|&id| !self.sectors.iter().any(|s| s.id == id));
         free_id
     }
-}
 
-/* *
-if let Some((path, _cost)) = map.find_path_to_sector(start_sector_id, "Target Sector") {
-    if path.len() > 1 {
-        let next_sector_id = path[1];
-        if let Some(connecting_linedef_id) =
-            map.get_connecting_linedef(start_sector_id, next_sector_id)
-        {
-            println!(
-                "Move from sector {} to sector {} through linedef {}",
-                start_sector_id, next_sector_id, connecting_linedef_id
-            );
-        } else {
-            println!("No connecting linedef found!");
-        }
-    } else {
-        println!("You are already in the target sector!");
+    /// Check if the map has selected geometry.
+    pub fn has_selection(&self) -> bool {
+        !self.selected_vertices.is_empty()
+            || !self.selected_linedefs.is_empty()
+            || !self.selected_sectors.is_empty()
     }
-} else {
-    println!("No path found to the target sector.");
-}*/
+
+    /// Check if the map is empty.
+    pub fn is_empty(&self) -> bool {
+        self.vertices.is_empty() && self.linedefs.is_empty() && self.sectors.is_empty()
+    }
+
+    /// Copy selected geometry into a new map
+    pub fn copy_selected(&mut self, cut: bool) -> Map {
+        let mut clipboard = Map::new();
+
+        let mut old_to_new_vertex: FxHashMap<u32, u32> = FxHashMap::default();
+        let mut old_to_new_linedef: FxHashMap<u32, u32> = FxHashMap::default();
+        // let mut old_to_new_sector: FxHashMap<u32, u32> = FxHashMap::default();
+
+        let mut vertex_ids: FxHashSet<u32> = FxHashSet::default();
+        let mut linedef_ids: FxHashSet<u32> = self.selected_linedefs.iter().copied().collect();
+        let sector_ids: FxHashSet<u32> = self.selected_sectors.iter().copied().collect();
+
+        // Add linedefs from selected sectors
+        for sid in &sector_ids {
+            if let Some(sector) = self.find_sector(*sid) {
+                for &lid in &sector.linedefs {
+                    linedef_ids.insert(lid);
+                }
+            }
+        }
+
+        // Add vertices from selected linedefs
+        for lid in &linedef_ids {
+            if let Some(ld) = self.find_linedef(*lid) {
+                vertex_ids.insert(ld.start_vertex);
+                vertex_ids.insert(ld.end_vertex);
+            }
+        }
+
+        // Normalize vertex positions
+        let copied_vertices: Vec<Vertex> = vertex_ids
+            .iter()
+            .filter_map(|id| self.find_vertex(*id).cloned())
+            .collect();
+
+        if copied_vertices.is_empty() {
+            return clipboard;
+        }
+
+        let min_x = copied_vertices
+            .iter()
+            .map(|v| v.x)
+            .fold(f32::INFINITY, f32::min);
+        let min_y = copied_vertices
+            .iter()
+            .map(|v| v.y)
+            .fold(f32::INFINITY, f32::min);
+        let offset = Vec2::new(min_x, min_y);
+
+        // Remap and store vertices
+        for old in copied_vertices {
+            if let Some(new_id) = clipboard.find_free_vertex_id() {
+                let mut new_v = old.clone();
+                new_v.id = new_id;
+                new_v.x -= offset.x;
+                new_v.y -= offset.y;
+                old_to_new_vertex.insert(old.id, new_id);
+                clipboard.vertices.push(new_v);
+            }
+        }
+
+        // Remap and store linedefs
+        for old_id in &linedef_ids {
+            if let Some(ld) = self.find_linedef(*old_id).cloned() {
+                if let Some(new_id) = clipboard.find_free_linedef_id() {
+                    let mut new_ld = ld.clone();
+                    new_ld.id = new_id;
+                    new_ld.start_vertex = *old_to_new_vertex.get(&ld.start_vertex).unwrap();
+                    new_ld.end_vertex = *old_to_new_vertex.get(&ld.end_vertex).unwrap();
+                    new_ld.front_sector = None;
+                    new_ld.back_sector = None;
+                    old_to_new_linedef.insert(ld.id, new_id);
+                    clipboard.linedefs.push(new_ld);
+                }
+            }
+        }
+
+        // Remap and store sectors (only those whose linedefs were copied)
+        for sid in &sector_ids {
+            if let Some(s) = self.find_sector(*sid).cloned() {
+                if s.linedefs.iter().all(|id| linedef_ids.contains(id)) {
+                    if let Some(new_id) = clipboard.find_free_sector_id() {
+                        let mut new_s = s.clone();
+                        new_s.id = new_id;
+                        new_s.linedefs = s
+                            .linedefs
+                            .iter()
+                            .map(|id| *old_to_new_linedef.get(id).unwrap())
+                            .collect();
+                        // old_to_new_sector.insert(s.id, new_id);
+                        clipboard.sectors.push(new_s);
+                    }
+                }
+            }
+        }
+
+        // Delete source geometry if cutting
+        if cut {
+            self.delete_elements(
+                &vertex_ids.iter().copied().collect::<Vec<_>>(),
+                &linedef_ids.iter().copied().collect::<Vec<_>>(),
+                &sector_ids.iter().copied().collect::<Vec<_>>(),
+            );
+            self.clear_selection();
+        }
+
+        clipboard
+    }
+
+    /// Inserts the given map at the given position.
+    pub fn paste_at_position(&mut self, local_map: &Map, position: Vec2<f32>) {
+        let mut vertex_map = FxHashMap::default();
+        let mut linedef_map = FxHashMap::default();
+
+        self.clear_selection();
+
+        // Vertices
+        for v in &local_map.vertices {
+            if let Some(new_id) = self.find_free_vertex_id() {
+                let mut new_v = v.clone();
+                new_v.id = new_id;
+                new_v.x += position.x;
+                new_v.y += position.y;
+                self.vertices.push(new_v);
+                // self.selected_vertices.push(new_id);
+                vertex_map.insert(v.id, new_id);
+            }
+        }
+
+        // Linedefs
+        for l in &local_map.linedefs {
+            if let Some(new_id) = self.find_free_linedef_id() {
+                let mut new_l = l.clone();
+                new_l.id = new_id;
+                new_l.start_vertex = *vertex_map.get(&l.start_vertex).unwrap();
+                new_l.end_vertex = *vertex_map.get(&l.end_vertex).unwrap();
+                // Reset front/back sector
+                new_l.front_sector = None;
+                new_l.back_sector = None;
+                self.linedefs.push(new_l);
+                // self.selected_linedefs.push(new_id);
+                linedef_map.insert(l.id, new_id);
+            }
+        }
+
+        // Sectors
+        for s in &local_map.sectors {
+            if let Some(new_id) = self.find_free_sector_id() {
+                let mut new_s = s.clone();
+                new_s.id = new_id;
+                new_s.linedefs = s
+                    .linedefs
+                    .iter()
+                    .map(|id| *linedef_map.get(id).unwrap())
+                    .collect();
+
+                // Assign sector to each of its linedefs
+                for old_lid in &s.linedefs {
+                    if let Some(&new_lid) = linedef_map.get(old_lid) {
+                        if let Some(ld) = self.linedefs.iter_mut().find(|l| l.id == new_lid) {
+                            if ld.front_sector.is_none() {
+                                ld.front_sector = Some(new_id);
+                            } else if ld.back_sector.is_none() {
+                                ld.back_sector = Some(new_id);
+                            } else {
+                                eprintln!(
+                                    "Linedef {} already has front and back set. Skipping assignment.",
+                                    ld.id
+                                );
+                            }
+                        }
+                    }
+                }
+
+                self.sectors.push(new_s);
+                // self.selected_sectors.push(new_id);
+            }
+        }
+    }
+
+    /*
+    pub fn debug_print_sectors(&self) {
+        println!("--- Sector Debug Info ---");
+        for sector in &self.sectors {
+            println!("Sector ID: {}", sector.id);
+            if !sector.name.is_empty() {
+                println!("  Name: {}", sector.name);
+            }
+
+            println!("  Linedefs:");
+            for &lid in &sector.linedefs {
+                if let Some(ld) = self.find_linedef(lid) {
+                    let start_vertex = ld.start_vertex;
+                    let end_vertex = ld.end_vertex;
+                    let front = ld
+                        .front_sector
+                        .map_or(String::from("None"), |s| s.to_string());
+                    let back = ld
+                        .back_sector
+                        .map_or(String::from("None"), |s| s.to_string());
+
+                    println!(
+                        "    Linedef ID: {}, start: {}, end: {}, front: {}, back: {}",
+                        ld.id, start_vertex, end_vertex, front, back
+                    );
+
+                    let sv = self.find_vertex(start_vertex);
+                    let ev = self.find_vertex(end_vertex);
+                    if let (Some(sv), Some(ev)) = (sv, ev) {
+                        println!(
+                            "      From ({:.2}, {:.2}) to ({:.2}, {:.2})",
+                            sv.x, sv.y, ev.x, ev.y
+                        );
+                    } else {
+                        println!("      ⚠️ Missing vertex data!");
+                    }
+                } else {
+                    println!("    ⚠️ Linedef ID {} not found!", lid);
+                }
+            }
+
+            println!();
+        }
+        println!("--------------------------");
+    }*/
+}
