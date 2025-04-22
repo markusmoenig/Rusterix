@@ -324,6 +324,8 @@ impl D3Builder {
         scene.mapmini = map.as_mini(&assets.blocking_tiles());
         scene.d3_static = batches;
         scene.textures = textures;
+        scene.compute_static_normals();
+
         scene
     }
 
@@ -490,6 +492,7 @@ impl D3Builder {
 
         scene.d3_dynamic = batches;
         scene.dynamic_textures = textures;
+        scene.compute_dynamic_normals();
     }
 
     /// Adds a wall to the appropriate batch based on up to 4 input textures.

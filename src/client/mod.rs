@@ -9,7 +9,7 @@ use std::str::FromStr;
 
 use crate::prelude::*;
 use crate::{
-    Command, D2PreviewBuilder, Daylight, EntityAction, Rect, Value,
+    Command, D2PreviewBuilder, Daylight, EntityAction, Rect, Tracer, Value,
     client::action::ClientAction,
     client::widget::{
         Widget, game::GameWidget, messages::MessagesWidget, screen::ScreenWidget, text::TextWidget,
@@ -379,6 +379,29 @@ impl Client {
         rast.mapmini = self.scene_d3.mapmini.clone();
         rast.background_color = Some(vec4_to_pixel(&Vec4::new(ac.x, ac.y, ac.z, 1.0)));
         rast.rasterize(&mut self.scene_d3, pixels, width, height, 64);
+    }
+
+    /// Trace the 3D scene.
+    pub fn trace(&mut self, pixels: &mut [u8], width: usize, height: usize) {
+        self.scene_d3.animation_frame = self.animation_frame;
+        let ac = self
+            .daylight
+            .daylight(self.server_time.total_minutes(), 0.0, 1.0);
+
+        let mut light = Light::new(LightType::AmbientDaylight);
+        light.set_color([ac.x, ac.y, ac.z]);
+        light.set_intensity(1.0);
+
+        self.scene_d3.dynamic_lights.push(light);
+        let mut tracer = Tracer::default();
+        tracer.trace(
+            self.camera_d3.as_ref(),
+            &mut self.scene_d3,
+            pixels,
+            width,
+            height,
+            64,
+        );
     }
 
     /// Get an i32 config value

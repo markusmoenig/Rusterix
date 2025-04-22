@@ -2,7 +2,7 @@ pub mod batchd2;
 pub mod batchd3;
 
 use crate::{Edges, Pixel, Rect, RepeatMode, SampleMode};
-use vek::{Mat3, Mat4};
+use vek::{Mat3, Mat4, Vec3};
 
 /// The primitive mode. The rasterizer can draw triangles and lines.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -77,4 +77,10 @@ pub struct Batch<T> {
 
     /// Indicates whether the batch receives lighting. True by default. Turn off for skybox etc.
     pub receives_light: bool,
+
+    /// Normals, only apply to the 3D case.
+    pub normals: Vec<Vec3<f32>>,
+
+    /// Clipped normals
+    pub clipped_normals: Vec<Vec3<f32>>,
 }

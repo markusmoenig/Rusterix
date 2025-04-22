@@ -17,6 +17,7 @@ pub mod server;
 pub mod shader;
 pub mod shapestack;
 pub mod texture;
+pub mod tracer;
 pub mod utils;
 pub mod value;
 pub mod wavefront;
@@ -99,6 +100,7 @@ pub use crate::{
     shapestack::shapefx::{ShapeFX, ShapeFXParam, ShapeFXRole},
     shapestack::shapefxgraph::ShapeFXGraph,
     texture::{RepeatMode, SampleMode, Texture},
+    tracer::{HitInfo, Ray, trace::Tracer},
     value::{Value, ValueContainer},
 };
 

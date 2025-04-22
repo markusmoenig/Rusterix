@@ -2,6 +2,7 @@ pub mod d3firstp;
 pub mod d3iso;
 pub mod d3orbit;
 
+use crate::Ray;
 use vek::{Mat4, Vec2, Vec3, Vec4};
 
 #[allow(unused)]
@@ -35,4 +36,9 @@ pub trait D3Camera: Send + Sync {
 
     /// Set a Vec4 parameter.
     fn set_parameter_vec4(&mut self, key: &str, value: Vec4<f32>) {}
+
+    /// Creates a ray
+    fn create_ray(&self, uv: Vec2<f32>, screen: Vec2<f32>, offset: Vec2<f32>) -> Ray {
+        Ray::default()
+    }
 }

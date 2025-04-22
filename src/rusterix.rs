@@ -1,5 +1,5 @@
 use crate::MapCamera;
-use crate::{prelude::*, Command, PlayerCamera};
+use crate::{Command, PlayerCamera, prelude::*};
 use vek::Vec2;
 
 #[derive(PartialEq)]
@@ -165,6 +165,10 @@ impl Rusterix {
                 self.client.draw_d3(pixels, width, height);
             }
         }
+    }
+
+    pub fn trace_scene(&mut self, _map: &Map, pixels: &mut [u8], width: usize, height: usize) {
+        self.client.trace(pixels, width, height);
     }
 
     /// Set up the client for processing the game.

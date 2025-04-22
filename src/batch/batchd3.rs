@@ -1,6 +1,9 @@
 use crate::prelude::*;
 use crate::wavefront::Wavefront;
-use vek::{Mat3, Mat4, Vec4};
+use crate::{HitInfo, Ray};
+use bvh::aabb::{Aabb, Bounded};
+use nalgebra::Point3;
+use vek::{Mat3, Mat4, Vec2, Vec3, Vec4};
 
 use CullMode::*;
 use PrimitiveMode::*;
@@ -29,6 +32,8 @@ impl Batch<[f32; 4]> {
             transform_2d: Mat3::identity(),
             transform_3d: Mat4::identity(),
             receives_light: true,
+            normals: vec![],
+            clipped_normals: vec![],
         }
     }
 
@@ -55,6 +60,8 @@ impl Batch<[f32; 4]> {
             transform_2d: Mat3::identity(),
             transform_3d: Mat4::identity(),
             receives_light: true,
+            normals: vec![],
+            clipped_normals: vec![],
         }
     }
 
@@ -254,10 +261,12 @@ impl Batch<[f32; 4]> {
         // Initialize clipped indices and UVs with the original
         self.clipped_indices = self.indices.clone();
         self.clipped_uvs = self.uvs.clone();
+        self.clipped_normals = self.normals.clone();
 
-        // List of new vertices and their corresponding UVs
+        // List of new vertices and their corresponding UVs and normals
         let mut new_vertices = Vec::new();
         let mut new_uvs = Vec::new();
+        let mut new_normals = Vec::new();
 
         // Visibility flags for edges
         let mut edge_visibility = vec![true; self.indices.len()];
@@ -270,6 +279,9 @@ impl Batch<[f32; 4]> {
             let uv0 = self.uvs[i0];
             let uv1 = self.uvs[i1];
             let uv2 = self.uvs[i2];
+            let n0 = self.normals[i0];
+            let n1 = self.normals[i1];
+            let n2 = self.normals[i2];
 
             let is_v0_inside = v0[2] <= -near_plane;
             let is_v1_inside = v1[2] <= -near_plane;
@@ -288,18 +300,19 @@ impl Batch<[f32; 4]> {
             }
 
             // Mixed case: Calculate intersections and append new vertices
-            let vertices = [(v0, uv0, i0), (v1, uv1, i1), (v2, uv2, i2)];
+            let vertices = [(v0, uv0, n0), (v1, uv1, n1), (v2, uv2, n2)];
             let mut clipped_indices = Vec::new();
             let mut new_edge_visibility = Vec::new();
 
             for i in 0..3 {
-                let (current, uv_current, _idx_current) = vertices[i];
-                let (next, uv_next, _idx_next) = vertices[(i + 1) % 3];
+                let (current, uv_current, n_current) = vertices[i];
+                let (next, uv_next, n_next) = vertices[(i + 1) % 3];
 
                 if current[2] <= -near_plane {
                     new_vertices.push(current);
-                    clipped_indices.push(self.vertices.len() + new_vertices.len() - 1);
                     new_uvs.push(uv_current);
+                    new_normals.push(n_current);
+                    clipped_indices.push(self.vertices.len() + new_vertices.len() - 1);
                     new_edge_visibility.push(true);
                 }
 
@@ -316,9 +329,11 @@ impl Batch<[f32; 4]> {
                         uv_current[0] + t * (uv_next[0] - uv_current[0]),
                         uv_current[1] + t * (uv_next[1] - uv_current[1]),
                     ];
+                    let interpolated_normal = (n_current * (1.0 - t) + n_next * t).normalized();
 
                     new_vertices.push(intersection);
                     new_uvs.push(interpolated_uv);
+                    new_normals.push(interpolated_normal);
                     clipped_indices.push(self.vertices.len() + new_vertices.len() - 1);
                     new_edge_visibility.push(true);
                 }
@@ -336,9 +351,10 @@ impl Batch<[f32; 4]> {
             edge_visibility.extend(new_edge_visibility);
         }
 
-        // Extend the vertex and UV lists with new vertices
+        // Extend the vertex, UV and normal lists with new values
         view_space_vertices.extend(new_vertices);
         self.clipped_uvs.extend(new_uvs);
+        self.clipped_normals.extend(new_normals);
 
         // Perform projection
         self.projected_vertices = view_space_vertices
@@ -432,5 +448,151 @@ impl Batch<[f32; 4]> {
             width: max_x - min_x,
             height: max_y - min_y,
         }
+    }
+
+    /// Compute smooth vertex normals for the mesh.
+    pub fn compute_vertex_normals(&mut self) {
+        self.normals = vec![Vec3::zero(); self.vertices.len()];
+        let mut counts = vec![0u32; self.vertices.len()];
+
+        for &(i0, i1, i2) in &self.indices {
+            let p0 = Vec3::new(
+                self.vertices[i0][0],
+                self.vertices[i0][1],
+                self.vertices[i0][2],
+            );
+            let p1 = Vec3::new(
+                self.vertices[i1][0],
+                self.vertices[i1][1],
+                self.vertices[i1][2],
+            );
+            let p2 = Vec3::new(
+                self.vertices[i2][0],
+                self.vertices[i2][1],
+                self.vertices[i2][2],
+            );
+
+            let normal = (p1 - p0).cross(p2 - p0).normalized();
+
+            self.normals[i0] += normal;
+            self.normals[i1] += normal;
+            self.normals[i2] += normal;
+
+            counts[i0] += 1;
+            counts[i1] += 1;
+            counts[i2] += 1;
+        }
+
+        for (n, &count) in self.normals.iter_mut().zip(counts.iter()) {
+            if count > 0 {
+                *n /= count as f32;
+                *n = n.normalized();
+            }
+        }
+    }
+
+    /// Perform a brute-force ray intersection against all triangles in the batch.
+    /// If `simplified` is true, skips UV and normal computation (useful for shadow rays).
+    pub fn intersect(&self, ray: &Ray, simplified: bool) -> Option<HitInfo> {
+        let local_origin = ray.origin;
+        let local_dir = ray.dir.normalized();
+
+        let mut closest: Option<HitInfo> = None;
+
+        for (i, &(i0, i1, i2)) in self.indices.iter().enumerate() {
+            let p0 = Vec3::new(
+                self.vertices[i0][0],
+                self.vertices[i0][1],
+                self.vertices[i0][2],
+            );
+            let p1 = Vec3::new(
+                self.vertices[i1][0],
+                self.vertices[i1][1],
+                self.vertices[i1][2],
+            );
+            let p2 = Vec3::new(
+                self.vertices[i2][0],
+                self.vertices[i2][1],
+                self.vertices[i2][2],
+            );
+
+            let edge1 = p1 - p0;
+            let edge2 = p2 - p0;
+            let h = local_dir.cross(edge2);
+            let a = edge1.dot(h);
+
+            if a.abs() < 1e-6 {
+                continue;
+            }
+
+            let f = 1.0 / a;
+            let s = local_origin - p0;
+            let u = f * s.dot(h);
+            if !(0.0..=1.0).contains(&u) {
+                continue;
+            }
+
+            let q = s.cross(edge1);
+            let v = f * local_dir.dot(q);
+            if v < 0.0 || u + v > 1.0 {
+                continue;
+            }
+
+            let t = f * edge2.dot(q);
+            if t > 1e-4 {
+                match &closest {
+                    Some(c) if t >= c.t => {}
+                    _ => {
+                        if simplified {
+                            closest = Some(HitInfo {
+                                t,
+                                uv: Vec2::zero(),
+                                triangle_index: i,
+                                normal: None,
+                            });
+                        } else {
+                            let w = 1.0 - u - v;
+                            let uv0 = self.uvs[i0];
+                            let uv1 = self.uvs[i1];
+                            let uv2 = self.uvs[i2];
+                            let uv = Vec2::new(
+                                w * uv0[0] + u * uv1[0] + v * uv2[0],
+                                w * uv0[1] + u * uv1[1] + v * uv2[1],
+                            );
+
+                            let normal = if !self.normals.is_empty() {
+                                let n0 = self.normals[i0];
+                                let n1 = self.normals[i1];
+                                let n2 = self.normals[i2];
+                                (n0 * w + n1 * u + n2 * v).normalized()
+                            } else {
+                                (p1 - p0).cross(p2 - p0).normalized()
+                            };
+
+                            closest = Some(HitInfo {
+                                t,
+                                uv,
+                                triangle_index: i,
+                                normal: Some(normal),
+                            });
+                        }
+                    }
+                }
+            }
+        }
+        closest
+    }
+}
+
+impl Bounded<f32, 3> for Batch<[f32; 4]> {
+    fn aabb(&self) -> Aabb<f32, 3> {
+        let mut aabb = Aabb::empty();
+
+        for v in &self.vertices {
+            let p = Point3::new(v[0], v[1], v[2]);
+            aabb = aabb.grow(&p);
+        }
+
+        aabb
     }
 }

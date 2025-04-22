@@ -1,7 +1,7 @@
 use crate::SampleMode;
 use crate::{
-    Batch, CompiledLight, LightType, MapMini, Pixel, PrimitiveMode, Scene, pixel_to_vec4,
-    vec4_to_pixel,
+    Batch, CompiledLight, LightType, MapMini, Pixel, PrimitiveMode, RepeatMode, Scene, Texture,
+    pixel_to_vec4, vec4_to_pixel,
 };
 use rayon::prelude::*;
 use vek::{Mat3, Mat4, Vec2, Vec3, Vec4};
@@ -588,6 +588,36 @@ impl Rasterizer {
                                             let index =
                                                 scene.animation_frame % textile.textures.len();
 
+                                            // let normal = if !batch.normals.is_empty() {
+                                            //     let n0 = batch.clipped_normals[i0];
+                                            //     let n1 = batch.clipped_normals[i1];
+                                            //     let n2 = batch.clipped_normals[i2];
+
+                                            //     let mut normal =
+                                            //         (n0 * alpha + n1 * beta + n2 * gamma)
+                                            //             .normalized();
+
+                                            //     let bump = self.bump_from_texture(
+                                            //         interpolated_u,
+                                            //         interpolated_v,
+                                            //         &textile.textures[index],
+                                            //         self.sample_mode,
+                                            //         batch.repeat_mode,
+                                            //         1.0,
+                                            //     );
+                                            //     normal = (normal + bump).normalized();
+
+                                            //     let view_dir =
+                                            //         (self.camera_pos - world).normalized();
+                                            //     if normal.dot(view_dir) < 0.0 {
+                                            //         normal = -normal;
+                                            //     }
+
+                                            //     Some(normal)
+                                            // } else {
+                                            //     None
+                                            // };
+
                                             // let distance = (world - self.camera_pos).magnitude();
                                             // let start_distance = 8.0;
                                             // let ramp_distance = 4.0;
@@ -690,11 +720,9 @@ impl Rasterizer {
                                                 let epsilon = 0.01;
 
                                                 for light in &self.compiled_lights {
-                                                    if let Some(mut light_color) = light.color_at(
-                                                        world,
-                                                        &self.hash_anim,
-                                                        false,
-                                                    ) {
+                                                    if let Some(mut light_color) = light
+                                                        .radiance_at(world, None, self.hash_anim)
+                                                    {
                                                         let direction_to_light =
                                                             (light.position_2d() - world_2d)
                                                                 .normalized();
@@ -801,6 +829,35 @@ impl Rasterizer {
                 }
             }
         }
+    }
+
+    /// Calculate a bump normal for the texture
+    fn _bump_from_texture(
+        &self,
+        u: f32,
+        v: f32,
+        texture: &Texture,
+        sample_mode: SampleMode,
+        repeat_mode: RepeatMode,
+        scale: f32, // bumpiness scale factor, e.g. 1.0
+    ) -> Vec3<f32> {
+        let du = 1.0 / texture.width as f32;
+        let dv = 1.0 / texture.height as f32;
+
+        fn brightness(color: [u8; 4]) -> f32 {
+            (color[0] as f32 + color[1] as f32 + color[2] as f32) / (3.0 * 255.0)
+        }
+
+        let center = brightness(texture.sample(u, v, sample_mode, repeat_mode));
+        let right = brightness(texture.sample(u + du, v, sample_mode, repeat_mode));
+        let down = brightness(texture.sample(u, v + dv, sample_mode, repeat_mode));
+
+        // Derivatives
+        let dx = (right - center) * scale;
+        let dz = (down - center) * scale;
+
+        // Y-up tangent space: X = right, Z = down, Y = up
+        Vec3::new(-dx, 1.0, -dz).normalized()
     }
 
     // Gamma correction in final output

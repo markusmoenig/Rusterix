@@ -141,6 +141,20 @@ impl Scene {
         });
     }
 
+    /// Computes the normals for the static models
+    pub fn compute_static_normals(&mut self) {
+        self.d3_static.par_iter_mut().for_each(|batch| {
+            batch.compute_vertex_normals();
+        });
+    }
+
+    /// Computes the normals for the dynamic models
+    pub fn compute_dynamic_normals(&mut self) {
+        self.d3_dynamic.par_iter_mut().for_each(|batch| {
+            batch.compute_vertex_normals();
+        });
+    }
+
     /// Compiles all lights and returns them.
     pub fn compile_lights(&self, background_color: Option<[u8; 4]>) -> Vec<CompiledLight> {
         let mut cl = vec![];

@@ -463,6 +463,37 @@ impl CompiledLight {
         }
     }
 
+    pub fn radiance_at(
+        &self,
+        point: Vec3<f32>,
+        surface_normal: Option<Vec3<f32>>,
+        hash: u32,
+    ) -> Option<Vec3<f32>> {
+        let incoming = match self.color_at(point, &hash, false) {
+            Some(c) => Vec3::new(c[0], c[1], c[2]),
+            None => return None,
+        };
+
+        // For ambient lights, skip Lambert shading
+        if matches!(
+            self.light_type,
+            LightType::Ambient | LightType::AmbientDaylight | LightType::Daylight
+        ) {
+            return Some(incoming);
+        }
+
+        // If no surface normal, just return the light color
+        let n = match surface_normal {
+            Some(n) => n,
+            None => return Some(incoming),
+        };
+
+        // Lambert: scale by cosine of angle
+        let dir_to_light = (self.position - point).normalized();
+        let lambert = n.dot(dir_to_light).max(0.0);
+        Some(incoming * lambert)
+    }
+
     fn calculate_point_light(&self, point: Vec3<f32>, hash: &u32) -> Option<[f32; 3]> {
         let distance = (point - self.position).magnitude();
 

@@ -34,6 +34,8 @@ impl Batch<[f32; 2]> {
             transform_2d: Mat3::identity(),
             transform_3d: Mat4::identity(),
             receives_light: false,
+            normals: vec![],
+            clipped_normals: vec![],
         }
     }
 
@@ -61,6 +63,8 @@ impl Batch<[f32; 2]> {
             transform_2d: Mat3::identity(),
             transform_3d: Mat4::identity(),
             receives_light: true,
+            normals: vec![],
+            clipped_normals: vec![],
         }
     }
 

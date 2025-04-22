@@ -69,7 +69,7 @@ impl TheTrait for MiniGame {
                 .apply_entities_items_d3(&map, &self.rusterix.assets);
 
             self.rusterix
-                .draw_scene(&map, pixels, ctx.width, ctx.height);
+                .trace_scene(&map, pixels, ctx.width, ctx.height);
         }
 
         let _stop = get_time();
