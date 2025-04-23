@@ -162,7 +162,7 @@ impl Rusterix {
                 self.client.draw_d2(map, pixels, width, height);
             }
             D3 => {
-                self.client.draw_d3(pixels, width, height);
+                self.client.draw_d3(map, pixels, width, height);
             }
         }
     }

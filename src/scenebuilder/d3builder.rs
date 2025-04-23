@@ -6,6 +6,7 @@ use vek::Vec2;
 
 pub struct D3Builder {
     map: Map,
+    tile_size: i32,
 }
 
 impl Default for D3Builder {
@@ -18,6 +19,7 @@ impl D3Builder {
     pub fn new() -> Self {
         Self {
             map: Map::default(),
+            tile_size: 128,
         }
     }
 
@@ -38,7 +40,7 @@ impl D3Builder {
 
         let mut scene = Scene::empty();
         // let atlas_size = atlas.width as f32;
-        let tile_size = 100;
+        self.tile_size = properties.get_int_default("tile_size", 128);
 
         let mut textures = vec![Tile::from_texture(assets.atlas.clone())];
 
@@ -93,9 +95,12 @@ impl D3Builder {
                         if let Some(Value::Source(pixelsource)) =
                             sector.properties.get("floor_source")
                         {
-                            if let Some(tile) =
-                                pixelsource.to_tile(assets, tile_size, &sector.properties, map)
-                            {
+                            if let Some(tile) = pixelsource.to_tile(
+                                assets,
+                                self.tile_size as usize,
+                                &sector.properties,
+                                map,
+                            ) {
                                 let floor_vertices = vertices
                                     .iter()
                                     .map(|&v| {
@@ -151,8 +156,13 @@ impl D3Builder {
                             sector.properties.get("ceiling_source")
                         };
 
-                        if let Some(Value::Source(PixelSource::TileId(id))) = &source {
-                            if let Some(tile) = assets.tiles.get(id) {
+                        if let Some(Value::Source(pixelsource)) = &source {
+                            if let Some(tile) = pixelsource.to_tile(
+                                assets,
+                                self.tile_size as usize,
+                                &sector.properties,
+                                map,
+                            ) {
                                 let ceiling_vertices = vertices
                                     .iter()
                                     .map(|&v| {
@@ -220,7 +230,7 @@ impl D3Builder {
                                         let repeat_sources =
                                             linedef.properties.get_int_default("source_repeat", 0)
                                                 == 0;
-                                        Self::add_wall(
+                                        self.add_wall(
                                             sector_elevation,
                                             &start_vertex.as_vec2(),
                                             &end_vertex.as_vec2(),
@@ -268,7 +278,7 @@ impl D3Builder {
                     if let Some(end_vertex) = map.find_vertex(linedef.end_vertex) {
                         let repeat_sources =
                             linedef.properties.get_int_default("source_repeat", 0) == 0;
-                        Self::add_wall(
+                        self.add_wall(
                             0.0,
                             &start_vertex.as_vec2(),
                             &end_vertex.as_vec2(),
@@ -389,8 +399,12 @@ impl D3Builder {
 
                             add_billboard(&start, &end, scale, &mut batch);
 
-                            if let Some(tile) = source.to_tile(assets, 100, &sector.properties, map)
-                            {
+                            if let Some(tile) = source.to_tile(
+                                assets,
+                                self.tile_size as usize,
+                                &sector.properties,
+                                map,
+                            ) {
                                 textures.push(tile);
                             }
 
@@ -440,7 +454,9 @@ impl D3Builder {
 
                         add_billboard(&start, &end, 2.0, &mut batch);
 
-                        if let Some(tile) = source.to_tile(assets, 100, &entity.attributes, map) {
+                        if let Some(tile) =
+                            source.to_tile(assets, self.tile_size as usize, &entity.attributes, map)
+                        {
                             textures.push(tile);
                         }
 
@@ -479,7 +495,9 @@ impl D3Builder {
 
                         add_billboard(&start, &end, 1.0, &mut batch);
 
-                        if let Some(tile) = source.to_tile(assets, 100, &item.attributes, map) {
+                        if let Some(tile) =
+                            source.to_tile(assets, self.tile_size as usize, &item.attributes, map)
+                        {
                             textures.push(tile);
                         }
 
@@ -498,6 +516,7 @@ impl D3Builder {
     /// Adds a wall to the appropriate batch based on up to 4 input textures.
     #[allow(clippy::too_many_arguments)]
     fn add_wall(
+        &self,
         sector_elevation: f32,
         start_vertex: &Vec2<f32>,
         end_vertex: &Vec2<f32>,
@@ -579,8 +598,9 @@ impl D3Builder {
                 break;
             }
 
-            let source_tile =
-                sources[i].and_then(|source| source.to_tile(assets, 100, properties, map));
+            let source_tile = sources[i].and_then(|source| {
+                source.to_tile(assets, self.tile_size as usize, properties, map)
+            });
 
             let tile_to_use = if let Some(tile) = source_tile {
                 last_tile = Some(tile.clone());

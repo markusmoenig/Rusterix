@@ -41,7 +41,7 @@ impl ShapeStack {
                     let uv = Vec2::new(x / width as f32, 1.0 - y / height as f32);
                     let world = self.area_min + uv * area_size;
 
-                    let mut color = Vec4::new(0.0, 0.0, 0.0, 1.0);
+                    let mut color = Vec4::new(0.0, 0.0, 0.0, 0.0);
 
                     // Do the sectors
                     let sorted_sectors = map.sorted_sectors_by_area();

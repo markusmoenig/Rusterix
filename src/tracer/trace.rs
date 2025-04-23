@@ -170,20 +170,20 @@ impl Tracer {
                                 }
                             }
 
-                            for (_i, batch) in scene.d3_dynamic.iter().enumerate() {
-                                // if let Some(bbox) = self.static_bboxes.get(i) {
-                                //     if !bvh_ray.intersects_aabb(bbox) {
-                                //         continue;
-                                //     }
-                                // }
+                            // for (_i, batch) in scene.d3_dynamic.iter().enumerate() {
+                            //     // if let Some(bbox) = self.static_bboxes.get(i) {
+                            //     //     if !bvh_ray.intersects_aabb(bbox) {
+                            //     //         continue;
+                            //     //     }
+                            //     // }
 
-                                if let Some(mut hit) = batch.intersect(&ray, false) {
-                                    if hit.t < hitinfo.t {
-                                        pixel += self.render(&ray, scene, batch, &mut hit);
-                                        hitinfo = hit;
-                                    }
-                                }
-                            }
+                            //     if let Some(mut hit) = batch.intersect(&ray, false) {
+                            //         if hit.t < hitinfo.t {
+                            //             pixel += self.render(&ray, scene, batch, &mut hit);
+                            //             hitinfo = hit;
+                            //         }
+                            //     }
+                            // }
                         }
                         pixel /= samples as f32;
 

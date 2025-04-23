@@ -120,13 +120,12 @@ impl Assets {
     }
 
     /// Compile the materials.
-    pub fn set_materials(&mut self, mut materials: FxHashMap<Uuid, Map>, size: usize) {
-        let b = D2MaterialBuilder::new();
+    pub fn set_materials(&mut self, mut materials: FxHashMap<Uuid, Map>) {
         let mut tiles = FxHashMap::default();
         for map in materials.values_mut() {
-            let mut texture = Texture::alloc(size, size);
-            b.build_texture(map, self, &mut texture);
-            tiles.insert(map.id, Tile::from_texture(texture));
+            if let Some(Value::Texture(texture)) = map.properties.get("material") {
+                tiles.insert(map.id, Tile::from_texture(texture.clone()));
+            }
         }
         self.materials = tiles;
     }

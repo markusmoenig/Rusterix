@@ -1,4 +1,4 @@
-use crate::{ShapeContext, ValueContainer};
+use crate::{BLACK, Pixel, ShapeContext, ValueContainer};
 use std::fmt;
 use std::str::FromStr;
 use theframework::prelude::*;
@@ -232,8 +232,8 @@ impl ShapeFX {
                     .to_vec4();
 
                 let thickness = self.values.get_float_default("thickness", 40.0);
-
-                let depth = (-ctx.distance).clamp(0.0, thickness);
+                let offset = self.values.get_float_default("distance_offset", 0.0);
+                let depth = (-(ctx.distance + offset)).clamp(0.0, thickness);
 
                 let snapped_depth = (depth / pixel_size).floor() * pixel_size;
                 let mut t = (snapped_depth / thickness).clamp(0.0, 1.0);
@@ -430,6 +430,13 @@ impl ShapeFX {
                     vec!["Outside In".into(), "Line Direction".into()],
                     self.values.get_int_default("line_mode", 0),
                 ));
+                params.push(ShapeFXParam::Float(
+                    "distance_offset".into(),
+                    "Distance Offset".into(),
+                    "Shift the start of the gradient inward or outward from the shape edge.".into(),
+                    self.values.get_float_default("distance_offset", 0.0),
+                    -100.0..=100.0,
+                ));
             }
             Color => {
                 params.push(ShapeFXParam::PaletteIndex(
@@ -538,5 +545,23 @@ impl ShapeFX {
             a *= 0.5;
         }
         v
+    }
+
+    /// Get the dominant node color for sector previews
+    pub fn get_dominant_color(&self, palette: &ThePalette) -> Pixel {
+        match self.role {
+            Gradient => self.get_palette_color("interior", palette),
+            _ => self.get_palette_color("color", palette),
+        }
+    }
+
+    /// Get the color of a given name from the values.
+    pub fn get_palette_color(&self, named: &str, palette: &ThePalette) -> Pixel {
+        let mut color = BLACK;
+        let index = self.values.get_int_default(named, 0);
+        if let Some(Some(col)) = palette.colors.get(index as usize) {
+            color = col.to_u8_array();
+        }
+        color
     }
 }

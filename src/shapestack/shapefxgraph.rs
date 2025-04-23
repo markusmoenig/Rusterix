@@ -1,4 +1,4 @@
-use crate::{ShapeContext, ShapeFX, ShapeFXRole, Texture};
+use crate::{Pixel, ShapeContext, ShapeFX, ShapeFXRole, Texture};
 use rayon::prelude::*;
 use theframework::prelude::*;
 use uuid::Uuid;
@@ -164,5 +164,14 @@ impl ShapeFXGraph {
                     pixel.copy_from_slice(&TheColor::from_vec4f(color).to_u8_array());
                 }
             });
+    }
+
+    /// Get the dominant color of the graph for sector previews
+    pub fn get_dominant_color(&self, palette: &ThePalette) -> Pixel {
+        let mut pixel = [128, 128, 128, 255];
+        if self.nodes.len() > 1 {
+            pixel = self.nodes[1].get_dominant_color(palette)
+        }
+        pixel
     }
 }

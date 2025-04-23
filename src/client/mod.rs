@@ -289,15 +289,17 @@ impl Client {
 
         let screen_size = Vec2::new(width as f32, height as f32);
 
-        self.scene_d2.animation_frame = self.animation_frame;
-        let ac = self
-            .daylight
-            .daylight(self.server_time.total_minutes(), 0.0, 1.0);
+        if map.properties.get_bool_default("receives_daylight", false) {
+            self.scene_d2.animation_frame = self.animation_frame;
+            let ac = self
+                .daylight
+                .daylight(self.server_time.total_minutes(), 0.0, 1.0);
 
-        let mut light = Light::new(LightType::AmbientDaylight);
-        light.set_color([ac.x, ac.y, ac.z]);
-        light.set_intensity(1.0);
-        self.scene_d2.dynamic_lights.push(light);
+            let mut light = Light::new(LightType::AmbientDaylight);
+            light.set_color([ac.x, ac.y, ac.z]);
+            light.set_intensity(1.0);
+            self.scene_d2.dynamic_lights.push(light);
+        }
 
         let translation_matrix = Mat3::<f32>::translation_2d(Vec2::new(
             map.offset.x + screen_size.x / 2.0,
@@ -359,25 +361,29 @@ impl Client {
     }
 
     /// Draw the 3D scene.
-    pub fn draw_d3(&mut self, pixels: &mut [u8], width: usize, height: usize) {
+    pub fn draw_d3(&mut self, map: &Map, pixels: &mut [u8], width: usize, height: usize) {
         self.scene_d3.animation_frame = self.animation_frame;
-        let ac = self
-            .daylight
-            .daylight(self.server_time.total_minutes(), 0.0, 1.0);
 
-        let mut light = Light::new(LightType::AmbientDaylight);
-        light.set_color([ac.x, ac.y, ac.z]);
-        light.set_intensity(1.0);
-
-        self.scene_d3.dynamic_lights.push(light);
         let mut rast = Rasterizer::setup(
             None,
             self.camera_d3.view_matrix(),
             self.camera_d3
                 .projection_matrix(width as f32, height as f32),
         );
+
+        if map.properties.get_bool_default("receives_daylight", false) {
+            let ac = self
+                .daylight
+                .daylight(self.server_time.total_minutes(), 0.0, 1.0);
+
+            let mut light = Light::new(LightType::AmbientDaylight);
+            light.set_color([ac.x, ac.y, ac.z]);
+            light.set_intensity(1.0);
+            self.scene_d3.dynamic_lights.push(light);
+            rast.background_color = Some(vec4_to_pixel(&Vec4::new(ac.x, ac.y, ac.z, 1.0)));
+        }
+
         rast.mapmini = self.scene_d3.mapmini.clone();
-        rast.background_color = Some(vec4_to_pixel(&Vec4::new(ac.x, ac.y, ac.z, 1.0)));
         rast.rasterize(&mut self.scene_d3, pixels, width, height, 64);
     }
 

@@ -1,4 +1,4 @@
-use crate::{Assets, Map, Texture, Tile, ValueContainer};
+use crate::{Assets, BLACK, Map, Texture, Tile, ValueContainer};
 use theframework::prelude::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -97,11 +97,14 @@ impl PixelSource {
             }
             ShapeFXGraphId(id) => {
                 let mut tile = Tile::empty();
-                let mut texture = Texture::alloc(size, size);
+                // let mut texture = Texture::alloc(size, size);
 
-                if let Some(graph) = map.shapefx_graphs.get(id) {
-                    graph.preview(&mut texture, &assets.palette);
-                }
+                let texture = if let Some(graph) = map.shapefx_graphs.get(id) {
+                    //graph.preview(&mut texture, &assets.palette);
+                    Texture::from_color(graph.get_dominant_color(&assets.palette))
+                } else {
+                    Texture::from_color(BLACK)
+                };
                 tile.append(texture);
                 Some(tile)
             }

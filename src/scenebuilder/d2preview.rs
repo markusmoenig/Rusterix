@@ -172,7 +172,8 @@ impl D2PreviewBuilder {
             || self.map_tool_type == MapToolType::Game
             || self.map_tool_type == MapToolType::MiniMap
         {
-            for sector in &map.sectors {
+            let sorted = map.sorted_sectors_by_area();
+            for sector in &sorted {
                 if let Some(geo) = sector.generate_geometry(map) {
                     let mut vertices: Vec<[f32; 2]> = vec![];
                     let mut uvs: Vec<[f32; 2]> = vec![];
