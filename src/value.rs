@@ -1,4 +1,4 @@
-use crate::{Light, PixelSource, PlayerCamera, SampleMode, Texture};
+use crate::{Light, Pixel, PixelSource, PlayerCamera, SampleMode, Texture};
 use rustpython::vm::*;
 use std::fmt;
 use theframework::prelude::*;
@@ -20,6 +20,7 @@ pub enum Value {
     SampleMode(SampleMode),
     PlayerCamera(PlayerCamera),
     Light(Light),
+    Pixel(Pixel),
 }
 
 impl Value {
@@ -138,6 +139,7 @@ impl fmt::Display for Value {
             Value::SampleMode(_) => write!(f, "SampleMode"),
             Value::PlayerCamera(_) => write!(f, "PlayerCamera"),
             Value::Light(_) => write!(f, "Light"),
+            Value::Pixel(_) => write!(f, "Pixel"),
         }
     }
 }
@@ -351,7 +353,8 @@ impl ValueContainer {
             Some(Value::SampleMode(_)) => 10,
             Some(Value::PlayerCamera(_)) => 11,
             Some(Value::Light(_)) => 12,
-            Some(Value::NoValue) => 13,
+            Some(Value::Pixel(_)) => 13,
+            Some(Value::NoValue) => 14,
             None => 99, // If key is missing, push to the end
         }
     }

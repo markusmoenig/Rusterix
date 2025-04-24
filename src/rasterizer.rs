@@ -41,6 +41,12 @@ pub struct Rasterizer {
 
     /// Useful when the resulting framebuffer is used as an blended overlay
     pub preserve_transparency: bool,
+
+    // Fog settings
+    pub fog_enabled: bool,
+    pub fog_color: Vec4<f32>,
+    pub fog_start_distance: f32,
+    pub fog_end_distance: f32,
 }
 
 /// Rasterizes batches of 2D and 3D meshes (and lines).
@@ -90,6 +96,11 @@ impl Rasterizer {
             scaled2,
 
             preserve_transparency: false,
+
+            fog_enabled: false,
+            fog_color: Vec4::zero(),
+            fog_start_distance: 5.0,
+            fog_end_distance: 7.0,
         }
     }
 
@@ -692,23 +703,20 @@ impl Rasterizer {
                                                 color[3] += jitter;
                                             }*/
 
-                                            // Distance based fog
-                                            /*
-                                            if batch.receives_light {
+                                            // Apply fog
+                                            if self.fog_enabled {
                                                 let distance =
                                                     (world - self.camera_pos).magnitude();
+                                                if distance > self.fog_start_distance {
+                                                    let t = ((distance - self.fog_start_distance)
+                                                        / (self.fog_end_distance
+                                                            - self.fog_start_distance))
+                                                        .clamp(0.0, 1.0);
 
-                                                let fog_density = 0.1;
-                                                let fog_factor = (-fog_density * distance).exp();
-                                                let fog_factor = fog_factor.clamp(0.0, 1.0);
-
-                                                let fog_color = [1.0, 1.0, 1.0];
-
-                                                for i in 0..3 {
-                                                    color[i] = color[i] * fog_factor
-                                                        + fog_color[i] * (1.0 - fog_factor);
+                                                    let fog_color = self.fog_color;
+                                                    color = color * (1.0 - t) + fog_color * t;
                                                 }
-                                            }*/
+                                            }
 
                                             // Sample Lights
                                             if batch.receives_light
