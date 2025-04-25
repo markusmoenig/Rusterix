@@ -22,6 +22,7 @@ impl Ray {
     }
 }
 
+#[derive(Debug)]
 pub struct HitInfo {
     pub t: f32,
     pub uv: Vec2<f32>,

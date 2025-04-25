@@ -1,4 +1,4 @@
-use crate::{Batch, CompiledLight, Light, LightType, MapMini, Shader, Tile};
+use crate::{Batch, CompiledLight, HitInfo, Light, LightType, MapMini, Ray, Shader, Terrain, Tile};
 use rayon::prelude::*;
 use vek::{Mat3, Mat4};
 
@@ -35,6 +35,12 @@ pub struct Scene {
 
     /// For 2D grid conversion when we dont use a matrix
     pub mapmini: MapMini,
+
+    /// Optional Terrain
+    pub terrain: Option<Terrain>,
+
+    /// Terrain Batch
+    pub terrain_batch: Option<Batch<[f32; 4]>>,
 }
 
 impl Default for Scene {
@@ -60,6 +66,8 @@ impl Scene {
             animation_frame: 1,
 
             mapmini: MapMini::default(),
+            terrain: None,
+            terrain_batch: None,
         }
     }
 
@@ -79,6 +87,8 @@ impl Scene {
             animation_frame: 1,
 
             mapmini: MapMini::default(),
+            terrain: None,
+            terrain_batch: None,
         }
     }
 
@@ -139,6 +149,15 @@ impl Scene {
                 height as f32,
             );
         });
+
+        if let Some(batch) = &mut self.terrain_batch {
+            batch.clip_and_project(
+                view_matrix_3d,
+                projection_matrix_3d,
+                width as f32,
+                height as f32,
+            );
+        }
     }
 
     /// Computes the normals for the static models
@@ -178,5 +197,26 @@ impl Scene {
         }
 
         cl
+    }
+
+    pub fn get_hit_info(&self, ray: &Ray) {
+        let static_hit = self
+            .d3_static
+            .par_iter()
+            .filter_map(|batch| batch.intersect(ray, false))
+            .reduce_with(|a, b| if a.t < b.t { a } else { b });
+
+        let dynamic_hit = self
+            .d3_dynamic
+            .par_iter()
+            .filter_map(|batch| batch.intersect(ray, false))
+            .reduce_with(|a, b| if a.t < b.t { a } else { b });
+
+        let terrain_hit = self
+            .terrain_batch
+            .as_ref()
+            .and_then(|batch| batch.intersect(ray, false));
+
+        println!("static: {:?}, terrain: {:?}", static_hit, terrain_hit);
     }
 }

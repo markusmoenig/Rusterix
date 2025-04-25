@@ -1,4 +1,4 @@
-use crate::{Assets, Batch, Pixel, PixelSource};
+use crate::{Assets, Batch, Pixel, PixelSource, Texture};
 use theframework::prelude::*;
 use vek::Vec2;
 
@@ -7,6 +7,8 @@ pub struct Terrain {
     pub scale: Vec2<f32>, // world units per cell
     pub heights: FxHashMap<(i32, i32), f32>,
     pub sources: FxHashMap<(i32, i32), PixelSource>,
+    pub baked_texture: Option<Texture>,
+    pub bounds: Option<(Vec2<i32>, Vec2<i32>)>, // (min, max)
 }
 
 impl Terrain {
@@ -16,6 +18,8 @@ impl Terrain {
             scale,
             heights: FxHashMap::default(),
             sources: FxHashMap::default(),
+            baked_texture: None,
+            bounds: None,
         }
     }
 
@@ -30,6 +34,8 @@ impl Terrain {
             scale,
             heights: FxHashMap::default(),
             sources: FxHashMap::default(),
+            baked_texture: None,
+            bounds: None,
         };
 
         let half = size / 2;
@@ -60,6 +66,22 @@ impl Terrain {
     /// Set height at given cell
     pub fn set_height(&mut self, x: i32, y: i32, value: f32) {
         self.heights.insert((x, y), value);
+
+        let bounds = self
+            .bounds
+            .get_or_insert((Vec2::new(x, y), Vec2::new(x, y)));
+        if x < bounds.0.x {
+            bounds.0.x = x;
+        }
+        if y < bounds.0.y {
+            bounds.0.y = y;
+        }
+        if x > bounds.1.x {
+            bounds.1.x = x;
+        }
+        if y > bounds.1.y {
+            bounds.1.y = y;
+        }
     }
 
     /// Get source material at given cell
@@ -102,41 +124,39 @@ impl Terrain {
 
     /// Sample the pixel source at the given world position
     pub fn sample_source(&self, world_pos: Vec2<f32>, assets: &Assets) -> Pixel {
-        let mut pixel = [0, 0, 0, 255]; // Default color if nothing is found
-
         // Map world position to tile grid position
         let x = (world_pos.x / self.scale.x).floor() as i32;
         let y = (world_pos.y / self.scale.y).floor() as i32;
 
-        if let Some(source) = self.get_source(x, y) {
-            // Local UV inside the tile (0..1)
-            let local_x = (world_pos.x / self.scale.x).fract();
-            let local_y = (world_pos.y / self.scale.y).fract();
-            let uv = Vec2::new(
-                if local_x < 0.0 {
-                    local_x + 1.0
-                } else {
-                    local_x
-                },
-                if local_y < 0.0 {
-                    local_y + 1.0
-                } else {
-                    local_y
-                },
-            );
+        // Local UV inside the tile (0..1)
+        let local_x = (world_pos.x / self.scale.x).fract();
+        let local_y = (world_pos.y / self.scale.y).fract();
+        let uv = Vec2::new(
+            if local_x < 0.0 {
+                local_x + 1.0
+            } else {
+                local_x
+            },
+            if local_y < 0.0 {
+                local_y + 1.0
+            } else {
+                local_y
+            },
+        );
 
+        if let Some(source) = self.get_source(x, y) {
             match source {
                 PixelSource::TileId(id) => {
                     if let Some(tile) = assets.tiles.get(id) {
                         if let Some(texture) = tile.textures.first() {
-                            pixel = texture.sample_nearest(uv.x, uv.y);
+                            return texture.sample_nearest(uv.x, uv.y);
                         }
                     }
                 }
                 PixelSource::MaterialId(id) => {
                     if let Some(material) = assets.materials.get(id) {
                         if let Some(texture) = material.textures.first() {
-                            pixel = texture.sample_nearest(uv.x, uv.y);
+                            return texture.sample_nearest(uv.x, uv.y);
                         }
                     }
                 }
@@ -144,7 +164,27 @@ impl Terrain {
             }
         }
 
-        pixel
+        // Checkerboard fallback based on tile position
+        let checker = ((x & 1) ^ (y & 1)) == 0;
+        if checker {
+            [160, 160, 160, 255] // light gray
+        } else {
+            [80, 80, 80, 255] // dark gray
+        }
+    }
+
+    /// Sample the baked terrain texture at the given world position.
+    /// Returns the baked pixel, or a fallback if out of bounds or not baked.
+    pub fn sample_baked(&self, world_pos: Vec2<f32>) -> Pixel {
+        let (x, y) = match self.world_to_texcoord(world_pos) {
+            Some(coord) => coord,
+            None => return [0, 0, 0, 255], // black fallback if outside bounds
+        };
+
+        self.baked_texture
+            .as_ref()
+            .map(|t| t.get_pixel(x as u32, y as u32))
+            .unwrap_or([255, 0, 255, 255]) // magenta fallback if not baked
     }
 
     /// Generate a batch for all filled cells (2 triangles per 1x1 quad)
@@ -194,9 +234,39 @@ impl Terrain {
         batch
     }
 
+    /// Convert world coordinates to tex coordinates.
+    pub fn world_to_texcoord(&self, world_pos: Vec2<f32>) -> Option<(i32, i32)> {
+        let (min, max) = self.bounds?;
+        let baked = self.baked_texture.as_ref()?;
+
+        let tex_size = Vec2::new(baked.width as i32, baked.height as i32);
+
+        let world_min = Vec2::new(min.x as f32 * self.scale.x, min.y as f32 * self.scale.y);
+        let world_max = Vec2::new(
+            (max.x + 1) as f32 * self.scale.x,
+            (max.y + 1) as f32 * self.scale.y,
+        );
+        let world_size = world_max - world_min;
+
+        let rel = world_pos - world_min;
+        if rel.x < 0.0 || rel.y < 0.0 || rel.x > world_size.x || rel.y > world_size.y {
+            return None;
+        }
+
+        let uv = rel / world_size;
+        let x = (uv.x * tex_size.x as f32)
+            .floor()
+            .clamp(0.0, tex_size.x as f32 - 1.0) as i32;
+        let y = (uv.y * tex_size.y as f32)
+            .floor()
+            .clamp(0.0, tex_size.y as f32 - 1.0) as i32;
+
+        Some((x, y))
+    }
+
     /// Generate a smoothly interpolated mesh with `subdiv` subdivisions per cell
-    pub fn to_batch_bilinear(&self, subdiv: u32) -> Batch<[f32; 4]> {
-        let (min, max) = match self.bounding_box() {
+    pub fn to_batch_bilinear(&mut self, subdiv: u32) -> Batch<[f32; 4]> {
+        let (min, max) = match self.bounds {
             Some(bounds) => bounds,
             None => return Batch::emptyd3(),
         };
@@ -249,31 +319,63 @@ impl Terrain {
         batch
     }
 
-    /// Computes the bounding box of the heightmap as (min, max) inclusive
-    pub fn bounding_box(&self) -> Option<(Vec2<i32>, Vec2<i32>)> {
-        if self.heights.is_empty() {
-            return None;
+    /// Bake the texture
+    pub fn bake_texture(&mut self, assets: &Assets, pixels_per_tile: i32) {
+        let (min, max) = match self.bounds {
+            Some(bounds) => bounds,
+            None => return,
+        };
+
+        let tile_width = max.x - min.x + 1;
+        let tile_height = max.y - min.y + 1;
+
+        let tex_size = Vec2::new(tile_width * pixels_per_tile, tile_height * pixels_per_tile);
+
+        let world_min = Vec2::new(min.x as f32 * self.scale.x, min.y as f32 * self.scale.y);
+        let world_max = Vec2::new(
+            (max.x + 1) as f32 * self.scale.x,
+            (max.y + 1) as f32 * self.scale.y,
+        );
+        let world_size = world_max - world_min;
+
+        let mut pixels = vec![0u8; (tex_size.x * tex_size.y * 4) as usize];
+
+        for y in 0..tex_size.y {
+            for x in 0..tex_size.x {
+                let uv = Vec2::new(x as f32 / tex_size.x as f32, y as f32 / tex_size.y as f32);
+
+                let world_pos = world_min + uv * world_size;
+                let pixel = self.sample_source(world_pos, assets);
+
+                let index = ((y * tex_size.x + x) * 4) as usize;
+                pixels[index..index + 4].copy_from_slice(&pixel);
+            }
         }
 
-        let mut min = Vec2::new(i32::MAX, i32::MAX);
-        let mut max = Vec2::new(i32::MIN, i32::MIN);
+        self.baked_texture = Some(Texture::new(
+            pixels,
+            tex_size.x as usize,
+            tex_size.y as usize,
+        ));
+    }
 
-        for &(x, y) in self.heights.keys() {
-            if x < min.x {
-                min.x = x;
-            }
-            if y < min.y {
-                min.y = y;
-            }
-            if x > max.x {
-                max.x = x;
-            }
-            if y > max.y {
-                max.y = y;
-            }
-        }
+    /// Computes the bounding box of the heightmap as (min, max) inclusive and stores internally
+    pub fn recompute_bounds(&mut self) {
+        self.bounds = if self.heights.is_empty() {
+            None
+        } else {
+            let mut min = Vec2::new(i32::MAX, i32::MAX);
+            let mut max = Vec2::new(i32::MIN, i32::MIN);
 
-        Some((min, max))
+            for &(x, y) in self.heights.keys() {
+                min.x = min.x.min(x);
+                min.y = min.y.min(y);
+                max.x = max.x.max(x);
+                max.y = max.y.max(y);
+            }
+
+            Some((min, max))
+        };
     }
 }
 

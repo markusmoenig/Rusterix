@@ -8,6 +8,13 @@ use vek::{Mat3, Mat4, Vec2, Vec3, Vec4};
 
 use SampleMode::*;
 
+#[derive(Clone, PartialEq)]
+enum D3BatchType {
+    Static,
+    Dynamic,
+    Terrain,
+}
+
 pub struct Rasterizer {
     pub projection_matrix_2d: Option<Mat3<f32>>,
 
@@ -197,11 +204,36 @@ impl Rasterizer {
                 }
 
                 for batch in scene.d3_static.iter() {
-                    self.d3_rasterize(&mut buffer, &mut z_buffer, tile, batch, scene, false);
+                    self.d3_rasterize(
+                        &mut buffer,
+                        &mut z_buffer,
+                        tile,
+                        batch,
+                        scene,
+                        D3BatchType::Static,
+                    );
                 }
 
                 for batch in scene.d3_dynamic.iter() {
-                    self.d3_rasterize(&mut buffer, &mut z_buffer, tile, batch, scene, true);
+                    self.d3_rasterize(
+                        &mut buffer,
+                        &mut z_buffer,
+                        tile,
+                        batch,
+                        scene,
+                        D3BatchType::Dynamic,
+                    );
+                }
+
+                if let Some(batch) = &scene.terrain_batch {
+                    self.d3_rasterize(
+                        &mut buffer,
+                        &mut z_buffer,
+                        tile,
+                        batch,
+                        scene,
+                        D3BatchType::Terrain,
+                    );
                 }
 
                 // Render 2D geometry on top of the 3D geometry (UI)
@@ -494,7 +526,7 @@ impl Rasterizer {
         tile: &TileRect,
         batch: &Batch<[f32; 4]>,
         scene: &Scene,
-        dynamic: bool,
+        batch_type: D3BatchType,
     ) {
         // Bounding box check for the tile with the batch bbox
         if let Some(bbox) = batch.bounding_box {
@@ -587,17 +619,51 @@ impl Rasterizer {
 
                                             // Get the screen coordinates of the hitpoint
                                             let world = self.screen_to_world(p[0], p[1], z);
+                                            let world_2d = Vec2::new(world.x, world.z);
 
-                                            // Sample the texture
-                                            let textures = if dynamic {
-                                                &scene.dynamic_textures
-                                            } else {
-                                                &scene.textures
+                                            let texel = match batch_type {
+                                                D3BatchType::Static => {
+                                                    let textile =
+                                                        &scene.textures[batch.texture_index];
+                                                    let index = scene.animation_frame
+                                                        % textile.textures.len();
+                                                    textile.textures[index].sample(
+                                                        interpolated_u,
+                                                        interpolated_v,
+                                                        self.sample_mode,
+                                                        batch.repeat_mode,
+                                                    )
+                                                }
+                                                D3BatchType::Dynamic => {
+                                                    let textile = &scene.dynamic_textures
+                                                        [batch.texture_index];
+                                                    let index = scene.animation_frame
+                                                        % textile.textures.len();
+                                                    textile.textures[index].sample(
+                                                        interpolated_u,
+                                                        interpolated_v,
+                                                        self.sample_mode,
+                                                        batch.repeat_mode,
+                                                    )
+                                                }
+                                                D3BatchType::Terrain => {
+                                                    if let Some(terrain) = &scene.terrain {
+                                                        terrain.sample_baked(world_2d)
+                                                    } else {
+                                                        [255, 0, 0, 255]
+                                                    }
+                                                }
                                             };
+                                            // Sample the texture
+                                            // let textures = if dynamic {
+                                            //     &scene.dynamic_textures
+                                            // } else {
+                                            //     &scene.textures
+                                            // };
 
-                                            let textile = &textures[batch.texture_index];
-                                            let index =
-                                                scene.animation_frame % textile.textures.len();
+                                            // let textile = &textures[batch.texture_index];
+                                            // let index =
+                                            //     scene.animation_frame % textile.textures.len();
 
                                             // let normal = if !batch.normals.is_empty() {
                                             //     let n0 = batch.clipped_normals[i0];
@@ -639,12 +705,12 @@ impl Rasterizer {
                                             // blur = blur * blur * (3.0 - 2.0 * blur);
                                             // blur = blur.clamp(0.0, 1.0);
 
-                                            let texel = textile.textures[index].sample(
-                                                interpolated_u,
-                                                interpolated_v,
-                                                self.sample_mode,
-                                                batch.repeat_mode,
-                                            );
+                                            // let texel = textile.textures[index].sample(
+                                            //     interpolated_u,
+                                            //     interpolated_v,
+                                            //     self.sample_mode,
+                                            //     batch.repeat_mode,
+                                            // );
 
                                             let mut color = pixel_to_vec4(&texel);
 
@@ -724,7 +790,6 @@ impl Rasterizer {
                                             {
                                                 let mut accumulated_light: [f32; 3] =
                                                     [0.0, 0.0, 0.0];
-                                                let world_2d = Vec2::new(world.x, world.z);
                                                 let epsilon = 0.01;
 
                                                 for light in &self.compiled_lights {

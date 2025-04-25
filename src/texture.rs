@@ -460,4 +460,18 @@ impl Texture {
             height: new_height,
         }
     }
+
+    /// Gets the pixel at the specified (x, y) position. Clamps to bounds.
+    pub fn get_pixel(&self, x: u32, y: u32) -> [u8; 4] {
+        let x = x.min((self.width - 1) as u32) as usize;
+        let y = y.min((self.height - 1) as u32) as usize;
+        let idx = (y * self.width + x) * 4;
+
+        [
+            self.data[idx],
+            self.data[idx + 1],
+            self.data[idx + 2],
+            self.data[idx + 3],
+        ]
+    }
 }

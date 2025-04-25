@@ -1,6 +1,6 @@
 use vek::{Mat4, Vec2, Vec3};
 
-use super::D3Camera;
+use super::{D3Camera, Ray};
 
 #[derive(Clone)]
 pub struct D3OrbitCamera {
@@ -104,5 +104,39 @@ impl D3Camera for D3OrbitCamera {
         self.distance *= zoom_factor;
 
         self.distance = self.distance.clamp(0.1, 100.0);
+    }
+
+    /// Create a ray from a screen-space UV coordinate and offset.
+    fn create_ray(&self, uv: Vec2<f32>, screen: Vec2<f32>, offset: Vec2<f32>) -> Ray {
+        let aspect = screen.x / screen.y;
+        let pixel_size = Vec2::new(1.0 / screen.x, 1.0 / screen.y);
+
+        let half_height = (self.fov.to_radians() * 0.5).tan();
+        let half_width = half_height * aspect;
+
+        // Get the camera's world position (orbiting around center)
+        let x = self.distance * self.azimuth.cos() * self.elevation.cos();
+        let y = self.distance * self.elevation.sin();
+        let z = self.distance * self.azimuth.sin() * self.elevation.cos();
+        let position = Vec3::new(x, y, z) + self.center;
+
+        let forward = (self.center - position).normalized();
+        let right = forward.cross(self.up).normalized();
+        let up = right.cross(forward);
+
+        let lower_left = position + forward - right * half_width - up * half_height;
+        let horizontal = right * (2.0 * half_width);
+        let vertical = up * (2.0 * half_height);
+
+        let sample_pos = lower_left
+            + horizontal * (pixel_size.x * offset.x + uv.x)
+            + vertical * (pixel_size.y * offset.y + uv.y);
+
+        let dir = (sample_pos - position).normalized();
+
+        Ray {
+            origin: position,
+            dir,
+        }
     }
 }
