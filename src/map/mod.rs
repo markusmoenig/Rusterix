@@ -7,11 +7,12 @@ pub mod mini;
 pub mod pixelsource;
 pub mod sector;
 pub mod state;
+pub mod terrain;
 pub mod tile;
 pub mod vertex;
 
 use crate::{
-    BBox, MapMini, PixelSource, ShapeFXGraph, Value, ValueContainer, VertexAnimationSystem,
+    BBox, MapMini, PixelSource, ShapeFXGraph, Terrain, Value, ValueContainer, VertexAnimationSystem,
 };
 use ordered_float::NotNan;
 use pathfinding::prelude::astar;
@@ -44,6 +45,7 @@ pub enum MapToolType {
     Rect,
     Game,
     MiniMap,
+    World,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -55,6 +57,9 @@ pub struct Map {
     pub offset: Vec2<f32>,
     pub grid_size: f32,
     pub subdivisions: f32,
+
+    #[serde(default)]
+    pub terrain: Terrain,
 
     // When adding linedefs we keep track of them to check if we have a closed polygon
     #[serde(skip)]
@@ -130,6 +135,8 @@ impl Map {
             offset: Vec2::zero(),
             grid_size: 30.0,
             subdivisions: 1.0,
+
+            terrain: Terrain::default(),
 
             possible_polygon: vec![],
             curr_grid_pos: None,

@@ -41,4 +41,9 @@ pub trait D3Camera: Send + Sync {
     fn create_ray(&self, uv: Vec2<f32>, screen: Vec2<f32>, offset: Vec2<f32>) -> Ray {
         Ray::default()
     }
+
+    /// Rotate (only used by orbit camera)
+    fn rotate(&mut self, delta: Vec2<f32>) {}
+    /// Zoom (only used by orbit camera)
+    fn zoom(&mut self, delta: f32) {}
 }
