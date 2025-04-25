@@ -1,7 +1,7 @@
 use crate::SampleMode;
 use crate::{
-    Batch, CompiledLight, LightType, MapMini, Pixel, PrimitiveMode, RepeatMode, Scene, Texture,
-    pixel_to_vec4, vec4_to_pixel,
+    Batch, CompiledLight, LightType, MapMini, Pixel, PrimitiveMode, Ray, RepeatMode, Scene,
+    Texture, pixel_to_vec4, vec4_to_pixel,
 };
 use rayon::prelude::*;
 use vek::{Mat3, Mat4, Vec2, Vec3, Vec4};
@@ -235,6 +235,8 @@ impl Rasterizer {
                         D3BatchType::Terrain,
                     );
                 }
+
+                // self.post_process(&mut buffer, &mut z_buffer, tile, scene);
 
                 // Render 2D geometry on top of the 3D geometry (UI)
                 for batch in scene.d2_static.iter() {
@@ -904,6 +906,33 @@ impl Rasterizer {
         }
     }
 
+    /// Rasterizes a 3D batch.
+    #[inline(always)]
+    fn _post_process(
+        &self,
+        buffer: &mut [u8],
+        z_buffer: &mut [f32],
+        tile: &TileRect,
+        _scene: &Scene,
+    ) {
+        // let screen_size = Vec2::new(self.width, self.height);
+        for ty in 0..tile.height {
+            for tx in 0..tile.width {
+                // let uv = Vec2::new(
+                //     (tile.x + tx) as f32 / self.width,
+                //     (tile.y + ty) as f32 / self.height,
+                // );
+                let z_idx = ty * tile.width + tx;
+                if z_buffer[z_idx] == 1.0 {
+                    let ray = self._screen_ray((tile.x + tx) as f32, (tile.y + ty) as f32);
+                    let pixel = self._sample_sky_debug(ray.dir);
+                    let idx = (ty * tile.width + tx) * 4;
+                    buffer[idx..idx + 4].copy_from_slice(&pixel);
+                }
+            }
+        }
+    }
+
     /// Calculate a bump normal for the texture
     fn _bump_from_texture(
         &self,
@@ -1062,6 +1091,55 @@ impl Rasterizer {
                 y += sy;
             }
         }
+    }
+
+    pub fn _sample_sky_debug(&self, ray_dir: Vec3<f32>) -> [u8; 4] {
+        let up = ray_dir.normalized().y.clamp(-1.0, 1.0); // -1 = down, 1 = up
+
+        // Map Y to gradient range
+        let t = (up + 1.0) * 0.5;
+
+        // Sky color: gradient from horizon to zenith
+        let horizon = Vec3::new(0.8, 0.7, 0.6); // Light gray-orange near horizon
+        let sky = Vec3::new(0.1, 0.4, 0.9); // Deep blue overhead
+
+        let color = Vec3::lerp(horizon, sky, t);
+
+        [
+            (color.x * 255.0).clamp(0.0, 255.0) as u8,
+            (color.y * 255.0).clamp(0.0, 255.0) as u8,
+            (color.z * 255.0).clamp(0.0, 255.0) as u8,
+            255,
+        ]
+    }
+
+    /// Computes a world-space ray from a screen-space pixel (x, y)
+    pub fn _screen_ray(&self, x: f32, y: f32) -> Ray {
+        // Convert screen to normalized device coordinates
+        let ndc_x = 2.0 * (x / self.width) - 1.0;
+        let ndc_y = 1.0 - 2.0 * (y / self.height); // Flip Y
+
+        // Near and far points in NDC space
+        let ndc_near = Vec4::new(ndc_x, ndc_y, -1.0, 1.0);
+        let ndc_far = Vec4::new(ndc_x, ndc_y, 1.0, 1.0);
+
+        // Transform to view space
+        let view_near = self.inverse_projection_matrix * ndc_near;
+        let view_far = self.inverse_projection_matrix * ndc_far;
+
+        let view_near = view_near / view_near.w;
+        let view_far = view_far / view_far.w;
+
+        // Transform to world space
+        let world_near = self.inverse_view_matrix * view_near;
+        let world_far = self.inverse_view_matrix * view_far;
+
+        // Origin and direction
+        let origin = Vec3::new(world_near.x, world_near.y, world_near.z);
+        let target = Vec3::new(world_far.x, world_far.y, world_far.z);
+        let dir = (target - origin).normalized();
+
+        Ray::new(origin, dir)
     }
 }
 
