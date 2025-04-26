@@ -1,4 +1,4 @@
-use crate::{Batch, CompiledLight, Light, LightType, MapMini, Ray, Shader, Terrain, Tile};
+use crate::{Batch, CompiledLight, Light, LightType, MapMini, Shader, Terrain, Tile};
 use rayon::prelude::*;
 use vek::{Mat3, Mat4};
 
@@ -199,24 +199,24 @@ impl Scene {
         cl
     }
 
-    pub fn get_hit_info(&self, _ray: &Ray) {
-        // let static_hit = self
-        //     .d3_static
-        //     .par_iter()
-        //     .filter_map(|batch| batch.intersect(ray, false))
-        //     .reduce_with(|a, b| if a.t < b.t { a } else { b });
+    // pub fn get_hit_info(&self, ray: &Ray) {
+    //     let static_hit = self
+    //         .d3_static
+    //         .par_iter()
+    //         .filter_map(|batch| batch.intersect(ray, false))
+    //         .reduce_with(|a, b| if a.t < b.t { a } else { b });
 
-        // let dynamic_hit = self
-        //     .d3_dynamic
-        //     .par_iter()
-        //     .filter_map(|batch| batch.intersect(ray, false))
-        //     .reduce_with(|a, b| if a.t < b.t { a } else { b });
+    //     let dynamic_hit = self
+    //         .d3_dynamic
+    //         .par_iter()
+    //         .filter_map(|batch| batch.intersect(ray, false))
+    //         .reduce_with(|a, b| if a.t < b.t { a } else { b });
 
-        // let terrain_hit = self
-        //     .terrain_batch
-        //     .as_ref()
-        //     .and_then(|batch| batch.intersect(ray, false));
+    //     let terrain_hit = self
+    //         .terrain_batch
+    //         .as_ref()
+    //         .and_then(|batch| batch.intersect(ray, false));
 
-        // println!("static: {:?}, terrain: {:?}", static_hit, terrain_hit);
-    }
+    //     println!("static: {:?}, terrain: {:?}", static_hit, terrain_hit);
+    // }
 }

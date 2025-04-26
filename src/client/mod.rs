@@ -200,6 +200,12 @@ impl Client {
         );
     }
 
+    /// Build the terrain 3D
+    pub fn rebuild_terrain_d3(&mut self, map: &Map, assets: &Assets, values: &ValueContainer) {
+        self.builder_d3
+            .build_terrain(map, assets, &mut self.scene_d3, values);
+    }
+
     /// Apply the entities to the 3D scene.
     pub fn apply_entities_items_d3(&mut self, map: &Map, assets: &Assets) {
         for entity in &map.entities {

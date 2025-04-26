@@ -110,6 +110,15 @@ impl Entity {
         )
     }
 
+    /// A forward direction vector for the entity.
+    pub fn forward(&self) -> Vec3<f32> {
+        let dir_xz = self.orientation.normalized();
+        let cos_tilt = self.tilt.cos();
+        let sin_tilt = self.tilt.sin();
+
+        Vec3::new(dir_xz.x * cos_tilt, sin_tilt, dir_xz.y * cos_tilt).normalized()
+    }
+
     /// Rotates the entity to the left by a certain degree.
     pub fn turn_left(&mut self, degrees: f32) {
         self.rotate_orientation(-degrees.to_radians());

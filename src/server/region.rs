@@ -1343,6 +1343,11 @@ impl RegionInstance {
         // Now we set the new position after we've done all the entity/item collision resolution
         entity.set_pos_xz(new_position);
 
+        entity.position.y = map
+            .terrain
+            .sample_height_bilinear(entity.position.x, entity.position.z)
+            + 1.5;
+
         // Finally, let the geometry/linedef collision do its thing
         let (end_position, geometry_blocked) =
             MAPMINI

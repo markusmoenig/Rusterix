@@ -1,11 +1,20 @@
-use crate::{Assets, Batch, Pixel, PixelSource, Texture};
+use crate::{Assets, Batch, Pixel, PixelSource, Ray, Texture};
 use theframework::prelude::*;
 use vek::Vec2;
+
+#[derive(Clone, Debug)]
+pub struct TerrainHit {
+    pub world_pos: Vec3<f32>,
+    pub grid_pos: Vec2<i32>,
+    pub height: f32,
+}
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Terrain {
     pub scale: Vec2<f32>, // world units per cell
+    #[serde(with = "vectorize")]
     pub heights: FxHashMap<(i32, i32), f32>,
+    #[serde(with = "vectorize")]
     pub sources: FxHashMap<(i32, i32), PixelSource>,
     pub baked_texture: Option<Texture>,
     pub bounds: Option<(Vec2<i32>, Vec2<i32>)>, // (min, max)
@@ -95,9 +104,9 @@ impl Terrain {
     }
 
     /// Sample height at a world position (nearest neighbor)
-    pub fn sample_height(&self, world_pos: Vec2<f32>) -> f32 {
-        let x = (world_pos.x / self.scale.x).floor() as i32;
-        let y = (world_pos.y / self.scale.y).floor() as i32;
+    pub fn sample_height(&self, x: f32, y: f32) -> f32 {
+        let x = (x / self.scale.x).floor() as i32;
+        let y = (y / self.scale.y).floor() as i32;
         self.get_height(x, y)
     }
 
@@ -357,6 +366,35 @@ impl Terrain {
             tex_size.x as usize,
             tex_size.y as usize,
         ));
+    }
+
+    /// Ray / terrain hit used for editing
+    pub fn ray_terrain_hit(&self, ray: &Ray, max_distance: f32) -> Option<TerrainHit> {
+        let mut t = 0.0;
+        for _ in 0..150 {
+            let point = ray.origin + ray.dir * t;
+            let world_pos = Vec2::new(point.x, point.z);
+            let terrain_height = self.sample_height(world_pos.x, world_pos.y);
+
+            let d = point.y - terrain_height;
+
+            if d.abs() < 0.0001 {
+                let grid_x = (point.x / self.scale.x).floor() as i32;
+                let grid_y = (point.z / self.scale.y).floor() as i32;
+                return Some(TerrainHit {
+                    world_pos: Vec3::new(point.x, terrain_height, point.z),
+                    grid_pos: Vec2::new(grid_x, grid_y),
+                    height: terrain_height,
+                });
+            }
+
+            t += d * 0.5;
+            if t > max_distance {
+                break;
+            }
+        }
+
+        None
     }
 
     /// Computes the bounding box of the heightmap as (min, max) inclusive and stores internally

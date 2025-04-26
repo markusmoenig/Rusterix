@@ -328,11 +328,7 @@ impl D3Builder {
 
         // ---
 
-        let mut terrain_copy = map.terrain.clone();
-        terrain_copy.recompute_bounds();
-        terrain_copy.bake_texture(assets, self.tile_size);
-        scene.terrain_batch = Some(terrain_copy.to_batch());
-        scene.terrain = Some(terrain_copy);
+        self.build_terrain(map, assets, &mut scene, properties);
 
         let mut batches = repeated_batches;
         batches.extend(vec![atlas_batch]);
@@ -343,6 +339,21 @@ impl D3Builder {
         scene.compute_static_normals();
 
         scene
+    }
+
+    /// Build and bake the terrain
+    pub fn build_terrain(
+        &self,
+        map: &Map,
+        assets: &Assets,
+        scene: &mut Scene,
+        _properties: &ValueContainer,
+    ) {
+        let mut terrain_copy = map.terrain.clone();
+        terrain_copy.recompute_bounds();
+        terrain_copy.bake_texture(assets, self.tile_size);
+        scene.terrain_batch = Some(terrain_copy.to_batch());
+        scene.terrain = Some(terrain_copy);
     }
 
     pub fn build_entities_items(

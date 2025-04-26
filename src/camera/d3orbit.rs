@@ -111,28 +111,29 @@ impl D3Camera for D3OrbitCamera {
         let aspect = screen.x / screen.y;
         let pixel_size = Vec2::new(1.0 / screen.x, 1.0 / screen.y);
 
-        let half_height = (self.fov.to_radians() * 0.5).tan();
-        let half_width = half_height * aspect;
-
-        // Get the camera's world position (orbiting around center)
+        // Orbit camera position
         let x = self.distance * self.azimuth.cos() * self.elevation.cos();
         let y = self.distance * self.elevation.sin();
         let z = self.distance * self.azimuth.sin() * self.elevation.cos();
         let position = Vec3::new(x, y, z) + self.center;
 
-        let forward = (self.center - position).normalized();
+        // Compute correct basis
+        let forward = (self.center - position).normalized(); // from eye to center
         let right = forward.cross(self.up).normalized();
         let up = right.cross(forward);
 
-        let lower_left = position + forward - right * half_width - up * half_height;
-        let horizontal = right * (2.0 * half_width);
-        let vertical = up * (2.0 * half_height);
+        // Screen plane height/width
+        let half_height = (self.fov.to_radians() * 0.5).tan();
+        let half_width = half_height * aspect;
 
-        let sample_pos = lower_left
-            + horizontal * (pixel_size.x * offset.x + uv.x)
-            + vertical * (pixel_size.y * offset.y + uv.y);
+        // Now build the ray
+        let pixel_ndc = Vec2::new(
+            (pixel_size.x * offset.x + uv.x) * 2.0 - 1.0, // [-1..1]
+            (pixel_size.y * offset.y + uv.y) * 2.0 - 1.0,
+        );
 
-        let dir = (sample_pos - position).normalized();
+        let dir = (forward + right * pixel_ndc.x * half_width - up * pixel_ndc.y * half_height) // ← minus Y because screen Y usually goes down
+            .normalized();
 
         Ray {
             origin: position,
