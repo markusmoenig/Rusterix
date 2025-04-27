@@ -7,7 +7,6 @@ pub mod mini;
 pub mod pixelsource;
 pub mod sector;
 pub mod state;
-pub mod terrain;
 pub mod tile;
 pub mod vertex;
 

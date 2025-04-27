@@ -16,6 +16,7 @@ pub mod script;
 pub mod server;
 pub mod shader;
 pub mod shapestack;
+pub mod terrain;
 pub mod texture;
 pub mod tracer;
 pub mod utils;
@@ -55,6 +56,21 @@ pub fn vec4_to_pixel(vec: &vek::Vec4<f32>) -> Pixel {
     ]
 }
 
+/// Get time in ms
+pub fn get_time() -> u128 {
+    #[cfg(target_arch = "wasm32")]
+    {
+        web_sys::window().unwrap().performance().unwrap().now() as u128
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let stop = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("Time went backwards");
+        stop.as_millis()
+    }
+}
+
 pub const TRANSPARENT: Pixel = [0, 0, 0, 0];
 pub const BLACK: Pixel = [0, 0, 0, 255];
 pub const WHITE: Pixel = [255, 255, 255, 255];
@@ -67,25 +83,11 @@ pub use crate::{
     edge::Edges,
     intodata::IntoDataInput,
     map::{
-        Map, MapCamera, MapToolType,
-        bbox::BBox,
-        light::CompiledLight,
-        light::Light,
-        light::LightType,
-        linedef::CompiledLinedef,
-        linedef::Linedef,
-        meta::MapMeta,
-        mini::MapMini,
-        pixelsource::NoiseTarget,
-        pixelsource::PixelSource,
-        sector::Sector,
-        state::AnimationVertexState,
-        state::InterpolationType,
-        state::VertexAnimationSystem,
-        state::VertexState,
-        terrain::{Terrain, TerrainHit},
-        tile::Tile,
-        vertex::Vertex,
+        Map, MapCamera, MapToolType, bbox::BBox, light::CompiledLight, light::Light,
+        light::LightType, linedef::CompiledLinedef, linedef::Linedef, meta::MapMeta, mini::MapMini,
+        pixelsource::NoiseTarget, pixelsource::PixelSource, sector::Sector,
+        state::AnimationVertexState, state::InterpolationType, state::VertexAnimationSystem,
+        state::VertexState, tile::Tile, vertex::Vertex,
     },
     rasterizer::Rasterizer,
     rect::Rect,
@@ -115,6 +117,7 @@ pub use crate::{
         shapefx::{ShapeFX, ShapeFXParam, ShapeFXRole},
         shapefxgraph::ShapeFXGraph,
     },
+    terrain::{Terrain, TerrainHit, chunk::TerrainChunk},
     texture::{RepeatMode, SampleMode, Texture},
     tracer::{HitInfo, Ray, trace::Tracer},
     value::{Value, ValueContainer},

@@ -28,6 +28,7 @@ pub enum CullMode {
     Back,
 }
 
+#[derive(Debug, Clone)]
 pub struct Batch<T> {
     // Render mode: triangles or lines
     pub mode: PrimitiveMode,

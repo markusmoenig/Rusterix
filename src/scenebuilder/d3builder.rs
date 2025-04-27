@@ -1,5 +1,6 @@
 use crate::{
     Assets, Batch, D3Camera, Map, PixelSource, SampleMode, Scene, Tile, Value, ValueContainer,
+    get_time,
 };
 use theframework::prelude::*;
 use vek::Vec2;
@@ -328,7 +329,7 @@ impl D3Builder {
 
         // ---
 
-        self.build_terrain(map, assets, &mut scene, properties);
+        self.build_terrain(map, assets, &mut scene, properties, true);
 
         let mut batches = repeated_batches;
         batches.extend(vec![atlas_batch]);
@@ -348,11 +349,20 @@ impl D3Builder {
         assets: &Assets,
         scene: &mut Scene,
         _properties: &ValueContainer,
+        full_update: bool,
     ) {
+        let _start = get_time();
         let mut terrain_copy = map.terrain.clone();
         terrain_copy.recompute_bounds();
-        terrain_copy.bake_texture(assets, self.tile_size);
-        scene.terrain_batch = Some(terrain_copy.to_batch());
+        terrain_copy.build_all_chunks();
+        if full_update {
+            terrain_copy.bake_texture(assets, self.tile_size);
+        } else {
+            terrain_copy.bake_texture(assets, self.tile_size);
+            // terrain_copy.bake_texture_dirty(assets, self.tile_size);
+        }
+        let _stop = get_time();
+        println!("Execution time: {:?} ms.", _stop - _start);
         scene.terrain = Some(terrain_copy);
     }
 

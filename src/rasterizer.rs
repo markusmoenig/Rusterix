@@ -225,15 +225,19 @@ impl Rasterizer {
                     );
                 }
 
-                if let Some(batch) = &scene.terrain_batch {
-                    self.d3_rasterize(
-                        &mut buffer,
-                        &mut z_buffer,
-                        tile,
-                        batch,
-                        scene,
-                        D3BatchType::Terrain,
-                    );
+                if let Some(terrain) = &scene.terrain {
+                    for chunk in terrain.chunks.iter() {
+                        if let Some(batch) = &chunk.1.batch {
+                            self.d3_rasterize(
+                                &mut buffer,
+                                &mut z_buffer,
+                                tile,
+                                batch,
+                                scene,
+                                D3BatchType::Terrain,
+                            );
+                        }
+                    }
                 }
 
                 // self.post_process(&mut buffer, &mut z_buffer, tile, scene);

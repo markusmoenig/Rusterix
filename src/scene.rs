@@ -38,9 +38,6 @@ pub struct Scene {
 
     /// Optional Terrain
     pub terrain: Option<Terrain>,
-
-    /// Terrain Batch
-    pub terrain_batch: Option<Batch<[f32; 4]>>,
 }
 
 impl Default for Scene {
@@ -67,7 +64,6 @@ impl Scene {
 
             mapmini: MapMini::default(),
             terrain: None,
-            terrain_batch: None,
         }
     }
 
@@ -88,7 +84,6 @@ impl Scene {
 
             mapmini: MapMini::default(),
             terrain: None,
-            terrain_batch: None,
         }
     }
 
@@ -150,13 +145,17 @@ impl Scene {
             );
         });
 
-        if let Some(batch) = &mut self.terrain_batch {
-            batch.clip_and_project(
-                view_matrix_3d,
-                projection_matrix_3d,
-                width as f32,
-                height as f32,
-            );
+        if let Some(terrain) = &mut self.terrain {
+            terrain.chunks.par_iter_mut().for_each(|batch| {
+                if let Some(batch) = &mut batch.1.batch {
+                    batch.clip_and_project(
+                        view_matrix_3d,
+                        projection_matrix_3d,
+                        width as f32,
+                        height as f32,
+                    );
+                }
+            });
         }
     }
 
