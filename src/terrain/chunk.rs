@@ -11,7 +11,7 @@ pub enum TerrainBlendMode {
     Custom(u8, Vec2<f32>),  // Custom ID and offset
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Clone, Deserialize, Debug)]
 pub struct TerrainChunk {
     pub origin: Vec2<i32>,
     #[serde(with = "vectorize")]
@@ -22,6 +22,9 @@ pub struct TerrainChunk {
     pub blend_modes: FxHashMap<(i32, i32), TerrainBlendMode>,
     #[serde(skip, default)]
     pub batch: Option<Batch<[f32; 4]>>,
+    #[serde(skip, default)]
+    pub batch_d2: Option<Batch<[f32; 2]>>,
+    #[serde(skip, default)]
     pub baked_texture: Option<Texture>,
     pub dirty: bool,
 }
@@ -34,8 +37,9 @@ impl TerrainChunk {
             sources: FxHashMap::default(),
             blend_modes: FxHashMap::default(),
             batch: None,
+            batch_d2: None,
             baked_texture: None,
-            dirty: false,
+            dirty: true,
         }
     }
 
@@ -166,5 +170,25 @@ impl TerrainChunk {
             batch.compute_vertex_normals();
         }
         self.dirty = false;
+    }
+
+    /// Rebuilds a simple 2D rectangle batch for this chunk
+    pub fn rebuild_batch_d2(&mut self, terrain: &Terrain) {
+        let min = self.origin;
+        let max = self.origin + Vec2::new(terrain.chunk_size, terrain.chunk_size) - Vec2::new(1, 1);
+
+        let min_pos = Vec2::new(
+            min.x as f32 * terrain.scale.x,
+            min.y as f32 * terrain.scale.y,
+        );
+        let max_pos = Vec2::new(
+            (max.x + 1) as f32 * terrain.scale.x,
+            (max.y + 1) as f32 * terrain.scale.y,
+        );
+
+        let width = max_pos.x - min_pos.x;
+        let height = max_pos.y - min_pos.y;
+
+        self.batch_d2 = Some(Batch::from_rectangle(min_pos.x, min_pos.y, width, height));
     }
 }

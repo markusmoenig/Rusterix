@@ -9,7 +9,7 @@ use vek::{Mat3, Mat4, Vec2, Vec3, Vec4};
 use SampleMode::*;
 
 #[derive(Clone, PartialEq)]
-enum D3BatchType {
+enum BatchType {
     Static,
     Dynamic,
     Terrain,
@@ -210,7 +210,7 @@ impl Rasterizer {
                         tile,
                         batch,
                         scene,
-                        D3BatchType::Static,
+                        BatchType::Static,
                     );
                 }
 
@@ -221,7 +221,7 @@ impl Rasterizer {
                         tile,
                         batch,
                         scene,
-                        D3BatchType::Dynamic,
+                        BatchType::Dynamic,
                     );
                 }
 
@@ -234,7 +234,7 @@ impl Rasterizer {
                                 tile,
                                 batch,
                                 scene,
-                                D3BatchType::Terrain,
+                                BatchType::Terrain,
                             );
                         }
                     }
@@ -242,13 +242,24 @@ impl Rasterizer {
 
                 // self.post_process(&mut buffer, &mut z_buffer, tile, scene);
 
-                // Render 2D geometry on top of the 3D geometry (UI)
+                // 2D Pipeline
+
+                // Terrain in the background
+                if let Some(terrain) = &scene.terrain {
+                    for chunk in terrain.chunks.iter() {
+                        if let Some(batch) = &chunk.1.batch_d2 {
+                            self.d2_rasterize(&mut buffer, tile, batch, scene, BatchType::Terrain);
+                        }
+                    }
+                }
+
+                // Render 2D geometry
                 for batch in scene.d2_static.iter() {
-                    self.d2_rasterize(&mut buffer, tile, batch, scene, false);
+                    self.d2_rasterize(&mut buffer, tile, batch, scene, BatchType::Static);
                 }
 
                 for batch in scene.d2_dynamic.iter() {
-                    self.d2_rasterize(&mut buffer, tile, batch, scene, true);
+                    self.d2_rasterize(&mut buffer, tile, batch, scene, BatchType::Dynamic);
                 }
 
                 buffer
@@ -286,7 +297,7 @@ impl Rasterizer {
         tile: &TileRect,
         batch: &Batch<[f32; 2]>,
         scene: &Scene,
-        dynamic: bool,
+        batch_type: BatchType,
     ) {
         if let Some(bbox) = batch.bounding_box {
             if bbox.x < (tile.x + tile.width) as f32
@@ -365,36 +376,69 @@ impl Rasterizer {
 
                                         // Sample the texture
 
-                                        let textures = if dynamic {
-                                            &scene.dynamic_textures
-                                        } else {
-                                            &scene.textures
+                                        // let textures = if dynamic {
+                                        //     &scene.dynamic_textures
+                                        // } else {
+                                        //     &scene.textures
+                                        // };
+
+                                        // let t = &textures[batch.texture_index];
+                                        // let index = scene.animation_frame % t.textures.len();
+
+                                        // let mut texel = t.textures[index].sample(
+                                        //     u,
+                                        //     v,
+                                        //     self.sample_mode,
+                                        //     batch.repeat_mode,
+                                        // );
+
+                                        // Calculate grid and world positions
+                                        let grid_space_pos = Vec2::new(tx as f32, ty as f32)
+                                            - Vec2::new(self.width, self.height) / 2.0
+                                            - Vec2::new(
+                                                self.translationd2.x - self.width / 2.0,
+                                                self.translationd2.y - self.height / 2.0,
+                                            );
+                                        let world = grid_space_pos / self.scaled2;
+
+                                        let mut texel = match batch_type {
+                                            BatchType::Static => {
+                                                let textile = &scene.textures[batch.texture_index];
+                                                let index =
+                                                    scene.animation_frame % textile.textures.len();
+                                                textile.textures[index].sample(
+                                                    u,
+                                                    v,
+                                                    self.sample_mode,
+                                                    batch.repeat_mode,
+                                                )
+                                            }
+                                            BatchType::Dynamic => {
+                                                let textile =
+                                                    &scene.dynamic_textures[batch.texture_index];
+                                                let index =
+                                                    scene.animation_frame % textile.textures.len();
+                                                textile.textures[index].sample(
+                                                    u,
+                                                    v,
+                                                    self.sample_mode,
+                                                    batch.repeat_mode,
+                                                )
+                                            }
+                                            BatchType::Terrain => {
+                                                if let Some(terrain) = &scene.terrain {
+                                                    terrain.sample_baked(world)
+                                                } else {
+                                                    [255, 0, 0, 255]
+                                                }
+                                            }
                                         };
-
-                                        let t = &textures[batch.texture_index];
-                                        let index = scene.animation_frame % t.textures.len();
-
-                                        let mut texel = t.textures[index].sample(
-                                            u,
-                                            v,
-                                            self.sample_mode,
-                                            batch.repeat_mode,
-                                        );
 
                                         if batch.receives_light
                                             && (!scene.lights.is_empty()
                                                 || !scene.dynamic_lights.is_empty())
                                         {
                                             let mut accumulated_light = [0.0, 0.0, 0.0];
-
-                                            // Calculate grid position
-                                            let grid_space_pos = Vec2::new(tx as f32, ty as f32)
-                                                - Vec2::new(self.width, self.height) / 2.0
-                                                - Vec2::new(
-                                                    self.translationd2.x - self.width / 2.0,
-                                                    self.translationd2.y - self.height / 2.0,
-                                                );
-                                            let world = grid_space_pos / self.scaled2;
 
                                             for light in &self.compiled_lights {
                                                 if let Some(mut light_color) = light.color_at(
@@ -532,7 +576,7 @@ impl Rasterizer {
         tile: &TileRect,
         batch: &Batch<[f32; 4]>,
         scene: &Scene,
-        batch_type: D3BatchType,
+        batch_type: BatchType,
     ) {
         // Bounding box check for the tile with the batch bbox
         if let Some(bbox) = batch.bounding_box {
@@ -628,7 +672,7 @@ impl Rasterizer {
                                             let world_2d = Vec2::new(world.x, world.z);
 
                                             let texel = match batch_type {
-                                                D3BatchType::Static => {
+                                                BatchType::Static => {
                                                     let textile =
                                                         &scene.textures[batch.texture_index];
                                                     let index = scene.animation_frame
@@ -640,7 +684,7 @@ impl Rasterizer {
                                                         batch.repeat_mode,
                                                     )
                                                 }
-                                                D3BatchType::Dynamic => {
+                                                BatchType::Dynamic => {
                                                     let textile = &scene.dynamic_textures
                                                         [batch.texture_index];
                                                     let index = scene.animation_frame
@@ -652,7 +696,7 @@ impl Rasterizer {
                                                         batch.repeat_mode,
                                                     )
                                                 }
-                                                D3BatchType::Terrain => {
+                                                BatchType::Terrain => {
                                                     if let Some(terrain) = &scene.terrain {
                                                         terrain.sample_baked(world_2d)
                                                     } else {

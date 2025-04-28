@@ -121,6 +121,14 @@ impl Rusterix {
         }
     }
 
+    pub fn build_terrain(&mut self, map: &mut Map, values: &ValueContainer) {
+        if map.camera == MapCamera::TwoD {
+            self.client.build_terrain_d2(map, &self.assets, values);
+        } else {
+            self.client.build_terrain_d3(map, &self.assets, values);
+        }
+    }
+
     /// Apply the entities to the 3D scene.
     pub fn apply_entities_items(&mut self, screen_size: Vec2<f32>, map: &Map) {
         for e in map.entities.iter() {
@@ -153,6 +161,11 @@ impl Rusterix {
             self.is_dirty_d3 = false;
         }
         self.set_d3();
+    }
+
+    /// Rebuild the terrain in D2.
+    pub fn build_terrain_d2(&mut self, map: &mut Map, values: &ValueContainer) {
+        self.client.build_terrain_d2(map, &self.assets, values);
     }
 
     /// Rebuild the terrain in D3.

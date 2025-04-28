@@ -1,6 +1,7 @@
+use theframework::prelude::*;
 use vek::Vec2;
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq)]
 pub struct BBox {
     pub min: Vec2<f32>, // Bottom-left corner
     pub max: Vec2<f32>, // Top-right corner

@@ -33,6 +33,8 @@ pub struct D2PreviewBuilder {
 
     /// Do not draw Rect based geometry
     no_rect_geo: bool,
+
+    tile_size: i32,
 }
 
 impl Default for D2PreviewBuilder {
@@ -59,6 +61,8 @@ impl D2PreviewBuilder {
             textures: Vec::new(),
 
             no_rect_geo: false,
+
+            tile_size: 128,
         }
     }
 
@@ -72,6 +76,7 @@ impl D2PreviewBuilder {
         let mut scene = Scene::empty();
         let atlas_size = assets.atlas.width as f32;
         self.no_rect_geo = properties.get_bool_default("no_rect_geo", true);
+        self.tile_size = properties.get_int_default("tile_size", 128);
 
         // Grid
         if self.draw_grid {
@@ -433,6 +438,23 @@ impl D2PreviewBuilder {
         scene.d2_static = batches;
         scene.textures = textures;
         scene
+    }
+
+    /// Build and bake the terrain
+    pub fn build_terrain(
+        &self,
+        map: &mut Map,
+        assets: &Assets,
+        scene: &mut Scene,
+        _properties: &ValueContainer,
+    ) {
+        if map.terrain.count_dirty_chunks() > 0 {
+            map.terrain
+                .build_dirty_chunks(true, assets, self.tile_size / 2);
+            scene.terrain = Some(map.terrain.clone());
+        } else {
+            scene.terrain = Some(map.terrain.clone());
+        }
     }
 
     #[allow(clippy::too_many_arguments)]

@@ -1,12 +1,13 @@
 // use crate::PrimitiveMode::*;
 
 // use crate::Texture;
-use crate::{Assets, Batch, Map, Scene, Tile, Value};
+use crate::{Assets, Batch, Map, Scene, Tile, Value, ValueContainer};
 use theframework::prelude::*;
 use vek::Vec2;
 
 pub struct D2Builder {
     pub activated_widgets: Vec<u32>,
+    tile_size: i32,
 }
 
 impl Default for D2Builder {
@@ -19,6 +20,7 @@ impl D2Builder {
     pub fn new() -> Self {
         Self {
             activated_widgets: vec![],
+            tile_size: 128,
         }
     }
 
@@ -291,6 +293,23 @@ impl D2Builder {
         scene.d2_static = batches;
         scene.textures = textures;
         scene
+    }
+
+    /// Build and bake the terrain
+    pub fn build_terrain(
+        &self,
+        map: &mut Map,
+        assets: &Assets,
+        scene: &mut Scene,
+        _properties: &ValueContainer,
+    ) {
+        if map.terrain.count_dirty_chunks() > 0 {
+            map.terrain
+                .build_dirty_chunks(true, assets, self.tile_size / 2);
+            scene.terrain = Some(map.terrain.clone());
+        } else if scene.terrain.is_none() {
+            scene.terrain = Some(map.terrain.clone());
+        }
     }
 
     #[allow(clippy::too_many_arguments)]

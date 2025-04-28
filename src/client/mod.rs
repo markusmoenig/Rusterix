@@ -200,6 +200,12 @@ impl Client {
         );
     }
 
+    /// Build the terrain 2D
+    pub fn build_terrain_d2(&mut self, map: &mut Map, assets: &Assets, values: &ValueContainer) {
+        self.builder_d2
+            .build_terrain(map, assets, &mut self.scene_d2, values);
+    }
+
     /// Build the terrain 3D
     pub fn build_terrain_d3(&mut self, map: &mut Map, assets: &Assets, values: &ValueContainer) {
         self.builder_d3

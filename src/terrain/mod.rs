@@ -1,4 +1,4 @@
-use crate::{Assets, Pixel, PixelSource, Ray, TerrainBlendMode, TerrainChunk, Texture};
+use crate::{Assets, BBox, Pixel, PixelSource, Ray, TerrainBlendMode, TerrainChunk, Texture};
 use rayon::prelude::*;
 use theframework::prelude::*;
 use vek::Vec2;
@@ -20,7 +20,6 @@ pub struct Terrain {
     pub chunk_size: i32,  // number of tiles per chunk
     #[serde(with = "vectorize")]
     pub chunks: FxHashMap<(i32, i32), TerrainChunk>,
-    pub bounds: Option<(Vec2<i32>, Vec2<i32>)>,
 }
 
 impl Terrain {
@@ -30,34 +29,11 @@ impl Terrain {
             scale: Vec2::one(),
             chunk_size: CHUNKSIZE,
             chunks: FxHashMap::default(),
-            bounds: None,
         }
-    }
-
-    /// Generate procedural rolling hills terrain for debugging
-    pub fn generate(&mut self, size: i32) {
-        let half = size / 2;
-
-        for y in -half..=half {
-            for x in -half..=half {
-                let fx = x as f32 / size as f32;
-                let fy = y as f32 / size as f32;
-
-                // Radial hill + sine/cosine ripples
-                let distance = (fx * fx + fy * fy).sqrt();
-                let height = (1.0 - distance).max(0.0) * 5.0
-                    + (fx * std::f32::consts::PI * 3.0).sin()
-                    + (fy * std::f32::consts::PI * 2.0).cos();
-
-                self.set_height(x, y, height);
-            }
-        }
-
-        self.recompute_bounds();
     }
 
     /// Returns the coordinates for the chunk at the given world pos
-    fn get_chunk_coords(&self, x: i32, y: i32) -> (i32, i32) {
+    pub fn get_chunk_coords(&self, x: i32, y: i32) -> (i32, i32) {
         (x.div_euclid(self.chunk_size), y.div_euclid(self.chunk_size))
     }
 
@@ -83,6 +59,23 @@ impl Terrain {
     pub fn set_height(&mut self, x: i32, y: i32, height: f32) {
         let chunk = self.get_or_create_chunk(x, y);
         chunk.set_height(x, y, height);
+    }
+
+    /// Remove height at given cell
+    pub fn remove_height(&mut self, x: i32, y: i32) {
+        let coords = self.get_chunk_coords(x, y);
+        if let Some(chunk) = self.chunks.get_mut(&coords) {
+            let world = Vec2::new(x, y);
+            let local = world - chunk.origin;
+            chunk.heights.remove(&(local.x, local.y));
+            chunk.mark_dirty();
+
+            // If chunk is now completely empty, remove it
+            if chunk.heights.is_empty() && chunk.sources.is_empty() && chunk.blend_modes.is_empty()
+            {
+                self.chunks.remove(&coords);
+            }
+        }
     }
 
     // Get the blend mode at the given cell
@@ -180,19 +173,8 @@ impl Terrain {
         [255, 0, 255, 255] // Magenta fallback
     }
 
-    /// Grow bounding box
-    pub fn update_bounds(&mut self, x: i32, y: i32) {
-        let bounds = self
-            .bounds
-            .get_or_insert((Vec2::new(x, y), Vec2::new(x, y)));
-        bounds.0.x = bounds.0.x.min(x);
-        bounds.0.y = bounds.0.y.min(y);
-        bounds.1.x = bounds.1.x.max(x);
-        bounds.1.y = bounds.1.y.max(y);
-    }
-
-    /// Computes the bounding box of the heightmap as (min, max) inclusive and stores internally
-    pub fn recompute_bounds(&mut self) {
+    /// Computes the bounding box of the heightmap
+    pub fn compute_bounds(&mut self) -> Option<BBox> {
         let mut min = Vec2::new(i32::MAX, i32::MAX);
         let mut max = Vec2::new(i32::MIN, i32::MIN);
 
@@ -206,9 +188,9 @@ impl Terrain {
         }
 
         if min.x <= max.x && min.y <= max.y {
-            self.bounds = Some((min, max));
+            Some(BBox::new(min.map(|v| v as f32), max.map(|v| v as f32)))
         } else {
-            self.bounds = None;
+            None
         }
     }
 
@@ -364,7 +346,7 @@ impl Terrain {
     }
 
     /// Iterate over all chunks and rebuild if dirty
-    pub fn build_dirty_chunks(&mut self, assets: &Assets, pixels_per_tile: i32) {
+    pub fn build_dirty_chunks(&mut self, d2_mode: bool, assets: &Assets, pixels_per_tile: i32) {
         let mut dirty_coords = Vec::new();
 
         for ((cx, cy), chunk) in &self.chunks {
@@ -385,7 +367,11 @@ impl Terrain {
 
             unsafe {
                 let chunk = &mut *chunk_ptr;
-                chunk.rebuild_batch(self);
+                if !d2_mode {
+                    chunk.rebuild_batch(self);
+                } else {
+                    chunk.rebuild_batch_d2(self);
+                }
                 let baked = self.bake_chunk(&coords, assets, pixels_per_tile);
                 chunk.baked_texture = Some(baked);
                 chunk.clear_dirty();
@@ -395,10 +381,6 @@ impl Terrain {
 
     /// Bake all individual chunks
     pub fn bake_chunks(&mut self, assets: &Assets, pixels_per_tile: i32) {
-        if self.bounds.is_none() {
-            return;
-        }
-
         let baked_chunks: Vec<_> = self
             .chunks
             .par_iter()
@@ -432,6 +414,13 @@ impl Terrain {
     pub fn mark_clean(&mut self) {
         for chunk in self.chunks.values_mut() {
             chunk.clear_dirty();
+        }
+    }
+
+    /// Mark all chunks dirty
+    pub fn mark_dirty(&mut self) {
+        for chunk in self.chunks.values_mut() {
+            chunk.mark_dirty();
         }
     }
 
@@ -484,6 +473,17 @@ impl Terrain {
                 }
             }
         }
+    }
+
+    /// Returns a cleaned clone of the chunks (used for undo / redo)
+    pub fn clone_chunks_clean(&self) -> FxHashMap<(i32, i32), TerrainChunk> {
+        let mut chunks = self.chunks.clone();
+        for chunk in chunks.values_mut() {
+            chunk.baked_texture = None;
+            chunk.batch = None;
+            chunk.batch_d2 = None;
+        }
+        chunks
     }
 }
 
