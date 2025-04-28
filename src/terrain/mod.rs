@@ -1,9 +1,9 @@
-use crate::{Assets, Pixel, PixelSource, Ray, TerrainChunk, Texture};
+use crate::{Assets, Pixel, PixelSource, Ray, TerrainBlendMode, TerrainChunk, Texture};
 use rayon::prelude::*;
 use theframework::prelude::*;
 use vek::Vec2;
 
-const CHUNKSIZE: i32 = 8;
+const CHUNKSIZE: i32 = 16;
 
 #[derive(Clone, Debug)]
 pub struct TerrainHit {
@@ -19,9 +19,8 @@ pub struct Terrain {
     pub scale: Vec2<f32>, // world units per tile
     pub chunk_size: i32,  // number of tiles per chunk
     #[serde(with = "vectorize")]
-    pub chunks: FxHashMap<(i32, i32), TerrainChunk>, // (chunk_x, chunk_y) -> chunk
-    pub baked_texture: Option<Texture>, // final baked texture
-    pub bounds: Option<(Vec2<i32>, Vec2<i32>)>, // min/max world coords
+    pub chunks: FxHashMap<(i32, i32), TerrainChunk>,
+    pub bounds: Option<(Vec2<i32>, Vec2<i32>)>,
 }
 
 impl Terrain {
@@ -31,7 +30,6 @@ impl Terrain {
             scale: Vec2::one(),
             chunk_size: CHUNKSIZE,
             chunks: FxHashMap::default(),
-            baked_texture: None,
             bounds: None,
         }
     }
@@ -87,10 +85,29 @@ impl Terrain {
         chunk.set_height(x, y, height);
     }
 
+    // Get the blend mode at the given cell
+    pub fn get_blend_mode(&self, x: i32, y: i32) -> TerrainBlendMode {
+        let chunk_coords = self.get_chunk_coords(x, y);
+        if let Some(chunk) = self.chunks.get(&chunk_coords) {
+            let local = Vec2::new(x, y) - chunk.origin;
+            if let Some(mode) = chunk.blend_modes.get(&(local.x, local.y)) {
+                return *mode;
+            }
+        }
+        TerrainBlendMode::None
+    }
+
+    /// Set blend mode at given cell
+    pub fn set_blend_mode(&mut self, x: i32, y: i32, mode: TerrainBlendMode) {
+        let chunk = self.get_or_create_chunk(x, y);
+        chunk.set_blend_mode(x, y, mode);
+    }
+
     /// Set source material at given cell
     pub fn set_source(&mut self, x: i32, y: i32, source: PixelSource) {
         let chunk = self.get_or_create_chunk(x, y);
         chunk.set_source(x, y, source);
+        //self.mark_neighbors_dirty(x, y);
     }
 
     /// Get source material at given cell
@@ -131,38 +148,36 @@ impl Terrain {
 
     /// Sample the baked texture at the given world position
     pub fn sample_baked(&self, world_pos: Vec2<f32>) -> Pixel {
-        let baked = match &self.baked_texture {
-            Some(tex) => tex,
-            None => return [255, 0, 255, 255], // Magenta if not baked
-        };
+        let tile_x = (world_pos.x / self.scale.x).floor() as i32;
+        let tile_y = (world_pos.y / self.scale.y).floor() as i32;
+        let chunk_coords = self.get_chunk_coords(tile_x, tile_y);
 
-        let (min, max) = match self.bounds {
-            Some(bounds) => bounds,
-            None => return [0, 0, 0, 255], // Black if no bounds
-        };
+        if let Some(chunk) = self.chunks.get(&chunk_coords) {
+            if let Some(baked) = &chunk.baked_texture {
+                let local_tile_x = tile_x - chunk.origin.x;
+                let local_tile_y = tile_y - chunk.origin.y;
 
-        let world_min = Vec2::new(min.x as f32 * self.scale.x, min.y as f32 * self.scale.y);
-        let world_max = Vec2::new(
-            (max.x + 1) as f32 * self.scale.x,
-            (max.y + 1) as f32 * self.scale.y,
-        );
-        let world_size = world_max - world_min;
+                let pixels_per_tile = baked.width as i32 / self.chunk_size;
 
-        let rel = world_pos - world_min;
+                // let uv_x = ((world_pos.x / self.scale.x) - tile_x as f32).rem_euclid(1.0);
+                // let uv_y = ((world_pos.y / self.scale.y) - tile_y as f32).rem_euclid(1.0);
 
-        if rel.x < 0.0 || rel.y < 0.0 || rel.x > world_size.x || rel.y > world_size.y {
-            return [0, 0, 0, 255]; // Out of bounds
+                let uv_x = (world_pos.x / self.scale.x) - tile_x as f32;
+                let uv_y = (world_pos.y / self.scale.y) - tile_y as f32;
+
+                let pixel_x =
+                    (local_tile_x * pixels_per_tile) as f32 + uv_x * pixels_per_tile as f32;
+                let pixel_y =
+                    (local_tile_y * pixels_per_tile) as f32 + uv_y * pixels_per_tile as f32;
+
+                let px = pixel_x.floor().clamp(0.0, baked.width as f32 - 1.0) as u32;
+                let py = pixel_y.floor().clamp(0.0, baked.height as f32 - 1.0) as u32;
+
+                return baked.get_pixel(px, py);
+            }
         }
 
-        let uv = rel / world_size;
-        let x = (uv.x * baked.width as f32)
-            .floor()
-            .clamp(0.0, baked.width as f32 - 1.0) as u32;
-        let y = (uv.y * baked.height as f32)
-            .floor()
-            .clamp(0.0, baked.height as f32 - 1.0) as u32;
-
-        baked.get_pixel(x, y)
+        [255, 0, 255, 255] // Magenta fallback
     }
 
     /// Grow bounding box
@@ -301,37 +316,10 @@ impl Terrain {
         }
     }
 
-    /// Bake all individual chunks
-    pub fn bake_chunks(&mut self, assets: &Assets, pixels_per_tile: i32) {
-        if self.bounds.is_none() {
-            return;
-        }
-
-        let bounds_min = self.bounds.unwrap().0;
-
-        let baked_chunks: Vec<_> = self
-            .chunks
-            .par_iter()
-            .map(|(coords, _)| {
-                let c = Vec2::new(coords.0, coords.1);
-                let baked_texture = self.bake_chunk(&c, bounds_min, assets, pixels_per_tile);
-                (*coords, baked_texture)
-            })
-            .collect();
-
-        for (coords, texture) in baked_chunks {
-            if let Some(chunk) = self.chunks.get_mut(&coords) {
-                chunk.baked_texture = Some(texture);
-                chunk.dirty = false;
-            }
-        }
-    }
-
     /// Bake an individual chunk
     pub fn bake_chunk(
         &self,
         chunk_coords: &Vec2<i32>,
-        _bounds_min: Vec2<i32>, // <-- NOT USED INSIDE bake_chunk!
         assets: &Assets,
         pixels_per_tile: i32,
     ) -> Texture {
@@ -347,13 +335,26 @@ impl Terrain {
             .enumerate()
             .for_each(|(y, line)| {
                 for (x, pixel) in line.chunks_exact_mut(4).enumerate() {
-                    let world_x = (chunk_min_tile.x as f32 + x as f32 / pixels_per_tile as f32)
-                        * self.scale.x;
-                    let world_y = (chunk_min_tile.y as f32 + y as f32 / pixels_per_tile as f32)
-                        * self.scale.y;
+                    let tile_x = chunk_min_tile.x as f32 + (x as f32 / pixels_per_tile as f32);
+                    let tile_y = chunk_min_tile.y as f32 + (y as f32 / pixels_per_tile as f32);
 
+                    let world_x = tile_x * self.scale.x;
+                    let world_y = tile_y * self.scale.y;
                     let world_pos = Vec2::new(world_x, world_y);
-                    let color = self.sample_source_blended(world_pos, assets);
+
+                    let tile_pos = Vec2::new(tile_x.floor() as i32, tile_y.floor() as i32);
+                    let blend_mode = self.get_blend_mode(tile_pos.x, tile_pos.y);
+
+                    let color = match blend_mode {
+                        TerrainBlendMode::None => self.sample_source(world_pos, assets).0,
+                        TerrainBlendMode::Blend => self.sample_source_blended(world_pos, assets),
+                        TerrainBlendMode::BlendOffset(offset) => {
+                            self.sample_source_blended(world_pos + offset, assets)
+                        }
+                        TerrainBlendMode::Custom(_, offset) => {
+                            self.sample_source_blended(world_pos + offset, assets)
+                        }
+                    };
 
                     pixel.copy_from_slice(&color);
                 }
@@ -362,121 +363,9 @@ impl Terrain {
         Texture::new(pixels, chunk_tex_width as usize, chunk_tex_height as usize)
     }
 
-    /// Stitch all baked chunks back together
-    pub fn stitch_baked_chunks(&mut self, pixels_per_tile: i32) {
-        let (min, max) = match self.bounds {
-            Some(bounds) => bounds,
-            None => {
-                println!("[stitch] No bounds found!");
-                return;
-            }
-        };
-
-        let tile_width = max.x - min.x + 1;
-        let tile_height = max.y - min.y + 1;
-        let tex_width = tile_width * pixels_per_tile;
-        let tex_height = tile_height * pixels_per_tile;
-
-        let mut global_pixels = vec![0u8; (tex_width * tex_height * 4) as usize];
-
-        for chunk in self.chunks.values() {
-            if let Some(texture) = &chunk.baked_texture {
-                // Compute the chunk's tile position relative to the full terrain min
-                let local_tile_pos = chunk.origin - min;
-
-                // Pixel position inside the global texture
-                let chunk_pixel_min_x = local_tile_pos.x * pixels_per_tile;
-                let chunk_pixel_min_y = local_tile_pos.y * pixels_per_tile;
-
-                let chunk_tex_width = self.chunk_size * pixels_per_tile;
-                let chunk_tex_height = self.chunk_size * pixels_per_tile;
-
-                for y in 0..chunk_tex_height {
-                    for x in 0..chunk_tex_width {
-                        let src_idx = (y as usize * chunk_tex_width as usize + x as usize) * 4;
-
-                        let global_x = chunk_pixel_min_x + x;
-                        let global_y = chunk_pixel_min_y + y;
-
-                        if global_x >= 0
-                            && global_y >= 0
-                            && global_x < tex_width
-                            && global_y < tex_height
-                        {
-                            let dst_idx =
-                                (global_y as usize * tex_width as usize + global_x as usize) * 4;
-                            global_pixels[dst_idx..dst_idx + 4]
-                                .copy_from_slice(&texture.data[src_idx..src_idx + 4]);
-                        }
-                    }
-                }
-            }
-        }
-
-        self.baked_texture = Some(Texture::new(
-            global_pixels,
-            tex_width as usize,
-            tex_height as usize,
-        ));
-    }
-
-    /// Bake the full world texture by first computing all individual batch textures and than stitching them together
-    pub fn bake_texture(&mut self, assets: &Assets, pixels_per_tile: i32) {
-        self.bake_chunks(assets, pixels_per_tile);
-        self.stitch_baked_chunks(pixels_per_tile);
-    }
-
-    pub fn bake_texture_old_but_working(&mut self, assets: &Assets, pixels_per_tile: i32) {
-        let (min, max) = match self.bounds {
-            Some(bounds) => bounds,
-            None => return,
-        };
-
-        let tile_width = max.x - min.x + 1;
-        let tile_height = max.y - min.y + 1;
-
-        let tex_size = Vec2::new(tile_width * pixels_per_tile, tile_height * pixels_per_tile);
-
-        let world_min = Vec2::new(min.x as f32 * self.scale.x, min.y as f32 * self.scale.y);
-        let world_max = Vec2::new(
-            (max.x + 1) as f32 * self.scale.x,
-            (max.y + 1) as f32 * self.scale.y,
-        );
-        let world_size = world_max - world_min;
-
-        let mut pixels = vec![0u8; (tex_size.x * tex_size.y * 4) as usize];
-
-        pixels
-            .par_chunks_exact_mut(4)
-            .enumerate()
-            .for_each(|(i, pixel)| {
-                let x = (i % tex_size.x as usize) as f32;
-                let y = (i / tex_size.x as usize) as f32;
-
-                let uv = Vec2::new(x / tex_size.x as f32, y / tex_size.y as f32);
-                let world_pos = world_min + uv * world_size;
-                let color = self.sample_source_blended(world_pos, assets);
-
-                pixel.copy_from_slice(&color);
-            });
-
-        self.baked_texture = Some(Texture::new(
-            pixels,
-            tex_size.x as usize,
-            tex_size.y as usize,
-        ));
-    }
-
     /// Iterate over all chunks and rebuild if dirty
-    pub fn build_all_chunks(&mut self) {
+    pub fn build_dirty_chunks(&mut self, assets: &Assets, pixels_per_tile: i32) {
         let mut dirty_coords = Vec::new();
-
-        // for chunk in self.chunks.values_mut() {
-        //     if chunk.dirty {
-        //         chunk.rebuild_batch(self);
-        //         chunk.clear_dirty();
-        //     }
-        // }
 
         for ((cx, cy), chunk) in &self.chunks {
             if chunk.dirty {
@@ -484,16 +373,65 @@ impl Terrain {
             }
         }
 
+        // println!(
+        //     "chunks: {}, dirty: {}",
+        //     self.chunks.len(),
+        //     dirty_coords.len()
+        // );
+
         for coords in dirty_coords {
             let chunk_ptr =
                 self.chunks.get_mut(&(coords.x, coords.y)).unwrap() as *mut TerrainChunk;
 
-            // Unsafe cannot be avoided here
             unsafe {
                 let chunk = &mut *chunk_ptr;
                 chunk.rebuild_batch(self);
+                let baked = self.bake_chunk(&coords, assets, pixels_per_tile);
+                chunk.baked_texture = Some(baked);
                 chunk.clear_dirty();
             }
+        }
+    }
+
+    /// Bake all individual chunks
+    pub fn bake_chunks(&mut self, assets: &Assets, pixels_per_tile: i32) {
+        if self.bounds.is_none() {
+            return;
+        }
+
+        let baked_chunks: Vec<_> = self
+            .chunks
+            .par_iter()
+            .map(|(coords, _)| {
+                let c = Vec2::new(coords.0, coords.1);
+                let baked_texture = self.bake_chunk(&c, assets, pixels_per_tile);
+                (*coords, baked_texture)
+            })
+            .collect();
+
+        for (coords, texture) in baked_chunks {
+            if let Some(chunk) = self.chunks.get_mut(&coords) {
+                chunk.baked_texture = Some(texture);
+                chunk.dirty = false;
+            }
+        }
+    }
+
+    /// Counts dirty chunks
+    pub fn count_dirty_chunks(&self) -> i32 {
+        let mut dirty = 0;
+        for chunk in self.chunks.values() {
+            if chunk.dirty {
+                dirty += 1;
+            }
+        }
+        dirty
+    }
+
+    /// Mark all chunks clean
+    pub fn mark_clean(&mut self) {
+        for chunk in self.chunks.values_mut() {
+            chunk.clear_dirty();
         }
     }
 
@@ -536,34 +474,16 @@ impl Terrain {
         }
     }
 
-    /// Convert world coordinates to tex coordinates.
-    pub fn world_to_texcoord(&self, world_pos: Vec2<f32>) -> Option<Vec2<i32>> {
-        let (min, max) = self.bounds?;
-        let baked = self.baked_texture.as_ref()?;
-
-        let tex_size = Vec2::new(baked.width as i32, baked.height as i32);
-
-        let world_min = Vec2::new(min.x as f32 * self.scale.x, min.y as f32 * self.scale.y);
-        let world_max = Vec2::new(
-            (max.x + 1) as f32 * self.scale.x,
-            (max.y + 1) as f32 * self.scale.y,
-        );
-        let world_size = world_max - world_min;
-
-        let rel = world_pos - world_min;
-        if rel.x < 0.0 || rel.y < 0.0 || rel.x > world_size.x || rel.y > world_size.y {
-            return None;
+    /// Mark the chunk at (x,y) and all neighboring chunks dirty
+    fn _mark_neighbors_dirty(&mut self, x: i32, y: i32) {
+        for dy in -1..=1 {
+            for dx in -1..=1 {
+                let coords = self.get_chunk_coords(x + dx, y + dy);
+                if let Some(chunk) = self.chunks.get_mut(&coords) {
+                    chunk.mark_dirty();
+                }
+            }
         }
-
-        let uv = rel / world_size;
-        let x = (uv.x * tex_size.x as f32)
-            .floor()
-            .clamp(0.0, tex_size.x as f32 - 1.0) as i32;
-        let y = (uv.y * tex_size.y as f32)
-            .floor()
-            .clamp(0.0, tex_size.y as f32 - 1.0) as i32;
-
-        Some(Vec2::new(x, y))
     }
 }
 

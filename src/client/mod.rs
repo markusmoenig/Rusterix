@@ -201,9 +201,9 @@ impl Client {
     }
 
     /// Build the terrain 3D
-    pub fn rebuild_terrain_d3(&mut self, map: &Map, assets: &Assets, values: &ValueContainer) {
+    pub fn build_terrain_d3(&mut self, map: &mut Map, assets: &Assets, values: &ValueContainer) {
         self.builder_d3
-            .build_terrain(map, assets, &mut self.scene_d3, values, false);
+            .build_terrain(map, assets, &mut self.scene_d3, values);
     }
 
     /// Apply the entities to the 3D scene.

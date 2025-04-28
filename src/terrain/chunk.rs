@@ -3,6 +3,14 @@ use crate::{Batch, PixelSource, Texture};
 use theframework::prelude::*;
 use vek::Vec2;
 
+#[derive(Clone, Copy, Serialize, Deserialize, Debug)]
+pub enum TerrainBlendMode {
+    None,
+    Blend,                  // Normal blend (centered)
+    BlendOffset(Vec2<f32>), // Blend with a fixed offset
+    Custom(u8, Vec2<f32>),  // Custom ID and offset
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct TerrainChunk {
     pub origin: Vec2<i32>,
@@ -10,10 +18,11 @@ pub struct TerrainChunk {
     pub heights: FxHashMap<(i32, i32), f32>,
     #[serde(with = "vectorize")]
     pub sources: FxHashMap<(i32, i32), PixelSource>,
+    #[serde(with = "vectorize")]
+    pub blend_modes: FxHashMap<(i32, i32), TerrainBlendMode>,
     #[serde(skip, default)]
     pub batch: Option<Batch<[f32; 4]>>,
     pub baked_texture: Option<Texture>,
-    pub visible: bool,
     pub dirty: bool,
 }
 
@@ -23,10 +32,10 @@ impl TerrainChunk {
             origin,
             heights: FxHashMap::default(),
             sources: FxHashMap::default(),
+            blend_modes: FxHashMap::default(),
             batch: None,
             baked_texture: None,
-            visible: true,
-            dirty: true,
+            dirty: false,
         }
     }
 
@@ -42,6 +51,13 @@ impl TerrainChunk {
         let world = Vec2::new(x, y);
         let local = self.world_to_local(world);
         self.heights.insert((local.x, local.y), value);
+        self.mark_dirty();
+    }
+
+    pub fn set_blend_mode(&mut self, x: i32, y: i32, mode: TerrainBlendMode) {
+        let world = Vec2::new(x, y);
+        let local = self.world_to_local(world);
+        self.blend_modes.insert((local.x, local.y), mode);
         self.mark_dirty();
     }
 
@@ -77,6 +93,7 @@ impl TerrainChunk {
 
     pub fn unload(&mut self) {
         self.batch = None;
+        self.baked_texture = None;
     }
 
     pub fn bounds(&self) -> Option<(Vec2<i32>, Vec2<i32>)> {

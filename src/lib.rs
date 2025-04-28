@@ -117,7 +117,10 @@ pub use crate::{
         shapefx::{ShapeFX, ShapeFXParam, ShapeFXRole},
         shapefxgraph::ShapeFXGraph,
     },
-    terrain::{Terrain, TerrainHit, chunk::TerrainChunk},
+    terrain::{
+        Terrain, TerrainHit,
+        chunk::{TerrainBlendMode, TerrainChunk},
+    },
     texture::{RepeatMode, SampleMode, Texture},
     tracer::{HitInfo, Ray, trace::Tracer},
     value::{Value, ValueContainer},

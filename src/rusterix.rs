@@ -156,8 +156,8 @@ impl Rusterix {
     }
 
     /// Rebuild the terrain in D3.
-    pub fn rebuild_terrain_d3(&mut self, map: &Map, values: &ValueContainer) {
-        self.client.rebuild_terrain_d3(map, &self.assets, values);
+    pub fn build_terrain_d3(&mut self, map: &mut Map, values: &ValueContainer) {
+        self.client.build_terrain_d3(map, &self.assets, values);
     }
 
     /// Draw the client scene.
