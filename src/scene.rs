@@ -155,6 +155,9 @@ impl Scene {
                         height as f32,
                     );
                 }
+                if let Some(batch) = &mut batch.1.batch_d2 {
+                    batch.project(projection_matrix_2d);
+                }
             });
         }
     }

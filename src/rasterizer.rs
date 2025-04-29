@@ -429,7 +429,7 @@ impl Rasterizer {
                                                 if let Some(terrain) = &scene.terrain {
                                                     terrain.sample_baked(world)
                                                 } else {
-                                                    [255, 0, 0, 255]
+                                                    [0, 0, 0, 0]
                                                 }
                                             }
                                         };

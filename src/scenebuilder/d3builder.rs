@@ -348,6 +348,7 @@ impl D3Builder {
         scene: &mut Scene,
         _properties: &ValueContainer,
     ) {
+        map.terrain.clean_d2();
         if map.terrain.count_dirty_chunks() > 0 {
             let _start = get_time();
             map.terrain

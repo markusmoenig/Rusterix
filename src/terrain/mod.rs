@@ -170,7 +170,7 @@ impl Terrain {
             }
         }
 
-        [255, 0, 255, 255] // Magenta fallback
+        [0, 0, 0, 0]
     }
 
     /// Computes the bounding box of the heightmap
@@ -484,6 +484,20 @@ impl Terrain {
             chunk.batch_d2 = None;
         }
         chunks
+    }
+
+    /// Clean all 3D batches
+    pub fn clean_d3(&mut self) {
+        for chunk in self.chunks.values_mut() {
+            chunk.batch = None;
+        }
+    }
+
+    /// Clean all 2D batches
+    pub fn clean_d2(&mut self) {
+        for chunk in self.chunks.values_mut() {
+            chunk.batch_d2 = None;
+        }
     }
 }
 

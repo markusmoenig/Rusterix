@@ -44,4 +44,12 @@ impl BBox {
         self.min -= amount * 0.5;
         self.max += amount * 0.5;
     }
+
+    /// Expands the bounding box to include another bounding box
+    pub fn expand_bbox(&mut self, other: BBox) {
+        self.min.x = self.min.x.min(other.min.x);
+        self.min.y = self.min.y.min(other.min.y);
+        self.max.x = self.max.x.max(other.max.x);
+        self.max.y = self.max.y.max(other.max.y);
+    }
 }
