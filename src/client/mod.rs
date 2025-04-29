@@ -37,6 +37,8 @@ pub struct Client {
 
     pub daylight: Daylight,
 
+    pub terrain_hover: Option<Vec3<f32>>,
+
     pub messages_font: Option<Font>,
     pub messages_font_size: f32,
     pub messages_font_color: Pixel,
@@ -108,6 +110,7 @@ impl Client {
             server_time: TheTime::default(),
 
             daylight: Daylight::default(),
+            terrain_hover: None,
 
             messages_font: None,
             draw2d: Draw2D::default(),
@@ -382,7 +385,7 @@ impl Client {
             self.camera_d3
                 .projection_matrix(width as f32, height as f32),
         );
-
+        rast.terrain_highlight = self.terrain_hover;
         if map.properties.get_bool_default("receives_daylight", false) {
             let ac = self
                 .daylight

@@ -427,29 +427,55 @@ impl Terrain {
     /// Ray / terrain hit used for editing
     pub fn ray_terrain_hit(&self, ray: &Ray, max_distance: f32) -> Option<TerrainHit> {
         let mut t = 0.0;
-        for _ in 0..150 {
+        let step_size = 0.1;
+
+        for _ in 0..500 {
             let point = ray.origin + ray.dir * t;
             let world_pos = Vec2::new(point.x, point.z);
             let terrain_height = self.sample_height(world_pos.x, world_pos.y);
 
-            let d = point.y - terrain_height;
+            if point.y - terrain_height < 0.01 {
+                // Detected a hit; refine using binary search between previous and current t
+                let t_prev = (t - step_size).max(0.0); // Ensure t_prev isn't negative
+                let mut low = t_prev;
+                let mut high = t;
 
-            if d.abs() < 0.0001 {
-                let grid_x = (point.x / self.scale.x).floor() as i32;
-                let grid_y = (point.z / self.scale.y).floor() as i32;
+                // Perform binary search for higher accuracy
+                for _ in 0..4 {
+                    let mid = (low + high) * 0.5;
+                    let point_mid = ray.origin + ray.dir * mid;
+                    let terrain_mid_height = self.sample_height_bilinear(point_mid.x, point_mid.z);
+                    if point_mid.y - terrain_mid_height < 0.01 {
+                        high = mid; // Intersection is in the lower half
+                    } else {
+                        low = mid; // Intersection is in the upper half
+                    }
+                }
+
+                // Final refined t is the midpoint after binary search
+                let t_hit = (low + high) * 0.5;
+                let hit_point = ray.origin + ray.dir * t_hit;
+                let world_pos_hit = Vec2::new(hit_point.x, hit_point.z);
+                let terrain_hit_height =
+                    self.sample_height_bilinear(world_pos_hit.x, world_pos_hit.y);
+
+                // Snap hit point to terrain to avoid floating inaccuracies
+                let final_hit_point = Vec3::new(hit_point.x, terrain_hit_height, hit_point.z);
+                let grid_x = (final_hit_point.x / self.scale.x).floor() as i32;
+                let grid_y = (final_hit_point.z / self.scale.y).floor() as i32;
+
                 return Some(TerrainHit {
-                    world_pos: Vec3::new(point.x, terrain_height, point.z),
+                    world_pos: final_hit_point,
                     grid_pos: Vec2::new(grid_x, grid_y),
-                    height: terrain_height,
+                    height: terrain_hit_height,
                 });
             }
 
-            t += d * 0.5;
+            t += step_size;
             if t > max_distance {
                 break;
             }
         }
-
         None
     }
 

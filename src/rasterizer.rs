@@ -42,6 +42,9 @@ pub struct Rasterizer {
     /// Background color (Sky etc.)
     pub background_color: Option<[u8; 4]>,
 
+    /// Optional terrain highlight
+    pub terrain_highlight: Option<Vec3<f32>>,
+
     /// 2D Translation / Scaling
     translationd2: Vec2<f32>,
     scaled2: f32,
@@ -98,6 +101,7 @@ impl Rasterizer {
             hash_anim: 0,
 
             background_color: None,
+            terrain_highlight: None,
 
             translationd2,
             scaled2,
@@ -698,7 +702,25 @@ impl Rasterizer {
                                                 }
                                                 BatchType::Terrain => {
                                                     if let Some(terrain) = &scene.terrain {
-                                                        terrain.sample_baked(world_2d)
+                                                        let mut texel =
+                                                            terrain.sample_baked(world_2d);
+                                                        if let Some(highlight) =
+                                                            self.terrain_highlight
+                                                        {
+                                                            let dist =
+                                                                (world - highlight).magnitude();
+                                                            if dist.abs() < 0.5 {
+                                                                for channel in &mut texel[..3] {
+                                                                    *channel = ((*channel as u16
+                                                                        * 20
+                                                                        + 255 * 80)
+                                                                        / 100)
+                                                                        .min(255)
+                                                                        as u8;
+                                                                }
+                                                            }
+                                                        }
+                                                        texel
                                                     } else {
                                                         [255, 0, 0, 255]
                                                     }
