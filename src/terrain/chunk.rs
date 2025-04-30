@@ -3,12 +3,12 @@ use crate::{Batch, PixelSource, Texture};
 use theframework::prelude::*;
 use vek::Vec2;
 
-#[derive(Clone, Copy, Serialize, Deserialize, Debug)]
+#[derive(Clone, Copy, Serialize, Deserialize, Debug, PartialEq)]
 pub enum TerrainBlendMode {
     None,
-    Blend,                  // Normal blend (centered)
-    BlendOffset(Vec2<f32>), // Blend with a fixed offset
-    Custom(u8, Vec2<f32>),  // Custom ID and offset
+    Blend(u8),
+    BlendOffset(u8, Vec2<f32>),
+    Custom(u8, u8, Vec2<f32>),
 }
 
 #[derive(Serialize, Clone, Deserialize, Debug)]
@@ -61,7 +61,11 @@ impl TerrainChunk {
     pub fn set_blend_mode(&mut self, x: i32, y: i32, mode: TerrainBlendMode) {
         let world = Vec2::new(x, y);
         let local = self.world_to_local(world);
-        self.blend_modes.insert((local.x, local.y), mode);
+        if mode == TerrainBlendMode::None {
+            self.blend_modes.remove(&(local.x, local.y));
+        } else {
+            self.blend_modes.insert((local.x, local.y), mode);
+        }
         self.mark_dirty();
     }
 
@@ -85,6 +89,17 @@ impl TerrainChunk {
         let world = Vec2::new(x, y);
         let local = self.world_to_local(world);
         self.sources.get(&(local.x, local.y))
+    }
+
+    pub fn sample_normal(&self, world: Vec2<i32>) -> Vec3<f32> {
+        const EPSILON: i32 = 1;
+
+        let h_l = self.get_height(world.x - EPSILON, world.y);
+        let h_r = self.get_height(world.x + EPSILON, world.y);
+        let h_d = self.get_height(world.x, world.y - EPSILON);
+        let h_u = self.get_height(world.x, world.y + EPSILON);
+
+        Vec3::new(h_l - h_r, 1.0, h_d - h_u).normalized()
     }
 
     pub fn mark_dirty(&mut self) {
