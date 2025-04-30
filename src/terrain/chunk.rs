@@ -1,5 +1,5 @@
 use crate::Terrain;
-use crate::{Batch, PixelSource, Texture};
+use crate::{Batch, Map, PixelSource, Texture};
 use theframework::prelude::*;
 use vek::Vec2;
 
@@ -142,7 +142,7 @@ impl TerrainChunk {
     }
 
     /// Rebuilds the renderable mesh batch for this chunk
-    pub fn rebuild_batch(&mut self, terrain: &Terrain) {
+    pub fn rebuild_batch(&mut self, terrain: &Terrain, _map: &Map) {
         let mut vertices = Vec::new();
         let mut uvs = Vec::new();
         let mut indices = Vec::new();

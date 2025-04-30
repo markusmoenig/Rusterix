@@ -451,7 +451,7 @@ impl D2PreviewBuilder {
         map.terrain.clean_d3();
         if map.terrain.count_dirty_chunks() > 0 {
             map.terrain
-                .build_dirty_chunks(true, assets, self.tile_size / 2);
+                .build_dirty_chunks(true, assets, &map.geometry_clone(), self.tile_size / 2);
             scene.terrain = Some(map.terrain.clone());
         } else {
             scene.terrain = Some(map.terrain.clone());

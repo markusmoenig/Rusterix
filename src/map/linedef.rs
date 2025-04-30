@@ -1,4 +1,4 @@
-use crate::{Map, PixelSource, Value, ValueContainer};
+use crate::{Map, PixelSource, ShapeFXGraph, Value, ValueContainer};
 use theframework::prelude::*;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -16,6 +16,9 @@ pub struct Linedef {
     pub back_sector: Option<u32>,
 
     pub properties: ValueContainer,
+
+    #[serde(default)]
+    pub graph: ShapeFXGraph,
 }
 
 impl Linedef {
@@ -36,6 +39,7 @@ impl Linedef {
             back_sector: None,
 
             properties,
+            graph: ShapeFXGraph::default(),
         }
     }
 

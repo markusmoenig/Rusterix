@@ -1,4 +1,4 @@
-use crate::{Assets, BBox, Pixel, PixelSource, Ray, TerrainBlendMode, TerrainChunk, Texture};
+use crate::{Assets, BBox, Map, Pixel, PixelSource, Ray, TerrainBlendMode, TerrainChunk, Texture};
 use rayon::prelude::*;
 use theframework::prelude::*;
 use vek::Vec2;
@@ -239,62 +239,9 @@ impl Terrain {
         // Checkerboard fallback based on tile position
         let checker = ((x & 1) ^ (y & 1)) == 0;
         if checker {
-            ([160, 160, 160, 255], false) // light gray
+            ([40, 40, 40, 255], false)
         } else {
-            ([80, 80, 80, 255], false) // dark gray
-        }
-    }
-
-    /// Sample the pixel source at the given world position, with bilinear blending.
-    pub fn sample_source_blended(&self, world_pos: Vec2<f32>, assets: &Assets) -> Pixel {
-        let offsets = [
-            Vec2::new(0.0, 0.0),
-            Vec2::new(-self.scale.x, 0.0),
-            Vec2::new(self.scale.x, 0.0),
-            Vec2::new(0.0, -self.scale.y),
-            Vec2::new(0.0, self.scale.y),
-            Vec2::new(-self.scale.x, -self.scale.y),
-            Vec2::new(self.scale.x, -self.scale.y),
-            Vec2::new(-self.scale.x, self.scale.y),
-            Vec2::new(self.scale.x, self.scale.y),
-        ];
-
-        let mut sum = Vec4::zero();
-        let mut count = 0.0;
-
-        for offset in &offsets {
-            let pos = world_pos + *offset;
-            let (pixel, valid) = self.sample_source(pos, assets);
-            if valid {
-                sum += Vec4::new(
-                    pixel[0] as f32,
-                    pixel[1] as f32,
-                    pixel[2] as f32,
-                    pixel[3] as f32,
-                );
-                count += 1.0;
-            }
-        }
-
-        if count > 0.0 {
-            let avg = sum / count;
-            [
-                avg.x.round() as u8,
-                avg.y.round() as u8,
-                avg.z.round() as u8,
-                avg.w.round() as u8,
-            ]
-        } else {
-            // If no real source was found, fallback exactly like sample_source would
-            let x = (world_pos.x / self.scale.x).floor() as i32;
-            let y = (world_pos.y / self.scale.y).floor() as i32;
-
-            let checker = ((x & 1) ^ (y & 1)) == 0;
-            if checker {
-                [160, 160, 160, 255]
-            } else {
-                [80, 80, 80, 255]
-            }
+            ([20, 20, 20, 255], false)
         }
     }
 
@@ -302,79 +249,30 @@ impl Terrain {
         &self,
         world_pos: Vec2<f32>,
         assets: &Assets,
-        radius: i32,
+        radius: f32,
     ) -> Pixel {
-        let mut sum = Vec4::zero();
-        let mut count = 0.0;
-
-        for dy in -radius..=radius {
-            for dx in -radius..=radius {
-                let offset = Vec2::new(dx as f32 * self.scale.x, dy as f32 * self.scale.y);
-                let pos = world_pos + offset;
-                let (pixel, valid) = self.sample_source(pos, assets);
-                if valid {
-                    sum += Vec4::new(
-                        pixel[0] as f32,
-                        pixel[1] as f32,
-                        pixel[2] as f32,
-                        pixel[3] as f32,
-                    );
-                    count += 1.0;
-                }
-            }
-        }
-
-        if count > 0.0 {
-            let avg = sum / count;
-            [
-                avg.x.round() as u8,
-                avg.y.round() as u8,
-                avg.z.round() as u8,
-                avg.w.round() as u8,
-            ]
-        } else {
-            // If no real source was found, fallback exactly like sample_source would
-            let x = (world_pos.x / self.scale.x).floor() as i32;
-            let y = (world_pos.y / self.scale.y).floor() as i32;
-
-            let checker = ((x & 1) ^ (y & 1)) == 0;
-            if checker {
-                [160, 160, 160, 255]
-            } else {
-                [80, 80, 80, 255]
-            }
-        }
-    }
-
-    pub fn sample_source_blended_radius_gaussian(
-        &self,
-        world_pos: Vec2<f32>,
-        assets: &Assets,
-        radius: i32,
-    ) -> Pixel {
-        let mut sum = Vec4::zero();
+        let mut sum = Vec3::zero();
         let mut weight_sum = 0.0;
 
-        // Standard deviation controls falloff — smaller = sharper
-        let sigma = radius as f32 * 0.5 + 0.5;
-        let two_sigma_sq = 2.0 * sigma * sigma;
+        let step = self.scale.x.min(self.scale.y) * 0.5;
+        let radius_squared = radius * radius;
+        let steps = (radius / step).ceil() as i32;
 
-        for dy in -radius..=radius {
-            for dx in -radius..=radius {
-                let offset = Vec2::new(dx as f32 * self.scale.x, dy as f32 * self.scale.y);
-                let pos = world_pos + offset;
+        for dy in -steps..=steps {
+            for dx in -steps..=steps {
+                let offset = Vec2::new(dx as f32 * step, dy as f32 * step);
+                let dist2 = offset.magnitude_squared();
+                if dist2 > radius_squared {
+                    continue;
+                }
 
-                let (pixel, valid) = self.sample_source(pos, assets);
+                let sample_pos = world_pos + offset;
+                let (pixel, valid) = self.sample_source(sample_pos, assets);
                 if valid {
-                    let dist_sq = (dx * dx + dy * dy) as f32;
-                    let weight = (-dist_sq / two_sigma_sq).exp();
+                    let t = 1.0 - (dist2 / radius_squared);
+                    let weight = t * t;
 
-                    sum += Vec4::new(
-                        pixel[0] as f32,
-                        pixel[1] as f32,
-                        pixel[2] as f32,
-                        pixel[3] as f32,
-                    ) * weight;
+                    sum += Vec3::new(pixel[0] as f32, pixel[1] as f32, pixel[2] as f32) * weight;
                     weight_sum += weight;
                 }
             }
@@ -386,37 +284,18 @@ impl Terrain {
                 avg.x.round() as u8,
                 avg.y.round() as u8,
                 avg.z.round() as u8,
-                avg.w.round() as u8,
+                255,
             ]
         } else {
             // fallback: checker pattern
             let x = (world_pos.x / self.scale.x).floor() as i32;
             let y = (world_pos.y / self.scale.y).floor() as i32;
             if ((x ^ y) & 1) == 0 {
-                [160, 160, 160, 255]
+                [40, 40, 40, 255]
             } else {
-                [80, 80, 80, 255]
+                [20, 20, 20, 255]
             }
         }
-    }
-
-    /// Samples the steepness of the terrain at the given position.
-    pub fn sample_steepness(&self, world_pos: Vec2<f32>) -> f32 {
-        let eps = 0.5 * self.scale.x.min(self.scale.y);
-
-        let x = world_pos.x;
-        let y = world_pos.y;
-
-        let h_center = self.sample_height(x, y);
-        let h_x = self.sample_height(x + eps, y);
-        let h_y = self.sample_height(x, y + eps);
-
-        let dx = (h_x - h_center) / eps;
-        let dy = (h_y - h_center) / eps;
-
-        let gradient = Vec2::new(dx, dy);
-
-        gradient.magnitude()
     }
 
     /// Approximate the normal at a world position by sampling neighboring heights
@@ -468,17 +347,20 @@ impl Terrain {
                     let color = match blend_mode {
                         TerrainBlendMode::None => self.sample_source(world_pos, assets).0,
                         TerrainBlendMode::Blend(radius) => {
-                            self.sample_source_blended_radius(world_pos, assets, radius as i32)
+                            self.sample_source_blended_radius(world_pos, assets, radius as f32)
                         }
                         TerrainBlendMode::BlendOffset(radius, offset) => self
                             .sample_source_blended_radius(
                                 world_pos + offset,
                                 assets,
-                                radius as i32,
+                                radius as f32,
                             ),
-                        TerrainBlendMode::Custom(_, _, offset) => {
-                            self.sample_source_blended(world_pos + offset, assets)
-                        }
+                        TerrainBlendMode::Custom(radius, _, offset) => self
+                            .sample_source_blended_radius(
+                                world_pos + offset,
+                                assets,
+                                radius as f32,
+                            ),
                     };
 
                     pixel.copy_from_slice(&color);
@@ -489,7 +371,13 @@ impl Terrain {
     }
 
     /// Iterate over all chunks and rebuild if dirty
-    pub fn build_dirty_chunks(&mut self, d2_mode: bool, assets: &Assets, pixels_per_tile: i32) {
+    pub fn build_dirty_chunks(
+        &mut self,
+        d2_mode: bool,
+        assets: &Assets,
+        map: &Map,
+        pixels_per_tile: i32,
+    ) {
         let mut dirty_coords = Vec::new();
 
         for ((cx, cy), chunk) in &self.chunks {
@@ -511,7 +399,7 @@ impl Terrain {
             unsafe {
                 let chunk = &mut *chunk_ptr;
                 if !d2_mode {
-                    chunk.rebuild_batch(self);
+                    chunk.rebuild_batch(self, map);
                 } else {
                     chunk.rebuild_batch_d2(self);
                 }

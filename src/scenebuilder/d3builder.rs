@@ -351,8 +351,12 @@ impl D3Builder {
         map.terrain.clean_d2();
         if map.terrain.count_dirty_chunks() > 0 {
             let _start = get_time();
-            map.terrain
-                .build_dirty_chunks(false, assets, self.tile_size / 2);
+            map.terrain.build_dirty_chunks(
+                false,
+                assets,
+                &map.geometry_clone(),
+                self.tile_size / 2,
+            );
             let _stop = get_time();
             scene.terrain = Some(map.terrain.clone());
             println!("Execution time: {:?} ms.", _stop - _start);

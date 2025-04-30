@@ -1319,49 +1319,50 @@ impl Map {
         }
     }
 
-    /*
-    pub fn debug_print_sectors(&self) {
-        println!("--- Sector Debug Info ---");
-        for sector in &self.sectors {
-            println!("Sector ID: {}", sector.id);
-            if !sector.name.is_empty() {
-                println!("  Name: {}", sector.name);
-            }
+    /// Creates a geometry_clone clone of the map containing only vertices, linedefs, and sectors.
+    pub fn geometry_clone(&self) -> Map {
+        Map {
+            id: Uuid::new_v4(),
+            name: format!("{} (Lightweight)", self.name),
 
-            println!("  Linedefs:");
-            for &lid in &sector.linedefs {
-                if let Some(ld) = self.find_linedef(lid) {
-                    let start_vertex = ld.start_vertex;
-                    let end_vertex = ld.end_vertex;
-                    let front = ld
-                        .front_sector
-                        .map_or(String::from("None"), |s| s.to_string());
-                    let back = ld
-                        .back_sector
-                        .map_or(String::from("None"), |s| s.to_string());
+            offset: self.offset,
+            grid_size: self.grid_size,
+            subdivisions: self.subdivisions,
 
-                    println!(
-                        "    Linedef ID: {}, start: {}, end: {}, front: {}, back: {}",
-                        ld.id, start_vertex, end_vertex, front, back
-                    );
+            terrain: Terrain::default(),
 
-                    let sv = self.find_vertex(start_vertex);
-                    let ev = self.find_vertex(end_vertex);
-                    if let (Some(sv), Some(ev)) = (sv, ev) {
-                        println!(
-                            "      From ({:.2}, {:.2}) to ({:.2}, {:.2})",
-                            sv.x, sv.y, ev.x, ev.y
-                        );
-                    } else {
-                        println!("      ⚠️ Missing vertex data!");
-                    }
-                } else {
-                    println!("    ⚠️ Linedef ID {} not found!", lid);
-                }
-            }
+            possible_polygon: vec![],
+            curr_grid_pos: None,
+            curr_mouse_pos: None,
+            curr_rectangle: None,
 
-            println!();
+            vertices: self.vertices.clone(),
+            linedefs: self.linedefs.clone(),
+            sectors: self.sectors.clone(),
+
+            shapefx_graphs: FxHashMap::default(),
+            sky_texture: None,
+
+            camera: self.camera,
+            camera_xz: None,
+            look_at_xz: None,
+
+            lights: vec![],
+            entities: vec![],
+            items: vec![],
+
+            selected_vertices: vec![],
+            selected_linedefs: vec![],
+            selected_sectors: vec![],
+
+            selected_light: None,
+            selected_entity_item: None,
+
+            animation: VertexAnimationSystem::default(),
+
+            properties: ValueContainer::default(),
+
+            changed: 0,
         }
-        println!("--------------------------");
-    }*/
+    }
 }
