@@ -34,7 +34,7 @@ pub struct Batch<T> {
     pub mode: PrimitiveMode,
 
     /// 2D or 3D input vertices which will get projected into 2D space. 2D and 3D vertices expect 3D and 4D vecs with the last component set to 1.0.
-    vertices: Vec<T>,
+    pub vertices: Vec<T>,
 
     /// The indices of the vertices of the batch.
     pub indices: Vec<(usize, usize, usize)>,

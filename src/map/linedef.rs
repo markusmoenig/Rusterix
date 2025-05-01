@@ -1,4 +1,4 @@
-use crate::{Map, PixelSource, ShapeFXGraph, Value, ValueContainer};
+use crate::{BBox, Map, PixelSource, Value, ValueContainer};
 use theframework::prelude::*;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -16,9 +16,6 @@ pub struct Linedef {
     pub back_sector: Option<u32>,
 
     pub properties: ValueContainer,
-
-    #[serde(default)]
-    pub graph: ShapeFXGraph,
 }
 
 impl Linedef {
@@ -39,7 +36,6 @@ impl Linedef {
             back_sector: None,
 
             properties,
-            graph: ShapeFXGraph::default(),
         }
     }
 
@@ -49,6 +45,21 @@ impl Linedef {
         let end = map.get_vertex(self.end_vertex)?;
 
         Some((end - start).magnitude())
+    }
+
+    /// Generate a bounding box for the linedef
+    pub fn bounding_box(&self, map: &Map) -> BBox {
+        let start = map
+            .get_vertex(self.start_vertex)
+            .unwrap_or(Vec2::broadcast(0.0));
+        let end = map
+            .get_vertex(self.end_vertex)
+            .unwrap_or(Vec2::broadcast(0.0));
+
+        let min = Vec2::new(start.x.min(end.x), start.y.min(end.y));
+        let max = Vec2::new(start.x.max(end.x), start.y.max(end.y));
+
+        BBox::new(min, max)
     }
 }
 

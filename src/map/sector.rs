@@ -1,5 +1,5 @@
 use super::pixelsource::PixelSource;
-use crate::{BBox, Map, ShapeFXGraph, Value, ValueContainer};
+use crate::{BBox, Map, Value, ValueContainer};
 use earcutr::earcut;
 // use rand::Rng;
 // use rand::seq::SliceRandom;
@@ -21,9 +21,6 @@ pub struct Sector {
     /// The rect tool layer for this sector (if created by the rect tool).
     #[serde(default)]
     pub layer: Option<u8>,
-
-    #[serde(default)]
-    pub graph: ShapeFXGraph,
 }
 
 impl Sector {
@@ -43,7 +40,6 @@ impl Sector {
             neighbours: vec![],
 
             layer: None,
-            graph: ShapeFXGraph::default(),
         }
     }
 

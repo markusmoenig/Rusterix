@@ -1323,7 +1323,7 @@ impl Map {
     pub fn geometry_clone(&self) -> Map {
         Map {
             id: Uuid::new_v4(),
-            name: format!("{} (Lightweight)", self.name),
+            name: format!("{} (geometry_clone)", self.name),
 
             offset: self.offset,
             grid_size: self.grid_size,
@@ -1340,7 +1340,7 @@ impl Map {
             linedefs: self.linedefs.clone(),
             sectors: self.sectors.clone(),
 
-            shapefx_graphs: FxHashMap::default(),
+            shapefx_graphs: self.shapefx_graphs.clone(),
             sky_texture: None,
 
             camera: self.camera,
@@ -1364,5 +1364,82 @@ impl Map {
 
             changed: 0,
         }
+    }
+
+    /// Extracts all geometry into a new Map which intersects with the given chunk bbox.
+    pub fn extract_chunk_geometry(&self, bbox: BBox) -> Map {
+        let mut result = Map::new();
+
+        let mut vertex_map: FxHashMap<u32, u32> = FxHashMap::default();
+        let mut linedef_map: FxHashMap<u32, u32> = FxHashMap::default();
+
+        // Step 1: Find all linedefs that intersect the BBox
+        for l in &self.linedefs {
+            if let (Some(start), Some(end)) = (
+                self.get_vertex(l.start_vertex),
+                self.get_vertex(l.end_vertex),
+            ) {
+                // Check if either endpoint is inside or the segment intersects bbox
+                if bbox.contains(start) || bbox.contains(end) || bbox.line_intersects(start, end) {
+                    let new_id = result.find_free_linedef_id().unwrap_or(l.id);
+                    let mut l_clone = l.clone();
+                    l_clone.id = new_id;
+                    l_clone.front_sector = None;
+                    l_clone.back_sector = None;
+                    result.linedefs.push(l_clone);
+                    linedef_map.insert(l.id, new_id);
+
+                    // Ensure both vertices are marked for inclusion
+                    for vid in &[l.start_vertex, l.end_vertex] {
+                        if !vertex_map.contains_key(vid) {
+                            if let Some(v) = self.find_vertex(*vid) {
+                                let new_vid = result.find_free_vertex_id().unwrap_or(v.id);
+                                let mut v_clone = v.clone();
+                                v_clone.id = new_vid;
+                                result.vertices.push(v_clone);
+                                vertex_map.insert(*vid, new_vid);
+                            }
+                        }
+                    }
+
+                    // Reassign the vertex IDs
+                    if let Some(ld) = result.linedefs.last_mut() {
+                        ld.start_vertex = vertex_map[&l.start_vertex];
+                        ld.end_vertex = vertex_map[&l.end_vertex];
+                    }
+                }
+            }
+        }
+
+        // Step 2: Add sectors that reference any included linedef
+        for s in &self.sectors {
+            if s.linedefs.iter().any(|lid| linedef_map.contains_key(lid)) {
+                let new_id = result.find_free_sector_id().unwrap_or(s.id);
+                let mut s_clone = s.clone();
+                s_clone.id = new_id;
+                s_clone.linedefs = s
+                    .linedefs
+                    .iter()
+                    .filter_map(|lid| linedef_map.get(lid).copied())
+                    .collect();
+
+                // Re-link sector ID into included linedefs
+                for lid in &s.linedefs {
+                    if let Some(&new_lid) = linedef_map.get(lid) {
+                        if let Some(ld) = result.linedefs.iter_mut().find(|l| l.id == new_lid) {
+                            if ld.front_sector.is_none() {
+                                ld.front_sector = Some(new_id);
+                            } else if ld.back_sector.is_none() {
+                                ld.back_sector = Some(new_id);
+                            }
+                        }
+                    }
+                }
+
+                result.sectors.push(s_clone);
+            }
+        }
+
+        result
     }
 }

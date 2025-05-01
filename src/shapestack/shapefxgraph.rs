@@ -1,4 +1,7 @@
-use crate::{Pixel, ShapeContext, ShapeFX, ShapeFXRole, Texture};
+use crate::{
+    BBox, Linedef, Map, Pixel, Sector, ShapeContext, ShapeFX, ShapeFXRole, Terrain, TerrainChunk,
+    Texture,
+};
 use rayon::prelude::*;
 use theframework::prelude::*;
 use uuid::Uuid;
@@ -35,25 +38,87 @@ impl ShapeFXGraph {
         }
     }
 
-    /// Evaluate the graph
-    pub fn evaluate(
+    /// Modifies the terrain with the given geometry nodes for the given sector
+    pub fn sector_modify_heightmap(
+        &self,
+        sector: &Sector,
+        map: &Map,
+        terrain: &Terrain,
+        bounds: &BBox,
+        chunk: &TerrainChunk,
+        heights: &mut FxHashMap<(i32, i32), f32>,
+    ) {
+        if self.nodes.is_empty() {
+            return;
+        }
+        if self.nodes[0].role != ShapeFXRole::RegionGeometry {
+            return;
+        }
+        let mut curr_index = 0_usize;
+        let mut curr_terminal = 0_usize;
+
+        let mut steps = 0;
+        while steps < 16 {
+            if let Some((next_node, next_terminal)) =
+                self.find_connected_input_node(curr_index, curr_terminal)
+            {
+                self.nodes[next_node as usize]
+                    .sector_modify_heightmap(sector, map, terrain, bounds, chunk, heights);
+                curr_index = next_node as usize;
+                curr_terminal = next_terminal as usize;
+                steps += 1;
+            } else {
+                break;
+            }
+        }
+    }
+
+    /// Modifies the terrain with the given geometry nodes for the given sector
+    pub fn linedef_modify_heightmap(
+        &self,
+        linedef: &Vec<Linedef>,
+        map: &Map,
+        terrain: &Terrain,
+        bounds: &BBox,
+        chunk: &TerrainChunk,
+        heights: &mut FxHashMap<(i32, i32), f32>,
+    ) {
+        if self.nodes.is_empty() {
+            return;
+        }
+        if self.nodes[0].role != ShapeFXRole::RegionGeometry {
+            return;
+        }
+        let mut curr_index = 0_usize;
+        let mut curr_terminal = 0_usize;
+
+        let mut steps = 0;
+        while steps < 16 {
+            if let Some((next_node, next_terminal)) =
+                self.find_connected_input_node(curr_index, curr_terminal)
+            {
+                self.nodes[next_node as usize]
+                    .linedef_modify_heightmap(linedef, map, terrain, bounds, chunk, heights);
+                curr_index = next_node as usize;
+                curr_terminal = next_terminal as usize;
+                steps += 1;
+            } else {
+                break;
+            }
+        }
+    }
+
+    /// Evaluate the material graph
+    pub fn evaluate_material(
         &self,
         ctx: &ShapeContext,
         mut incoming: Vec4<f32>,
         palette: &ThePalette,
     ) -> Option<Vec4<f32>> {
-        // for effect in self.effects.iter() {
-        //     if effect.role == ShapeFXRole::Geometry {
-        //         continue;
-        //     }
-        //     if let Some(col) = self.effects[1].evaluate(ctx, palette) {
-        //         return Some(col);
-        //     }
-        // }
         if self.nodes.is_empty() {
             return None;
         }
-        if self.nodes[0].role != ShapeFXRole::Geometry {
+        if self.nodes[0].role != ShapeFXRole::MaterialGeometry {
             return None;
         }
 
@@ -68,7 +133,7 @@ impl ShapeFXGraph {
                 self.find_connected_input_node(curr_index, curr_terminal)
             {
                 if let Some(col) =
-                    self.nodes[next_node as usize].evaluate(ctx, Some(incoming), palette)
+                    self.nodes[next_node as usize].evaluate_pixel(ctx, Some(incoming), palette)
                 {
                     color = Some(col);
                     incoming = col;
@@ -108,7 +173,7 @@ impl ShapeFXGraph {
     }
 
     /// Create a preview of the graph
-    pub fn preview(&self, buffer: &mut Texture, palette: &ThePalette) {
+    pub fn material_preview(&self, buffer: &mut Texture, palette: &ThePalette) {
         let width = buffer.width;
         let height = buffer.height;
 
@@ -154,7 +219,7 @@ impl ShapeFXGraph {
                     };
 
                     let color = if let Some(col) =
-                        self.evaluate(&ctx, Vec4::new(0.0, 0.0, 0.0, 1.0), palette)
+                        self.evaluate_material(&ctx, Vec4::new(0.0, 0.0, 0.0, 1.0), palette)
                     {
                         col
                     } else {

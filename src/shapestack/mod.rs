@@ -101,7 +101,8 @@ impl ShapeStack {
                                 }
 
                                 if let Some(ctx) = best_ctx {
-                                    if let Some(col) = graph.evaluate(&ctx, color, palette) {
+                                    if let Some(col) = graph.evaluate_material(&ctx, color, palette)
+                                    {
                                         color = Vec4::lerp(color, col, col.w);
                                     }
                                 }
@@ -177,7 +178,8 @@ impl ShapeStack {
                                                 line_dir: Some(final_dir),
                                             };
 
-                                            if let Some(col) = graph.evaluate(&ctx, color, palette)
+                                            if let Some(col) =
+                                                graph.evaluate_material(&ctx, color, palette)
                                             {
                                                 color = Vec4::lerp(color, col, col.w);
                                             }

@@ -1,4 +1,6 @@
-use crate::{BLACK, Pixel, ShapeContext, ValueContainer};
+use crate::{
+    BBox, BLACK, Linedef, Map, Pixel, Sector, ShapeContext, Terrain, TerrainChunk, ValueContainer,
+};
 use std::fmt;
 use std::str::FromStr;
 use theframework::prelude::*;
@@ -26,23 +28,34 @@ pub enum ShapeFXParam {
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum ShapeFXRole {
-    Geometry,
+    // Material Group
+    // These nodes get attached to geometry and produce pixel output
+    MaterialGeometry,
     Gradient,
     Color,
     Outline,
     NoiseOverlay,
     Glow,
+    // Region Group
+    // These nodes get attached to geometry and control mesh creation
+    // or produce rendering fx like lights, particles etc.
+    RegionGeometry,
+    Level, // Mesh Modifier: flattens with bevel
 }
+
+use ShapeFXRole::*;
 
 impl fmt::Display for ShapeFXRole {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let s = match self {
-            ShapeFXRole::Geometry => "Geometry",
+            ShapeFXRole::MaterialGeometry => "Material Geometry",
             ShapeFXRole::Gradient => "Gradient",
             ShapeFXRole::Color => "Color",
             ShapeFXRole::Outline => "Outline",
             ShapeFXRole::NoiseOverlay => "Noise Overlay",
             ShapeFXRole::Glow => "Glow",
+            ShapeFXRole::RegionGeometry => "Region Geometry",
+            ShapeFXRole::Level => "Level",
         };
         write!(f, "{}", s)
     }
@@ -53,12 +66,14 @@ impl FromStr for ShapeFXRole {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "Geometry" => Ok(ShapeFXRole::Geometry),
+            "Material Geometry" => Ok(ShapeFXRole::MaterialGeometry),
             "Gradient" => Ok(ShapeFXRole::Gradient),
             "Color" => Ok(ShapeFXRole::Color),
             "Outline" => Ok(ShapeFXRole::Outline),
             "Noise Overlay" => Ok(ShapeFXRole::NoiseOverlay),
             "Glow" => Ok(ShapeFXRole::Glow),
+            "Region Geometry" => Ok(ShapeFXRole::RegionGeometry),
+            "Level" => Ok(ShapeFXRole::Level),
             _ => Err(()),
         }
     }
@@ -66,13 +81,11 @@ impl FromStr for ShapeFXRole {
 
 impl ShapeFXRole {
     pub fn iterator() -> impl Iterator<Item = ShapeFXRole> {
-        [ShapeFXRole::Geometry, ShapeFXRole::Gradient]
+        [ShapeFXRole::MaterialGeometry, ShapeFXRole::Gradient]
             .iter()
             .copied()
     }
 }
-
-use ShapeFXRole::*;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ShapeFX {
@@ -97,18 +110,20 @@ impl ShapeFX {
 
     pub fn name(&self) -> String {
         match self.role {
-            Geometry => "Geometry".into(),
+            MaterialGeometry => "Geometry".into(),
             Gradient => "Gradient".into(),
             Color => "Color".into(),
             Outline => "Outline".into(),
             NoiseOverlay => "Noise Overlay".into(),
             Glow => "Glow".into(),
+            RegionGeometry => "Geometry".into(),
+            Level => "Level".into(),
         }
     }
 
     pub fn inputs(&self) -> Vec<TheNodeTerminal> {
         match self.role {
-            Geometry => {
+            MaterialGeometry | RegionGeometry => {
                 vec![]
             }
             _ => {
@@ -122,7 +137,7 @@ impl ShapeFX {
 
     pub fn outputs(&self) -> Vec<TheNodeTerminal> {
         match self.role {
-            Geometry => {
+            MaterialGeometry => {
                 vec![
                     TheNodeTerminal {
                         name: "inside".into(),
@@ -130,6 +145,18 @@ impl ShapeFX {
                     },
                     TheNodeTerminal {
                         name: "outside".into(),
+                        color: TheColor::new(0.5, 0.5, 0.5, 1.0),
+                    },
+                ]
+            }
+            RegionGeometry => {
+                vec![
+                    TheNodeTerminal {
+                        name: "Mesh".into(),
+                        color: TheColor::new(0.5, 0.5, 0.5, 1.0),
+                    },
+                    TheNodeTerminal {
+                        name: "FX".into(),
                         color: TheColor::new(0.5, 0.5, 0.5, 1.0),
                     },
                 ]
@@ -143,14 +170,136 @@ impl ShapeFX {
         }
     }
 
-    pub fn evaluate(
+    /// Modify the given heightmap with the region nodes of the given sector
+    pub fn sector_modify_heightmap(
+        &self,
+        sector: &Sector,
+        map: &Map,
+        _terrain: &Terrain,
+        bbox: &BBox,
+        chunk: &TerrainChunk,
+        heights: &mut FxHashMap<(i32, i32), f32>,
+    ) {
+        #[allow(clippy::single_match)]
+        match self.role {
+            Level => {
+                let bevel = self.values.get_float_default("bevel", 0.5);
+                let floor_height = sector.properties.get_float_default("floor_height", 0.0);
+
+                let mut bounds = sector.bounding_box(map);
+                bounds.expand(Vec2::broadcast(bevel));
+
+                let min_x = bounds.min.x.floor() as i32;
+                let max_x = bounds.max.x.ceil() as i32;
+                let min_y = bounds.min.y.floor() as i32;
+                let max_y = bounds.max.y.ceil() as i32;
+
+                for y in min_y..=max_y {
+                    for x in min_x..=max_x {
+                        let p = Vec2::new(x as f32, y as f32);
+
+                        if !bbox.contains(p) {
+                            continue;
+                        }
+
+                        let Some(sd) = sector.signed_distance(map, p) else {
+                            continue;
+                        };
+
+                        if sd < bevel {
+                            let local = chunk.world_to_local(Vec2::new(x, y));
+                            let s = Self::smoothstep(0.0, bevel, bevel - sd);
+                            let original =
+                                *heights.get(&(local.x, local.y)).unwrap_or(&floor_height);
+                            let new_height = original * (1.0 - s) + floor_height * s;
+                            heights.insert((local.x, local.y), new_height);
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// Modify the given heightmap with the region nodes of the given sector
+    pub fn linedef_modify_heightmap(
+        &self,
+        linedefs: &Vec<Linedef>,
+        map: &Map,
+        _terrain: &Terrain,
+        bbox: &BBox,
+        chunk: &TerrainChunk,
+        heights: &mut FxHashMap<(i32, i32), f32>,
+    ) {
+        #[allow(clippy::single_match)]
+        match self.role {
+            ShapeFXRole::Level => {
+                let bevel = self.values.get_float_default("bevel", 0.5);
+
+                for linedef in linedefs {
+                    let Some(start) = map.vertices.iter().find(|v| v.id == linedef.start_vertex)
+                    else {
+                        continue;
+                    };
+                    let Some(end) = map.vertices.iter().find(|v| v.id == linedef.end_vertex) else {
+                        continue;
+                    };
+
+                    let start_pos = start.as_vec2();
+                    let end_pos = end.as_vec2();
+
+                    let height_start = start.properties.get_float_default("height", 0.0);
+                    let height_end = end.properties.get_float_default("height", 0.0);
+
+                    let dir = (end_pos - start_pos).normalized();
+                    let len = (end_pos - start_pos).magnitude();
+                    let normal = vek::Vec2::new(-dir.y, dir.x); // perpendicular
+
+                    let steps = (len.ceil() as i32).max(1);
+
+                    for i in 0..=steps {
+                        let t = i as f32 / steps as f32;
+                        let p = Vec2::lerp(start_pos, end_pos, t);
+                        // let s = Self::smoothstep(0.0, 1.0, t);
+                        // let p = start_pos.lerp(end_pos, s);
+                        let height = height_start * (1.0 - t) + height_end * t;
+
+                        let side_steps = (bevel.ceil() as i32).max(1);
+                        for s in -side_steps..=side_steps {
+                            let offset = normal * (s as f32 * (bevel / side_steps as f32));
+                            let pos = p + offset;
+
+                            if !bbox.contains(pos) {
+                                continue;
+                            }
+
+                            let world = vek::Vec2::new(pos.x.round(), pos.y.round());
+                            let local = chunk
+                                .world_to_local(vek::Vec2::new(world.x as i32, world.y as i32));
+
+                            let dist = (offset.magnitude() / bevel).clamp(0.0, 1.0);
+                            let blend = Self::smoothstep(0.0, 1.0, 1.0 - dist);
+
+                            let original = *heights.get(&(local.x, local.y)).unwrap_or(&height);
+                            let new_height = original * (1.0 - blend) + height * blend;
+
+                            heights.insert((local.x, local.y), new_height);
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    pub fn evaluate_pixel(
         &self,
         ctx: &ShapeContext,
         color: Option<Vec4<f32>>,
         palette: &ThePalette,
     ) -> Option<Vec4<f32>> {
         match self.role {
-            Geometry => None,
+            MaterialGeometry => None,
             /*
             Gradient => {
                 let alpha = 1.0 - ShapeFX::smoothstep(-ctx.anti_aliasing, 0.0, ctx.distance);
@@ -342,6 +491,7 @@ impl ShapeFX {
                     None
                 }
             }
+            _ => None,
         }
     }
 
@@ -499,11 +649,26 @@ impl ShapeFX {
                     0.0..=100.0,
                 ));
             }
+            Level => {
+                params.push(ShapeFXParam::Float(
+                    "bevel".into(),
+                    "Bevel".into(),
+                    "Smoothly blends the shape's height into the surrounding terrain over this distance.".into(),
+                    self.values.get_float_default("bevel", 0.5),
+                    0.0..=10.0,
+                ));
+            }
             _ => {}
         }
         params
     }
 
+    #[inline]
+    fn lerp(a: f32, b: f32, t: f32) -> f32 {
+        a * (1.0 - t) + b * t
+    }
+
+    #[inline]
     pub fn smoothstep(edge0: f32, edge1: f32, x: f32) -> f32 {
         let t = ((x - edge0) / (edge1 - edge0)).clamp(0.0, 1.0);
         t * t * (3.0 - 2.0 * t)

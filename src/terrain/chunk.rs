@@ -1,5 +1,5 @@
 use crate::Terrain;
-use crate::{Batch, Map, PixelSource, Texture};
+use crate::{BBox, Batch, Linedef, Map, PixelSource, Texture, Value};
 use theframework::prelude::*;
 use vek::Vec2;
 
@@ -16,6 +16,8 @@ pub struct TerrainChunk {
     pub origin: Vec2<i32>,
     #[serde(with = "vectorize")]
     pub heights: FxHashMap<(i32, i32), f32>,
+    #[serde(skip, default)]
+    pub processed_heights: Option<FxHashMap<(i32, i32), f32>>,
     #[serde(with = "vectorize")]
     pub sources: FxHashMap<(i32, i32), PixelSource>,
     #[serde(with = "vectorize")]
@@ -34,6 +36,7 @@ impl TerrainChunk {
         Self {
             origin,
             heights: FxHashMap::default(),
+            processed_heights: None,
             sources: FxHashMap::default(),
             blend_modes: FxHashMap::default(),
             batch: None,
@@ -72,10 +75,17 @@ impl TerrainChunk {
     pub fn get_height(&self, x: i32, y: i32) -> f32 {
         let world = Vec2::new(x, y);
         let local = self.world_to_local(world);
-        self.heights
-            .get(&(local.x, local.y))
-            .copied()
-            .unwrap_or(0.0)
+        if let Some(process_heights) = &self.processed_heights {
+            process_heights
+                .get(&(local.x, local.y))
+                .copied()
+                .unwrap_or(0.0)
+        } else {
+            self.heights
+                .get(&(local.x, local.y))
+                .copied()
+                .unwrap_or(0.0)
+        }
     }
 
     pub fn set_source(&mut self, x: i32, y: i32, source: PixelSource) {
@@ -115,23 +125,24 @@ impl TerrainChunk {
         self.baked_texture = None;
     }
 
-    pub fn bounds(&self) -> Option<(Vec2<i32>, Vec2<i32>)> {
+    /// Returns the bounds in world coordinates
+    pub fn bounds(&self) -> Option<BBox> {
         if self.heights.is_empty() {
             return None;
         }
 
-        let mut min = Vec2::new(i32::MAX, i32::MAX);
-        let mut max = Vec2::new(i32::MIN, i32::MIN);
+        let mut min = Vec2::new(f32::MAX, f32::MAX);
+        let mut max = Vec2::new(f32::MIN, f32::MIN);
 
         for &(x, y) in self.heights.keys() {
-            let world = self.local_to_world(Vec2::new(x, y));
+            let world = self.local_to_world(Vec2::new(x, y)).map(|v| v as f32);
             min.x = min.x.min(world.x);
             min.y = min.y.min(world.y);
             max.x = max.x.max(world.x);
             max.y = max.y.max(world.y);
         }
 
-        Some((min, max))
+        Some(BBox::new(min, max))
     }
 
     /// Returns true if the height exists at (x, y) in this chunk
@@ -142,13 +153,68 @@ impl TerrainChunk {
     }
 
     /// Rebuilds the renderable mesh batch for this chunk
-    pub fn rebuild_batch(&mut self, terrain: &Terrain, _map: &Map) {
+    pub fn rebuild_batch(&mut self, terrain: &Terrain, map: &Map) {
+        let mut processed_heights = self.heights.clone();
+        // let mut batch: Batch<[f32; 4]> = Batch::emptyd3();
+
+        if let Some(bbox) = self.bounds() {
+            // let chunk_map = map.extract_chunk_geometry(bbox);
+            for sector in &map.sectors {
+                if bbox.intersects(&sector.bounding_box(map)) {
+                    if let Some(Value::Source(PixelSource::ShapeFXGraphId(graph_id))) =
+                        sector.properties.get("region_graph")
+                    {
+                        if let Some(graph) = map.shapefx_graphs.get(graph_id) {
+                            graph.sector_modify_heightmap(
+                                sector,
+                                map,
+                                terrain,
+                                &bbox,
+                                self,
+                                &mut processed_heights,
+                            );
+                        }
+                    }
+                }
+            }
+
+            /// Group all linedefs with the same graph
+            let mut linedef_groups: FxHashMap<Uuid, Vec<Linedef>> = FxHashMap::default();
+            for linedef in &map.linedefs {
+                if bbox.intersects(&linedef.bounding_box(map)) {
+                    if let Some(Value::Source(PixelSource::ShapeFXGraphId(graph_id))) =
+                        linedef.properties.get("region_graph")
+                    {
+                        linedef_groups
+                            .entry(*graph_id)
+                            .or_default()
+                            .push(linedef.clone());
+                    }
+                }
+            }
+
+            for (graph_id, linedefs) in linedef_groups {
+                if let Some(graph) = map.shapefx_graphs.get(&graph_id) {
+                    graph.linedef_modify_heightmap(
+                        &linedefs,
+                        map,
+                        terrain,
+                        &bbox,
+                        self,
+                        &mut processed_heights,
+                    );
+                }
+            }
+        };
+
         let mut vertices = Vec::new();
         let mut uvs = Vec::new();
         let mut indices = Vec::new();
         let mut vertex_map = FxHashMap::default();
 
-        for (&(lx, ly), &_) in &self.heights {
+        self.processed_heights = Some(processed_heights.clone());
+
+        for (&(lx, ly), &_) in &processed_heights {
             let world_pos = self.local_to_world(Vec2::new(lx, ly));
 
             for (dx, dy) in &[(0, 0), (1, 0), (0, 1), (1, 1)] {
@@ -180,10 +246,9 @@ impl TerrainChunk {
             indices.push((i1, i2, i3));
         }
 
-        self.batch = Some(Batch::new_3d(vertices, indices, uvs));
-        if let Some(batch) = &mut self.batch {
-            batch.compute_vertex_normals();
-        }
+        let mut batch = Batch::new_3d(vertices, indices, uvs);
+        batch.compute_vertex_normals();
+        self.batch = Some(batch);
         self.dirty = false;
     }
 

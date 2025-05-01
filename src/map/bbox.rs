@@ -39,6 +39,14 @@ impl BBox {
             && point.y <= self.max.y
     }
 
+    /// Returns true if this bounding box intersects another bounding box
+    pub fn intersects(&self, other: &BBox) -> bool {
+        self.min.x <= other.max.x
+            && self.max.x >= other.min.x
+            && self.min.y <= other.max.y
+            && self.max.y >= other.min.y
+    }
+
     /// Expands (or shrinks) the bounding box by a given amount
     pub fn expand(&mut self, amount: Vec2<f32>) {
         self.min -= amount * 0.5;
@@ -51,5 +59,46 @@ impl BBox {
         self.min.y = self.min.y.min(other.min.y);
         self.max.x = self.max.x.max(other.max.x);
         self.max.y = self.max.y.max(other.max.y);
+    }
+
+    /// Returns true if the line from `a` to `b` intersects this bounding box
+    pub fn line_intersects(&self, a: Vec2<f32>, b: Vec2<f32>) -> bool {
+        let min = self.min;
+        let max = self.max;
+
+        // Liang–Barsky algorithm
+        let dx = b.x - a.x;
+        let dy = b.y - a.y;
+
+        let mut tmin = 0.0;
+        let mut tmax = 1.0;
+
+        let check = |p: f32, q: f32, tmin: &mut f32, tmax: &mut f32| -> bool {
+            if p == 0.0 {
+                return q >= 0.0; // Parallel and outside
+            }
+            let t = q / p;
+            if p < 0.0 {
+                if t > *tmax {
+                    return false;
+                }
+                if t > *tmin {
+                    *tmin = t;
+                }
+            } else {
+                if t < *tmin {
+                    return false;
+                }
+                if t < *tmax {
+                    *tmax = t;
+                }
+            }
+            true
+        };
+
+        check(-dx, a.x - min.x, &mut tmin, &mut tmax)
+            && check(dx, max.x - a.x, &mut tmin, &mut tmax)
+            && check(-dy, a.y - min.y, &mut tmin, &mut tmax)
+            && check(dy, max.y - a.y, &mut tmin, &mut tmax)
     }
 }
