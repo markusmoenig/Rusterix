@@ -178,7 +178,7 @@ impl TerrainChunk {
                 }
             }
 
-            /// Group all linedefs with the same graph
+            // Group all linedefs with the same graph
             let mut linedef_groups: FxHashMap<Uuid, Vec<Linedef>> = FxHashMap::default();
             for linedef in &map.linedefs {
                 if bbox.intersects(&linedef.bounding_box(map)) {
