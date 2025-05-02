@@ -1,7 +1,7 @@
 use crate::{
-    BBox, BLACK, Linedef, Map, Pixel, Sector, ShapeContext, Terrain, TerrainChunk, ValueContainer,
+    BBox, BLACK, Linedef, Map, Pixel, Ray, Sector, ShapeContext, Terrain, TerrainChunk,
+    ValueContainer,
 };
-use std::fmt;
 use std::str::FromStr;
 use theframework::prelude::*;
 use uuid::Uuid;
@@ -40,26 +40,35 @@ pub enum ShapeFXRole {
     // These nodes get attached to geometry and control mesh creation
     // or produce rendering fx like lights, particles etc.
     RegionGeometry,
-    Level, // Mesh Modifier: flattens with bevel
+    Flatten,
+    // Render Group
+    Render, // Main Render Node
+    Lights,
+    Fog,
+    Sky,
 }
 
 use ShapeFXRole::*;
 
-impl fmt::Display for ShapeFXRole {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let s = match self {
-            ShapeFXRole::MaterialGeometry => "Material Geometry",
-            ShapeFXRole::Gradient => "Gradient",
-            ShapeFXRole::Color => "Color",
-            ShapeFXRole::Outline => "Outline",
-            ShapeFXRole::NoiseOverlay => "Noise Overlay",
-            ShapeFXRole::Glow => "Glow",
-            ShapeFXRole::RegionGeometry => "Region Geometry",
-            ShapeFXRole::Level => "Level",
-        };
-        write!(f, "{}", s)
-    }
-}
+// impl fmt::Display for ShapeFXRole {
+//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+//         let s = match self {
+//             ShapeFXRole::MaterialGeometry => "Material Geometry",
+//             ShapeFXRole::Gradient => "Gradient",
+//             ShapeFXRole::Color => "Color",
+//             ShapeFXRole::Outline => "Outline",
+//             ShapeFXRole::NoiseOverlay => "Noise Overlay",
+//             ShapeFXRole::Glow => "Glow",
+//             ShapeFXRole::RegionGeometry => "Region Geometry",
+//             ShapeFXRole::Flatten => "Flatten",
+//             ShapeFXRole::Render => "Render",
+//             ShapeFXRole::Lights => "Lights",
+//             ShapeFXRole::Fog => "Fog",
+//             ShapeFXRole::Sky => "Sky",
+//         };
+//         write!(f, "{}", s)
+//     }
+// }
 
 impl FromStr for ShapeFXRole {
     type Err = ();
@@ -73,7 +82,11 @@ impl FromStr for ShapeFXRole {
             "Noise Overlay" => Ok(ShapeFXRole::NoiseOverlay),
             "Glow" => Ok(ShapeFXRole::Glow),
             "Region Geometry" => Ok(ShapeFXRole::RegionGeometry),
-            "Level" => Ok(ShapeFXRole::Level),
+            "Flatten" => Ok(ShapeFXRole::Flatten),
+            "Render" => Ok(ShapeFXRole::Render),
+            "Lights" => Ok(ShapeFXRole::Lights),
+            "Fog" => Ok(ShapeFXRole::Fog),
+            "Sky" => Ok(ShapeFXRole::Sky),
             _ => Err(()),
         }
     }
@@ -117,7 +130,11 @@ impl ShapeFX {
             NoiseOverlay => "Noise Overlay".into(),
             Glow => "Glow".into(),
             RegionGeometry => "Geometry".into(),
-            Level => "Level".into(),
+            Flatten => "Flatten".into(),
+            Render => "Render".into(),
+            Lights => "Lights".into(),
+            Fog => "Fog".into(),
+            Sky => "Sky".into(),
         }
     }
 
@@ -126,10 +143,28 @@ impl ShapeFX {
             MaterialGeometry | RegionGeometry => {
                 vec![]
             }
+            Render => {
+                vec![
+                    TheNodeTerminal {
+                        name: "camera".into(),
+                        category_name: "Render".into(),
+                    },
+                    TheNodeTerminal {
+                        name: "lights".into(),
+                        category_name: "Render".into(),
+                    },
+                ]
+            }
+            Lights | Fog | Sky => {
+                vec![TheNodeTerminal {
+                    name: "in".into(),
+                    category_name: "Render".into(),
+                }]
+            }
             _ => {
                 vec![TheNodeTerminal {
                     name: "in".into(),
-                    color: TheColor::new(0.5, 0.5, 0.5, 1.0),
+                    category_name: "ShapeFX".into(),
                 }]
             }
         }
@@ -141,11 +176,11 @@ impl ShapeFX {
                 vec![
                     TheNodeTerminal {
                         name: "inside".into(),
-                        color: TheColor::new(0.5, 0.5, 0.5, 1.0),
+                        category_name: "ShapeFX".into(),
                     },
                     TheNodeTerminal {
                         name: "outside".into(),
-                        color: TheColor::new(0.5, 0.5, 0.5, 1.0),
+                        category_name: "ShapeFX".into(),
                     },
                 ]
             }
@@ -153,18 +188,36 @@ impl ShapeFX {
                 vec![
                     TheNodeTerminal {
                         name: "Mesh".into(),
-                        color: TheColor::new(0.5, 0.5, 0.5, 1.0),
+                        category_name: "ShapeFX".into(),
                     },
                     TheNodeTerminal {
                         name: "FX".into(),
-                        color: TheColor::new(0.5, 0.5, 0.5, 1.0),
+                        category_name: "ShapeFX".into(),
                     },
                 ]
+            }
+            Render => {
+                vec![
+                    TheNodeTerminal {
+                        name: "hit".into(),
+                        category_name: "Render".into(),
+                    },
+                    TheNodeTerminal {
+                        name: "miss".into(),
+                        category_name: "Render".into(),
+                    },
+                ]
+            }
+            Lights | Fog | Sky => {
+                vec![TheNodeTerminal {
+                    name: "out".into(),
+                    category_name: "Render".into(),
+                }]
             }
             _ => {
                 vec![TheNodeTerminal {
                     name: "out".into(),
-                    color: TheColor::new(0.5, 0.5, 0.5, 1.0),
+                    category_name: "ShapeFX".into(),
                 }]
             } // _ => vec![],
         }
@@ -182,7 +235,7 @@ impl ShapeFX {
     ) {
         #[allow(clippy::single_match)]
         match self.role {
-            Level => {
+            Flatten => {
                 let bevel = self.values.get_float_default("bevel", 0.5);
                 let floor_height = sector.properties.get_float_default("floor_height", 0.0);
 
@@ -233,7 +286,7 @@ impl ShapeFX {
     ) {
         #[allow(clippy::single_match)]
         match self.role {
-            ShapeFXRole::Level => {
+            ShapeFXRole::Flatten => {
                 let bevel = self.values.get_float_default("bevel", 0.5);
 
                 for linedef in linedefs {
@@ -291,6 +344,19 @@ impl ShapeFX {
             _ => {}
         }
     }
+
+    pub fn render_hit_d3(
+        &self,
+        color: &mut Vec4<f32>,
+        camera_pos: &Vec3<f32>,
+        world_hit: &Vec3<f32>,
+        normal: &Vec3<f32>,
+        map: &Map,
+        normalized_time: f32,
+    ) {
+    }
+
+    pub fn render_miss_d3(&self, camera_pos: &Vec3<f32>, ray: &Ray, normalized_time: f32) {}
 
     pub fn evaluate_pixel(
         &self,
@@ -649,7 +715,7 @@ impl ShapeFX {
                     0.0..=100.0,
                 ));
             }
-            Level => {
+            Flatten => {
                 params.push(ShapeFXParam::Float(
                     "bevel".into(),
                     "Bevel".into(),

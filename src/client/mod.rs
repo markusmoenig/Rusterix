@@ -9,7 +9,7 @@ use std::str::FromStr;
 
 use crate::prelude::*;
 use crate::{
-    Command, D2PreviewBuilder, Daylight, EntityAction, Rect, Tracer, Value,
+    Command, D2PreviewBuilder, Daylight, EntityAction, Rect, ShapeFXGraph, Tracer, Value,
     client::action::ClientAction,
     client::widget::{
         Widget, game::GameWidget, messages::MessagesWidget, screen::ScreenWidget, text::TextWidget,
@@ -36,8 +36,10 @@ pub struct Client {
     pub server_time: TheTime,
 
     pub daylight: Daylight,
-
     pub terrain_hover: Option<Vec3<f32>>,
+
+    /// Global render graph
+    pub global: ShapeFXGraph,
 
     pub messages_font: Option<Font>,
     pub messages_font_size: f32,
@@ -111,6 +113,8 @@ impl Client {
 
             daylight: Daylight::default(),
             terrain_hover: None,
+
+            global: ShapeFXGraph::default(),
 
             messages_font: None,
             draw2d: Draw2D::default(),
