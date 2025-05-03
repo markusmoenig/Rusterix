@@ -1,8 +1,8 @@
-use crate::SampleMode;
 use crate::{
     Batch, CompiledLight, LightType, MapMini, Pixel, PrimitiveMode, Ray, RepeatMode, Scene,
     Texture, pixel_to_vec4, vec4_to_pixel,
 };
+use crate::{SampleMode, ShapeFXGraph};
 use rayon::prelude::*;
 use vek::{Mat3, Mat4, Vec2, Vec3, Vec4};
 
@@ -51,6 +51,13 @@ pub struct Rasterizer {
 
     /// Useful when the resulting framebuffer is used as an blended overlay
     pub preserve_transparency: bool,
+
+    /// The rendergraph
+    pub render_graph: ShapeFXGraph,
+    render_hit: Vec<u16>,
+    render_miss: Vec<u16>,
+
+    pub hour: f32,
 
     // Fog settings
     pub fog_enabled: bool,
@@ -108,6 +115,11 @@ impl Rasterizer {
 
             preserve_transparency: false,
 
+            render_graph: ShapeFXGraph::default(),
+            render_hit: vec![],
+            render_miss: vec![],
+            hour: 12.0,
+
             fog_enabled: false,
             fog_color: Vec4::zero(),
             fog_start_distance: 5.0,
@@ -161,6 +173,14 @@ impl Rasterizer {
         );
 
         self.compiled_lights = scene.compile_lights(self.background_color);
+
+        self.render_hit = self.render_graph.collect_nodes_from(0, 0);
+        self.render_miss = self.render_graph.collect_nodes_from(0, 1);
+
+        // Precompute missed node values
+        for node in &mut self.render_miss {
+            self.render_graph.nodes[*node as usize].render_setup(self.hour);
+        }
 
         // Divide the screen into tiles
         let mut tiles = Vec::new();
@@ -245,6 +265,35 @@ impl Rasterizer {
                 }
 
                 // self.post_process(&mut buffer, &mut z_buffer, tile, scene);
+
+                // Call post-processing for missed geometry hits
+                if !self.render_miss.is_empty() {
+                    for ty in 0..tile.height {
+                        for tx in 0..tile.width {
+                            let uv = Vec2::new(
+                                (tile.x + tx) as f32 / self.width,
+                                (tile.y + ty) as f32 / self.height,
+                            );
+                            let z_idx = ty * tile.width + tx;
+                            if z_buffer[z_idx] == 1.0 {
+                                let mut color = Vec4::new(0.0, 0.0, 0.0, 1.0);
+                                let ray =
+                                    self.screen_ray((tile.x + tx) as f32, (tile.y + ty) as f32);
+                                for node in &self.render_miss {
+                                    self.render_graph.nodes[*node as usize].render_miss_d3(
+                                        &mut color,
+                                        &self.camera_pos,
+                                        &ray,
+                                        &uv,
+                                        self.hour,
+                                    );
+                                }
+                                let idx = (ty * tile.width + tx) * 4;
+                                buffer[idx..idx + 4].copy_from_slice(&vec4_to_pixel(&color));
+                            }
+                        }
+                    }
+                }
 
                 // 2D Pipeline
 
@@ -994,7 +1043,7 @@ impl Rasterizer {
                 // );
                 let z_idx = ty * tile.width + tx;
                 if z_buffer[z_idx] == 1.0 {
-                    let ray = self._screen_ray((tile.x + tx) as f32, (tile.y + ty) as f32);
+                    let ray = self.screen_ray((tile.x + tx) as f32, (tile.y + ty) as f32);
                     let pixel = self._sample_sky_debug(ray.dir);
                     let idx = (ty * tile.width + tx) * 4;
                     buffer[idx..idx + 4].copy_from_slice(&pixel);
@@ -1184,7 +1233,7 @@ impl Rasterizer {
     }
 
     /// Computes a world-space ray from a screen-space pixel (x, y)
-    pub fn _screen_ray(&self, x: f32, y: f32) -> Ray {
+    pub fn screen_ray(&self, x: f32, y: f32) -> Ray {
         // Convert screen to normalized device coordinates
         let ndc_x = 2.0 * (x / self.width) - 1.0;
         let ndc_y = 1.0 - 2.0 * (y / self.height); // Flip Y

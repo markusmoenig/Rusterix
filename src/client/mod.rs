@@ -390,6 +390,8 @@ impl Client {
                 .projection_matrix(width as f32, height as f32),
         );
         rast.terrain_highlight = self.terrain_hover;
+        rast.render_graph = self.global.clone();
+        rast.hour = self.server_time.to_f32();
         if map.properties.get_bool_default("receives_daylight", false) {
             let ac = self
                 .daylight

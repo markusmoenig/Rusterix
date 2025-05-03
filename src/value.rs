@@ -21,6 +21,7 @@ pub enum Value {
     PlayerCamera(PlayerCamera),
     Light(Light),
     Pixel(Pixel),
+    Color(TheColor),
 }
 
 impl Value {
@@ -140,6 +141,7 @@ impl fmt::Display for Value {
             Value::PlayerCamera(_) => write!(f, "PlayerCamera"),
             Value::Light(_) => write!(f, "Light"),
             Value::Pixel(_) => write!(f, "Pixel"),
+            Value::Color(_) => write!(f, "Color"),
         }
     }
 }
@@ -283,6 +285,19 @@ impl ValueContainer {
             .unwrap_or(def)
     }
 
+    pub fn get_color_default(&self, key: &str, def: TheColor) -> TheColor {
+        self.values
+            .get(key)
+            .map(|v| {
+                if let Value::Color(val) = v {
+                    val.clone()
+                } else {
+                    def.clone()
+                }
+            })
+            .unwrap_or(def)
+    }
+
     pub fn get_id(&self, key: &str) -> Option<Uuid> {
         self.values.get(key).and_then(|v| {
             if let Value::Id(val) = v {
@@ -354,7 +369,8 @@ impl ValueContainer {
             Some(Value::PlayerCamera(_)) => 11,
             Some(Value::Light(_)) => 12,
             Some(Value::Pixel(_)) => 13,
-            Some(Value::NoValue) => 14,
+            Some(Value::Color(_)) => 14,
+            Some(Value::NoValue) => 15,
             None => 99, // If key is missing, push to the end
         }
     }

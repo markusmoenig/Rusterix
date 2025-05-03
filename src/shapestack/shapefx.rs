@@ -24,6 +24,8 @@ pub enum ShapeFXParam {
     PaletteIndex(String, String, String, i32),
     /// Id, Name, Status, Options, Value
     Selector(String, String, String, Vec<String>, i32),
+    /// Id, Name, Status, Value
+    Color(String, String, String, TheColor),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -107,6 +109,10 @@ pub struct ShapeFX {
     pub values: ValueContainer,
 
     pub position: Vec2<i32>,
+
+    // Used for precomputing values from the Container
+    #[serde(skip)]
+    precomputed: Vec<Vec4<f32>>,
 }
 
 impl ShapeFX {
@@ -118,6 +124,7 @@ impl ShapeFX {
             role,
             values,
             position: Vec2::new(20, 20),
+            precomputed: vec![],
         }
     }
 
@@ -345,18 +352,163 @@ impl ShapeFX {
         }
     }
 
+    pub fn render_setup(&mut self, hour: f32) {
+        self.precomputed = vec![];
+        #[allow(clippy::single_match)]
+        match &self.role {
+            Sky => {
+                fn smoothstep_transition(hour: f32) -> f32 {
+                    let dawn = ((hour - 6.0).clamp(0.0, 2.0) / 2.0).powi(2)
+                        * (3.0 - 2.0 * (hour - 6.0).clamp(0.0, 2.0) / 2.0);
+                    let dusk = ((20.0 - hour).clamp(0.0, 2.0) / 2.0).powi(2)
+                        * (3.0 - 2.0 * (20.0 - hour).clamp(0.0, 2.0) / 2.0);
+
+                    match hour {
+                        h if h < 6.0 => 0.0,
+                        h if h < 8.0 => dawn,
+                        h if h < 18.0 => 1.0,
+                        h if h < 20.0 => dusk,
+                        _ => 0.0,
+                    }
+                }
+
+                // Precompute sun position and atmospheric values
+                let sunrise = 6.0;
+                let sunset = 20.0;
+                // let solar_noon = 12.0;
+
+                // Sun position calculation
+                let t = ((hour - sunrise) / (sunset - sunrise)).clamp(0.0, 1.0);
+                let horizontal_angle = t * std::f32::consts::PI; // 0 → π (east → west)
+                let elevation_angle =
+                    (t * std::f32::consts::PI).sin() * std::f32::consts::FRAC_PI_2;
+
+                // 3D direction vector
+                let sun_dir = Vec3::new(
+                    horizontal_angle.cos() * elevation_angle.cos(), // X: east-west
+                    elevation_angle.sin(),                          // Y: vertical
+                    -horizontal_angle.sin() * elevation_angle.cos(), // Z: north-south
+                )
+                .normalized();
+
+                // Keep existing day factor calculation
+                let day_factor = smoothstep_transition(hour);
+
+                // Store in precomputed[0] as before
+                self.precomputed
+                    .push(Vec4::new(sun_dir.x, sun_dir.y, sun_dir.z, day_factor));
+
+                // Precompute haze color (rgba)
+                let haze_color = Vec4::lerp(
+                    Vec4::new(0.1, 0.1, 0.15, 0.0), // Night haze
+                    Vec4::new(0.3, 0.3, 0.35, 0.0), // Day haze
+                    day_factor,
+                );
+                self.precomputed.push(haze_color);
+
+                let day_horizon = self
+                    .values
+                    .get_color_default(
+                        "day_horizon",
+                        TheColor::from(Vec4::new(0.87, 0.80, 0.70, 1.0)),
+                    )
+                    .to_vec4();
+                self.precomputed.push(day_horizon);
+
+                let day_zenith = self
+                    .values
+                    .get_color_default(
+                        "day_zenith",
+                        TheColor::from(Vec4::new(0.36, 0.62, 0.98, 1.0)),
+                    )
+                    .to_vec4();
+                self.precomputed.push(day_zenith);
+
+                let night_horizon = self
+                    .values
+                    .get_color_default(
+                        "night_horizon",
+                        TheColor::from(Vec4::new(0.03, 0.04, 0.08, 1.0)),
+                    )
+                    .to_vec4();
+                self.precomputed.push(night_horizon);
+
+                let night_zenith = self
+                    .values
+                    .get_color_default(
+                        "night_zenith",
+                        TheColor::from(Vec4::new(0.00, 0.01, 0.05, 1.0)),
+                    )
+                    .to_vec4();
+                self.precomputed.push(night_zenith);
+            }
+            _ => {}
+        }
+    }
+
     pub fn render_hit_d3(
         &self,
-        color: &mut Vec4<f32>,
-        camera_pos: &Vec3<f32>,
-        world_hit: &Vec3<f32>,
-        normal: &Vec3<f32>,
-        map: &Map,
-        normalized_time: f32,
+        _color: &mut Vec4<f32>,
+        _camera_pos: &Vec3<f32>,
+        _world_hit: &Vec3<f32>,
+        _normal: &Vec3<f32>,
+        _map: &Map,
+        _time: f32,
     ) {
     }
 
-    pub fn render_miss_d3(&self, camera_pos: &Vec3<f32>, ray: &Ray, normalized_time: f32) {}
+    pub fn render_miss_d3(
+        &self,
+        color: &mut Vec4<f32>,
+        _camera_pos: &Vec3<f32>,
+        ray: &Ray,
+        _uv: &Vec2<f32>,
+        _hour: f32,
+    ) {
+        #[allow(clippy::single_match)]
+        match &self.role {
+            Sky => {
+                let sun_data = self.precomputed[0];
+                let haze_color = self.precomputed[1];
+
+                let sun_dir = Vec3::new(sun_data.x, sun_data.y, sun_data.z);
+                let day_factor = sun_data.w;
+
+                let up = ray.dir.y.clamp(-1.0, 1.0);
+                let t = (up + 1.0) * 0.5;
+
+                let day_zenith = self.precomputed[3];
+                let day_horizon = self.precomputed[2];
+                let night_zenith = self.precomputed[5];
+                let night_horizon = self.precomputed[4];
+
+                *color = Vec4::lerp(
+                    Vec4::lerp(night_horizon, night_zenith, t),
+                    Vec4::lerp(day_horizon, day_zenith, t),
+                    day_factor,
+                );
+
+                // Atmospheric effects
+                let haze = (1.0 - up).powi(3);
+                let fog = haze_color * haze * 0.3;
+                *color = *color * (1.0 - haze * 0.2) + fog;
+
+                // Sun rendering
+                if day_factor > 0.0 {
+                    const SUN_RADIUS: f32 = 0.04;
+                    let dot = ray.dir.dot(sun_dir).clamp(-1.0, 1.0);
+                    let dist = (1.0 - dot).max(0.0);
+
+                    if dist < SUN_RADIUS {
+                        let k = 1.0 - dist / SUN_RADIUS;
+                        let glare = k * k * (3.0 - 2.0 * k); // Smoothstep falloff
+                        *color += Vec4::new(1.0, 0.85, 0.6, 0.0) * glare * day_factor;
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
 
     pub fn evaluate_pixel(
         &self,
@@ -723,6 +875,34 @@ impl ShapeFX {
                     self.values.get_float_default("bevel", 0.5),
                     0.0..=10.0,
                 ));
+            }
+            ShapeFXRole::Sky => {
+                params.push(ShapeFXParam::Color(
+                    "day_horizon".into(),
+                    "Day Horizon".into(),
+                    "Colour blended along the horizon during daylight.".into(),
+                    TheColor::from(Vec4::new(0.87, 0.80, 0.70, 1.0)),
+                ));
+                params.push(ShapeFXParam::Color(
+                    "day_zenith".into(),
+                    "Day Zenith".into(),
+                    "Colour blended straight overhead during daylight.".into(),
+                    TheColor::from(Vec4::new(0.36, 0.62, 0.98, 1.0)),
+                ));
+                params.push(ShapeFXParam::Color(
+                    "night_horizon".into(),
+                    "Night Horizon".into(),
+                    "Colour along the horizon after sunset / before sunrise.".into(),
+                    TheColor::from(Vec4::new(0.03, 0.04, 0.08, 1.0)),
+                ));
+                params.push(ShapeFXParam::Color(
+                    "night_zenith".into(),
+                    "Night Zenith".into(),
+                    "Colour straight overhead during the night.".into(),
+                    TheColor::from(Vec4::new(0.00, 0.01, 0.05, 1.0)),
+                ));
+
+                // (saturation, cloud sliders, etc. go here)
             }
             _ => {}
         }

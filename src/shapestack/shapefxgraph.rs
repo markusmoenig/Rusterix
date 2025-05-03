@@ -172,6 +172,34 @@ impl ShapeFXGraph {
         None
     }
 
+    /// Collects all connected nodes from the given start node and terminal.
+    pub fn collect_nodes_from(&self, start_node_index: usize, start_terminal: usize) -> Vec<u16> {
+        if self.nodes.is_empty() {
+            return vec![];
+        }
+
+        let mut curr_index = start_node_index;
+        let mut curr_terminal = start_terminal;
+
+        let mut connected_nodes = vec![];
+
+        let mut steps = 0;
+        while steps < 16 {
+            if let Some((next_node, next_terminal)) =
+                self.find_connected_input_node(curr_index, curr_terminal)
+            {
+                connected_nodes.push(next_node);
+                curr_index = next_node as usize;
+                curr_terminal = next_terminal as usize;
+                steps += 1;
+            } else {
+                break;
+            }
+        }
+
+        connected_nodes
+    }
+
     /// Create a preview of the graph
     pub fn material_preview(&self, buffer: &mut Texture, palette: &ThePalette) {
         let width = buffer.width;
