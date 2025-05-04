@@ -1,7 +1,8 @@
 use crate::{
-    BBox, BLACK, Linedef, Map, Pixel, Ray, Sector, ShapeContext, Terrain, TerrainChunk,
+    BBox, BLACK, Linedef, Map, Pixel, Rasterizer, Ray, Sector, ShapeContext, Terrain, TerrainChunk,
     ValueContainer,
 };
+use noiselib::prelude::*;
 use std::str::FromStr;
 use theframework::prelude::*;
 use uuid::Uuid;
@@ -38,6 +39,7 @@ pub enum ShapeFXRole {
     Outline,
     NoiseOverlay,
     Glow,
+    Wood,
     // Region Group
     // These nodes get attached to geometry and control mesh creation
     // or produce rendering fx like lights, particles etc.
@@ -83,6 +85,7 @@ impl FromStr for ShapeFXRole {
             "Outline" => Ok(ShapeFXRole::Outline),
             "Noise Overlay" => Ok(ShapeFXRole::NoiseOverlay),
             "Glow" => Ok(ShapeFXRole::Glow),
+            "Wood" => Ok(ShapeFXRole::Wood),
             "Region Geometry" => Ok(ShapeFXRole::RegionGeometry),
             "Flatten" => Ok(ShapeFXRole::Flatten),
             "Render" => Ok(ShapeFXRole::Render),
@@ -136,6 +139,7 @@ impl ShapeFX {
             Outline => "Outline".into(),
             NoiseOverlay => "Noise Overlay".into(),
             Glow => "Glow".into(),
+            Wood => "Wood".into(),
             RegionGeometry => "Geometry".into(),
             Flatten => "Flatten".into(),
             Render => "Render".into(),
@@ -353,9 +357,20 @@ impl ShapeFX {
     }
 
     pub fn render_setup(&mut self, hour: f32) {
-        self.precomputed = vec![];
-        #[allow(clippy::single_match)]
+        self.precomputed.clear();
         match &self.role {
+            Fog => {
+                let fog_color = self
+                    .values
+                    .get_color_default("fog_color", TheColor::black())
+                    .to_vec4();
+
+                let end = self.values.get_float_default("fog_end_distance", 30.0);
+                let fade = self.values.get_float_default("fog_fade_out", 20.0).max(1.0);
+
+                self.precomputed.push(fog_color);
+                self.precomputed.push(Vec4::new(end, fade, 0.0, 0.0));
+            }
             Sky => {
                 fn smoothstep_transition(hour: f32) -> f32 {
                     let dawn = ((hour - 6.0).clamp(0.0, 2.0) / 2.0).powi(2)
@@ -373,23 +388,19 @@ impl ShapeFX {
                 }
 
                 // Precompute sun position and atmospheric values
+                // daylight window
                 let sunrise = 6.0;
                 let sunset = 20.0;
-                // let solar_noon = 12.0;
 
-                // Sun position calculation
-                let t = ((hour - sunrise) / (sunset - sunrise)).clamp(0.0, 1.0);
-                let horizontal_angle = t * std::f32::consts::PI; // 0 → π (east → west)
-                let elevation_angle =
-                    (t * std::f32::consts::PI).sin() * std::f32::consts::FRAC_PI_2;
+                let t_day = ((hour - sunrise) / (sunset - sunrise)).clamp(0.0, 1.0);
 
-                // 3D direction vector
+                let theta = t_day * std::f32::consts::PI;
+
                 let sun_dir = Vec3::new(
-                    horizontal_angle.cos() * elevation_angle.cos(), // X: east-west
-                    elevation_angle.sin(),                          // Y: vertical
-                    -horizontal_angle.sin() * elevation_angle.cos(), // Z: north-south
-                )
-                .normalized();
+                    theta.cos(), // +1 at sunrise, −1 at sunset
+                    theta.sin(), //  0 at horizon, +1 overhead
+                    0.0,
+                );
 
                 // Keep existing day factor calculation
                 let day_factor = smoothstep_transition(hour);
@@ -448,13 +459,27 @@ impl ShapeFX {
 
     pub fn render_hit_d3(
         &self,
-        _color: &mut Vec4<f32>,
-        _camera_pos: &Vec3<f32>,
-        _world_hit: &Vec3<f32>,
+        color: &mut Vec4<f32>,
+        camera_pos: &Vec3<f32>,
+        world_hit: &Vec3<f32>,
         _normal: &Vec3<f32>,
-        _map: &Map,
+        _rasterizer: &Rasterizer,
         _time: f32,
     ) {
+        #[allow(clippy::single_match)]
+        match &self.role {
+            Fog => {
+                let distance = (world_hit - camera_pos).magnitude();
+                let end = self.precomputed[1].x;
+                let fade = self.precomputed[1].y;
+
+                if distance > end {
+                    let t = ((distance - end) / fade).clamp(0.0, 1.0);
+                    *color = *color * (1.0 - t) + self.precomputed[0] * t;
+                }
+            }
+            _ => {}
+        }
     }
 
     pub fn render_miss_d3(
@@ -503,6 +528,56 @@ impl ShapeFX {
                         let k = 1.0 - dist / SUN_RADIUS;
                         let glare = k * k * (3.0 - 2.0 * k); // Smoothstep falloff
                         *color += Vec4::new(1.0, 0.85, 0.6, 0.0) * glare * day_factor;
+                    }
+                }
+
+                if ray.dir.y > 0.0 {
+                    const CLOUD_HEIGHT: f32 = 1500.0;
+                    let t_hit = (CLOUD_HEIGHT - _camera_pos.y) / ray.dir.y;
+
+                    if t_hit.is_finite() && t_hit > 0.0 {
+                        let hit = *_camera_pos + ray.dir * t_hit;
+                        let uv = Vec2::new(hit.x, hit.z) * 0.0005;
+
+                        // let octaves = 1;
+                        // let freq_falloff = 0.5;
+                        // let lacunarity = 2.0;
+
+                        let mut rng = UniformRandomGen::new(1);
+                        let n = perlin_noise_2d(&mut rng, uv.x, uv.y, 5);
+
+                        // let n = fractal_noise_add_2d(
+                        //     &mut rng,
+                        //     uv.x,
+                        //     uv.y,
+                        //     perlin_noise_2d,
+                        //     octaves,
+                        //     freq_falloff,
+                        //     lacunarity,
+                        //     1,
+                        // );
+
+                        let alpha_raw = (n + 1.0) * 0.5;
+                        let alpha = alpha_raw * (ray.dir.y * 6.0).clamp(0.0, 1.0);
+
+                        if alpha > 0.0 {
+                            // ── Base brightness: never drop below 15 % grey
+                            let min_whiteness = 0.15;
+                            let whiteness = min_whiteness + (0.6 - min_whiteness) * day_factor; // 0.15 at night → 0.6 day
+                            let base_colour = Vec4::lerp(*color, Vec4::one(), whiteness);
+
+                            let sun_lit = (ray.dir.dot(sun_dir)).max(0.0).powf(3.0);
+                            let rim = if day_factor > 0.0 {
+                                // day: warm rim light
+                                Vec4::new(1.0, 0.9, 0.8, 1.0) * sun_lit * 0.4 * day_factor
+                            } else {
+                                // night: cool moonlight at 20 % strength
+                                Vec4::new(0.6, 0.7, 1.0, 1.0) * sun_lit * 0.08
+                            };
+
+                            let cloud_colour = base_colour + rim;
+                            *color = Vec4::lerp(*color, cloud_colour, alpha);
+                        }
                     }
                 }
             }
@@ -709,6 +784,67 @@ impl ShapeFX {
                     None
                 }
             }
+            ShapeFXRole::Wood => {
+                let alpha = 1.0 - ShapeFX::smoothstep(-ctx.anti_aliasing, 0.0, ctx.distance);
+                if alpha <= 0.0 {
+                    return None;
+                }
+
+                let light_idx = self.values.get_int_default("light", 0);
+                let dark_idx = self.values.get_int_default("dark", 1);
+
+                let light = palette
+                    .colors
+                    .get(light_idx as usize)
+                    .and_then(|c| c.clone())
+                    .unwrap_or(TheColor::white())
+                    .to_vec4();
+
+                let dark = palette
+                    .colors
+                    .get(dark_idx as usize)
+                    .and_then(|c| c.clone())
+                    .unwrap_or(TheColor::black())
+                    .to_vec4();
+
+                let direction_deg = self.values.get_float_default("direction", 0.0);
+                let scale = self.values.get_float_default("grain_scale", 4.0); // px between streaks
+                let streak_noise = self.values.get_float_default("streak_noise", 1.5); // jaggedness
+                let fine_noise = self.values.get_float_default("fine_noise", 0.10); // subtle speckle
+                let octaves = self.values.get_int_default("octaves", 3);
+
+                let dir_rad = direction_deg.to_radians();
+                let axis = Vec2::new(dir_rad.cos(), dir_rad.sin()); // along plank
+                let perpendicular = Vec2::new(-axis.y, axis.x); // across plank
+
+                // Distance “across” the plank controls the stripe colour.
+                let across = ctx.uv.dot(perpendicular) * scale; // repeat every 'scale' px
+                // Low-freq noise makes the stripes wavy
+                let wobble = self.noise2d(&ctx.uv, Vec2::broadcast(0.5), octaves) * streak_noise;
+                // Sharpen to make pronounced early/late wood bands
+                // let stripe = (across + wobble).fract(); // 0..1 saw wave
+                // let stripe_mask = (stripe.min(1.0 - stripe)).powf(0.4);
+                // -- 4. main streaks -------------------------------------------------
+                let raw = across + wobble;
+                let mut s = raw.fract(); // [-1,1)        <-- may be negative
+                if s < 0.0 {
+                    s += 1.0;
+                } // wrap into 0‥1
+
+                // triangle wave: 0 at edges, 1 in the middle
+                let stripe_mask = 1.0 - (2.0 * s - 1.0).abs(); // 0‥1
+                let stripe_mask = stripe_mask.powf(0.4); // sharpen
+
+                // === 5. fine noise overlay =====================================
+                let grain = self.noise2d(&(ctx.uv * 120.0), Vec2::one(), 1) * fine_noise;
+
+                // === 6. final blend ============================================
+                let t = (stripe_mask + grain).clamp(0.0, 1.0);
+                let mut c = light * (1.0 - t) + dark * t;
+                c.w = alpha;
+                c = c.map(|v| v.clamp(0.0, 1.0));
+                Some(c)
+            }
             _ => None,
         }
     }
@@ -867,6 +1003,55 @@ impl ShapeFX {
                     0.0..=100.0,
                 ));
             }
+            ShapeFXRole::Wood => {
+                params.push(ShapeFXParam::PaletteIndex(
+                    "light".into(),
+                    "Light Colour".into(),
+                    "Pale early-wood streaks.".into(),
+                    self.values.get_int_default("light", 0),
+                ));
+                params.push(ShapeFXParam::PaletteIndex(
+                    "dark".into(),
+                    "Dark Colour".into(),
+                    "Late-wood streaks / grain.".into(),
+                    self.values.get_int_default("dark", 1),
+                ));
+                params.push(ShapeFXParam::Float(
+                    "grain_scale".into(),
+                    "Streak Spacing".into(),
+                    "Average pixel distance between streaks.".into(),
+                    self.values.get_float_default("grain_scale", 4.0),
+                    0.5..=50.0,
+                ));
+                params.push(ShapeFXParam::Float(
+                    "streak_noise".into(),
+                    "Streak Noise".into(),
+                    "Side-to-side waviness of the streaks.".into(),
+                    self.values.get_float_default("streak_noise", 1.5),
+                    0.0..=10.0,
+                ));
+                params.push(ShapeFXParam::Float(
+                    "fine_noise".into(),
+                    "Fine Grain".into(),
+                    "Subtle high-frequency speckles.".into(),
+                    self.values.get_float_default("fine_noise", 0.10),
+                    0.0..=1.0,
+                ));
+                params.push(ShapeFXParam::Int(
+                    "octaves".into(),
+                    "Noise Octaves".into(),
+                    "Detail levels for streak wobble.".into(),
+                    self.values.get_int_default("octaves", 3),
+                    0..=6,
+                ));
+                params.push(ShapeFXParam::Float(
+                    "direction".into(),
+                    "Direction".into(),
+                    "Plank direction (°).".into(),
+                    self.values.get_float_default("direction", 0.0),
+                    0.0..=360.0,
+                ));
+            }
             Flatten => {
                 params.push(ShapeFXParam::Float(
                     "bevel".into(),
@@ -876,33 +1061,58 @@ impl ShapeFX {
                     0.0..=10.0,
                 ));
             }
+            ShapeFXRole::Fog => {
+                params.push(ShapeFXParam::Color(
+                    "fog_color".into(),
+                    "Fog Color".into(),
+                    "Colour applied to distant fragments.".into(),
+                    self.values
+                        .get_color_default("fog_color", TheColor::black()),
+                ));
+                params.push(ShapeFXParam::Float(
+                    "fog_end_distance".into(),
+                    "End Distance".into(),
+                    "World-space distance where fog is 100 % opaque.".into(),
+                    self.values.get_float_default("fog_end_distance", 30.0),
+                    0.0..=2_000.0,
+                ));
+                params.push(ShapeFXParam::Float(
+                    "fog_fade_out".into(),
+                    "Fade-out Length".into(),
+                    "How far the fog takes to fade back to clear after the end distance.".into(),
+                    self.values.get_float_default("fog_fade_out", 20.0),
+                    0.0..=2_000.0,
+                ));
+            }
             ShapeFXRole::Sky => {
                 params.push(ShapeFXParam::Color(
                     "day_horizon".into(),
                     "Day Horizon".into(),
                     "Colour blended along the horizon during daylight.".into(),
-                    TheColor::from(Vec4::new(0.87, 0.80, 0.70, 1.0)),
+                    self.values
+                        .get_color_default("day_horizon", TheColor::new(0.87, 0.80, 0.70, 1.0)),
                 ));
                 params.push(ShapeFXParam::Color(
                     "day_zenith".into(),
                     "Day Zenith".into(),
                     "Colour blended straight overhead during daylight.".into(),
-                    TheColor::from(Vec4::new(0.36, 0.62, 0.98, 1.0)),
+                    self.values
+                        .get_color_default("day_zenith", TheColor::new(0.36, 0.62, 0.98, 1.0)),
                 ));
                 params.push(ShapeFXParam::Color(
                     "night_horizon".into(),
                     "Night Horizon".into(),
                     "Colour along the horizon after sunset / before sunrise.".into(),
-                    TheColor::from(Vec4::new(0.03, 0.04, 0.08, 1.0)),
+                    self.values
+                        .get_color_default("night_horizon", TheColor::new(0.03, 0.04, 0.08, 1.0)),
                 ));
                 params.push(ShapeFXParam::Color(
                     "night_zenith".into(),
                     "Night Zenith".into(),
                     "Colour straight overhead during the night.".into(),
-                    TheColor::from(Vec4::new(0.00, 0.01, 0.05, 1.0)),
+                    self.values
+                        .get_color_default("night_zenith", TheColor::new(0.00, 0.01, 0.05, 1.0)),
                 ));
-
-                // (saturation, cloud sliders, etc. go here)
             }
             _ => {}
         }

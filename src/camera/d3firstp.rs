@@ -3,6 +3,7 @@ use vek::{Mat4, Vec2, Vec3};
 
 use super::D3Camera;
 
+#[derive(Clone)]
 pub struct D3FirstPCamera {
     pub position: Vec3<f32>,
     pub center: Vec3<f32>,

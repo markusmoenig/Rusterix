@@ -404,22 +404,6 @@ impl Client {
             rast.background_color = Some(vec4_to_pixel(&Vec4::new(ac.x, ac.y, ac.z, 1.0)));
         }
 
-        if map.properties.get_bool_default("fog_enabled", false) {
-            rast.fog_enabled = true;
-
-            if let Some([x, y, z, w]) = map.properties.get_vec4("fog_color") {
-                rast.fog_color = Vec4::new(x, y, z, w);
-            }
-
-            if let Some(v) = map.properties.get_float("fog_start_distance") {
-                rast.fog_start_distance = v;
-            }
-
-            if let Some(v) = map.properties.get_float("fog_end_distance") {
-                rast.fog_end_distance = v;
-            }
-        }
-
         rast.mapmini = self.scene_d3.mapmini.clone();
         rast.rasterize(&mut self.scene_d3, pixels, width, height, 64);
     }

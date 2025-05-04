@@ -58,12 +58,6 @@ pub struct Rasterizer {
     render_miss: Vec<u16>,
 
     pub hour: f32,
-
-    // Fog settings
-    pub fog_enabled: bool,
-    pub fog_color: Vec4<f32>,
-    pub fog_start_distance: f32,
-    pub fog_end_distance: f32,
 }
 
 /// Rasterizes batches of 2D and 3D meshes (and lines).
@@ -119,11 +113,6 @@ impl Rasterizer {
             render_hit: vec![],
             render_miss: vec![],
             hour: 12.0,
-
-            fog_enabled: false,
-            fog_color: Vec4::zero(),
-            fog_start_distance: 5.0,
-            fog_end_distance: 7.0,
         }
     }
 
@@ -176,6 +165,11 @@ impl Rasterizer {
 
         self.render_hit = self.render_graph.collect_nodes_from(0, 0);
         self.render_miss = self.render_graph.collect_nodes_from(0, 1);
+
+        // Precompute hit node values
+        for node in &mut self.render_hit {
+            self.render_graph.nodes[*node as usize].render_setup(self.hour);
+        }
 
         // Precompute missed node values
         for node in &mut self.render_miss {
@@ -890,19 +884,17 @@ impl Rasterizer {
                                                 color[3] += jitter;
                                             }*/
 
-                                            // Apply fog
-                                            if self.fog_enabled {
-                                                let distance =
-                                                    (world - self.camera_pos).magnitude();
-                                                if distance > self.fog_start_distance {
-                                                    let t = ((distance - self.fog_start_distance)
-                                                        / (self.fog_end_distance
-                                                            - self.fog_start_distance))
-                                                        .clamp(0.0, 1.0);
-
-                                                    let fog_color = self.fog_color;
-                                                    color = color * (1.0 - t) + fog_color * t;
-                                                }
+                                            // Apply hit post processing
+                                            for node in &self.render_hit {
+                                                self.render_graph.nodes[*node as usize]
+                                                    .render_hit_d3(
+                                                        &mut color,
+                                                        &self.camera_pos,
+                                                        &world,
+                                                        &Vec3::zero(),
+                                                        self,
+                                                        self.hour,
+                                                    );
                                             }
 
                                             // Sample Lights
