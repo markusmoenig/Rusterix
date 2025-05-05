@@ -258,8 +258,6 @@ impl Rasterizer {
                     }
                 }
 
-                // self.post_process(&mut buffer, &mut z_buffer, tile, scene);
-
                 // Call post-processing for missed geometry hits
                 if !self.render_miss.is_empty() {
                     for ty in 0..tile.height {

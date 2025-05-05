@@ -122,10 +122,13 @@ impl Rusterix {
     }
 
     pub fn build_terrain(&mut self, map: &mut Map, values: &ValueContainer) {
-        if map.camera == MapCamera::TwoD {
-            self.client.build_terrain_d2(map, &self.assets, values);
-        } else {
-            self.client.build_terrain_d3(map, &self.assets, values);
+        match self.draw_mode {
+            D2 => {
+                self.client.build_terrain_d2(map, &self.assets, values);
+            }
+            D3 => {
+                self.client.build_terrain_d3(map, &self.assets, values);
+            }
         }
     }
 
