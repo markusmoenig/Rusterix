@@ -409,7 +409,7 @@ impl Client {
     }
 
     /// Trace the 3D scene.
-    pub fn trace(&mut self, pixels: &mut [u8], width: usize, height: usize) {
+    pub fn trace(&mut self, pixels: &mut [u8], width: usize, height: usize, accum: i32) {
         self.scene_d3.animation_frame = self.animation_frame;
         let ac = self
             .daylight
@@ -421,6 +421,7 @@ impl Client {
 
         self.scene_d3.dynamic_lights.push(light);
         let mut tracer = Tracer::default();
+        tracer.render_graph = self.global.clone();
         tracer.trace(
             self.camera_d3.as_ref(),
             &mut self.scene_d3,
@@ -428,6 +429,7 @@ impl Client {
             width,
             height,
             64,
+            accum,
         );
     }
 

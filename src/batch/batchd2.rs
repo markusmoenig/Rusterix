@@ -36,6 +36,7 @@ impl Batch<[f32; 2]> {
             receives_light: false,
             normals: vec![],
             clipped_normals: vec![],
+            material: None,
         }
     }
 
@@ -65,6 +66,7 @@ impl Batch<[f32; 2]> {
             receives_light: true,
             normals: vec![],
             clipped_normals: vec![],
+            material: None,
         }
     }
 

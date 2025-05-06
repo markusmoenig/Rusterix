@@ -24,6 +24,9 @@ impl Ray {
             dir: Vec3::zero(),
         }
     }
+    pub fn at(&self, t: f32) -> Vec3<f32> {
+        self.origin + self.dir * t
+    }
 }
 
 #[derive(Debug)]
@@ -32,6 +35,10 @@ pub struct HitInfo {
     pub uv: Vec2<f32>,
     pub normal: Option<Vec3<f32>>,
     pub triangle_index: usize,
+
+    pub albedo: Vec3<f32>,
+    pub emissive: Vec3<f32>,
+    pub specular: f32,
 }
 
 impl Default for HitInfo {
@@ -47,6 +54,10 @@ impl HitInfo {
             uv: Vec2::zero(),
             normal: None,
             triangle_index: 0,
+
+            albedo: Vec3::zero(),
+            emissive: Vec3::zero(),
+            specular: 1.0,
         }
     }
 }

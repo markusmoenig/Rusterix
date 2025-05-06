@@ -47,9 +47,10 @@ pub enum ShapeFXRole {
     Flatten,
     // Render Group
     Render, // Main Render Node
-    Lights,
     Fog,
     Sky,
+    // FX Group
+    Material,
 }
 
 use ShapeFXRole::*;
@@ -89,9 +90,9 @@ impl FromStr for ShapeFXRole {
             "Region Geometry" => Ok(ShapeFXRole::RegionGeometry),
             "Flatten" => Ok(ShapeFXRole::Flatten),
             "Render" => Ok(ShapeFXRole::Render),
-            "Lights" => Ok(ShapeFXRole::Lights),
             "Fog" => Ok(ShapeFXRole::Fog),
             "Sky" => Ok(ShapeFXRole::Sky),
+            "Material" => Ok(ShapeFXRole::Material),
             _ => Err(()),
         }
     }
@@ -143,9 +144,9 @@ impl ShapeFX {
             RegionGeometry => "Geometry".into(),
             Flatten => "Flatten".into(),
             Render => "Render".into(),
-            Lights => "Lights".into(),
             Fog => "Fog".into(),
             Sky => "Sky".into(),
+            Material => "Material".into(),
         }
     }
 
@@ -161,15 +162,27 @@ impl ShapeFX {
                         category_name: "Render".into(),
                     },
                     TheNodeTerminal {
-                        name: "lights".into(),
+                        name: "fx".into(),
                         category_name: "Render".into(),
                     },
                 ]
             }
-            Lights | Fog | Sky => {
+            Fog | Sky => {
                 vec![TheNodeTerminal {
                     name: "in".into(),
                     category_name: "Render".into(),
+                }]
+            }
+            Flatten => {
+                vec![TheNodeTerminal {
+                    name: "in".into(),
+                    category_name: "Modifier".into(),
+                }]
+            }
+            Material => {
+                vec![TheNodeTerminal {
+                    name: "in".into(),
+                    category_name: "FX".into(),
                 }]
             }
             _ => {
@@ -203,7 +216,7 @@ impl ShapeFX {
                     },
                     TheNodeTerminal {
                         name: "FX".into(),
-                        category_name: "ShapeFX".into(),
+                        category_name: "FX".into(),
                     },
                 ]
             }
@@ -219,10 +232,22 @@ impl ShapeFX {
                     },
                 ]
             }
-            Lights | Fog | Sky => {
+            Fog | Sky => {
                 vec![TheNodeTerminal {
                     name: "out".into(),
                     category_name: "Render".into(),
+                }]
+            }
+            Flatten => {
+                vec![TheNodeTerminal {
+                    name: "out".into(),
+                    category_name: "Modifier".into(),
+                }]
+            }
+            Material => {
+                vec![TheNodeTerminal {
+                    name: "out".into(),
+                    category_name: "FX".into(),
                 }]
             }
             _ => {
@@ -230,7 +255,7 @@ impl ShapeFX {
                     name: "out".into(),
                     category_name: "ShapeFX".into(),
                 }]
-            } // _ => vec![],
+            }
         }
     }
 
@@ -1112,6 +1137,28 @@ impl ShapeFX {
                     "Colour straight overhead during the night.".into(),
                     self.values
                         .get_color_default("night_zenith", TheColor::new(0.00, 0.01, 0.05, 1.0)),
+                ));
+            }
+            Material => {
+                params.push(ShapeFXParam::Selector(
+                    "type".into(),
+                    "Type".into(),
+                    "The material type.".into(),
+                    vec![
+                        "Matte".into(),
+                        "Glossy".into(),
+                        "Mettalic".into(),
+                        "Transparent".into(),
+                        "Emissive".into(),
+                    ],
+                    self.values.get_int_default("material_role", 0),
+                ));
+                params.push(ShapeFXParam::Float(
+                    "value".into(),
+                    "Value".into(),
+                    "The material value.".into(),
+                    self.values.get_float_default("material_type", 1.0),
+                    0.0..=1.0,
                 ));
             }
             _ => {}

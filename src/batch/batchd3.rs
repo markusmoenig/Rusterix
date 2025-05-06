@@ -34,6 +34,7 @@ impl Batch<[f32; 4]> {
             receives_light: true,
             normals: vec![],
             clipped_normals: vec![],
+            material: None,
         }
     }
 
@@ -62,6 +63,7 @@ impl Batch<[f32; 4]> {
             receives_light: true,
             normals: vec![],
             clipped_normals: vec![],
+            material: None,
         }
     }
 
@@ -548,7 +550,7 @@ impl Batch<[f32; 4]> {
                                 t,
                                 uv: Vec2::zero(),
                                 triangle_index: i,
-                                normal: None,
+                                ..Default::default()
                             });
                         } else {
                             let w = 1.0 - u - v;
@@ -574,6 +576,7 @@ impl Batch<[f32; 4]> {
                                 uv,
                                 triangle_index: i,
                                 normal: Some(normal),
+                                ..Default::default()
                             });
                         }
                     }

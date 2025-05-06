@@ -1,6 +1,7 @@
 use crate::SampleMode;
 use crate::{
-    Batch, CompiledLight, D3Camera, HitInfo, Pixel, Ray, Scene, pixel_to_vec4, vec4_to_pixel,
+    Batch, CompiledLight, D3Camera, HitInfo, Pixel, Scene, ShapeFXGraph, pixel_to_vec4,
+    vec4_to_pixel,
 };
 use SampleMode::*;
 use bvh::aabb::Aabb;
@@ -8,7 +9,7 @@ use bvh::aabb::Bounded;
 use bvh::ray::Ray as BvhRay;
 use rand::Rng;
 use rayon::prelude::*;
-use vek::{Vec2, Vec4};
+use vek::{Vec2, Vec3, Vec4};
 
 pub struct Tracer {
     /// SampleMode, default is Nearest.
@@ -25,6 +26,13 @@ pub struct Tracer {
 
     /// Optional per-batch bounding boxes for fast culling
     pub static_bboxes: Vec<Aabb<f32, 3>>,
+
+    /// The rendergraph
+    pub render_graph: ShapeFXGraph,
+    render_hit: Vec<u16>,
+    render_miss: Vec<u16>,
+
+    pub hour: f32,
 }
 
 impl Default for Tracer {
@@ -41,6 +49,11 @@ impl Tracer {
             static_bboxes: vec![],
             compiled_lights: vec![],
             hash_anim: 0,
+
+            render_graph: ShapeFXGraph::default(),
+            render_hit: vec![],
+            render_miss: vec![],
+            hour: 12.0,
         }
     }
 
@@ -66,6 +79,7 @@ impl Tracer {
     }
 
     /// Path trace the scene.
+    #[allow(clippy::too_many_arguments)]
     pub fn trace(
         &mut self,
         camera: &dyn D3Camera,
@@ -74,6 +88,7 @@ impl Tracer {
         width: usize,
         height: usize,
         tile_size: usize,
+        accum: i32,
     ) {
         /// Generate a hash value for the given animation frame.
         /// We use it for random light flickering.
@@ -90,6 +105,19 @@ impl Tracer {
         self.compiled_lights = scene.compile_lights(self.background_color);
 
         self.compute_static_bboxes(scene);
+
+        self.render_hit = self.render_graph.collect_nodes_from(0, 0);
+        self.render_miss = self.render_graph.collect_nodes_from(0, 1);
+
+        // Precompute hit node values
+        for node in &mut self.render_hit {
+            self.render_graph.nodes[*node as usize].render_setup(self.hour);
+        }
+
+        // Precompute missed node values
+        for node in &mut self.render_miss {
+            self.render_graph.nodes[*node as usize].render_setup(self.hour);
+        }
 
         // Divide the screen into tiles
         let mut tiles = Vec::new();
@@ -137,23 +165,27 @@ impl Tracer {
                 let mut rng = rand::rng();
                 for ty in 0..tile.height {
                     for tx in 0..tile.width {
-                        let mut pixel: Vec4<f32> = Vec4::new(0.0, 0.0, 0.0, 0.0);
-                        let uv = Vec2::new(
+                        let mut ret: Vec3<f32> = Vec3::zero();
+                        let mut throughput: Vec3<f32> = Vec3::one();
+
+                        let screen_uv = Vec2::new(
                             (tile.x + tx) as f32 / screen_size.x,
                             1.0 - (tile.y + ty) as f32 / screen_size.y,
                         );
 
-                        let samples = 4;
-                        for _ in 0..samples {
-                            let jitter = Vec2::new(rng.random::<f32>(), rng.random::<f32>());
+                        let jitter = Vec2::new(rng.random::<f32>(), rng.random::<f32>());
+                        let mut ray = camera.create_ray(screen_uv, screen_size, jitter);
+                        let mut bvh_ray = BvhRay::new(
+                            nalgebra::Point3::new(ray.origin.x, ray.origin.y, ray.origin.z),
+                            nalgebra::Vector3::new(ray.dir.x, ray.dir.y, ray.dir.z),
+                        );
+                        let camera_pos = ray.origin;
 
-                            let ray = camera.create_ray(uv, screen_size, jitter);
-                            let bvh_ray = BvhRay::new(
-                                nalgebra::Point3::new(ray.origin.x, ray.origin.y, ray.origin.z),
-                                nalgebra::Vector3::new(ray.dir.x, ray.dir.y, ray.dir.z),
-                            );
-
+                        let bounces = 8;
+                        for _ in 0..bounces {
                             let mut hitinfo = HitInfo::default();
+
+                            // Evaluate hit
 
                             for (i, batch) in scene.d3_static.iter().enumerate() {
                                 if let Some(bbox) = self.static_bboxes.get(i) {
@@ -163,32 +195,69 @@ impl Tracer {
                                 }
 
                                 if let Some(mut hit) = batch.intersect(&ray, false) {
-                                    if hit.t < hitinfo.t {
-                                        pixel += self.render(&ray, scene, batch, &mut hit);
+                                    if hit.t < hitinfo.t
+                                        && self.evaluate_hit(scene, batch, &mut hit)
+                                    {
                                         hitinfo = hit;
                                     }
                                 }
                             }
 
-                            // for (_i, batch) in scene.d3_dynamic.iter().enumerate() {
-                            //     // if let Some(bbox) = self.static_bboxes.get(i) {
-                            //     //     if !bvh_ray.intersects_aabb(bbox) {
-                            //     //         continue;
-                            //     //     }
-                            //     // }
+                            // Bounce
 
-                            //     if let Some(mut hit) = batch.intersect(&ray, false) {
-                            //         if hit.t < hitinfo.t {
-                            //             pixel += self.render(&ray, scene, batch, &mut hit);
-                            //             hitinfo = hit;
-                            //         }
-                            //     }
-                            // }
+                            if hitinfo.t < f32::MAX {
+                                if let Some(normal) = hitinfo.normal {
+                                    ray.origin = ray.at(hitinfo.t) + normal * 0.01;
+                                    ray.dir =
+                                        (normal + self.random_unit_vector(&mut rng)).normalized();
+                                    bvh_ray = BvhRay::new(
+                                        nalgebra::Point3::new(
+                                            ray.origin.x,
+                                            ray.origin.y,
+                                            ray.origin.z,
+                                        ),
+                                        nalgebra::Vector3::new(ray.dir.x, ray.dir.y, ray.dir.z),
+                                    );
+                                    ret += hitinfo.emissive * throughput;
+                                    throughput *= hitinfo.albedo;
+                                } else {
+                                    println!("no normal");
+                                    break;
+                                }
+                            } else if !self.render_miss.is_empty() {
+                                // Call post-processing for missed geometry hits
+                                let mut color = Vec4::new(0.0, 0.0, 0.0, 1.0);
+                                for node in &self.render_miss {
+                                    self.render_graph.nodes[*node as usize].render_miss_d3(
+                                        &mut color,
+                                        &camera_pos,
+                                        &ray,
+                                        &screen_uv,
+                                        self.hour,
+                                    );
+                                }
+                                ret += Vec3::new(color.x, color.y, color.z) * throughput;
+                                break;
+                            }
                         }
-                        pixel /= samples as f32;
 
+                        // Get the prev pixel
                         let idx = (ty * tile.width + tx) * 4;
-                        buffer[idx..idx + 4].copy_from_slice(&vec4_to_pixel(&pixel));
+                        let global_x = tile.x + tx;
+                        let global_y = tile.y + ty;
+                        let global_idx = (global_y * width + global_x) * 4;
+
+                        let prev = pixel_to_vec4(&[
+                            pixels[global_idx],
+                            pixels[global_idx + 1],
+                            pixels[global_idx + 2],
+                            255,
+                        ]);
+                        // Accumulation
+                        let t = 1.0 / (accum as f32 + 1.0);
+                        let blended = prev * (1.0 - t) + Vec4::new(ret.x, ret.y, ret.z, 1.0) * t;
+                        //let gamma_corrected = blended.map(|v| v.powf(2.2));
+                        buffer[idx..idx + 4].copy_from_slice(&vec4_to_pixel(&blended));
                     }
                 }
 
@@ -219,41 +288,36 @@ impl Tracer {
         }
     }
 
-    pub fn render(
-        &self,
-        ray: &Ray,
-        scene: &Scene,
-        batch: &Batch<[f32; 4]>,
-        hit: &mut HitInfo,
-    ) -> Vec4<f32> {
+    pub fn evaluate_hit(&self, scene: &Scene, batch: &Batch<[f32; 4]>, hit: &mut HitInfo) -> bool {
         let textile = &scene.textures[batch.texture_index];
         let index = scene.animation_frame % textile.textures.len();
 
-        let mut texel = pixel_to_vec4(&textile.textures[index].sample(
+        let texel = pixel_to_vec4(&textile.textures[index].sample(
             hit.uv.x,
             hit.uv.y,
             self.sample_mode,
             batch.repeat_mode,
         ));
 
-        if texel[3] == 1.0 {
-            let world = ray.origin + hit.t * ray.dir;
-            let mut accumulated_light: [f32; 3] = [0.0, 0.0, 0.0];
-
-            for light in &self.compiled_lights {
-                if let Some(light_color) = light.radiance_at(world, hit.normal, self.hash_anim) {
-                    accumulated_light[0] += light_color[0];
-                    accumulated_light[1] += light_color[1];
-                    accumulated_light[2] += light_color[2];
-                }
-            }
-
-            texel[0] *= accumulated_light[0].clamp(0.0, 1.0);
-            texel[1] *= accumulated_light[1].clamp(0.0, 1.0);
-            texel[2] *= accumulated_light[2].clamp(0.0, 1.0);
+        if let Some(_material) = &batch.material {
+            hit.emissive = Vec3::new(texel.x, texel.y, texel.z) * 5.0;
         }
 
-        texel
+        if texel[3] == 1.0 {
+            hit.albedo = Vec3::new(texel.x, texel.y, texel.z);
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn random_unit_vector<R: Rng>(&self, rng: &mut R) -> Vec3<f32> {
+        let z = rng.random::<f32>() * 2.0 - 1.0;
+        let a = rng.random::<f32>() * std::f32::consts::TAU;
+        let r = (1.0 - z * z).sqrt();
+        let x = r * a.cos();
+        let y = r * a.sin();
+        Vec3::new(x, y, z)
     }
 }
 

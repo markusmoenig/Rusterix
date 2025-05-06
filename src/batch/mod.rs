@@ -1,7 +1,7 @@
 pub mod batchd2;
 pub mod batchd3;
 
-use crate::{Edges, Pixel, Rect, RepeatMode, SampleMode};
+use crate::{Edges, Material, Pixel, Rect, RepeatMode, SampleMode};
 use vek::{Mat3, Mat4, Vec3};
 
 /// The primitive mode. The rasterizer can draw triangles and lines.
@@ -84,4 +84,7 @@ pub struct Batch<T> {
 
     /// Clipped normals
     pub clipped_normals: Vec<Vec3<f32>>,
+
+    // Material
+    pub material: Option<Material>,
 }

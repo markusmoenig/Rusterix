@@ -1,6 +1,6 @@
 use crate::{
-    Assets, Batch, D3Camera, Map, PixelSource, SampleMode, Scene, Tile, Value, ValueContainer,
-    get_time,
+    Assets, Batch, D3Camera, Map, Material, PixelSource, SampleMode, Scene, Tile, Value,
+    ValueContainer, get_time,
 };
 use theframework::prelude::*;
 use vek::Vec2;
@@ -88,6 +88,9 @@ impl D3Builder {
             }
 
             if add_it {
+                let material: Option<Material> =
+                    super::get_material_from_geo_graph(&sector.properties, map);
+
                 if let Some((vertices, indices)) = sector.generate_geometry(map) {
                     let sector_elevation = sector.properties.get_float_default("floor_height", 0.0);
 
@@ -117,7 +120,18 @@ impl D3Builder {
 
                                 let floor_uvs = vertices.iter().map(|&v| [v[0], v[1]]).collect();
 
-                                if let Some(offset) = repeated_offsets.get(&tile.id) {
+                                if material.is_some() {
+                                    let texture_index = textures.len();
+                                    let mut batch = Batch::emptyd3()
+                                        .repeat_mode(crate::RepeatMode::RepeatXY)
+                                        .texture_index(texture_index);
+                                    batch.material = material;
+                                    batch.add(floor_vertices, indices.clone(), floor_uvs);
+
+                                    textures.push(tile.clone());
+                                    repeated_offsets.insert(tile.id, repeated_batches.len());
+                                    repeated_batches.push(batch);
+                                } else if let Some(offset) = repeated_offsets.get(&tile.id) {
                                     repeated_batches[*offset].add(
                                         floor_vertices,
                                         indices.clone(),

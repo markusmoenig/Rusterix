@@ -189,7 +189,7 @@ impl Rusterix {
     }
 
     pub fn trace_scene(&mut self, _map: &Map, pixels: &mut [u8], width: usize, height: usize) {
-        self.client.trace(pixels, width, height);
+        self.client.trace(pixels, width, height, 0);
     }
 
     /// Set up the client for processing the game.

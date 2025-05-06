@@ -1,3 +1,4 @@
+pub mod material;
 pub mod shape;
 pub mod shapecontext;
 pub mod shapefx;
