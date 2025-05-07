@@ -203,9 +203,41 @@ impl Tracer {
 
                             if hitinfo.t < f32::MAX {
                                 if let Some(normal) = hitinfo.normal {
+                                    if hitinfo.emissive != Vec3::zero() {
+                                        ret += hitinfo.emissive * throughput;
+                                        break;
+                                    }
+
+                                    // Direct Lighting
+                                    let world = ray.at(hitinfo.t);
+                                    let mut direct: Vec3<f32> = Vec3::zero();
+                                    for light in &self.compiled_lights {
+                                        if let Some(light_color) =
+                                            light.radiance_at(world, Some(normal), self.hash_anim)
+                                        {
+                                            direct += light_color;
+                                        }
+                                    }
+                                    let brdf = hitinfo.albedo / std::f32::consts::PI;
+                                    ret += direct * (throughput * brdf);
+
+                                    // New ray dir based on specular
+                                    let p_spec = hitinfo.specular_weight.clamp(0.0, 1.0);
+                                    let p_diff = 1.0 - p_spec;
+
+                                    let choose_spec = rng.random::<f32>() < p_spec;
+                                    let pdf = if choose_spec { p_spec } else { p_diff };
+
+                                    if choose_spec {
+                                        ray.dir = self.reflect(ray.dir, normal);
+                                        throughput *= hitinfo.specular_weight / pdf; // scale by the mirror colour
+                                    } else {
+                                        ray.dir = self.sample_cosine(normal, &mut rng);
+                                        throughput *= (hitinfo.albedo * p_diff)
+                                            / (pdf * std::f32::consts::PI);
+                                    }
+
                                     ray.origin = ray.at(hitinfo.t) + normal * 0.01;
-                                    ray.dir =
-                                        (normal + self.random_cosine_hemi(&mut rng)).normalized();
                                     bvh_ray = BvhRay::new(
                                         nalgebra::Point3::new(
                                             ray.origin.x,
@@ -215,11 +247,6 @@ impl Tracer {
                                         nalgebra::Vector3::new(ray.dir.x, ray.dir.y, ray.dir.z),
                                     );
 
-                                    if hitinfo.emissive != Vec3::zero() {
-                                        ret += hitinfo.emissive * throughput;
-                                        break;
-                                    }
-                                    throughput *= hitinfo.albedo;
                                     // Russian roulete
                                     let p = throughput
                                         .x
@@ -234,7 +261,7 @@ impl Tracer {
                                     break;
                                 }
                             } else if !self.render_miss.is_empty() {
-                                // Call post-processing for missed geometry hits
+                                // Call post-processing for missed geometry hits (sky)
                                 let mut color = Vec4::new(0.0, 0.0, 0.0, 1.0);
                                 for node in &self.render_miss {
                                     self.render_graph.nodes[*node as usize].render_miss_d3(
@@ -249,38 +276,10 @@ impl Tracer {
                                 col = col.map(srgb_to_linear);
                                 ret += col * throughput;
                                 break;
-                            } else {
-                                ret += Vec3::new(1.0, 1.0, 1.0) * throughput;
-                                break;
                             }
-                            // else {
-                            //     ret += Vec3::new(0.01, 0.01, 0.01) * throughput;
-                            //     break;
-                            // }
                         }
 
                         lin_tile[ty * tile.width + tx] = Vec4::new(ret.x, ret.y, ret.z, 1.0);
-
-                        /*
-                        //let final_color = Vec4::new(ret.x, ret.y, ret.z, 1.0); //.map(|v| aces_tonemap(v));
-
-                        // Get the prev pixel
-                        let idx = (ty * tile.width + tx) * 4;
-                        let global_x = tile.x + tx;
-                        let global_y = tile.y + ty;
-                        let global_idx = (global_y * width + global_x) * 4;
-
-                        let prev = buffer.get_pixel(global_x, global_y);
-                        // Accumulation
-                        let t = 1.0 / (frame as f32 + 1.0);
-                        let blended = prev * (1.0 - t) + final_color * t;
-                        // let gamma_corrected = blended.map(|v| linear_to_srgb(v).clamp(0.0, 1.0));
-
-                        // lin_tile.set_pixel(tile.x, tile.y, blended);
-                        lin_tile[ty * tile.width + tx] = L.extend(1.0);
-
-                        //buffer[idx..idx + 4].copy_from_slice(&vec4_to_pixel(&gamma_corrected));
-                        */
                     }
                 }
 
@@ -331,7 +330,13 @@ impl Tracer {
         }
     }
 
-    pub fn random_unit_vector<R: Rng>(&self, rng: &mut R) -> Vec3<f32> {
+    #[inline(always)]
+    pub fn reflect(&self, i: Vec3<f32>, n: Vec3<f32>) -> Vec3<f32> {
+        i - 2.0 * i.dot(n) * n
+    }
+
+    #[inline(always)]
+    fn _random_unit_vector<R: Rng>(&self, rng: &mut R) -> Vec3<f32> {
         let z = rng.random::<f32>() * 2.0 - 1.0;
         let a = rng.random::<f32>() * std::f32::consts::TAU;
         let r = (1.0 - z * z).sqrt();
@@ -340,12 +345,26 @@ impl Tracer {
         Vec3::new(x, y, z)
     }
 
-    fn random_cosine_hemi<R: Rng>(&self, rng: &mut R) -> Vec3<f32> {
-        let r1 = rng.random::<f32>();
-        let r2 = rng.random::<f32>();
+    #[inline(always)]
+    fn sample_cosine<R: Rng>(&self, n: Vec3<f32>, rng: &mut R) -> Vec3<f32> {
+        // polar coords in local space
+        let r1: f32 = rng.random();
+        let r2: f32 = rng.random();
         let phi = 2.0 * std::f32::consts::PI * r1;
         let r = r2.sqrt();
-        Vec3::new(phi.cos() * r, phi.sin() * r, (1.0 - r2).sqrt())
+        let local = Vec3::new(phi.cos() * r, phi.sin() * r, (1.0 - r2).sqrt());
+
+        // build TBN basis
+        let w = n;
+        let a = if w.x.abs() > 0.1 {
+            Vec3::unit_y()
+        } else {
+            Vec3::unit_x()
+        };
+        let v = w.cross(a).normalized();
+        let u = v.cross(w);
+        // transform to world
+        (u * local.x + v * local.y + w * local.z).normalized()
     }
 }
 

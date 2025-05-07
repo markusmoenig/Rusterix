@@ -39,7 +39,7 @@ pub struct HitInfo {
 
     pub albedo: Vec3<f32>,
     pub emissive: Vec3<f32>,
-    pub specular: f32,
+    pub specular_weight: f32,
 }
 
 impl Default for HitInfo {
@@ -58,7 +58,7 @@ impl HitInfo {
 
             albedo: Vec3::zero(),
             emissive: Vec3::zero(),
-            specular: 1.0,
+            specular_weight: 0.0,
         }
     }
 }

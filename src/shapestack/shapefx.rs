@@ -40,10 +40,11 @@ pub enum ShapeFXRole {
     NoiseOverlay,
     Glow,
     Wood,
-    // Region Group
+    // Sector and Linedef Group
     // These nodes get attached to geometry and control mesh creation
     // or produce rendering fx like lights, particles etc.
-    RegionGeometry,
+    LinedefGeometry,
+    SectorGeometry,
     Flatten,
     // Render Group
     Render, // Main Render Node
@@ -51,6 +52,7 @@ pub enum ShapeFXRole {
     Sky,
     // FX Group
     Material,
+    PointLight,
 }
 
 use ShapeFXRole::*;
@@ -87,12 +89,13 @@ impl FromStr for ShapeFXRole {
             "Noise Overlay" => Ok(ShapeFXRole::NoiseOverlay),
             "Glow" => Ok(ShapeFXRole::Glow),
             "Wood" => Ok(ShapeFXRole::Wood),
-            "Region Geometry" => Ok(ShapeFXRole::RegionGeometry),
+            "Sector Geometry" => Ok(ShapeFXRole::SectorGeometry),
             "Flatten" => Ok(ShapeFXRole::Flatten),
             "Render" => Ok(ShapeFXRole::Render),
             "Fog" => Ok(ShapeFXRole::Fog),
             "Sky" => Ok(ShapeFXRole::Sky),
             "Material" => Ok(ShapeFXRole::Material),
+            "Point Light" => Ok(ShapeFXRole::PointLight),
             _ => Err(()),
         }
     }
@@ -141,18 +144,20 @@ impl ShapeFX {
             NoiseOverlay => "Noise Overlay".into(),
             Glow => "Glow".into(),
             Wood => "Wood".into(),
-            RegionGeometry => "Geometry".into(),
+            LinedefGeometry => "Linedef Geometry".into(),
+            SectorGeometry => "Sector Geometry".into(),
             Flatten => "Flatten".into(),
             Render => "Render".into(),
             Fog => "Fog".into(),
             Sky => "Sky".into(),
             Material => "Material".into(),
+            PointLight => "Point Light".into(),
         }
     }
 
     pub fn inputs(&self) -> Vec<TheNodeTerminal> {
         match self.role {
-            MaterialGeometry | RegionGeometry => {
+            MaterialGeometry | SectorGeometry | LinedefGeometry => {
                 vec![]
             }
             Render => {
@@ -179,7 +184,7 @@ impl ShapeFX {
                     category_name: "Modifier".into(),
                 }]
             }
-            Material => {
+            Material | PointLight => {
                 vec![TheNodeTerminal {
                     name: "in".into(),
                     category_name: "FX".into(),
@@ -208,7 +213,7 @@ impl ShapeFX {
                     },
                 ]
             }
-            RegionGeometry => {
+            LinedefGeometry => {
                 vec![
                     TheNodeTerminal {
                         name: "Mesh".into(),
@@ -216,6 +221,26 @@ impl ShapeFX {
                     },
                     TheNodeTerminal {
                         name: "FX".into(),
+                        category_name: "FX".into(),
+                    },
+                ]
+            }
+            SectorGeometry => {
+                vec![
+                    TheNodeTerminal {
+                        name: "Mesh Floor".into(),
+                        category_name: "Modifier".into(),
+                    },
+                    TheNodeTerminal {
+                        name: "Mesh Ceiling".into(),
+                        category_name: "Modifier".into(),
+                    },
+                    TheNodeTerminal {
+                        name: "FX Floor".into(),
+                        category_name: "FX".into(),
+                    },
+                    TheNodeTerminal {
+                        name: "FX Ceiling".into(),
                         category_name: "FX".into(),
                     },
                 ]
@@ -244,7 +269,7 @@ impl ShapeFX {
                     category_name: "Modifier".into(),
                 }]
             }
-            Material => {
+            Material | PointLight => {
                 vec![TheNodeTerminal {
                     name: "out".into(),
                     category_name: "FX".into(),
@@ -1158,6 +1183,35 @@ impl ShapeFX {
                     "Value".into(),
                     "The material value.".into(),
                     self.values.get_float_default("material_type", 1.0),
+                    0.0..=1.0,
+                ));
+            }
+            ShapeFXRole::PointLight => {
+                params.push(ShapeFXParam::Color(
+                    "color".into(),
+                    "Colour".into(),
+                    "Light colour".into(),
+                    self.values.get_color_default("color", TheColor::white()),
+                ));
+                params.push(ShapeFXParam::Float(
+                    "strength".into(),
+                    "Strength".into(),
+                    "How bright the light is.".into(),
+                    self.values.get_float_default("strength", 5.0),
+                    0.0..=100.0,
+                ));
+                params.push(ShapeFXParam::Float(
+                    "range".into(),
+                    "Range".into(),
+                    "Rough maximum reach.".into(),
+                    self.values.get_float_default("range", 10.0),
+                    0.5..=100.0,
+                ));
+                params.push(ShapeFXParam::Float(
+                    "flicker".into(),
+                    "Flicker".into(),
+                    "0 = steady, 1 = candles.".into(),
+                    self.values.get_float_default("flicker", 0.0),
                     0.0..=1.0,
                 ));
             }

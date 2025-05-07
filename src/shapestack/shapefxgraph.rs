@@ -51,7 +51,7 @@ impl ShapeFXGraph {
         if self.nodes.is_empty() {
             return;
         }
-        if self.nodes[0].role != ShapeFXRole::RegionGeometry {
+        if self.nodes[0].role != ShapeFXRole::SectorGeometry {
             return;
         }
         let mut curr_index = 0_usize;
@@ -86,7 +86,7 @@ impl ShapeFXGraph {
         if self.nodes.is_empty() {
             return;
         }
-        if self.nodes[0].role != ShapeFXRole::RegionGeometry {
+        if self.nodes[0].role != ShapeFXRole::LinedefGeometry {
             return;
         }
         let mut curr_index = 0_usize;

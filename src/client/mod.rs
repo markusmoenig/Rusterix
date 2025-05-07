@@ -423,6 +423,7 @@ impl Client {
         self.scene_d3.dynamic_lights.push(light);
         let mut tracer = Tracer::default();
         tracer.render_graph = self.global.clone();
+        tracer.hour = self.server_time.to_f32();
         tracer.trace(self.camera_d3.as_ref(), &mut self.scene_d3, accum, 64);
     }
 
