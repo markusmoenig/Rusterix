@@ -53,22 +53,22 @@ impl D3Builder {
 
         // Create sectors
         for sector in &map.sectors {
-            // Add Floor Light
-            if let Some(Value::Light(light)) = sector.properties.get("floor_light") {
-                if let Some(center) = sector.center(map) {
-                    let bbox = sector.bounding_box(map);
-                    let light = light.from_sector(Vec3::new(center.x, 0.0, center.y), bbox.size());
-                    scene.lights.push(light);
-                }
-            }
-            // Add Ceiling Light
-            if let Some(Value::Light(light)) = sector.properties.get("ceiling_light") {
-                if let Some(center) = sector.center(map) {
-                    let bbox = sector.bounding_box(map);
-                    let light = light.from_sector(Vec3::new(center.x, 0.0, center.y), bbox.size());
-                    scene.lights.push(light);
-                }
-            }
+            // // Add Floor Light
+            // if let Some(Value::Light(light)) = sector.properties.get("floor_light") {
+            //     if let Some(center) = sector.center(map) {
+            //         let bbox = sector.bounding_box(map);
+            //         let light = light.from_sector(Vec3::new(center.x, 0.0, center.y), bbox.size());
+            //         scene.lights.push(light);
+            //     }
+            // }
+            // // Add Ceiling Light
+            // if let Some(Value::Light(light)) = sector.properties.get("ceiling_light") {
+            //     if let Some(center) = sector.center(map) {
+            //         let bbox = sector.bounding_box(map);
+            //         let light = light.from_sector(Vec3::new(center.x, 0.0, center.y), bbox.size());
+            //         scene.lights.push(light);
+            //     }
+            // }
 
             let mut add_it = true;
 
@@ -227,16 +227,40 @@ impl D3Builder {
                                         // ---
                                         // Check for wall lights
                                         //
+                                        // for i in 1..=4 {
+                                        //     let light_name = format!("row{}_light", i);
+                                        //     if let Some(Value::Light(light)) =
+                                        //         linedef.properties.get(&light_name)
+                                        //     {
+                                        //         let light = light.from_linedef(
+                                        //             start_vertex.as_vec2(),
+                                        //             end_vertex.as_vec2(),
+                                        //             i as f32 - 0.5,
+                                        //         );
+                                        //         scene.lights.push(light);
+                                        //     }
+                                        // }
                                         for i in 1..=4 {
-                                            let light_name = format!("row{}_light", i);
-                                            if let Some(Value::Light(light)) =
-                                                linedef.properties.get(&light_name)
-                                            {
-                                                let light = light.from_linedef(
-                                                    start_vertex.as_vec2(),
-                                                    end_vertex.as_vec2(),
-                                                    i as f32 - 0.5,
-                                                );
+                                            if let Some(mut light) = super::get_light_from_geo_graph(
+                                                &linedef.properties,
+                                                i,
+                                                map,
+                                            ) {
+                                                let p1 = start_vertex.as_vec2();
+                                                let p2 = end_vertex.as_vec2();
+                                                let y = i as f32 - 0.5;
+
+                                                let position = (p1 + p2) / 2.0; // Midpoint of the line
+                                                let direction = (p2 - p1).normalized(); // Direction of the line
+                                                let normal = Vec2::new(direction.y, -direction.x); // Perpendicular normal
+                                                // let width = (p2 - p1).magnitude(); // Line segment length
+                                                let offset = 0.1;
+                                                let position = position + normal * offset;
+
+                                                light.position =
+                                                    Vec3::new(position.x, y, position.y);
+
+                                                println!("added light {}", light.position());
                                                 scene.lights.push(light);
                                             }
                                         }
@@ -465,7 +489,7 @@ impl D3Builder {
                 if let Some(Value::Light(light)) = entity.attributes.get("light") {
                     let mut light = light.clone();
                     light.set_position(entity.position);
-                    scene.dynamic_lights.push(light);
+                    scene.dynamic_lights.push(light.compile());
                 }
 
                 // Find light on entity items
@@ -473,7 +497,7 @@ impl D3Builder {
                     if let Some(Value::Light(light)) = item.attributes.get("light") {
                         let mut light = light.clone();
                         light.set_position(entity.position);
-                        scene.dynamic_lights.push(light);
+                        scene.dynamic_lights.push(light.compile());
                     }
                 }
 
@@ -515,7 +539,7 @@ impl D3Builder {
                 if let Some(Value::Light(light)) = item.attributes.get("light") {
                     let mut light = light.clone();
                     light.set_position(item.position);
-                    scene.dynamic_lights.push(light);
+                    scene.dynamic_lights.push(light.compile());
                 }
 
                 if let Some(Value::Source(source)) = item.attributes.get("source") {

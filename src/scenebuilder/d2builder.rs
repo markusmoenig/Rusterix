@@ -51,22 +51,22 @@ impl D2Builder {
                     repeat = false;
                 }
 
-                // Add Floor Light
-                if let Some(Value::Light(light)) = sector.properties.get("floor_light") {
-                    if let Some(center) = sector.center(map) {
-                        let light =
-                            light.from_sector(Vec3::new(center.x, 0.0, center.y), bbox.size());
-                        scene.lights.push(light);
-                    }
-                }
-                // Add Ceiling Light
-                if let Some(Value::Light(light)) = sector.properties.get("ceiling_light") {
-                    if let Some(center) = sector.center(map) {
-                        let light =
-                            light.from_sector(Vec3::new(center.x, 0.0, center.y), bbox.size());
-                        scene.lights.push(light);
-                    }
-                }
+                // // Add Floor Light
+                // if let Some(Value::Light(light)) = sector.properties.get("floor_light") {
+                //     if let Some(center) = sector.center(map) {
+                //         let light =
+                //             light.from_sector(Vec3::new(center.x, 0.0, center.y), bbox.size());
+                //         scene.lights.push(light);
+                //     }
+                // }
+                // // Add Ceiling Light
+                // if let Some(Value::Light(light)) = sector.properties.get("ceiling_light") {
+                //     if let Some(center) = sector.center(map) {
+                //         let light =
+                //             light.from_sector(Vec3::new(center.x, 0.0, center.y), bbox.size());
+                //         scene.lights.push(light);
+                //     }
+                // }
 
                 // Use the floor or ceiling source
                 let mut source = sector.properties.get("floor_source");
@@ -341,7 +341,7 @@ impl D2Builder {
             if let Some(Value::Light(light)) = entity.attributes.get("light") {
                 let mut light = light.clone();
                 light.set_position(entity.position);
-                scene.dynamic_lights.push(light);
+                scene.dynamic_lights.push(light.compile());
             }
 
             // Find light on entity items
@@ -349,7 +349,7 @@ impl D2Builder {
                 if let Some(Value::Light(light)) = item.attributes.get("light") {
                     let mut light = light.clone();
                     light.set_position(entity.position);
-                    scene.dynamic_lights.push(light);
+                    scene.dynamic_lights.push(light.compile());
                 }
             }
 
@@ -381,7 +381,7 @@ impl D2Builder {
             if let Some(Value::Light(light)) = item.attributes.get("light") {
                 let mut light = light.clone();
                 light.set_position(item.position);
-                scene.dynamic_lights.push(light);
+                scene.dynamic_lights.push(light.compile());
             }
 
             if let Some(Value::Source(source)) = item.attributes.get("source") {

@@ -138,13 +138,13 @@ impl GameWidget {
         } else {
             let width = self.buffer.dim().width as usize;
             let height = self.buffer.dim().height as usize;
-            let ac = self.daylight.daylight(time.total_minutes(), 0.0, 1.0);
+            // let ac = self.daylight.daylight(time.total_minutes(), 0.0, 1.0);
 
-            let mut light = Light::new(LightType::AmbientDaylight);
-            light.set_color([ac.x, ac.y, ac.z]);
-            light.set_intensity(1.0);
+            // let mut light = Light::new(LightType::AmbientDaylight);
+            // light.set_color([ac.x, ac.y, ac.z]);
+            // light.set_intensity(1.0);
 
-            self.scene.dynamic_lights.push(light);
+            // self.scene.dynamic_lights.push(light);
             let mut rast = Rasterizer::setup(
                 None,
                 self.camera_d3.view_matrix(),
@@ -152,24 +152,24 @@ impl GameWidget {
                     .projection_matrix(width as f32, height as f32),
             );
             rast.mapmini = self.scene.mapmini.clone();
-            rast.background_color = Some(vec4_to_pixel(&Vec4::new(ac.x, ac.y, ac.z, 1.0)));
+            // rast.background_color = Some(vec4_to_pixel(&Vec4::new(ac.x, ac.y, ac.z, 1.0)));
             rast.rasterize(&mut self.scene, self.buffer.pixels_mut(), width, height, 40);
         }
     }
 
     /// Draw the 2D scene.
-    pub fn draw_d2(&mut self, _map: &Map, time: &TheTime) {
+    pub fn draw_d2(&mut self, _map: &Map, _time: &TheTime) {
         let width = self.buffer.dim().width as usize;
         let height = self.buffer.dim().height as usize;
 
         let screen_size = Vec2::new(width as f32, height as f32);
 
-        let ac = self.daylight.daylight(time.total_minutes(), 0.0, 1.0);
+        // let ac = self.daylight.daylight(time.total_minutes(), 0.0, 1.0);
 
-        let mut light = Light::new(LightType::AmbientDaylight);
-        light.set_color([ac.x, ac.y, ac.z]);
-        light.set_intensity(1.0);
-        self.scene.dynamic_lights.push(light);
+        // let mut light = Light::new(LightType::AmbientDaylight);
+        // light.set_color([ac.x, ac.y, ac.z]);
+        // light.set_intensity(1.0);
+        // self.scene.dynamic_lights.push(light.compile());
 
         //println!("draw grid_size {}", map.grid_size);
 

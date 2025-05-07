@@ -1,7 +1,5 @@
 use crate::SampleMode;
-use crate::{
-    AccumBuffer, Batch, CompiledLight, D3Camera, HitInfo, Pixel, Scene, ShapeFXGraph, pixel_to_vec4,
-};
+use crate::{AccumBuffer, Batch, D3Camera, HitInfo, Pixel, Scene, ShapeFXGraph, pixel_to_vec4};
 use SampleMode::*;
 use bvh::aabb::Aabb;
 use bvh::aabb::Bounded;
@@ -37,9 +35,6 @@ pub struct Tracer {
     /// Hash for animation
     pub hash_anim: u32,
 
-    /// The compliled lights in the scene.
-    pub compiled_lights: Vec<CompiledLight>,
-
     /// Optional per-batch bounding boxes for fast culling
     pub static_bboxes: Vec<Aabb<f32, 3>>,
 
@@ -63,7 +58,6 @@ impl Tracer {
             sample_mode: Nearest,
             background_color: None,
             static_bboxes: vec![],
-            compiled_lights: vec![],
             hash_anim: 0,
 
             render_graph: ShapeFXGraph::default(),
@@ -119,7 +113,6 @@ impl Tracer {
             state
         }
         self.hash_anim = hash_u32(scene.animation_frame as u32);
-        self.compiled_lights = scene.compile_lights(self.background_color);
 
         self.compute_static_bboxes(scene);
 
@@ -211,11 +204,11 @@ impl Tracer {
                                     // Direct Lighting
                                     let world = ray.at(hitinfo.t);
                                     let mut direct: Vec3<f32> = Vec3::zero();
-                                    for light in &self.compiled_lights {
+                                    for light in scene.lights.iter().chain(&scene.dynamic_lights) {
                                         if let Some(light_color) =
                                             light.radiance_at(world, Some(normal), self.hash_anim)
                                         {
-                                            direct += light_color;
+                                            direct += light_color * 10.0;
                                         }
                                     }
                                     let brdf = hitinfo.albedo / std::f32::consts::PI;

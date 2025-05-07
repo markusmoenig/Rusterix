@@ -9,8 +9,7 @@ use std::str::FromStr;
 
 use crate::prelude::*;
 use crate::{
-    AccumBuffer, Command, D2PreviewBuilder, Daylight, EntityAction, Rect, ShapeFXGraph, Tracer,
-    Value,
+    AccumBuffer, Command, D2PreviewBuilder, EntityAction, Rect, ShapeFXGraph, Tracer, Value,
     client::action::ClientAction,
     client::widget::{
         Widget, game::GameWidget, messages::MessagesWidget, screen::ScreenWidget, text::TextWidget,
@@ -36,7 +35,6 @@ pub struct Client {
     pub animation_frame: usize,
     pub server_time: TheTime,
 
-    pub daylight: Daylight,
     pub terrain_hover: Option<Vec3<f32>>,
 
     /// Global render graph
@@ -112,7 +110,6 @@ impl Client {
             animation_frame: 0,
             server_time: TheTime::default(),
 
-            daylight: Daylight::default(),
             terrain_hover: None,
 
             global: ShapeFXGraph::default(),
@@ -307,20 +304,8 @@ impl Client {
             grid_space_pos + Vec2::new(map.offset.x, -map.offset.y) + screen_size / 2.0
         }
 
+        self.scene_d2.animation_frame = self.animation_frame;
         let screen_size = Vec2::new(width as f32, height as f32);
-
-        if map.properties.get_bool_default("receives_daylight", false) {
-            self.scene_d2.animation_frame = self.animation_frame;
-            let ac = self
-                .daylight
-                .daylight(self.server_time.total_minutes(), 0.0, 1.0);
-
-            let mut light = Light::new(LightType::AmbientDaylight);
-            light.set_color([ac.x, ac.y, ac.z]);
-            light.set_intensity(1.0);
-            self.scene_d2.dynamic_lights.push(light);
-        }
-
         let translation_matrix = Mat3::<f32>::translation_2d(Vec2::new(
             map.offset.x + screen_size.x / 2.0,
             -map.offset.y + screen_size.y / 2.0,
@@ -381,7 +366,7 @@ impl Client {
     }
 
     /// Draw the 3D scene.
-    pub fn draw_d3(&mut self, map: &Map, pixels: &mut [u8], width: usize, height: usize) {
+    pub fn draw_d3(&mut self, _map: &Map, pixels: &mut [u8], width: usize, height: usize) {
         self.scene_d3.animation_frame = self.animation_frame;
 
         let mut rast = Rasterizer::setup(
@@ -393,18 +378,6 @@ impl Client {
         rast.terrain_highlight = self.terrain_hover;
         rast.render_graph = self.global.clone();
         rast.hour = self.server_time.to_f32();
-        if map.properties.get_bool_default("receives_daylight", false) {
-            let ac = self
-                .daylight
-                .daylight(self.server_time.total_minutes(), 0.0, 1.0);
-
-            let mut light = Light::new(LightType::AmbientDaylight);
-            light.set_color([ac.x, ac.y, ac.z]);
-            light.set_intensity(1.0);
-            self.scene_d3.dynamic_lights.push(light);
-            rast.background_color = Some(vec4_to_pixel(&Vec4::new(ac.x, ac.y, ac.z, 1.0)));
-        }
-
         rast.mapmini = self.scene_d3.mapmini.clone();
         rast.rasterize(&mut self.scene_d3, pixels, width, height, 64);
     }
@@ -412,15 +385,6 @@ impl Client {
     /// Trace the 3D scene.
     pub fn trace(&mut self, accum: &mut AccumBuffer) {
         self.scene_d3.animation_frame = self.animation_frame;
-        let ac = self
-            .daylight
-            .daylight(self.server_time.total_minutes(), 0.0, 1.0);
-
-        let mut light = Light::new(LightType::AmbientDaylight);
-        light.set_color([ac.x, ac.y, ac.z]);
-        light.set_intensity(1.0);
-
-        self.scene_d3.dynamic_lights.push(light);
         let mut tracer = Tracer::default();
         tracer.render_graph = self.global.clone();
         tracer.hour = self.server_time.to_f32();

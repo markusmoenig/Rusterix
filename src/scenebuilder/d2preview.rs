@@ -191,22 +191,22 @@ impl D2PreviewBuilder {
                         repeat = false;
                     }
 
-                    // Add Floor Light
-                    if let Some(Value::Light(light)) = sector.properties.get("floor_light") {
-                        if let Some(center) = sector.center(map) {
-                            let light =
-                                light.from_sector(Vec3::new(center.x, 0.0, center.y), bbox.size());
-                            scene.lights.push(light);
-                        }
-                    }
-                    // Add Ceiling Light
-                    if let Some(Value::Light(light)) = sector.properties.get("ceiling_light") {
-                        if let Some(center) = sector.center(map) {
-                            let light =
-                                light.from_sector(Vec3::new(center.x, 0.0, center.y), bbox.size());
-                            scene.lights.push(light);
-                        }
-                    }
+                    // // Add Floor Light
+                    // if let Some(Value::Light(light)) = sector.properties.get("floor_light") {
+                    //     if let Some(center) = sector.center(map) {
+                    //         let light =
+                    //             light.from_sector(Vec3::new(center.x, 0.0, center.y), bbox.size());
+                    //         scene.lights.push(light);
+                    //     }
+                    // }
+                    // // Add Ceiling Light
+                    // if let Some(Value::Light(light)) = sector.properties.get("ceiling_light") {
+                    //     if let Some(center) = sector.center(map) {
+                    //         let light =
+                    //             light.from_sector(Vec3::new(center.x, 0.0, center.y), bbox.size());
+                    //         scene.lights.push(light);
+                    //     }
+                    // }
 
                     // Use the floor or ceiling source
                     let mut source = sector.properties.get("floor_source");
@@ -633,19 +633,19 @@ impl D2PreviewBuilder {
                             // ---
                             // Check for wall lights
                             //
-                            for i in 1..=4 {
-                                let light_name = format!("row{}_light", i);
-                                if let Some(Value::Light(light)) =
-                                    linedef.properties.get(&light_name)
-                                {
-                                    let light = light.from_linedef(
-                                        start_vertex,
-                                        end_vertex,
-                                        i as f32 - 0.5,
-                                    );
-                                    scene.dynamic_lights.push(light);
-                                }
-                            }
+                            // for i in 1..=4 {
+                            //     let light_name = format!("row{}_light", i);
+                            //     if let Some(Value::Light(light)) =
+                            //         linedef.properties.get(&light_name)
+                            //     {
+                            //         let light = light.from_linedef(
+                            //             start_vertex,
+                            //             end_vertex,
+                            //             i as f32 - 0.5,
+                            //         );
+                            //         scene.dynamic_lights.push(light);
+                            //     }
+                            // }
                             // --
 
                             let mut selected = false;
@@ -713,7 +713,7 @@ impl D2PreviewBuilder {
                 if let Some(Value::Light(light)) = entity.attributes.get("light") {
                     let mut light = light.clone();
                     light.set_position(entity.position);
-                    scene.dynamic_lights.push(light);
+                    scene.dynamic_lights.push(light.compile());
                 }
 
                 // Find light on entity items
@@ -721,7 +721,7 @@ impl D2PreviewBuilder {
                     if let Some(Value::Light(light)) = item.attributes.get("light") {
                         let mut light = light.clone();
                         light.set_position(entity.position);
-                        scene.dynamic_lights.push(light);
+                        scene.dynamic_lights.push(light.compile());
                     }
                 }
 
@@ -758,7 +758,7 @@ impl D2PreviewBuilder {
                 if let Some(Value::Light(light)) = item.attributes.get("light") {
                     let mut light = light.clone();
                     light.set_position(item.position);
-                    scene.dynamic_lights.push(light);
+                    scene.dynamic_lights.push(light.compile());
                 }
 
                 if let Some(Value::Source(source)) = item.attributes.get("source") {

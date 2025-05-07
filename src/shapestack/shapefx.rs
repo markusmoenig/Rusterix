@@ -1,6 +1,6 @@
 use crate::{
-    BBox, BLACK, Linedef, Map, Pixel, Rasterizer, Ray, Sector, ShapeContext, Terrain, TerrainChunk,
-    ValueContainer,
+    BBox, BLACK, CompiledLight, LightType, Linedef, Map, Pixel, Rasterizer, Ray, Sector,
+    ShapeContext, Terrain, TerrainChunk, ValueContainer,
 };
 use noiselib::prelude::*;
 use std::str::FromStr;
@@ -216,11 +216,23 @@ impl ShapeFX {
             LinedefGeometry => {
                 vec![
                     TheNodeTerminal {
-                        name: "Mesh".into(),
-                        category_name: "ShapeFX".into(),
+                        name: "modifier".into(),
+                        category_name: "modifier".into(),
                     },
                     TheNodeTerminal {
-                        name: "FX".into(),
+                        name: "row1".into(),
+                        category_name: "FX".into(),
+                    },
+                    TheNodeTerminal {
+                        name: "row2".into(),
+                        category_name: "FX".into(),
+                    },
+                    TheNodeTerminal {
+                        name: "row3".into(),
+                        category_name: "FX".into(),
+                    },
+                    TheNodeTerminal {
+                        name: "row4".into(),
                         category_name: "FX".into(),
                     },
                 ]
@@ -228,19 +240,19 @@ impl ShapeFX {
             SectorGeometry => {
                 vec![
                     TheNodeTerminal {
-                        name: "Mesh Floor".into(),
+                        name: "ground".into(),
                         category_name: "Modifier".into(),
                     },
                     TheNodeTerminal {
-                        name: "Mesh Ceiling".into(),
+                        name: "ceiling".into(),
                         category_name: "Modifier".into(),
                     },
                     TheNodeTerminal {
-                        name: "FX Floor".into(),
+                        name: "ground".into(),
                         category_name: "FX".into(),
                     },
                     TheNodeTerminal {
-                        name: "FX Ceiling".into(),
+                        name: "ceiling".into(),
                         category_name: "FX".into(),
                     },
                 ]
@@ -532,6 +544,33 @@ impl ShapeFX {
         }
     }
 
+    pub fn render_ambient_color(&self, _hour: f32) -> Option<Vec4<f32>> {
+        #[allow(clippy::single_match)]
+        match &self.role {
+            Sky => {
+                // 0 : sun_dir.xyz  day_factor.w
+                // 2 : day_horizon
+                // 3 : day_zenith
+                // 4 : night_horizon
+                // 5 : night_zenith
+                let day_factor = self.precomputed[0].w;
+
+                let day_h = self.precomputed[2];
+                let day_z = self.precomputed[3];
+                let night_h = self.precomputed[4];
+                let night_z = self.precomputed[5];
+
+                // quick cosine-weighted average for each half-sphere
+                let day_avg = (day_h * 0.5) + (day_z * 0.5);
+                let night_avg = (night_h * 0.5) + (night_z * 0.5);
+
+                // Blend between day and night tones by the pre-computed factor
+                Some(Vec4::lerp(night_avg, day_avg, day_factor))
+            }
+            _ => None,
+        }
+    }
+
     pub fn render_miss_d3(
         &self,
         color: &mut Vec4<f32>,
@@ -632,6 +671,39 @@ impl ShapeFX {
                 }
             }
             _ => {}
+        }
+    }
+
+    pub fn compile_light(&self, position: Vec3<f32>) -> Option<CompiledLight> {
+        match self.role {
+            PointLight => {
+                let color = self
+                    .values
+                    .get_color_default("color", TheColor::white())
+                    .to_vec3();
+                let strength = self.values.get_float_default("strength", 5.0);
+                let range = self.values.get_float_default("range", 10.0);
+                let flick = self.values.get_float_default("flicker", 0.0);
+
+                Some(CompiledLight {
+                    light_type: LightType::Point,
+                    position,
+                    color: color.into_array(),
+                    intensity: strength,
+                    emitting: true,
+                    start_distance: 0.0,
+                    end_distance: range,
+                    flicker: flick,
+                    // unused fields:
+                    direction: Vec3::unit_y(),
+                    cone_angle: 0.0,
+                    normal: Vec3::unit_y(),
+                    width: 0.0,
+                    height: 0.0,
+                    from_linedef: false,
+                })
+            }
+            _ => None,
         }
     }
 

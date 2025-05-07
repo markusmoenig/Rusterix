@@ -1,6 +1,6 @@
 use crate::{
-    Batch, CompiledLight, LightType, MapMini, Pixel, PrimitiveMode, Ray, RepeatMode, Scene,
-    Texture, pixel_to_vec4, vec4_to_pixel,
+    Batch, LightType, MapMini, Pixel, PrimitiveMode, Ray, RepeatMode, Scene, Texture,
+    pixel_to_vec4, vec4_to_pixel,
 };
 use crate::{SampleMode, ShapeFXGraph};
 use rayon::prelude::*;
@@ -33,14 +33,14 @@ pub struct Rasterizer {
     /// SampleMode, default is Nearest.
     pub sample_mode: SampleMode,
 
-    /// The compliled lights in the scene.
-    pub compiled_lights: Vec<CompiledLight>,
-
     /// Hash for animation
     pub hash_anim: u32,
 
     /// Background color (Sky etc.)
     pub background_color: Option<[u8; 4]>,
+
+    /// Ambient color (Sky etc.)
+    pub ambient_color: Option<Vec4<f32>>,
 
     /// Optional terrain highlight
     pub terrain_highlight: Option<Vec3<f32>>,
@@ -98,10 +98,11 @@ impl Rasterizer {
             mapmini: MapMini::default(),
             sample_mode: Nearest,
 
-            compiled_lights: vec![],
             hash_anim: 0,
 
             background_color: None,
+            ambient_color: None,
+
             terrain_highlight: None,
 
             translationd2,
@@ -161,8 +162,6 @@ impl Rasterizer {
             height,
         );
 
-        self.compiled_lights = scene.compile_lights(self.background_color);
-
         self.render_hit = self.render_graph.collect_nodes_from(0, 0);
         self.render_miss = self.render_graph.collect_nodes_from(0, 1);
 
@@ -174,6 +173,14 @@ impl Rasterizer {
         // Precompute missed node values
         for node in &mut self.render_miss {
             self.render_graph.nodes[*node as usize].render_setup(self.hour);
+        }
+
+        for node in &mut self.render_miss {
+            if let Some(ambient) =
+                self.render_graph.nodes[*node as usize].render_ambient_color(self.hour)
+            {
+                self.ambient_color = Some(ambient);
+            }
         }
 
         // Divide the screen into tiles
@@ -482,10 +489,20 @@ impl Rasterizer {
                                         if batch.receives_light
                                             && (!scene.lights.is_empty()
                                                 || !scene.dynamic_lights.is_empty())
+                                            || self.ambient_color.is_some()
                                         {
                                             let mut accumulated_light = [0.0, 0.0, 0.0];
 
-                                            for light in &self.compiled_lights {
+                                            if let Some(ambient) = &self.ambient_color {
+                                                let occlusion = self.mapmini.get_occlusion(world);
+                                                accumulated_light[0] += ambient.x * occlusion;
+                                                accumulated_light[1] += ambient.y * occlusion;
+                                                accumulated_light[2] += ambient.z * occlusion;
+                                            }
+
+                                            for light in
+                                                scene.lights.iter().chain(&scene.dynamic_lights)
+                                            {
                                                 if let Some(mut light_color) = light.color_at(
                                                     Vec3::new(world.x, 0.0, world.y),
                                                     &self.hash_anim,
@@ -896,14 +913,22 @@ impl Rasterizer {
                                             }
 
                                             // Sample Lights
-                                            if batch.receives_light
-                                                && (!self.compiled_lights.is_empty())
-                                            {
+                                            if batch.receives_light {
                                                 let mut accumulated_light: [f32; 3] =
                                                     [0.0, 0.0, 0.0];
                                                 let epsilon = 0.01;
 
-                                                for light in &self.compiled_lights {
+                                                if let Some(ambient) = &self.ambient_color {
+                                                    let occlusion =
+                                                        self.mapmini.get_occlusion(world_2d);
+                                                    accumulated_light[0] += ambient.x * occlusion;
+                                                    accumulated_light[1] += ambient.y * occlusion;
+                                                    accumulated_light[2] += ambient.z * occlusion;
+                                                }
+
+                                                for light in
+                                                    scene.lights.iter().chain(&scene.dynamic_lights)
+                                                {
                                                     if let Some(mut light_color) = light
                                                         .radiance_at(world, None, self.hash_anim)
                                                     {

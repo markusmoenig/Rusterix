@@ -1,4 +1,4 @@
-use crate::{Batch, CompiledLight, Light, LightType, MapMini, Shader, Terrain, Tile};
+use crate::{Batch, CompiledLight, MapMini, Shader, Terrain, Tile};
 use rayon::prelude::*;
 use vek::{Mat3, Mat4};
 
@@ -8,10 +8,10 @@ pub struct Scene {
     pub background: Option<Box<dyn Shader>>,
 
     /// The lights in the scene
-    pub lights: Vec<Light>,
+    pub lights: Vec<CompiledLight>,
 
     /// The lights in the scene
-    pub dynamic_lights: Vec<Light>,
+    pub dynamic_lights: Vec<CompiledLight>,
 
     /// 3D static batches which do not need to be changed.
     pub d3_static: Vec<Batch<[f32; 4]>>,
@@ -100,7 +100,7 @@ impl Scene {
     }
 
     /// Sets the lights using the builder pattern.
-    pub fn lights(mut self, lights: Vec<Light>) -> Self {
+    pub fn lights(mut self, lights: Vec<CompiledLight>) -> Self {
         self.lights = lights;
         self
     }
@@ -175,50 +175,4 @@ impl Scene {
             batch.compute_vertex_normals();
         });
     }
-
-    /// Compiles all lights and returns them.
-    pub fn compile_lights(&self, background_color: Option<[u8; 4]>) -> Vec<CompiledLight> {
-        let mut cl = vec![];
-
-        for l in &self.lights {
-            let mut comp = l.compile();
-            if comp.light_type == LightType::Daylight {
-                if let Some(background_color) = background_color {
-                    comp.color = [
-                        background_color[0] as f32 / 255.0,
-                        background_color[1] as f32 / 255.0,
-                        background_color[2] as f32 / 255.0,
-                    ];
-                }
-            }
-            cl.push(comp);
-        }
-
-        for l in &self.dynamic_lights {
-            cl.push(l.compile());
-        }
-
-        cl
-    }
-
-    // pub fn get_hit_info(&self, ray: &Ray) {
-    //     let static_hit = self
-    //         .d3_static
-    //         .par_iter()
-    //         .filter_map(|batch| batch.intersect(ray, false))
-    //         .reduce_with(|a, b| if a.t < b.t { a } else { b });
-
-    //     let dynamic_hit = self
-    //         .d3_dynamic
-    //         .par_iter()
-    //         .filter_map(|batch| batch.intersect(ray, false))
-    //         .reduce_with(|a, b| if a.t < b.t { a } else { b });
-
-    //     let terrain_hit = self
-    //         .terrain_batch
-    //         .as_ref()
-    //         .and_then(|batch| batch.intersect(ray, false));
-
-    //     println!("static: {:?}, terrain: {:?}", static_hit, terrain_hit);
-    // }
 }
