@@ -1,7 +1,6 @@
 use crate::SampleMode;
 use crate::{
-    Batch, CompiledLight, D3Camera, HitInfo, Pixel, Scene, ShapeFXGraph, pixel_to_vec4,
-    vec4_to_pixel,
+    AccumBuffer, Batch, CompiledLight, D3Camera, HitInfo, Pixel, Scene, ShapeFXGraph, pixel_to_vec4,
 };
 use SampleMode::*;
 use bvh::aabb::Aabb;
@@ -10,6 +9,23 @@ use bvh::ray::Ray as BvhRay;
 use rand::Rng;
 use rayon::prelude::*;
 use vek::{Vec2, Vec3, Vec4};
+
+fn srgb_to_linear(c: f32) -> f32 {
+    if c <= 0.04045 {
+        c / 12.92
+    } else {
+        ((c + 0.055) / 1.055).powf(2.4)
+    }
+}
+
+fn _aces_tonemap(x: f32) -> f32 {
+    const A: f32 = 2.51;
+    const B: f32 = 0.03;
+    const C: f32 = 2.43;
+    const D: f32 = 0.59;
+    const E: f32 = 0.14;
+    ((x * (A * x + B)) / (x * (C * x + D) + E)).clamp(0.0, 1.0)
+}
 
 pub struct Tracer {
     /// SampleMode, default is Nearest.
@@ -84,12 +100,13 @@ impl Tracer {
         &mut self,
         camera: &dyn D3Camera,
         scene: &mut Scene,
-        pixels: &mut [u8],
-        width: usize,
-        height: usize,
+        buffer: &mut AccumBuffer,
         tile_size: usize,
-        accum: i32,
     ) {
+        let width = buffer.width;
+        let height = buffer.height;
+        let frame = buffer.frame;
+
         /// Generate a hash value for the given animation frame.
         /// We use it for random light flickering.
         fn hash_u32(seed: u32) -> u32 {
@@ -135,34 +152,13 @@ impl Tracer {
         let screen_size = Vec2::new(width as f32, height as f32);
 
         // Parallel process each tile
-        let tile_buffers: Vec<Vec<u8>> = tiles
+        let tile_results: Vec<(TileRect, Vec<Vec4<f32>>)> = tiles
             .par_iter()
             .map(|tile| {
-                // Local tile buffer, fill with background color if needed
-                let mut buffer = vec![0; tile.width * tile.height * 4];
-                if let Some(background_color) = &self.background_color {
-                    for chunk in buffer.chunks_exact_mut(4) {
-                        chunk.copy_from_slice(background_color);
-                    }
-                }
-
-                if let Some(shader) = &scene.background {
-                    for ty in 0..tile.height {
-                        for tx in 0..tile.width {
-                            let pixel = shader.shade_pixel(
-                                Vec2::new(
-                                    (tile.x + tx) as f32 / screen_size.x,
-                                    (tile.y + ty) as f32 / screen_size.y,
-                                ),
-                                screen_size,
-                            );
-                            let idx = (ty * tile.width + tx) * 4;
-                            buffer[idx..idx + 4].copy_from_slice(&pixel);
-                        }
-                    }
-                }
-
+                let tile = *tile;
+                let mut lin_tile = vec![Vec4::zero(); tile.width * tile.height];
                 let mut rng = rand::rng();
+
                 for ty in 0..tile.height {
                     for tx in 0..tile.width {
                         let mut ret: Vec3<f32> = Vec3::zero();
@@ -209,7 +205,7 @@ impl Tracer {
                                 if let Some(normal) = hitinfo.normal {
                                     ray.origin = ray.at(hitinfo.t) + normal * 0.01;
                                     ray.dir =
-                                        (normal + self.random_unit_vector(&mut rng)).normalized();
+                                        (normal + self.random_cosine_hemi(&mut rng)).normalized();
                                     bvh_ray = BvhRay::new(
                                         nalgebra::Point3::new(
                                             ray.origin.x,
@@ -218,8 +214,21 @@ impl Tracer {
                                         ),
                                         nalgebra::Vector3::new(ray.dir.x, ray.dir.y, ray.dir.z),
                                     );
-                                    ret += hitinfo.emissive * throughput;
+
+                                    if hitinfo.emissive != Vec3::zero() {
+                                        ret += hitinfo.emissive * throughput;
+                                        break;
+                                    }
                                     throughput *= hitinfo.albedo;
+                                    // Russian roulete
+                                    let p = throughput
+                                        .x
+                                        .max(throughput.y.max(throughput.z))
+                                        .clamp(0.001, 1.0);
+                                    if rng.random::<f32>() > p {
+                                        break;
+                                    }
+                                    throughput *= 1.0 / p;
                                 } else {
                                     println!("no normal");
                                     break;
@@ -236,10 +245,24 @@ impl Tracer {
                                         self.hour,
                                     );
                                 }
-                                ret += Vec3::new(color.x, color.y, color.z) * throughput;
+                                let mut col = Vec3::new(color.x, color.y, color.z);
+                                col = col.map(srgb_to_linear);
+                                ret += col * throughput;
+                                break;
+                            } else {
+                                ret += Vec3::new(1.0, 1.0, 1.0) * throughput;
                                 break;
                             }
+                            // else {
+                            //     ret += Vec3::new(0.01, 0.01, 0.01) * throughput;
+                            //     break;
+                            // }
                         }
+
+                        lin_tile[ty * tile.width + tx] = Vec4::new(ret.x, ret.y, ret.z, 1.0);
+
+                        /*
+                        //let final_color = Vec4::new(ret.x, ret.y, ret.z, 1.0); //.map(|v| aces_tonemap(v));
 
                         // Get the prev pixel
                         let idx = (ty * tile.width + tx) * 4;
@@ -247,45 +270,40 @@ impl Tracer {
                         let global_y = tile.y + ty;
                         let global_idx = (global_y * width + global_x) * 4;
 
-                        let prev = pixel_to_vec4(&[
-                            pixels[global_idx],
-                            pixels[global_idx + 1],
-                            pixels[global_idx + 2],
-                            255,
-                        ]);
+                        let prev = buffer.get_pixel(global_x, global_y);
                         // Accumulation
-                        let t = 1.0 / (accum as f32 + 1.0);
-                        let blended = prev * (1.0 - t) + Vec4::new(ret.x, ret.y, ret.z, 1.0) * t;
-                        //let gamma_corrected = blended.map(|v| v.powf(2.2));
-                        buffer[idx..idx + 4].copy_from_slice(&vec4_to_pixel(&blended));
+                        let t = 1.0 / (frame as f32 + 1.0);
+                        let blended = prev * (1.0 - t) + final_color * t;
+                        // let gamma_corrected = blended.map(|v| linear_to_srgb(v).clamp(0.0, 1.0));
+
+                        // lin_tile.set_pixel(tile.x, tile.y, blended);
+                        lin_tile[ty * tile.width + tx] = L.extend(1.0);
+
+                        //buffer[idx..idx + 4].copy_from_slice(&vec4_to_pixel(&gamma_corrected));
+                        */
                     }
                 }
 
-                buffer
+                (tile, lin_tile)
             })
             .collect();
 
-        // Combine tile buffers into the main framebuffer
-        for (i, tile) in tiles.iter().enumerate() {
-            let tile_buffer = &tile_buffers[i];
-            let px_start = tile.x;
-            let py_start = tile.y;
+        let t = 1.0 / (frame as f32 + 1.0);
+        for (tile, lin_tile) in tile_results {
+            for ty in 0..tile.height {
+                for tx in 0..tile.width {
+                    let gx = tile.x + tx;
+                    let gy = tile.y + ty;
 
-            let tile_row_bytes = tile.width * 4; // Number of bytes in a tile row
-            let framebuffer_row_bytes = width * 4; // Number of bytes in a framebuffer row
+                    let old = buffer.get_pixel(gx, gy); // linear HDR
+                    let new = lin_tile[ty * tile.width + tx]; // linear HDR
 
-            let mut src_offset = 0;
-            let mut dst_offset = (py_start * width + px_start) * 4;
-
-            for _ in 0..tile.height {
-                pixels[dst_offset..dst_offset + tile_row_bytes]
-                    .copy_from_slice(&tile_buffer[src_offset..src_offset + tile_row_bytes]);
-
-                // Increment offsets
-                src_offset += tile_row_bytes;
-                dst_offset += framebuffer_row_bytes;
+                    let blended = old * (1.0 - t) + new * t; // running average
+                    buffer.set_pixel(gx, gy, blended);
+                }
             }
         }
+        buffer.frame += 1;
     }
 
     pub fn evaluate_hit(&self, scene: &Scene, batch: &Batch<[f32; 4]>, hit: &mut HitInfo) -> bool {
@@ -299,12 +317,14 @@ impl Tracer {
             batch.repeat_mode,
         ));
 
+        let tex_lin = texel.map(srgb_to_linear); // alpha stays as-is
+
         if let Some(_material) = &batch.material {
-            hit.emissive = Vec3::new(texel.x, texel.y, texel.z) * 5.0;
+            hit.emissive = Vec3::new(tex_lin.x, tex_lin.y, tex_lin.z);
         }
 
         if texel[3] == 1.0 {
-            hit.albedo = Vec3::new(texel.x, texel.y, texel.z);
+            hit.albedo = Vec3::new(tex_lin.x, tex_lin.y, tex_lin.z);
             true
         } else {
             false
@@ -318,6 +338,14 @@ impl Tracer {
         let x = r * a.cos();
         let y = r * a.sin();
         Vec3::new(x, y, z)
+    }
+
+    fn random_cosine_hemi<R: Rng>(&self, rng: &mut R) -> Vec3<f32> {
+        let r1 = rng.random::<f32>();
+        let r2 = rng.random::<f32>();
+        let phi = 2.0 * std::f32::consts::PI * r1;
+        let r = r2.sqrt();
+        Vec3::new(phi.cos() * r, phi.sin() * r, (1.0 - r2).sqrt())
     }
 }
 

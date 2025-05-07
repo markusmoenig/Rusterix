@@ -1,3 +1,4 @@
+pub mod buffer;
 pub mod trace;
 
 use vek::{Vec2, Vec3};

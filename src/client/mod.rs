@@ -9,7 +9,8 @@ use std::str::FromStr;
 
 use crate::prelude::*;
 use crate::{
-    Command, D2PreviewBuilder, Daylight, EntityAction, Rect, ShapeFXGraph, Tracer, Value,
+    AccumBuffer, Command, D2PreviewBuilder, Daylight, EntityAction, Rect, ShapeFXGraph, Tracer,
+    Value,
     client::action::ClientAction,
     client::widget::{
         Widget, game::GameWidget, messages::MessagesWidget, screen::ScreenWidget, text::TextWidget,
@@ -409,7 +410,7 @@ impl Client {
     }
 
     /// Trace the 3D scene.
-    pub fn trace(&mut self, pixels: &mut [u8], width: usize, height: usize, accum: i32) {
+    pub fn trace(&mut self, accum: &mut AccumBuffer) {
         self.scene_d3.animation_frame = self.animation_frame;
         let ac = self
             .daylight
@@ -422,15 +423,7 @@ impl Client {
         self.scene_d3.dynamic_lights.push(light);
         let mut tracer = Tracer::default();
         tracer.render_graph = self.global.clone();
-        tracer.trace(
-            self.camera_d3.as_ref(),
-            &mut self.scene_d3,
-            pixels,
-            width,
-            height,
-            64,
-            accum,
-        );
+        tracer.trace(self.camera_d3.as_ref(), &mut self.scene_d3, accum, 64);
     }
 
     /// Get an i32 config value

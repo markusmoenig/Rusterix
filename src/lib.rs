@@ -123,7 +123,7 @@ pub use crate::{
         chunk::{TerrainBlendMode, TerrainChunk},
     },
     texture::{RepeatMode, SampleMode, Texture},
-    tracer::{HitInfo, Ray, trace::Tracer},
+    tracer::{HitInfo, Ray, buffer::AccumBuffer, trace::Tracer},
     value::{Value, ValueContainer},
 };
 

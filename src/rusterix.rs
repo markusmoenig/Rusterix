@@ -1,5 +1,5 @@
 use crate::MapCamera;
-use crate::{Command, PlayerCamera, prelude::*};
+use crate::{AccumBuffer, Command, PlayerCamera, prelude::*};
 use vek::Vec2;
 
 #[derive(PartialEq)]
@@ -188,8 +188,8 @@ impl Rusterix {
         }
     }
 
-    pub fn trace_scene(&mut self, _map: &Map, pixels: &mut [u8], width: usize, height: usize) {
-        self.client.trace(pixels, width, height, 0);
+    pub fn trace_scene(&mut self, _map: &Map, accum: &mut AccumBuffer) {
+        self.client.trace(accum);
     }
 
     /// Set up the client for processing the game.
