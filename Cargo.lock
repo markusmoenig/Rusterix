@@ -1196,6 +1196,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "fast-srgb8"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dd2e7510819d6fbf51a5545c8f922716ecfb14df168a3242f7d33e0239efe6a1"
+
+[[package]]
 name = "fd-lock"
 version = "4.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3548,6 +3554,7 @@ dependencies = [
  "criterion",
  "crossbeam-channel",
  "earcutr",
+ "fast-srgb8",
  "fontdue",
  "image",
  "indexmap",

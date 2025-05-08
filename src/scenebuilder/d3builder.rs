@@ -168,8 +168,6 @@ impl D3Builder {
                         let material: Option<Material> =
                             super::get_material_from_geo_graph(&sector.properties, 3, map);
 
-                        println!("{:?}", material);
-
                         let source = if add_it_as_box {
                             sector.properties.get("floor_source")
                         } else {

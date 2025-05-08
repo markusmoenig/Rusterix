@@ -2,7 +2,7 @@
 
 use crate::Texture;
 use crate::{
-    Assets, Batch, GridShader, Map, MapToolType, Pixel, Rect, Scene, Shader, Tile, Value,
+    Assets, Batch, GridShader, Map, MapToolType, Material, Pixel, Rect, Scene, Shader, Tile, Value,
     ValueContainer, WHITE,
 };
 use theframework::prelude::*;
@@ -208,6 +208,12 @@ impl D2PreviewBuilder {
                     //     }
                     // }
 
+                    let mut material: Option<Material> =
+                        super::get_material_from_geo_graph(&sector.properties, 3, map);
+                    if material.is_none() {
+                        material = super::get_material_from_geo_graph(&sector.properties, 4, map);
+                    }
+
                     // Use the floor or ceiling source
                     let mut source = sector.properties.get("floor_source");
                     if source.is_none() {
@@ -252,7 +258,21 @@ impl D2PreviewBuilder {
                                 vertices.push([local.x, local.y]);
                             }
 
-                            if repeat {
+                            if material.is_some() {
+                                let texture_index = textures.len();
+
+                                let mut batch = Batch::emptyd2()
+                                    .repeat_mode(crate::RepeatMode::RepeatXY)
+                                    .texture_index(texture_index)
+                                    .receives_light(true);
+
+                                batch.material = material;
+                                batch.add(vertices, geo.1, uvs);
+
+                                textures.push(tile.clone());
+                                repeated_offsets.insert(tile.id, repeated_batches.len());
+                                repeated_batches.push(batch);
+                            } else if repeat {
                                 if let Some(offset) = repeated_offsets.get(&tile.id) {
                                     repeated_batches[*offset].add(vertices, geo.1, uvs);
                                 } else {

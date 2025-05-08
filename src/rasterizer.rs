@@ -4,7 +4,7 @@ use crate::{
 };
 use crate::{SampleMode, ShapeFXGraph};
 use rayon::prelude::*;
-use vek::{Mat3, Mat4, Vec2, Vec3, Vec4};
+use vek::{Clamp, Mat3, Mat4, Vec2, Vec3, Vec4};
 
 use SampleMode::*;
 
@@ -488,7 +488,7 @@ impl Rasterizer {
 
                                         if let Some(material) = &batch.material {
                                             let mut color = pixel_to_vec4(&texel);
-                                            _ = self.apply_material(material, &mut color);
+                                            _ = self.apply_material(material, &mut color, &world);
                                             texel = vec4_to_pixel(&color);
                                         }
 
@@ -739,7 +739,7 @@ impl Rasterizer {
                                             let world = self.screen_to_world(p[0], p[1], z);
                                             let world_2d = Vec2::new(world.x, world.z);
 
-                                            let texel = match batch_type {
+                                            let mut texel = match batch_type {
                                                 BatchType::Static => {
                                                     let textile =
                                                         &scene.textures[batch.texture_index];
@@ -790,114 +790,45 @@ impl Rasterizer {
                                                     }
                                                 }
                                             };
-                                            // let normal = if !batch.normals.is_empty() {
-                                            //     let n0 = batch.clipped_normals[i0];
-                                            //     let n1 = batch.clipped_normals[i1];
-                                            //     let n2 = batch.clipped_normals[i2];
+                                            // let normal: Option<Vec3<f32>> = None;
 
-                                            //     let mut normal =
-                                            //         (n0 * alpha + n1 * beta + n2 * gamma)
-                                            //             .normalized();
+                                            let normal = if !batch.normals.is_empty() {
+                                                let n0 = batch.clipped_normals[i0];
+                                                let n1 = batch.clipped_normals[i1];
+                                                let n2 = batch.clipped_normals[i2];
 
-                                            //     let bump = self.bump_from_texture(
-                                            //         interpolated_u,
-                                            //         interpolated_v,
-                                            //         &textile.textures[index],
-                                            //         self.sample_mode,
-                                            //         batch.repeat_mode,
-                                            //         1.0,
-                                            //     );
-                                            //     normal = (normal + bump).normalized();
+                                                let mut normal =
+                                                    (n0 * alpha + n1 * beta + n2 * gamma)
+                                                        .normalized();
 
-                                            //     let view_dir =
-                                            //         (self.camera_pos - world).normalized();
-                                            //     if normal.dot(view_dir) < 0.0 {
-                                            //         normal = -normal;
-                                            //     }
+                                                // let bump = self.bump_from_texture(
+                                                //     interpolated_u,
+                                                //     interpolated_v,
+                                                //     &textile.textures[index],
+                                                //     self.sample_mode,
+                                                //     batch.repeat_mode,
+                                                //     1.0,
+                                                // );
+                                                // normal = (normal + bump).normalized();
 
-                                            //     Some(normal)
-                                            // } else {
-                                            //     None
-                                            // };
-
-                                            // let distance = (world - self.camera_pos).magnitude();
-                                            // let start_distance = 8.0;
-                                            // let ramp_distance = 4.0;
-
-                                            // let mut blur = ((distance - start_distance)
-                                            //     / ramp_distance)
-                                            //     .clamp(0.0, 1.0);
-                                            // blur = blur * blur * (3.0 - 2.0 * blur);
-                                            // blur = blur.clamp(0.0, 1.0);
-
-                                            // let texel = textile.textures[index].sample(
-                                            //     interpolated_u,
-                                            //     interpolated_v,
-                                            //     self.sample_mode,
-                                            //     batch.repeat_mode,
-                                            // );
-
-                                            let mut color = pixel_to_vec4(&texel);
-                                            let mut _specular_weight = 0.0;
-                                            if let Some(material) = &batch.material {
-                                                _specular_weight =
-                                                    self.apply_material(material, &mut color);
-                                            }
-
-                                            // -- Pipeline
-
-                                            /*
-                                            if batch.receives_light {
-                                                // Distance based bayer matrix dithering
-                                                // Distance to camera
-                                                let distance =
-                                                    (world - self.camera_pos).magnitude();
-
-                                                // TODO: Make this configurable
-                                                let start_distance = 2.0;
-                                                let ramp_distance = 2.0;
-                                                let jitter_scale = 0.028;
-
-                                                let mut t = ((distance - start_distance)
-                                                    / ramp_distance)
-                                                    .clamp(0.0, 1.0);
-                                                t = t * t * (3.0 - 2.0 * t);
-
-                                                const BAYER_8X8: [[i32; 8]; 8] = [
-                                                    [0, 32, 8, 40, 2, 34, 10, 42],
-                                                    [48, 16, 56, 24, 50, 18, 58, 26],
-                                                    [12, 44, 4, 36, 14, 46, 6, 38],
-                                                    [60, 28, 52, 20, 62, 30, 54, 22],
-                                                    [3, 35, 11, 43, 1, 33, 9, 41],
-                                                    [51, 19, 59, 27, 49, 17, 57, 25],
-                                                    [15, 47, 7, 39, 13, 45, 5, 37],
-                                                    [63, 31, 55, 23, 61, 29, 53, 21],
-                                                ];
-
-                                                let threshold =
-                                                    BAYER_8X8[ty % 8][tx % 8] as f32 / 64.0 - 0.5;
-
-                                                fn hash(x: f32, y: f32) -> f32 {
-                                                    // Convert x and y to integers by scaling and truncating
-                                                    let ix = x as i32;
-                                                    let iy = y as i32;
-
-                                                    // Combine the integer parts using bitwise operations
-                                                    let mut n = (ix ^ iy) as u32;
-                                                    n ^= n << 13;
-                                                    n ^= n >> 17;
-                                                    n ^= n << 5;
-
-                                                    // Normalize the result to [0, 1]
-                                                    n as f32 / u32::MAX as f32
+                                                let view_dir =
+                                                    (self.camera_pos - world).normalized();
+                                                if normal.dot(view_dir) < 0.0 {
+                                                    normal = -normal;
                                                 }
 
-                                                let jitter = (hash(p[0], p[1])) * 0.2 * t; //threshold * 0.5 * t; // * jitter_scale; // * t;
+                                                Some(normal)
+                                            } else {
+                                                None
+                                            };
 
-                                                color[0] += jitter;
-                                                color[1] += jitter;
-                                                color[3] += jitter;
-                                            }*/
+                                            let mut color = pixel_to_vec4(&texel);
+                                            let mut specular_weight = 0.0;
+                                            if let Some(material) = &batch.material {
+                                                specular_weight = self.apply_material(
+                                                    material, &mut color, &world_2d,
+                                                );
+                                            }
 
                                             // Apply hit post processing
                                             for node in &self.render_hit {
@@ -912,72 +843,117 @@ impl Rasterizer {
                                                     );
                                             }
 
-                                            // Sample Lights
+                                            // Direct Light
                                             if batch.receives_light {
-                                                let mut accumulated_light: [f32; 3] =
-                                                    [0.0, 0.0, 0.0];
-                                                let epsilon = 0.01;
+                                                let mut lit = Vec3::<f32>::zero(); // accumulated light
+                                                let c = color.xyz().map(|v| (v * 255.0) as u8);
+                                                let base_8 = c.map(fast_srgb8::srgb8_to_f32);
+                                                let base: Vec3<f32> =
+                                                    Vec3::new(base_8[0], base_8[1], base_8[2]);
 
                                                 if let Some(ambient) = &self.ambient_color {
-                                                    let occlusion =
-                                                        self.mapmini.get_occlusion(world_2d);
-                                                    accumulated_light[0] += ambient.x * occlusion;
-                                                    accumulated_light[1] += ambient.y * occlusion;
-                                                    accumulated_light[2] += ambient.z * occlusion;
+                                                    let occ = self.mapmini.get_occlusion(world_2d);
+                                                    lit += (ambient * occ) * base; // tint ambient by albedo
+
+                                                    // very small ambient-specular -------------------------------------
+                                                    // Fresnel F₀: 0.04 for non-metals, albedo for metals
+                                                    let f0 = Vec3::lerp(
+                                                        Vec3::broadcast(0.04),
+                                                        base,
+                                                        specular_weight,
+                                                    );
+
+                                                    // we add only a fraction (e.g. 25 %) to avoid washing out
+                                                    let ambient_spec =
+                                                        f0 * ambient.xyz() * specular_weight * 0.25;
+
+                                                    lit += ambient_spec * occ;
                                                 }
 
                                                 for light in
                                                     scene.lights.iter().chain(&scene.dynamic_lights)
                                                 {
-                                                    if let Some(mut light_color) = light
-                                                        .radiance_at(world, None, self.hash_anim)
+                                                    let Some(mut radiance) = light.radiance_at(
+                                                        world,
+                                                        None,
+                                                        self.hash_anim,
+                                                    ) else {
+                                                        continue;
+                                                    };
+
+                                                    if normal.is_some() {
+                                                        radiance *= 5.0;
+                                                    }
+
+                                                    // 2-D shadow check for local lights
+                                                    let to_light = (light.position_2d() - world_2d)
+                                                        .normalized();
+                                                    let offset = world_2d + to_light * 0.01;
+                                                    if !self
+                                                        .mapmini
+                                                        .is_visible(offset, light.position_2d())
                                                     {
-                                                        let direction_to_light =
-                                                            (light.position_2d() - world_2d)
-                                                                .normalized();
-                                                        let offset_world_2d =
-                                                            world_2d + direction_to_light * epsilon;
+                                                        continue;
+                                                    }
 
-                                                        // Sector daylight occlusion
-                                                        if light.light_type
-                                                            == LightType::AmbientDaylight
-                                                        {
-                                                            let occlusion = self
-                                                                .mapmini
-                                                                .get_occlusion(world_2d);
-                                                            light_color[0] *= occlusion;
-                                                            light_color[1] *= occlusion;
-                                                            light_color[2] *= occlusion;
-                                                        }
-
-                                                        let mut light_is_visible = true;
-                                                        if light.light_type != LightType::Ambient
-                                                            && light.light_type
-                                                                != LightType::AmbientDaylight
-                                                            && !self.mapmini.is_visible(
-                                                                offset_world_2d,
-                                                                light.position_2d(),
+                                                    if let Some(n) = normal {
+                                                        // diffuse
+                                                        let n_dot_l = n
+                                                            .dot(
+                                                                (light.position - world)
+                                                                    .normalized(),
                                                             )
-                                                        {
-                                                            light_is_visible = false;
+                                                            .max(0.0);
+                                                        let diffuse = base * n_dot_l;
+
+                                                        // specular (Blinn-Phong)
+                                                        let view_dir =
+                                                            (self.camera_pos - world).normalized();
+                                                        let half_v = (view_dir
+                                                            + (light.position - world)
+                                                                .normalized())
+                                                        .normalized();
+
+                                                        #[inline(always)]
+                                                        fn pow32_fast(x: f32) -> f32 {
+                                                            // Fit on [0,1]   (max abs error ≈ 1/512)
+                                                            ((((1.004_4 * x - 1.032_7) * x
+                                                                + 0.508_9)
+                                                                * x
+                                                                + 0.007_8)
+                                                                * x)
+                                                                .clamp(0.0, 1.0)
                                                         }
 
-                                                        if light_is_visible {
-                                                            accumulated_light[0] += light_color[0];
-                                                            accumulated_light[1] += light_color[1];
-                                                            accumulated_light[2] += light_color[2];
+                                                        if specular_weight > 0.0 {
+                                                            let n_dot_h = n.dot(half_v).max(0.0);
+                                                            // const SHININESS: f32 = 32.0;
+                                                            // let spec = specular_weight
+                                                            //     * n_dot_h.powf(SHININESS);
+                                                            let spec = specular_weight
+                                                                * pow32_fast(n_dot_h);
+
+                                                            lit += radiance
+                                                                * (diffuse + Vec3::broadcast(spec));
+                                                        } else {
+                                                            lit += radiance * diffuse;
                                                         }
+                                                    } else {
+                                                        lit += radiance * base; // flat shading
                                                     }
                                                 }
 
-                                                color[0] *= accumulated_light[0].clamp(0.0, 1.0);
-                                                color[1] *= accumulated_light[1].clamp(0.0, 1.0);
-                                                color[2] *= accumulated_light[2].clamp(0.0, 1.0);
+                                                let final_lit = lit.clamped(0.0, 1.0);
+                                                let conv = final_lit.map(fast_srgb8::f32_to_srgb8);
+                                                texel[0] = conv.x;
+                                                texel[1] = conv.y;
+                                                texel[2] = conv.z;
+                                            } else {
+                                                texel = vec4_to_pixel(&color);
                                             }
 
                                             // ---
 
-                                            let texel = vec4_to_pixel(&color);
                                             if texel[3] == 255 {
                                                 let idx = ((ty - tile.y) * tile.width
                                                     + (tx - tile.x))
@@ -1042,17 +1018,12 @@ impl Rasterizer {
 
     /// Applies a material to the color, called from both 2D and 3D rasterizer
     #[inline(always)]
-    fn apply_material(&self, material: &Material, color: &mut Vec4<f32>) -> f32 {
+    fn apply_material(&self, material: &Material, color: &mut Vec4<f32>, world: &Vec2<f32>) -> f32 {
         match material.role {
-            // ───────────────────────────────────────────────────────── Matte
             // value = 0‥1  (1 = fully matte, 0 = mirror-like)
             MaterialRole::Matte => 1.0 - material.value,
-
-            // ───────────────────────────────────────────────────────── Glossy
             // value = 0‥1  (0 = diffuse, 1 = perfect mirror)
             MaterialRole::Glossy => material.value,
-
-            // ───────────────────────────────────────────────────────── Metallic
             // value = 0‥1, both gloss and F₀ shift toward white
             MaterialRole::Metallic => {
                 let m = material.value;
@@ -1065,14 +1036,29 @@ impl Rasterizer {
                 );
                 m
             }
-
-            // ───────────────────────────────────────────────────────── Emissive
             // value = brightness multiplier
             MaterialRole::Emissive => {
-                let e = material.value * 10.0;
-                color.x += color.x * e;
-                color.y += color.y * e;
-                color.z += color.z * e;
+                let flicker = material.value;
+                let flicker_factor = if flicker > 0.0 {
+                    let combined_hash = self
+                        .hash_anim
+                        .wrapping_add((world.x as u32 + world.y as u32) * 100);
+                    let flicker_value = (combined_hash as f32 / u32::MAX as f32).clamp(0.0, 1.0);
+                    1.0 - flicker_value * flicker
+                } else {
+                    1.0
+                };
+
+                let e = 1.0;
+                let base = color.xyz();
+                let len = base.magnitude();
+
+                if len > 0.0 {
+                    let boosted = base * (1.0 + e);
+                    color.x = boosted.x * flicker_factor;
+                    color.y = boosted.y * flicker_factor;
+                    color.z = boosted.z * flicker_factor;
+                }
                 0.0
             }
 
