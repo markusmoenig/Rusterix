@@ -1,5 +1,8 @@
 use crate::SampleMode;
-use crate::{AccumBuffer, Batch, D3Camera, HitInfo, Pixel, Scene, ShapeFXGraph, pixel_to_vec4};
+use crate::{
+    AccumBuffer, Batch, D3Camera, HitInfo, MaterialRole, Pixel, Ray, Scene, ShapeFXGraph,
+    pixel_to_vec4,
+};
 use SampleMode::*;
 use bvh::aabb::Aabb;
 use bvh::aabb::Bounded;
@@ -25,6 +28,13 @@ fn _aces_tonemap(x: f32) -> f32 {
     ((x * (A * x + B)) / (x * (C * x + D) + E)).clamp(0.0, 1.0)
 }
 
+#[derive(Clone, PartialEq)]
+enum BatchType {
+    Static,
+    Dynamic,
+    Terrain,
+}
+
 pub struct Tracer {
     /// SampleMode, default is Nearest.
     pub sample_mode: SampleMode,
@@ -37,6 +47,7 @@ pub struct Tracer {
 
     /// Optional per-batch bounding boxes for fast culling
     pub static_bboxes: Vec<Aabb<f32, 3>>,
+    pub dynamic_bboxes: Vec<Aabb<f32, 3>>,
 
     /// The rendergraph
     pub render_graph: ShapeFXGraph,
@@ -58,6 +69,7 @@ impl Tracer {
             sample_mode: Nearest,
             background_color: None,
             static_bboxes: vec![],
+            dynamic_bboxes: vec![],
             hash_anim: 0,
 
             render_graph: ShapeFXGraph::default(),
@@ -82,9 +94,16 @@ impl Tracer {
     /// Precomputes the bounding boxes of all static batches.
     pub fn compute_static_bboxes(&mut self, scene: &Scene) {
         self.static_bboxes.clear();
-
         for batch in &scene.d3_static {
             self.static_bboxes.push(batch.aabb());
+        }
+    }
+
+    /// Precomputes the bounding boxes of all dynamic batches.
+    pub fn compute_dynamic_bboxes(&mut self, scene: &Scene) {
+        self.dynamic_bboxes.clear();
+        for batch in &scene.d3_dynamic {
+            self.dynamic_bboxes.push(batch.aabb());
         }
     }
 
@@ -115,6 +134,7 @@ impl Tracer {
         self.hash_anim = hash_u32(scene.animation_frame as u32);
 
         self.compute_static_bboxes(scene);
+        self.compute_dynamic_bboxes(scene);
 
         self.render_hit = self.render_graph.collect_nodes_from(0, 0);
         self.render_miss = self.render_graph.collect_nodes_from(0, 1);
@@ -174,8 +194,7 @@ impl Tracer {
                         for _ in 0..bounces {
                             let mut hitinfo = HitInfo::default();
 
-                            // Evaluate hit
-
+                            // Evaluate static
                             for (i, batch) in scene.d3_static.iter().enumerate() {
                                 if let Some(bbox) = self.static_bboxes.get(i) {
                                     if !bvh_ray.intersects_aabb(bbox) {
@@ -185,15 +204,64 @@ impl Tracer {
 
                                 if let Some(mut hit) = batch.intersect(&ray, false) {
                                     if hit.t < hitinfo.t
-                                        && self.evaluate_hit(scene, batch, &mut hit)
+                                        && self.evaluate_hit(
+                                            &ray,
+                                            scene,
+                                            batch,
+                                            &mut hit,
+                                            BatchType::Static,
+                                        )
                                     {
                                         hitinfo = hit;
                                     }
                                 }
                             }
 
-                            // Bounce
+                            // Evaluate dynamic
+                            for (i, batch) in scene.d3_dynamic.iter().enumerate() {
+                                if let Some(bbox) = self.dynamic_bboxes.get(i) {
+                                    if !bvh_ray.intersects_aabb(bbox) {
+                                        continue;
+                                    }
+                                }
 
+                                if let Some(mut hit) = batch.intersect(&ray, false) {
+                                    if hit.t < hitinfo.t
+                                        && self.evaluate_hit(
+                                            &ray,
+                                            scene,
+                                            batch,
+                                            &mut hit,
+                                            BatchType::Dynamic,
+                                        )
+                                    {
+                                        hitinfo = hit;
+                                    }
+                                }
+                            }
+
+                            // Evaluate terrain
+                            if let Some(terrain) = &scene.terrain {
+                                for chunk in terrain.chunks.iter() {
+                                    if let Some(batch) = &chunk.1.batch {
+                                        if let Some(mut hit) = batch.intersect(&ray, false) {
+                                            if hit.t < hitinfo.t
+                                                && self.evaluate_hit(
+                                                    &ray,
+                                                    scene,
+                                                    batch,
+                                                    &mut hit,
+                                                    BatchType::Terrain,
+                                                )
+                                            {
+                                                hitinfo = hit;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Hit
                             if hitinfo.t < f32::MAX {
                                 if let Some(normal) = hitinfo.normal {
                                     if hitinfo.emissive != Vec3::zero() {
@@ -223,7 +291,7 @@ impl Tracer {
 
                                     if choose_spec {
                                         ray.dir = self.reflect(ray.dir, normal);
-                                        throughput *= hitinfo.specular_weight / pdf; // scale by the mirror colour
+                                        throughput *= hitinfo.specular_weight / pdf;
                                     } else {
                                         ray.dir = self.sample_cosine(normal, &mut rng);
                                         throughput *= (hitinfo.albedo * p_diff)
@@ -298,21 +366,62 @@ impl Tracer {
         buffer.frame += 1;
     }
 
-    pub fn evaluate_hit(&self, scene: &Scene, batch: &Batch<[f32; 4]>, hit: &mut HitInfo) -> bool {
-        let textile = &scene.textures[batch.texture_index];
-        let index = scene.animation_frame % textile.textures.len();
-
-        let texel = pixel_to_vec4(&textile.textures[index].sample(
-            hit.uv.x,
-            hit.uv.y,
-            self.sample_mode,
-            batch.repeat_mode,
-        ));
-
-        let tex_lin = texel.map(srgb_to_linear); // alpha stays as-is
-
-        if let Some(_material) = &batch.material {
-            hit.emissive = Vec3::new(tex_lin.x, tex_lin.y, tex_lin.z);
+    fn evaluate_hit(
+        &self,
+        ray: &Ray,
+        scene: &Scene,
+        batch: &Batch<[f32; 4]>,
+        hit: &mut HitInfo,
+        batch_type: BatchType,
+    ) -> bool {
+        let texel = match batch_type {
+            BatchType::Static => {
+                let textile = &scene.textures[batch.texture_index];
+                let index = scene.animation_frame % textile.textures.len();
+                pixel_to_vec4(&textile.textures[index].sample(
+                    hit.uv.x,
+                    hit.uv.y,
+                    self.sample_mode,
+                    batch.repeat_mode,
+                ))
+            }
+            BatchType::Dynamic => {
+                let textile = &scene.dynamic_textures[batch.texture_index];
+                let index = scene.animation_frame % textile.textures.len();
+                pixel_to_vec4(&textile.textures[index].sample(
+                    hit.uv.x,
+                    hit.uv.y,
+                    self.sample_mode,
+                    batch.repeat_mode,
+                ))
+            }
+            BatchType::Terrain => {
+                if let Some(terrain) = &scene.terrain {
+                    let w = ray.at(hit.t);
+                    pixel_to_vec4(&terrain.sample_baked(Vec2::new(w.x, w.y)))
+                } else {
+                    Vec4::zero()
+                }
+            }
+        };
+        let tex_lin = texel.map(srgb_to_linear);
+        if let Some(material) = &batch.material {
+            // hit.emissive = Vec3::new(tex_lin.x, tex_lin.y, tex_lin.z);
+            match &material.role {
+                MaterialRole::Matte => {
+                    hit.specular_weight = 1.0 - material.value;
+                }
+                MaterialRole::Glossy => {
+                    hit.specular_weight = material.value;
+                }
+                MaterialRole::Metallic => {
+                    hit.specular_weight = material.value;
+                }
+                MaterialRole::Emissive => {
+                    hit.emissive = tex_lin.xyz() * material.value * 10.0;
+                }
+                _ => {}
+            }
         }
 
         if texel[3] == 1.0 {

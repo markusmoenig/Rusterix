@@ -157,6 +157,16 @@ impl Rusterix {
         }
     }
 
+    /// Builds the entities and items w/o changing char positions
+    pub fn build_entities_items_d3(&mut self, map: &Map) {
+        self.client.builder_d3.build_entities_items(
+            map,
+            self.client.camera_d3.as_ref(),
+            &self.assets,
+            &mut self.client.scene_d3,
+        );
+    }
+
     /// Build the client scene in D3.
     pub fn build_scene_d3(&mut self, map: &Map, values: &ValueContainer) {
         if self.is_dirty_d3 {

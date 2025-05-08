@@ -8,6 +8,15 @@ use theframework::prelude::*;
 use uuid::Uuid;
 use vek::Vec4;
 
+#[inline(always)]
+fn linear_to_srgb(c: f32) -> f32 {
+    if c <= 0.0031308 {
+        c * 12.92
+    } else {
+        1.055 * c.powf(1.0 / 2.4) - 0.055
+    }
+}
+
 const BAYER_4X4: [[f32; 4]; 4] = [
     [0.0 / 16.0, 8.0 / 16.0, 2.0 / 16.0, 10.0 / 16.0],
     [12.0 / 16.0, 4.0 / 16.0, 14.0 / 16.0, 6.0 / 16.0],
@@ -565,7 +574,16 @@ impl ShapeFX {
                 let night_avg = (night_h * 0.5) + (night_z * 0.5);
 
                 // Blend between day and night tones by the pre-computed factor
-                Some(Vec4::lerp(night_avg, day_avg, day_factor))
+                let c = Vec4::lerp(night_avg, day_avg, day_factor);
+
+                let min_lim = 0.2;
+
+                Some(Vec4::new(
+                    linear_to_srgb(c.x.max(min_lim)),
+                    linear_to_srgb(c.y.max(min_lim)),
+                    linear_to_srgb(c.z.max(min_lim)),
+                    1.0,
+                ))
             }
             _ => None,
         }
@@ -1238,7 +1256,7 @@ impl ShapeFX {
             }
             Material => {
                 params.push(ShapeFXParam::Selector(
-                    "type".into(),
+                    "role".into(),
                     "Type".into(),
                     "The material type.".into(),
                     vec![
@@ -1248,13 +1266,13 @@ impl ShapeFX {
                         "Transparent".into(),
                         "Emissive".into(),
                     ],
-                    self.values.get_int_default("material_role", 0),
+                    self.values.get_int_default("role", 0),
                 ));
                 params.push(ShapeFXParam::Float(
                     "value".into(),
                     "Value".into(),
                     "The material value.".into(),
-                    self.values.get_float_default("material_type", 1.0),
+                    self.values.get_float_default("value", 1.0),
                     0.0..=1.0,
                 ));
             }

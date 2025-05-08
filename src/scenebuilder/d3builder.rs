@@ -89,7 +89,7 @@ impl D3Builder {
 
             if add_it {
                 let material: Option<Material> =
-                    super::get_material_from_geo_graph(&sector.properties, map);
+                    super::get_material_from_geo_graph(&sector.properties, 2, map);
 
                 if let Some((vertices, indices)) = sector.generate_geometry(map) {
                     let sector_elevation = sector.properties.get_float_default("floor_height", 0.0);
@@ -165,6 +165,11 @@ impl D3Builder {
                     }
 
                     if create_ceiling || add_it_as_box {
+                        let material: Option<Material> =
+                            super::get_material_from_geo_graph(&sector.properties, 3, map);
+
+                        println!("{:?}", material);
+
                         let source = if add_it_as_box {
                             sector.properties.get("floor_source")
                         } else {
@@ -192,13 +197,26 @@ impl D3Builder {
                                     })
                                     .collect();
 
-                                let floor_uvs = vertices.iter().map(|&v| [v[0], v[1]]).collect();
+                                let ceiling_uvs = vertices.iter().map(|&v| [v[0], v[1]]).collect();
+                                // let ceiling_indices =
+                                //     indices.iter().map(|&v| (v.2, v.1, v.0)).collect();
 
-                                if let Some(offset) = repeated_offsets.get(&tile.id) {
+                                if material.is_some() {
+                                    let texture_index = textures.len();
+                                    let mut batch = Batch::emptyd3()
+                                        .repeat_mode(crate::RepeatMode::RepeatXY)
+                                        .texture_index(texture_index);
+                                    batch.material = material;
+                                    batch.add(ceiling_vertices, indices.clone(), ceiling_uvs);
+
+                                    textures.push(tile.clone());
+                                    repeated_offsets.insert(tile.id, repeated_batches.len());
+                                    repeated_batches.push(batch);
+                                } else if let Some(offset) = repeated_offsets.get(&tile.id) {
                                     repeated_batches[*offset].add(
                                         ceiling_vertices,
                                         indices,
-                                        floor_uvs,
+                                        ceiling_uvs,
                                     );
                                 } else {
                                     let texture_index = textures.len();
@@ -208,7 +226,7 @@ impl D3Builder {
                                         .sample_mode(sample_mode)
                                         .texture_index(texture_index);
 
-                                    batch.add(ceiling_vertices, indices, floor_uvs);
+                                    batch.add(ceiling_vertices, indices, ceiling_uvs);
 
                                     textures.push(tile.clone());
                                     repeated_offsets.insert(tile.id, repeated_batches.len());
@@ -224,43 +242,18 @@ impl D3Builder {
                             if let Some(linedef) = map.linedefs.get(linedef_id as usize) {
                                 if let Some(start_vertex) = map.find_vertex(linedef.start_vertex) {
                                     if let Some(end_vertex) = map.find_vertex(linedef.end_vertex) {
-                                        // ---
                                         // Check for wall lights
-                                        //
-                                        // for i in 1..=4 {
-                                        //     let light_name = format!("row{}_light", i);
-                                        //     if let Some(Value::Light(light)) =
-                                        //         linedef.properties.get(&light_name)
-                                        //     {
-                                        //         let light = light.from_linedef(
-                                        //             start_vertex.as_vec2(),
-                                        //             end_vertex.as_vec2(),
-                                        //             i as f32 - 0.5,
-                                        //         );
-                                        //         scene.lights.push(light);
-                                        //     }
-                                        // }
                                         for i in 1..=4 {
-                                            if let Some(mut light) = super::get_light_from_geo_graph(
-                                                &linedef.properties,
-                                                i,
-                                                map,
-                                            ) {
-                                                let p1 = start_vertex.as_vec2();
-                                                let p2 = end_vertex.as_vec2();
-                                                let y = i as f32 - 0.5;
-
-                                                let position = (p1 + p2) / 2.0; // Midpoint of the line
-                                                let direction = (p2 - p1).normalized(); // Direction of the line
-                                                let normal = Vec2::new(direction.y, -direction.x); // Perpendicular normal
-                                                // let width = (p2 - p1).magnitude(); // Line segment length
-                                                let offset = 0.1;
-                                                let position = position + normal * offset;
-
-                                                light.position =
-                                                    Vec3::new(position.x, y, position.y);
-
-                                                println!("added light {}", light.position());
+                                            if let Some(light) =
+                                                super::get_linedef_light_from_geo_graph(
+                                                    &linedef.properties,
+                                                    i,
+                                                    map,
+                                                    start_vertex.as_vec2(),
+                                                    end_vertex.as_vec2(),
+                                                    i as f32 - 0.5,
+                                                )
+                                            {
                                                 scene.lights.push(light);
                                             }
                                         }
@@ -634,7 +627,6 @@ impl D3Builder {
                 };
 
             let row_indices = vec![(0, 1, 2), (0, 2, 3)];
-
             if let Some(offset) = repeated_offsets.get(&tile.id) {
                 repeated_batches[*offset].add(row_vertices, row_indices, row_uvs);
             } else {

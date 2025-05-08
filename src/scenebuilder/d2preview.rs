@@ -632,20 +632,18 @@ impl D2PreviewBuilder {
 
                             // ---
                             // Check for wall lights
-                            //
-                            // for i in 1..=4 {
-                            //     let light_name = format!("row{}_light", i);
-                            //     if let Some(Value::Light(light)) =
-                            //         linedef.properties.get(&light_name)
-                            //     {
-                            //         let light = light.from_linedef(
-                            //             start_vertex,
-                            //             end_vertex,
-                            //             i as f32 - 0.5,
-                            //         );
-                            //         scene.dynamic_lights.push(light);
-                            //     }
-                            // }
+                            for i in 1..=4 {
+                                if let Some(light) = super::get_linedef_light_from_geo_graph(
+                                    &linedef.properties,
+                                    i,
+                                    map,
+                                    start_vertex,
+                                    end_vertex,
+                                    i as f32 - 0.5,
+                                ) {
+                                    scene.dynamic_lights.push(light);
+                                }
+                            }
                             // --
 
                             let mut selected = false;

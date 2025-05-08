@@ -1,6 +1,6 @@
 use crate::{
-    Batch, LightType, MapMini, Pixel, PrimitiveMode, Ray, RepeatMode, Scene, Texture,
-    pixel_to_vec4, vec4_to_pixel,
+    Batch, LightType, MapMini, Material, MaterialRole, Pixel, PrimitiveMode, Ray, RepeatMode,
+    Scene, Texture, pixel_to_vec4, vec4_to_pixel,
 };
 use crate::{SampleMode, ShapeFXGraph};
 use rayon::prelude::*;
@@ -486,6 +486,12 @@ impl Rasterizer {
                                             }
                                         };
 
+                                        if let Some(material) = &batch.material {
+                                            let mut color = pixel_to_vec4(&texel);
+                                            _ = self.apply_material(material, &mut color);
+                                            texel = vec4_to_pixel(&color);
+                                        }
+
                                         if batch.receives_light
                                             && (!scene.lights.is_empty()
                                                 || !scene.dynamic_lights.is_empty())
@@ -784,17 +790,6 @@ impl Rasterizer {
                                                     }
                                                 }
                                             };
-                                            // Sample the texture
-                                            // let textures = if dynamic {
-                                            //     &scene.dynamic_textures
-                                            // } else {
-                                            //     &scene.textures
-                                            // };
-
-                                            // let textile = &textures[batch.texture_index];
-                                            // let index =
-                                            //     scene.animation_frame % textile.textures.len();
-
                                             // let normal = if !batch.normals.is_empty() {
                                             //     let n0 = batch.clipped_normals[i0];
                                             //     let n1 = batch.clipped_normals[i1];
@@ -843,6 +838,11 @@ impl Rasterizer {
                                             // );
 
                                             let mut color = pixel_to_vec4(&texel);
+                                            let mut _specular_weight = 0.0;
+                                            if let Some(material) = &batch.material {
+                                                _specular_weight =
+                                                    self.apply_material(material, &mut color);
+                                            }
 
                                             // -- Pipeline
 
@@ -1040,30 +1040,43 @@ impl Rasterizer {
         }
     }
 
-    /// Rasterizes a 3D batch.
+    /// Applies a material to the color, called from both 2D and 3D rasterizer
     #[inline(always)]
-    fn _post_process(
-        &self,
-        buffer: &mut [u8],
-        z_buffer: &mut [f32],
-        tile: &TileRect,
-        _scene: &Scene,
-    ) {
-        // let screen_size = Vec2::new(self.width, self.height);
-        for ty in 0..tile.height {
-            for tx in 0..tile.width {
-                // let uv = Vec2::new(
-                //     (tile.x + tx) as f32 / self.width,
-                //     (tile.y + ty) as f32 / self.height,
-                // );
-                let z_idx = ty * tile.width + tx;
-                if z_buffer[z_idx] == 1.0 {
-                    let ray = self.screen_ray((tile.x + tx) as f32, (tile.y + ty) as f32);
-                    let pixel = self._sample_sky_debug(ray.dir);
-                    let idx = (ty * tile.width + tx) * 4;
-                    buffer[idx..idx + 4].copy_from_slice(&pixel);
-                }
+    fn apply_material(&self, material: &Material, color: &mut Vec4<f32>) -> f32 {
+        match material.role {
+            // ───────────────────────────────────────────────────────── Matte
+            // value = 0‥1  (1 = fully matte, 0 = mirror-like)
+            MaterialRole::Matte => 1.0 - material.value,
+
+            // ───────────────────────────────────────────────────────── Glossy
+            // value = 0‥1  (0 = diffuse, 1 = perfect mirror)
+            MaterialRole::Glossy => material.value,
+
+            // ───────────────────────────────────────────────────────── Metallic
+            // value = 0‥1, both gloss and F₀ shift toward white
+            MaterialRole::Metallic => {
+                let m = material.value;
+                *color = Vec4::new(
+                    // F₀ tint
+                    color.x * (1.0 - m) + m,
+                    color.y * (1.0 - m) + m,
+                    color.z * (1.0 - m) + m,
+                    color.w,
+                );
+                m
             }
+
+            // ───────────────────────────────────────────────────────── Emissive
+            // value = brightness multiplier
+            MaterialRole::Emissive => {
+                let e = material.value * 10.0;
+                color.x += color.x * e;
+                color.y += color.y * e;
+                color.z += color.z * e;
+                0.0
+            }
+
+            _ => 0.0,
         }
     }
 

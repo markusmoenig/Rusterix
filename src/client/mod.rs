@@ -324,8 +324,9 @@ impl Client {
         let transform = translation_matrix * scale_matrix;
 
         let mut rast = Rasterizer::setup(Some(transform), Mat4::identity(), Mat4::identity());
+        rast.render_graph = self.global.clone();
+        rast.hour = self.server_time.to_f32();
         rast.mapmini = self.scene_d2.mapmini.clone();
-
         rast.rasterize(&mut self.scene_d2, pixels, width, height, 200);
 
         // Draw Messages

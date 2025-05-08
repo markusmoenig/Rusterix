@@ -562,7 +562,7 @@ impl Batch<[f32; 4]> {
                                 w * uv0[1] + u * uv1[1] + v * uv2[1],
                             );
 
-                            let normal = if !self.normals.is_empty() {
+                            let mut normal = if !self.normals.is_empty() {
                                 let n0 = self.normals[i0];
                                 let n1 = self.normals[i1];
                                 let n2 = self.normals[i2];
@@ -570,6 +570,11 @@ impl Batch<[f32; 4]> {
                             } else {
                                 (p1 - p0).cross(p2 - p0).normalized()
                             };
+
+                            // Make sure normal faces the camera
+                            if normal.dot(ray.dir) > 0.0 {
+                                normal = -normal;
+                            }
 
                             closest = Some(HitInfo {
                                 t,
