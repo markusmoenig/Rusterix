@@ -1019,26 +1019,29 @@ impl Rasterizer {
     /// Applies a material to the color, called from both 2D and 3D rasterizer
     #[inline(always)]
     fn apply_material(&self, material: &Material, color: &mut Vec4<f32>, world: &Vec2<f32>) -> f32 {
+        let value = material.modifier.modify(color, &material.value);
+
         match material.role {
             // value = 0‥1  (1 = fully matte, 0 = mirror-like)
-            MaterialRole::Matte => 1.0 - material.value,
+            MaterialRole::Matte => 1.0 - value,
             // value = 0‥1  (0 = diffuse, 1 = perfect mirror)
-            MaterialRole::Glossy => material.value,
+            MaterialRole::Glossy => value,
             // value = 0‥1, both gloss and F₀ shift toward white
             MaterialRole::Metallic => {
-                let m = material.value;
+                let m = value;
+                let inv_m = 1.0 - m;
                 *color = Vec4::new(
                     // F₀ tint
-                    color.x * (1.0 - m) + m,
-                    color.y * (1.0 - m) + m,
-                    color.z * (1.0 - m) + m,
+                    color.x * inv_m + m,
+                    color.y * inv_m + m,
+                    color.z * inv_m + m,
                     color.w,
                 );
                 m
             }
-            // value = brightness multiplier
+            // value = brightness multiplier with flicker
             MaterialRole::Emissive => {
-                let flicker = material.value;
+                let flicker = material.flicker;
                 let flicker_factor = if flicker > 0.0 {
                     let combined_hash = self
                         .hash_anim
@@ -1049,7 +1052,7 @@ impl Rasterizer {
                     1.0
                 };
 
-                let e = 1.0;
+                let e = value;
                 let base = color.xyz();
                 let len = base.magnitude();
 

@@ -374,7 +374,7 @@ impl Tracer {
         hit: &mut HitInfo,
         batch_type: BatchType,
     ) -> bool {
-        let texel = match batch_type {
+        let mut texel = match batch_type {
             BatchType::Static => {
                 let textile = &scene.textures[batch.texture_index];
                 let index = scene.animation_frame % textile.textures.len();
@@ -406,16 +406,25 @@ impl Tracer {
         };
         let tex_lin = texel.map(srgb_to_linear);
         if let Some(material) = &batch.material {
-            // hit.emissive = Vec3::new(tex_lin.x, tex_lin.y, tex_lin.z);
+            let value = material.modifier.modify(&texel, &material.value);
             match &material.role {
                 MaterialRole::Matte => {
-                    hit.specular_weight = 1.0 - material.value;
+                    hit.specular_weight = 1.0 - value;
                 }
                 MaterialRole::Glossy => {
-                    hit.specular_weight = material.value;
+                    hit.specular_weight = value;
                 }
                 MaterialRole::Metallic => {
-                    hit.specular_weight = material.value;
+                    let m = value;
+                    let inv_m = 1.0 - m;
+                    texel = Vec4::new(
+                        // F₀ tint
+                        texel.x * inv_m + m,
+                        texel.y * inv_m + m,
+                        texel.z * inv_m + m,
+                        texel.w,
+                    );
+                    hit.specular_weight = m;
                 }
                 MaterialRole::Emissive => {
                     hit.emissive = tex_lin.xyz() * material.value * 10.0;

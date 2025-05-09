@@ -3,9 +3,7 @@ pub mod d2material;
 pub mod d2preview;
 pub mod d3builder;
 
-use crate::{
-    CompiledLight, Map, Material, MaterialRole, PixelSource, ShapeFXRole, Value, ValueContainer,
-};
+use crate::{CompiledLight, Map, Material, PixelSource, ShapeFXRole, Value, ValueContainer};
 use vek::{Vec2, Vec3};
 
 /// Gets a material from a geometry graph
@@ -21,13 +19,7 @@ pub fn get_material_from_geo_graph(
             let nodes = graph.collect_nodes_from(0, terminal);
             for node in nodes {
                 if graph.nodes[node as usize].role == ShapeFXRole::Material {
-                    let role = graph.nodes[node as usize].values.get_int_default("role", 0);
-                    let value = graph.nodes[node as usize]
-                        .values
-                        .get_float_default("value", 1.0);
-                    if let Some(material_type) = MaterialRole::from_u8(role as u8) {
-                        return Some(Material::new(material_type, value));
-                    }
+                    return graph.nodes[node as usize].compile_material();
                 }
             }
         }

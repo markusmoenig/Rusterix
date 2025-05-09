@@ -1,6 +1,6 @@
 use crate::{
-    BBox, BLACK, CompiledLight, LightType, Linedef, Map, Pixel, Rasterizer, Ray, Sector,
-    ShapeContext, Terrain, TerrainChunk, ValueContainer,
+    BBox, BLACK, CompiledLight, LightType, Linedef, Map, Material, MaterialModifier, MaterialRole,
+    Pixel, Rasterizer, Ray, Sector, ShapeContext, Terrain, TerrainChunk, ValueContainer,
 };
 use noiselib::prelude::*;
 use std::str::FromStr;
@@ -692,6 +692,24 @@ impl ShapeFX {
         }
     }
 
+    pub fn compile_material(&self) -> Option<Material> {
+        if self.role == ShapeFXRole::Material {
+            let role = self.values.get_int_default("role", 0);
+            let modifier = self.values.get_int_default("modifier", 0);
+            let value = self.values.get_float_default("value", 1.0);
+            let flicker = self.values.get_float_default("flicker", 0.0);
+
+            Some(Material {
+                role: MaterialRole::from_u8(role as u8),
+                modifier: MaterialModifier::from_u8(modifier as u8),
+                value,
+                flicker,
+            })
+        } else {
+            None
+        }
+    }
+
     pub fn compile_light(&self, position: Vec3<f32>) -> Option<CompiledLight> {
         match self.role {
             PointLight => {
@@ -1262,7 +1280,7 @@ impl ShapeFX {
                     vec![
                         "Matte".into(),
                         "Glossy".into(),
-                        "Mettalic".into(),
+                        "Metallic".into(),
                         "Transparent".into(),
                         "Emissive".into(),
                     ],
@@ -1273,6 +1291,26 @@ impl ShapeFX {
                     "Value".into(),
                     "The material value.".into(),
                     self.values.get_float_default("value", 1.0),
+                    0.0..=1.0,
+                ));
+                params.push(ShapeFXParam::Selector(
+                    "modifier".into(),
+                    "Modifier".into(),
+                    "The material modifier (applies value based on color).".into(),
+                    vec![
+                        "None".into(),
+                        "Luminance".into(),
+                        "Saturation".into(),
+                        "Inverse Luminance".into(),
+                        "Inverse Saturation".into(),
+                    ],
+                    self.values.get_int_default("modifier", 0),
+                ));
+                params.push(ShapeFXParam::Float(
+                    "flicker".into(),
+                    "Flicker".into(),
+                    "Flicker for emissive materials.".into(),
+                    self.values.get_float_default("flicker", 0.0),
                     0.0..=1.0,
                 ));
             }

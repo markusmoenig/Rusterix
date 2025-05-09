@@ -112,7 +112,7 @@ pub use crate::{
     shader::{Shader, grid::GridShader, vgradient::VGrayGradientShader},
     shapestack::{
         ShapeStack,
-        material::{Material, MaterialRole},
+        material::{Material, MaterialModifier, MaterialRole},
         shape::{Shape, ShapeType},
         shapecontext::ShapeContext,
         shapefx::{ShapeFX, ShapeFXParam, ShapeFXRole},
