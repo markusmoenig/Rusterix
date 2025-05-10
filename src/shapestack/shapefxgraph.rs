@@ -1,6 +1,6 @@
 use crate::{
-    BBox, Linedef, Map, Pixel, Sector, ShapeContext, ShapeFX, ShapeFXRole, Terrain, TerrainChunk,
-    Texture,
+    Assets, BBox, Linedef, Map, Pixel, Sector, ShapeContext, ShapeFX, ShapeFXRole, Terrain,
+    TerrainChunk, Texture,
 };
 use rayon::prelude::*;
 use theframework::prelude::*;
@@ -39,14 +39,16 @@ impl ShapeFXGraph {
     }
 
     /// Modifies the terrain with the given geometry nodes for the given sector
+    #[allow(clippy::too_many_arguments)]
     pub fn sector_modify_heightmap(
         &self,
         sector: &Sector,
         map: &Map,
         terrain: &Terrain,
         bounds: &BBox,
-        chunk: &TerrainChunk,
+        chunk: &mut TerrainChunk,
         heights: &mut FxHashMap<(i32, i32), f32>,
+        assets: &Assets,
     ) {
         if self.nodes.is_empty() {
             return;
@@ -62,8 +64,16 @@ impl ShapeFXGraph {
             if let Some((next_node, next_terminal)) =
                 self.find_connected_input_node(curr_index, curr_terminal)
             {
-                self.nodes[next_node as usize]
-                    .sector_modify_heightmap(sector, map, terrain, bounds, chunk, heights);
+                self.nodes[next_node as usize].sector_modify_heightmap(
+                    sector,
+                    map,
+                    terrain,
+                    bounds,
+                    chunk,
+                    heights,
+                    (self, next_node as usize),
+                    assets,
+                );
                 curr_index = next_node as usize;
                 curr_terminal = next_terminal as usize;
                 steps += 1;
@@ -74,14 +84,16 @@ impl ShapeFXGraph {
     }
 
     /// Modifies the terrain with the given geometry nodes for the given sector
+    #[allow(clippy::too_many_arguments)]
     pub fn linedef_modify_heightmap(
         &self,
         linedef: &Vec<Linedef>,
         map: &Map,
         terrain: &Terrain,
         bounds: &BBox,
-        chunk: &TerrainChunk,
+        chunk: &mut TerrainChunk,
         heights: &mut FxHashMap<(i32, i32), f32>,
+        assets: &Assets,
     ) {
         if self.nodes.is_empty() {
             return;
@@ -97,8 +109,16 @@ impl ShapeFXGraph {
             if let Some((next_node, next_terminal)) =
                 self.find_connected_input_node(curr_index, curr_terminal)
             {
-                self.nodes[next_node as usize]
-                    .linedef_modify_heightmap(linedef, map, terrain, bounds, chunk, heights);
+                self.nodes[next_node as usize].linedef_modify_heightmap(
+                    linedef,
+                    map,
+                    terrain,
+                    bounds,
+                    chunk,
+                    heights,
+                    (self, next_node as usize),
+                    assets,
+                );
                 curr_index = next_node as usize;
                 curr_terminal = next_terminal as usize;
                 steps += 1;

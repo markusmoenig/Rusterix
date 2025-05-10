@@ -45,6 +45,14 @@ impl Terrain {
             .or_insert_with(|| TerrainChunk::new(Vec2::new(coords.0, coords.1) * self.chunk_size))
     }
 
+    /// Get the unprocessed height at the given world coordinate
+    pub fn get_height_unprocessed(&self, x: i32, y: i32) -> Option<f32> {
+        let chunk_coords = self.get_chunk_coords(x, y);
+        self.chunks
+            .get(&chunk_coords)
+            .and_then(|chunk| chunk.get_height_unprocessed(x, y))
+    }
+
     /// Get height at given cell
     pub fn get_height(&self, x: i32, y: i32) -> f32 {
         let chunk_coords = self.get_chunk_coords(x, y);
@@ -174,7 +182,7 @@ impl Terrain {
     }
 
     /// Computes the bounding box of the heightmap
-    pub fn compute_bounds(&mut self) -> Option<BBox> {
+    pub fn compute_bounds(&self) -> Option<BBox> {
         let mut min = Vec2::new(i32::MAX, i32::MAX);
         let mut max = Vec2::new(i32::MIN, i32::MIN);
 
@@ -392,20 +400,36 @@ impl Terrain {
         //     dirty_coords.len()
         // );
 
-        for coords in dirty_coords {
+        for coords in &dirty_coords {
             let chunk_ptr =
                 self.chunks.get_mut(&(coords.x, coords.y)).unwrap() as *mut TerrainChunk;
 
             unsafe {
                 let chunk = &mut *chunk_ptr;
+
+                let baked = self.bake_chunk(&coords, assets, pixels_per_tile);
+                chunk.baked_texture = Some(baked);
+
                 if !d2_mode {
-                    chunk.rebuild_batch(self, map);
+                    chunk.rebuild_batch(self, map, assets);
+                    chunk.clear_dirty();
                 } else {
                     chunk.rebuild_batch_d2(self);
                 }
-                let baked = self.bake_chunk(&coords, assets, pixels_per_tile);
-                chunk.baked_texture = Some(baked);
-                chunk.clear_dirty();
+            }
+        }
+
+        if !d2_mode {
+            for coords in dirty_coords {
+                let chunk_ptr =
+                    self.chunks.get_mut(&(coords.x, coords.y)).unwrap() as *mut TerrainChunk;
+
+                unsafe {
+                    let chunk = &mut *chunk_ptr;
+
+                    chunk.build_mesh(self);
+                    chunk.clear_dirty();
+                }
             }
         }
     }

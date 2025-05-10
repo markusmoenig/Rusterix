@@ -1,5 +1,5 @@
 use crate::Terrain;
-use crate::{BBox, Batch, Linedef, Map, PixelSource, Texture, Value};
+use crate::{Assets, BBox, Batch, Linedef, Map, PixelSource, Texture, Value};
 use theframework::prelude::*;
 use vek::Vec2;
 
@@ -70,6 +70,12 @@ impl TerrainChunk {
             self.blend_modes.insert((local.x, local.y), mode);
         }
         self.mark_dirty();
+    }
+
+    pub fn get_height_unprocessed(&self, x: i32, y: i32) -> Option<f32> {
+        let world = Vec2::new(x, y);
+        let local = self.world_to_local(world);
+        self.heights.get(&(local.x, local.y)).copied()
     }
 
     pub fn get_height(&self, x: i32, y: i32) -> f32 {
@@ -153,7 +159,7 @@ impl TerrainChunk {
     }
 
     /// Rebuilds the renderable mesh batch for this chunk
-    pub fn rebuild_batch(&mut self, terrain: &Terrain, map: &Map) {
+    pub fn rebuild_batch(&mut self, terrain: &Terrain, map: &Map, assets: &Assets) {
         let mut processed_heights = self.heights.clone();
         // let mut batch: Batch<[f32; 4]> = Batch::emptyd3();
 
@@ -172,6 +178,7 @@ impl TerrainChunk {
                                 &bbox,
                                 self,
                                 &mut processed_heights,
+                                assets,
                             );
                         }
                     }
@@ -202,48 +209,53 @@ impl TerrainChunk {
                         &bbox,
                         self,
                         &mut processed_heights,
+                        assets,
                     );
                 }
             }
         };
 
+        self.processed_heights = Some(processed_heights.clone());
+    }
+
+    pub fn build_mesh(&mut self, terrain: &Terrain) {
         let mut vertices = Vec::new();
         let mut uvs = Vec::new();
         let mut indices = Vec::new();
         let mut vertex_map = FxHashMap::default();
 
-        self.processed_heights = Some(processed_heights.clone());
+        if let Some(processed_heights) = &self.processed_heights {
+            for (&(lx, ly), &_) in processed_heights {
+                let world_pos = self.local_to_world(Vec2::new(lx, ly));
 
-        for (&(lx, ly), &_) in &processed_heights {
-            let world_pos = self.local_to_world(Vec2::new(lx, ly));
+                for (dx, dy) in &[(0, 0), (1, 0), (0, 1), (1, 1)] {
+                    let px = world_pos.x + dx;
+                    let py = world_pos.y + dy;
 
-            for (dx, dy) in &[(0, 0), (1, 0), (0, 1), (1, 1)] {
-                let px = world_pos.x + dx;
-                let py = world_pos.y + dy;
+                    if vertex_map.contains_key(&(px, py)) {
+                        continue;
+                    }
 
-                if vertex_map.contains_key(&(px, py)) {
-                    continue;
+                    let index = vertices.len();
+                    vertex_map.insert((px, py), index);
+
+                    vertices.push([
+                        px as f32 * terrain.scale.x,
+                        terrain.get_height(px, py),
+                        py as f32 * terrain.scale.y,
+                        1.0,
+                    ]);
+                    uvs.push([0.0, 0.0]);
                 }
 
-                let index = vertices.len();
-                vertex_map.insert((px, py), index);
+                let i0 = vertex_map[&(world_pos.x, world_pos.y)];
+                let i1 = vertex_map[&(world_pos.x + 1, world_pos.y)];
+                let i2 = vertex_map[&(world_pos.x, world_pos.y + 1)];
+                let i3 = vertex_map[&(world_pos.x + 1, world_pos.y + 1)];
 
-                vertices.push([
-                    px as f32 * terrain.scale.x,
-                    terrain.get_height(px, py),
-                    py as f32 * terrain.scale.y,
-                    1.0,
-                ]);
-                uvs.push([0.0, 0.0]);
+                indices.push((i0, i2, i1));
+                indices.push((i1, i2, i3));
             }
-
-            let i0 = vertex_map[&(world_pos.x, world_pos.y)];
-            let i1 = vertex_map[&(world_pos.x + 1, world_pos.y)];
-            let i2 = vertex_map[&(world_pos.x, world_pos.y + 1)];
-            let i3 = vertex_map[&(world_pos.x + 1, world_pos.y + 1)];
-
-            indices.push((i0, i2, i1));
-            indices.push((i1, i2, i3));
         }
 
         let mut batch = Batch::new_3d(vertices, indices, uvs);

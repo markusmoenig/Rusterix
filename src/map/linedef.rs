@@ -39,6 +39,28 @@ impl Linedef {
         }
     }
 
+    /// Signed distance from a point to this linedef.
+    /// Negative if the point is on the "front" (normal-facing) side.
+    pub fn signed_distance(&self, map: &Map, point: Vec2<f32>) -> Option<f32> {
+        let v0 = map.get_vertex(self.start_vertex)?;
+        let v1 = map.get_vertex(self.end_vertex)?;
+
+        let edge = v1 - v0;
+        let to_point = point - v0;
+
+        let t = to_point.dot(edge) / edge.dot(edge);
+        let t_clamped = t.clamp(0.0, 1.0);
+        let closest = v0 + edge * t_clamped;
+
+        let dist = (point - closest).magnitude();
+
+        // Use perpendicular normal to define the "front" side
+        let normal = Vec2::new(-edge.y, edge.x).normalized();
+        let side = (point - closest).dot(normal);
+
+        Some(if side < 0.0 { -dist } else { dist })
+    }
+
     /// Calculate the length of the linedef, applying animation states
     pub fn length(&self, map: &Map) -> Option<f32> {
         let start = map.get_vertex(self.start_vertex)?;

@@ -209,9 +209,9 @@ impl D2PreviewBuilder {
                     // }
 
                     let mut material: Option<Material> =
-                        super::get_material_from_geo_graph(&sector.properties, 3, map);
+                        super::get_material_from_geo_graph(&sector.properties, 2, map);
                     if material.is_none() {
-                        material = super::get_material_from_geo_graph(&sector.properties, 4, map);
+                        material = super::get_material_from_geo_graph(&sector.properties, 3, map);
                     }
 
                     // Use the floor or ceiling source

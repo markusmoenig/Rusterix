@@ -474,4 +474,13 @@ impl Texture {
             self.data[idx + 3],
         ]
     }
+
+    /// Sets the pixel at the specified (x, y) position. Clamps to bounds.
+    pub fn set_pixel(&mut self, x: u32, y: u32, color: [u8; 4]) {
+        let x = x.min((self.width - 1) as u32) as usize;
+        let y = y.min((self.height - 1) as u32) as usize;
+        let idx = (y * self.width + x) * 4;
+
+        self.data[idx..idx + 4].copy_from_slice(&color);
+    }
 }
