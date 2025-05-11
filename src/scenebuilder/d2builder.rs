@@ -1,7 +1,7 @@
 // use crate::PrimitiveMode::*;
 
 // use crate::Texture;
-use crate::{Assets, Batch, Map, Scene, Tile, Value, ValueContainer};
+use crate::{Assets, Batch, Map, Scene, Tile, Value};
 use theframework::prelude::*;
 use vek::Vec2;
 
@@ -301,12 +301,17 @@ impl D2Builder {
         map: &mut Map,
         assets: &Assets,
         scene: &mut Scene,
-        _properties: &ValueContainer,
+        modifiers: bool,
     ) {
         map.terrain.clean_d3();
         if map.terrain.count_dirty_chunks() > 0 {
-            map.terrain
-                .build_dirty_chunks(true, assets, &map.geometry_clone(), self.tile_size / 2);
+            map.terrain.build_dirty_chunks(
+                true,
+                assets,
+                &map.geometry_clone(),
+                self.tile_size / 2,
+                modifiers,
+            );
             scene.terrain = Some(map.terrain.clone());
         } else if scene.terrain.is_none() {
             scene.terrain = Some(map.terrain.clone());

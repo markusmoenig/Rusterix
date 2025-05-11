@@ -121,13 +121,13 @@ impl Rusterix {
         }
     }
 
-    pub fn build_terrain(&mut self, map: &mut Map, values: &ValueContainer) {
+    pub fn build_terrain(&mut self, map: &mut Map, modifiers: bool) {
         match self.draw_mode {
             D2 => {
-                self.client.build_terrain_d2(map, &self.assets, values);
+                self.client.build_terrain_d2(map, &self.assets, modifiers);
             }
             D3 => {
-                self.client.build_terrain_d3(map, &self.assets, values);
+                self.client.build_terrain_d3(map, &self.assets, modifiers);
             }
         }
     }
@@ -177,13 +177,13 @@ impl Rusterix {
     }
 
     /// Rebuild the terrain in D2.
-    pub fn build_terrain_d2(&mut self, map: &mut Map, values: &ValueContainer) {
-        self.client.build_terrain_d2(map, &self.assets, values);
+    pub fn build_terrain_d2(&mut self, map: &mut Map, modifiers: bool) {
+        self.client.build_terrain_d2(map, &self.assets, modifiers);
     }
 
     /// Rebuild the terrain in D3.
-    pub fn build_terrain_d3(&mut self, map: &mut Map, values: &ValueContainer) {
-        self.client.build_terrain_d3(map, &self.assets, values);
+    pub fn build_terrain_d3(&mut self, map: &mut Map, modifiers: bool) {
+        self.client.build_terrain_d3(map, &self.assets, modifiers);
     }
 
     /// Draw the client scene.

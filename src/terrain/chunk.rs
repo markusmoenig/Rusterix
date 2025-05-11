@@ -159,7 +159,7 @@ impl TerrainChunk {
     }
 
     /// Rebuilds the renderable mesh batch for this chunk
-    pub fn rebuild_batch(&mut self, terrain: &Terrain, map: &Map, assets: &Assets) {
+    pub fn process_batch_modifiers(&mut self, terrain: &Terrain, map: &Map, assets: &Assets) {
         let mut processed_heights = self.heights.clone();
         // let mut batch: Batch<[f32; 4]> = Batch::emptyd3();
 
@@ -264,8 +264,8 @@ impl TerrainChunk {
         self.dirty = false;
     }
 
-    /// Rebuilds a simple 2D rectangle batch for this chunk
-    pub fn rebuild_batch_d2(&mut self, terrain: &Terrain) {
+    /// Rebuilds a simple 2D rectangle batch mesh for this chunk
+    pub fn build_mesh_d2(&mut self, terrain: &Terrain) {
         let min = self.origin;
         let max = self.origin + Vec2::new(terrain.chunk_size, terrain.chunk_size) - Vec2::new(1, 1);
 

@@ -375,7 +375,7 @@ impl D3Builder {
         map: &mut Map,
         assets: &Assets,
         scene: &mut Scene,
-        _properties: &ValueContainer,
+        modifiers: bool,
     ) {
         map.terrain.clean_d2();
         if map.terrain.count_dirty_chunks() > 0 {
@@ -385,6 +385,7 @@ impl D3Builder {
                 assets,
                 &map.geometry_clone(),
                 self.tile_size / 2,
+                modifiers,
             );
             let _stop = get_time();
             scene.terrain = Some(map.terrain.clone());

@@ -247,9 +247,9 @@ impl Terrain {
         // Checkerboard fallback based on tile position
         let checker = ((x & 1) ^ (y & 1)) == 0;
         if checker {
-            ([40, 40, 40, 255], false)
+            ([135, 135, 135, 255], false)
         } else {
-            ([20, 20, 20, 255], false)
+            ([120, 120, 120, 255], false)
         }
     }
 
@@ -299,9 +299,9 @@ impl Terrain {
             let x = (world_pos.x / self.scale.x).floor() as i32;
             let y = (world_pos.y / self.scale.y).floor() as i32;
             if ((x ^ y) & 1) == 0 {
-                [40, 40, 40, 255]
+                [120, 120, 120, 255]
             } else {
-                [20, 20, 20, 255]
+                [135, 135, 135, 255]
             }
         }
     }
@@ -385,6 +385,7 @@ impl Terrain {
         assets: &Assets,
         map: &Map,
         pixels_per_tile: i32,
+        modifiers: bool,
     ) {
         let mut dirty_coords = Vec::new();
 
@@ -407,14 +408,18 @@ impl Terrain {
             unsafe {
                 let chunk = &mut *chunk_ptr;
 
-                let baked = self.bake_chunk(&coords, assets, pixels_per_tile);
+                let baked = self.bake_chunk(coords, assets, pixels_per_tile);
                 chunk.baked_texture = Some(baked);
 
                 if !d2_mode {
-                    chunk.rebuild_batch(self, map, assets);
-                    chunk.clear_dirty();
+                    if modifiers {
+                        chunk.process_batch_modifiers(self, map, assets);
+                    } else {
+                        chunk.processed_heights = Some(chunk.heights.clone());
+                    }
                 } else {
-                    chunk.rebuild_batch_d2(self);
+                    chunk.build_mesh_d2(self);
+                    chunk.clear_dirty();
                 }
             }
         }

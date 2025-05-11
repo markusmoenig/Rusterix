@@ -572,14 +572,6 @@ impl ShapeFX {
                                 let mut fade = ShapeFX::smoothstep(bevel, 0.0, perpendicular);
 
                                 let cap_fade = {
-                                    let dist_to_start = (world_pos - start_pos).magnitude();
-                                    let dist_to_end = (world_pos - end_pos).magnitude();
-                                    // let cap_range = bevel; // or bevel * 1.5 if you want it softer
-
-                                    // let fade_start =
-                                    //     ShapeFX::smoothstep(cap_range, 0.0, dist_to_start);
-                                    // let fade_end = ShapeFX::smoothstep(cap_range, 0.0, dist_to_end);
-                                    // fade_start.min(fade_end)
                                     let cap_range = bevel * 2.0;
 
                                     let dist_to_start = (world_pos - start_pos).magnitude();
