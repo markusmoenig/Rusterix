@@ -9,7 +9,8 @@ use std::str::FromStr;
 
 use crate::prelude::*;
 use crate::{
-    AccumBuffer, Command, D2PreviewBuilder, EntityAction, Rect, ShapeFXGraph, Tracer, Value,
+    AccumBuffer, BrushPreview, Command, D2PreviewBuilder, EntityAction, Rect, ShapeFXGraph, Tracer,
+    Value,
     client::action::ClientAction,
     client::widget::{
         Widget, game::GameWidget, messages::MessagesWidget, screen::ScreenWidget, text::TextWidget,
@@ -35,7 +36,7 @@ pub struct Client {
     pub animation_frame: usize,
     pub server_time: TheTime,
 
-    pub terrain_hover: Option<Vec3<f32>>,
+    pub brush_preview: Option<BrushPreview>,
 
     /// Global render graph
     pub global: ShapeFXGraph,
@@ -110,7 +111,7 @@ impl Client {
             animation_frame: 0,
             server_time: TheTime::default(),
 
-            terrain_hover: None,
+            brush_preview: None,
 
             global: ShapeFXGraph::default(),
 
@@ -376,7 +377,7 @@ impl Client {
             self.camera_d3
                 .projection_matrix(width as f32, height as f32),
         );
-        rast.terrain_highlight = self.terrain_hover;
+        rast.brush_preview = self.brush_preview.clone();
         rast.render_graph = self.global.clone();
         rast.hour = self.server_time.to_f32();
         rast.mapmini = self.scene_d3.mapmini.clone();

@@ -9,6 +9,13 @@ use vek::{Clamp, Mat3, Mat4, Vec2, Vec3, Vec4};
 use SampleMode::*;
 
 #[derive(Clone, PartialEq)]
+pub struct BrushPreview {
+    pub position: Vec3<f32>,
+    pub radius: f32,
+    pub falloff: f32,
+}
+
+#[derive(Clone, PartialEq)]
 enum BatchType {
     Static,
     Dynamic,
@@ -42,8 +49,8 @@ pub struct Rasterizer {
     /// Ambient color (Sky etc.)
     pub ambient_color: Option<Vec4<f32>>,
 
-    /// Optional terrain highlight
-    pub terrain_highlight: Option<Vec3<f32>>,
+    /// Optional brush preview
+    pub brush_preview: Option<BrushPreview>,
 
     /// 2D Translation / Scaling
     translationd2: Vec2<f32>,
@@ -103,7 +110,7 @@ impl Rasterizer {
             background_color: None,
             ambient_color: None,
 
-            terrain_highlight: None,
+            brush_preview: None,
 
             translationd2,
             scaled2,
@@ -266,7 +273,7 @@ impl Rasterizer {
                 }
 
                 // Call post-processing for missed geometry hits
-                if !self.render_miss.is_empty() {
+                if !self.render_miss.is_empty() || self.brush_preview.is_none() {
                     for ty in 0..tile.height {
                         for tx in 0..tile.width {
                             let uv = Vec2::new(
@@ -287,6 +294,33 @@ impl Rasterizer {
                                         self.hour,
                                     );
                                 }
+
+                                // Brush preview
+                                if let Some(brush_preview) = &self.brush_preview {
+                                    if ray.dir.y.abs() > 1e-5 {
+                                        // Intersect with y=0 plane
+                                        let t = -ray.origin.y / ray.dir.y;
+                                        if t > 0.0 {
+                                            let world = ray.origin + ray.dir * t;
+                                            let dist = (world - brush_preview.position).magnitude();
+                                            if dist < brush_preview.radius {
+                                                let normalized = dist / brush_preview.radius;
+                                                let falloff =
+                                                    brush_preview.falloff.clamp(0.001, 1.0);
+                                                let fade =
+                                                    ((1.0 - normalized) / falloff).clamp(0.0, 1.0);
+
+                                                let blend = 0.2 + 0.6 * fade;
+
+                                                for i in 0..3 {
+                                                    color[i] =
+                                                        (color[i] * (1.0 - blend) + blend).min(1.0);
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
                                 let idx = (ty * tile.width + tx) * 4;
                                 buffer[idx..idx + 4].copy_from_slice(&vec4_to_pixel(&color));
                             }
@@ -768,18 +802,30 @@ impl Rasterizer {
                                                     if let Some(terrain) = &scene.terrain {
                                                         let mut texel =
                                                             terrain.sample_baked(world_2d);
-                                                        if let Some(highlight) =
-                                                            self.terrain_highlight
+                                                        if let Some(brush_preview) =
+                                                            &self.brush_preview
                                                         {
-                                                            let dist =
-                                                                (world - highlight).magnitude();
-                                                            if dist.abs() < 0.5 {
+                                                            let dist = (world
+                                                                - brush_preview.position)
+                                                                .magnitude();
+
+                                                            if dist < brush_preview.radius {
+                                                                let normalized =
+                                                                    dist / brush_preview.radius;
+                                                                let falloff = brush_preview
+                                                                    .falloff
+                                                                    .clamp(0.001, 1.0); // avoid divide-by-zero
+                                                                let fade = ((1.0 - normalized)
+                                                                    / falloff)
+                                                                    .clamp(0.0, 1.0);
+
+                                                                let blend = 0.2 + 0.6 * fade; // blend between 20% and 80% white
+
                                                                 for channel in &mut texel[..3] {
-                                                                    *channel = ((*channel as u16
-                                                                        * 20
-                                                                        + 255 * 80)
-                                                                        / 100)
-                                                                        .min(255)
+                                                                    *channel = ((*channel as f32)
+                                                                        * (1.0 - blend)
+                                                                        + 255.0 * blend)
+                                                                        .min(255.0)
                                                                         as u8;
                                                                 }
                                                             }

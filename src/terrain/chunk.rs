@@ -159,7 +159,13 @@ impl TerrainChunk {
     }
 
     /// Rebuilds the renderable mesh batch for this chunk
-    pub fn process_batch_modifiers(&mut self, terrain: &Terrain, map: &Map, assets: &Assets) {
+    pub fn process_batch_modifiers(
+        &self,
+        terrain: &Terrain,
+        map: &Map,
+        assets: &Assets,
+        baked_texture: &mut Texture,
+    ) -> FxHashMap<(i32, i32), f32> {
         let mut processed_heights = self.heights.clone();
         // let mut batch: Batch<[f32; 4]> = Batch::emptyd3();
 
@@ -179,6 +185,7 @@ impl TerrainChunk {
                                 self,
                                 &mut processed_heights,
                                 assets,
+                                baked_texture,
                             );
                         }
                     }
@@ -210,15 +217,17 @@ impl TerrainChunk {
                         self,
                         &mut processed_heights,
                         assets,
+                        baked_texture,
                     );
                 }
             }
         };
 
-        self.processed_heights = Some(processed_heights.clone());
+        processed_heights
+        //self.processed_heights = Some(processed_heights.clone());
     }
 
-    pub fn build_mesh(&mut self, terrain: &Terrain) {
+    pub fn build_mesh(&self, terrain: &Terrain) -> Batch<[f32; 4]> {
         let mut vertices = Vec::new();
         let mut uvs = Vec::new();
         let mut indices = Vec::new();
@@ -260,12 +269,11 @@ impl TerrainChunk {
 
         let mut batch = Batch::new_3d(vertices, indices, uvs);
         batch.compute_vertex_normals();
-        self.batch = Some(batch);
-        self.dirty = false;
+        batch
     }
 
     /// Rebuilds a simple 2D rectangle batch mesh for this chunk
-    pub fn build_mesh_d2(&mut self, terrain: &Terrain) {
+    pub fn build_mesh_d2(&self, terrain: &Terrain) -> Batch<[f32; 2]> {
         let min = self.origin;
         let max = self.origin + Vec2::new(terrain.chunk_size, terrain.chunk_size) - Vec2::new(1, 1);
 
@@ -281,6 +289,6 @@ impl TerrainChunk {
         let width = max_pos.x - min_pos.x;
         let height = max_pos.y - min_pos.y;
 
-        self.batch_d2 = Some(Batch::from_rectangle(min_pos.x, min_pos.y, width, height));
+        Batch::from_rectangle(min_pos.x, min_pos.y, width, height)
     }
 }

@@ -1,4 +1,6 @@
-use crate::{Assets, BBox, Map, Pixel, PixelSource, Ray, TerrainBlendMode, TerrainChunk, Texture};
+use crate::{
+    Assets, BBox, Batch, Map, Pixel, PixelSource, Ray, TerrainBlendMode, TerrainChunk, Texture,
+};
 use rayon::prelude::*;
 use theframework::prelude::*;
 use vek::Vec2;
@@ -378,6 +380,7 @@ impl Terrain {
         Texture::new(pixels, chunk_tex_width as usize, chunk_tex_height as usize)
     }
 
+    /*
     /// Iterate over all chunks and rebuild if dirty
     pub fn build_dirty_chunks(
         &mut self,
@@ -394,12 +397,6 @@ impl Terrain {
                 dirty_coords.push(Vec2::new(*cx, *cy));
             }
         }
-
-        // println!(
-        //     "chunks: {}, dirty: {}",
-        //     self.chunks.len(),
-        //     dirty_coords.len()
-        // );
 
         for coords in &dirty_coords {
             let chunk_ptr =
@@ -435,6 +432,114 @@ impl Terrain {
                     chunk.build_mesh(self);
                     chunk.clear_dirty();
                 }
+            }
+        }
+    }*/
+
+    pub fn build_dirty_chunks(
+        &mut self,
+        d2_mode: bool,
+        assets: &Assets,
+        map: &Map,
+        pixels_per_tile: i32,
+        modifiers: bool,
+    ) {
+        // First phase
+        // Bake textures and build chunk modifiers
+
+        struct ChunkJob {
+            coords: (i32, i32),
+            baked: Texture,
+            processed_heights: Option<FxHashMap<(i32, i32), f32>>,
+        }
+
+        // Collect dirty coords
+        let dirty: Vec<(i32, i32)> = self
+            .chunks
+            .iter()
+            .filter_map(|(&(cx, cy), c)| if c.dirty { Some((cx, cy)) } else { None })
+            .collect();
+
+        // Build each chunk in parallel
+        let jobs: Vec<ChunkJob> = dirty
+            .par_iter()
+            .map(|&(cx, cy)| {
+                let coords = (cx, cy);
+                let mut baked = self.bake_chunk(&Vec2::new(cx, cy), assets, pixels_per_tile);
+
+                let chunk = &self.chunks[&(cx, cy)];
+                let processed_heights = if modifiers {
+                    Some(chunk.process_batch_modifiers(self, map, assets, &mut baked))
+                } else {
+                    Some(chunk.heights.clone())
+                };
+                /*
+                if !d2_mode {
+                    if modifiers {
+                        let ph = chunk.process_batch_modifiers(self, map, assets, &mut baked);
+                        processed_heights = Some(ph);
+                    } else {
+                        processed_heights = Some(chunk.heights.clone());
+                    }
+                }*/
+
+                ChunkJob {
+                    coords,
+                    baked,
+                    processed_heights,
+                }
+            })
+            .collect();
+
+        // Write the results back
+        for job in jobs {
+            if let Some(chunk) = self.chunks.get_mut(&job.coords) {
+                chunk.baked_texture = Some(job.baked);
+                chunk.processed_heights = job.processed_heights;
+            }
+        }
+
+        // Second Phase
+        // Build the batches
+
+        struct BatchJob {
+            coords: (i32, i32),
+            batch_d2: Option<Batch<[f32; 2]>>,
+            batch: Option<Batch<[f32; 4]>>,
+        }
+
+        // Parallel process batch jobs
+        let mesh_jobs: Vec<BatchJob> = dirty
+            .par_iter()
+            .map(|&(cx, cy)| {
+                let chunk = &self.chunks[&(cx, cy)];
+
+                let mut batch_d2: Option<Batch<[f32; 2]>> = None;
+                let mut batch: Option<Batch<[f32; 4]>> = None;
+
+                if d2_mode {
+                    batch_d2 = Some(chunk.build_mesh_d2(self));
+                } else {
+                    batch = Some(chunk.build_mesh(self));
+                }
+
+                BatchJob {
+                    coords: (cx, cy),
+                    batch_d2,
+                    batch,
+                }
+            })
+            .collect();
+
+        // Write back
+        for job in mesh_jobs {
+            if let Some(chunk) = self.chunks.get_mut(&job.coords) {
+                if d2_mode {
+                    chunk.batch_d2 = job.batch_d2;
+                } else {
+                    chunk.batch = job.batch;
+                }
+                chunk.clear_dirty();
             }
         }
     }

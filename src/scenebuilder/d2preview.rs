@@ -107,7 +107,7 @@ impl D2PreviewBuilder {
         )));
 
         self.textures.push(Tile::from_texture(Texture::from_color([
-            128, 128, 128, 255,
+            200, 200, 200, 255,
         ])));
 
         self.textures

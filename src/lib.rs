@@ -89,7 +89,7 @@ pub use crate::{
         state::AnimationVertexState, state::InterpolationType, state::VertexAnimationSystem,
         state::VertexState, tile::Tile, vertex::Vertex,
     },
-    rasterizer::Rasterizer,
+    rasterizer::{BrushPreview, Rasterizer},
     rect::Rect,
     rusterix::Rusterix,
     scene::Scene,

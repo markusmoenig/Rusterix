@@ -46,9 +46,10 @@ impl ShapeFXGraph {
         map: &Map,
         terrain: &Terrain,
         bounds: &BBox,
-        chunk: &mut TerrainChunk,
+        chunk: &TerrainChunk,
         heights: &mut FxHashMap<(i32, i32), f32>,
         assets: &Assets,
+        texture: &mut Texture,
     ) {
         if self.nodes.is_empty() {
             return;
@@ -73,6 +74,7 @@ impl ShapeFXGraph {
                     heights,
                     (self, next_node as usize),
                     assets,
+                    texture,
                 );
                 curr_index = next_node as usize;
                 curr_terminal = next_terminal as usize;
@@ -91,9 +93,10 @@ impl ShapeFXGraph {
         map: &Map,
         terrain: &Terrain,
         bounds: &BBox,
-        chunk: &mut TerrainChunk,
+        chunk: &TerrainChunk,
         heights: &mut FxHashMap<(i32, i32), f32>,
         assets: &Assets,
+        texture: &mut Texture,
     ) {
         if self.nodes.is_empty() {
             return;
@@ -118,6 +121,7 @@ impl ShapeFXGraph {
                     heights,
                     (self, next_node as usize),
                     assets,
+                    texture,
                 );
                 curr_index = next_node as usize;
                 curr_terminal = next_terminal as usize;
