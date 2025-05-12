@@ -53,6 +53,14 @@ impl BBox {
         self.max += amount * 0.5;
     }
 
+    /// Returns a new bounding box expanded (or shrunk) by a given amount
+    pub fn expanded(&self, amount: Vec2<f32>) -> BBox {
+        BBox {
+            min: self.min - amount * 0.5,
+            max: self.max + amount * 0.5,
+        }
+    }
+
     /// Expands the bounding box to include another bounding box
     pub fn expand_bbox(&mut self, other: BBox) {
         self.min.x = self.min.x.min(other.min.x);

@@ -3,6 +3,10 @@ use crate::{Assets, BBox, Batch, Linedef, Map, PixelSource, Texture, Value};
 use theframework::prelude::*;
 use vek::Vec2;
 
+fn default_size() -> i32 {
+    16
+}
+
 #[derive(Clone, Copy, Serialize, Deserialize, Debug, PartialEq)]
 pub enum TerrainBlendMode {
     None,
@@ -14,6 +18,8 @@ pub enum TerrainBlendMode {
 #[derive(Serialize, Clone, Deserialize, Debug)]
 pub struct TerrainChunk {
     pub origin: Vec2<i32>,
+    #[serde(default = "default_size")]
+    pub size: i32,
     #[serde(with = "vectorize")]
     pub heights: FxHashMap<(i32, i32), f32>,
     #[serde(skip, default)]
@@ -32,9 +38,10 @@ pub struct TerrainChunk {
 }
 
 impl TerrainChunk {
-    pub fn new(origin: Vec2<i32>) -> Self {
+    pub fn new(origin: Vec2<i32>, size: i32) -> Self {
         Self {
             origin,
+            size,
             heights: FxHashMap::default(),
             processed_heights: None,
             sources: FxHashMap::default(),
@@ -132,23 +139,10 @@ impl TerrainChunk {
     }
 
     /// Returns the bounds in world coordinates
-    pub fn bounds(&self) -> Option<BBox> {
-        if self.heights.is_empty() {
-            return None;
-        }
-
-        let mut min = Vec2::new(f32::MAX, f32::MAX);
-        let mut max = Vec2::new(f32::MIN, f32::MIN);
-
-        for &(x, y) in self.heights.keys() {
-            let world = self.local_to_world(Vec2::new(x, y)).map(|v| v as f32);
-            min.x = min.x.min(world.x);
-            min.y = min.y.min(world.y);
-            max.x = max.x.max(world.x);
-            max.y = max.y.max(world.y);
-        }
-
-        Some(BBox::new(min, max))
+    pub fn bounds(&self) -> BBox {
+        let origin_f = self.origin.map(|v| v as f32);
+        let size_f = Vec2::broadcast(self.size as f32);
+        BBox::from_pos_size(origin_f, size_f)
     }
 
     /// Returns true if the height exists at (x, y) in this chunk
@@ -169,59 +163,59 @@ impl TerrainChunk {
         let mut processed_heights = self.heights.clone();
         // let mut batch: Batch<[f32; 4]> = Batch::emptyd3();
 
-        if let Some(bbox) = self.bounds() {
-            // let chunk_map = map.extract_chunk_geometry(bbox);
-            for sector in &map.sectors {
-                if bbox.intersects(&sector.bounding_box(map)) {
-                    if let Some(Value::Source(PixelSource::ShapeFXGraphId(graph_id))) =
-                        sector.properties.get("region_graph")
-                    {
-                        if let Some(graph) = map.shapefx_graphs.get(graph_id) {
-                            graph.sector_modify_heightmap(
-                                sector,
-                                map,
-                                terrain,
-                                &bbox,
-                                self,
-                                &mut processed_heights,
-                                assets,
-                                baked_texture,
-                            );
-                        }
+        let bbox = self.bounds();
+
+        // let chunk_map = map.extract_chunk_geometry(bbox);
+        for sector in &map.sectors {
+            if bbox.intersects(&sector.bounding_box(map)) {
+                if let Some(Value::Source(PixelSource::ShapeFXGraphId(graph_id))) =
+                    sector.properties.get("region_graph")
+                {
+                    if let Some(graph) = map.shapefx_graphs.get(graph_id) {
+                        graph.sector_modify_heightmap(
+                            sector,
+                            map,
+                            terrain,
+                            &bbox,
+                            self,
+                            &mut processed_heights,
+                            assets,
+                            baked_texture,
+                        );
                     }
                 }
             }
+        }
 
-            // Group all linedefs with the same graph
-            let mut linedef_groups: FxHashMap<Uuid, Vec<Linedef>> = FxHashMap::default();
-            for linedef in &map.linedefs {
-                if bbox.intersects(&linedef.bounding_box(map)) {
-                    if let Some(Value::Source(PixelSource::ShapeFXGraphId(graph_id))) =
-                        linedef.properties.get("region_graph")
-                    {
-                        linedef_groups
-                            .entry(*graph_id)
-                            .or_default()
-                            .push(linedef.clone());
-                    }
+        // Group all linedefs with the same graph
+        let mut linedef_groups: FxHashMap<Uuid, Vec<Linedef>> = FxHashMap::default();
+        for linedef in &map.linedefs {
+            if bbox.intersects(&linedef.bounding_box(map)) {
+                if let Some(Value::Source(PixelSource::ShapeFXGraphId(graph_id))) =
+                    linedef.properties.get("region_graph")
+                {
+                    linedef_groups
+                        .entry(*graph_id)
+                        .or_default()
+                        .push(linedef.clone());
                 }
             }
+        }
 
-            for (graph_id, linedefs) in linedef_groups {
-                if let Some(graph) = map.shapefx_graphs.get(&graph_id) {
-                    graph.linedef_modify_heightmap(
-                        &linedefs,
-                        map,
-                        terrain,
-                        &bbox,
-                        self,
-                        &mut processed_heights,
-                        assets,
-                        baked_texture,
-                    );
-                }
+        for (graph_id, linedefs) in linedef_groups {
+            if let Some(graph) = map.shapefx_graphs.get(&graph_id) {
+                graph.linedef_modify_heightmap(
+                    &linedefs,
+                    map,
+                    terrain,
+                    &bbox,
+                    self,
+                    &mut processed_heights,
+                    assets,
+                    baked_texture,
+                );
             }
-        };
+        }
 
         processed_heights
         //self.processed_heights = Some(processed_heights.clone());

@@ -42,9 +42,12 @@ impl Terrain {
     /// Gets the chunk at the given coords (or create it)
     fn get_or_create_chunk(&mut self, x: i32, y: i32) -> &mut TerrainChunk {
         let coords = self.get_chunk_coords(x, y);
-        self.chunks
-            .entry(coords)
-            .or_insert_with(|| TerrainChunk::new(Vec2::new(coords.0, coords.1) * self.chunk_size))
+        self.chunks.entry(coords).or_insert_with(|| {
+            TerrainChunk::new(
+                Vec2::new(coords.0, coords.1) * self.chunk_size,
+                self.chunk_size,
+            )
+        })
     }
 
     /// Get the unprocessed height at the given world coordinate
@@ -472,15 +475,6 @@ impl Terrain {
                 } else {
                     Some(chunk.heights.clone())
                 };
-                /*
-                if !d2_mode {
-                    if modifiers {
-                        let ph = chunk.process_batch_modifiers(self, map, assets, &mut baked);
-                        processed_heights = Some(ph);
-                    } else {
-                        processed_heights = Some(chunk.heights.clone());
-                    }
-                }*/
 
                 ChunkJob {
                     coords,

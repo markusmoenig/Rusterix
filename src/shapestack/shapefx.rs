@@ -474,13 +474,51 @@ impl ShapeFX {
             return;
         }
 
+        #[derive(Debug, Clone)]
+        struct SegmentInfo {
+            start: Vec2<f32>,
+            end: Vec2<f32>,
+            dir: Vec2<f32>,
+            height_start: f32,
+            height_end: f32,
+            shape_id: u32,
+        }
+
+        fn point_to_line_segment(p: Vec2<f32>, a: Vec2<f32>, b: Vec2<f32>) -> (f32, f32) {
+            let ab = b - a;
+            let ap = p - a;
+            let t = ap.dot(ab) / ab.dot(ab);
+            let t_clamped = t.clamp(0.0, 1.0);
+            let closest = a + ab * t_clamped;
+            let distance = (p - closest).magnitude();
+            (distance, t_clamped)
+        }
+
+        fn closest_segment(
+            p: Vec2<f32>,
+            segments: &[SegmentInfo],
+        ) -> Option<(f32, f32, &SegmentInfo)> {
+            let mut best: Option<(f32, f32, &SegmentInfo)> = None;
+
+            for seg in segments {
+                let (dist, t) = point_to_line_segment(p, seg.start, seg.end);
+                if best
+                    .map(|(best_dist, _, _)| dist < best_dist)
+                    .unwrap_or(true)
+                {
+                    best = Some((dist, t, seg));
+                }
+            }
+
+            best
+        }
+
         let shapefx_nodes = graph_node.0.collect_nodes_from(graph_node.1, 1);
         let bevel = self.values.get_float_default("bevel", 0.5);
-        let mut expanded_bbox = *bbox;
-        expanded_bbox.expand(Vec2::broadcast(bevel * 4.0));
-
         let mut written_blends = FxHashMap::<(i32, i32), f32>::default();
 
+        // 1. Collect all segments
+        let mut segments = Vec::new();
         for linedef in linedefs {
             let Some(start) = map.vertices.iter().find(|v| v.id == linedef.start_vertex) else {
                 continue;
@@ -493,144 +531,122 @@ impl ShapeFX {
             let end_pos = end.as_vec2();
             let height_start = start.properties.get_float_default("height", 0.0);
             let height_end = end.properties.get_float_default("height", 0.0);
+            let dir = (end_pos - start_pos).normalized();
 
-            let edge = end_pos - start_pos;
-            let dir = edge.normalized();
-            let len = edge.magnitude();
-            let normal = Vec2::new(-dir.y, dir.x);
+            segments.push(SegmentInfo {
+                start: start_pos,
+                end: end_pos,
+                dir,
+                height_start,
+                height_end,
+                shape_id: linedef.id,
+            });
+        }
 
-            let steps = (len.ceil() as i32).max(1);
-            for i in 0..=steps {
-                let t = (i as f32 / steps as f32).min(1.0);
-                let line_point = Vec2::lerp(start_pos, end_pos, t);
-                let height = height_start * (1.0 - t) + height_end * t;
+        // 2. Iterate all tiles within expanded bbox
+        let min = bbox.min - bevel * terrain.scale;
+        let max = bbox.max + bevel * terrain.scale;
+        let tile_min = (min / terrain.scale).floor().as_::<i32>();
+        let tile_max = (max / terrain.scale).ceil().as_::<i32>();
 
-                let side_steps = ((bevel * 2.0).ceil() as i32).max(1);
-                for s in -side_steps..=side_steps {
-                    let offset = normal * (s as f32 * (bevel / side_steps as f32));
-                    let pos = line_point + offset;
+        let pixels_per_tile = texture.width as i32 / terrain.chunk_size;
 
-                    if !expanded_bbox.contains(pos) {
-                        continue;
-                    }
+        for ty in tile_min.y..tile_max.y {
+            for tx in tile_min.x..tile_max.x {
+                let tile_center = Vec2::new(
+                    (tx as f32 + 0.5) * terrain.scale.x,
+                    (ty as f32 + 0.5) * terrain.scale.y,
+                );
 
-                    let tile_x = (pos.x / terrain.scale.x).floor() as i32;
-                    let tile_y = (pos.y / terrain.scale.y).floor() as i32;
-                    let world_tile = Vec2::new(tile_x, tile_y);
-                    let local = chunk.world_to_local(world_tile);
+                let Some((dist, t, seg)) = closest_segment(tile_center, &segments) else {
+                    continue;
+                };
 
-                    let dist = offset.magnitude();
-                    let blend = ShapeFX::smoothstep(0.0, bevel, bevel - dist);
-                    let key = (local.x, local.y);
+                if dist > bevel {
+                    continue;
+                }
 
-                    if let Some(&existing_blend) = written_blends.get(&key) {
-                        if blend <= existing_blend {
+                let height = seg.height_start * (1.0 - t) + seg.height_end * t;
+                let blend = ShapeFX::smoothstep(0.0, bevel, bevel - dist);
+
+                let world_tile = Vec2::new(tx, ty);
+                let local = chunk.world_to_local(world_tile);
+                let key = (local.x, local.y);
+
+                let original = terrain
+                    .get_height_unprocessed(world_tile.x, world_tile.y)
+                    .unwrap_or(height);
+                let new_height = original * (1.0 - blend) + height * blend;
+                heights.insert(key, new_height);
+
+                for dy in 0..pixels_per_tile {
+                    for dx in 0..pixels_per_tile {
+                        let pixel_local_x = local.x * pixels_per_tile + dx;
+                        let pixel_local_y = local.y * pixels_per_tile + dy;
+
+                        let uv_in_tile = Vec2::new(
+                            (dx as f32 + 0.5) / pixels_per_tile as f32,
+                            (dy as f32 + 0.5) / pixels_per_tile as f32,
+                        );
+
+                        let world_pos = Vec2::new(
+                            (tx as f32 + uv_in_tile.x) * terrain.scale.x,
+                            (ty as f32 + uv_in_tile.y) * terrain.scale.y,
+                        );
+
+                        let Some((perpendicular, t_px, seg)) =
+                            closest_segment(world_pos, &segments)
+                        else {
+                            continue;
+                        };
+
+                        let fade = ShapeFX::smoothstep(bevel, 0.0, perpendicular);
+                        if fade <= 0.01 {
                             continue;
                         }
-                    }
-                    written_blends.insert(key, blend);
 
-                    let original = terrain
-                        .get_height_unprocessed(world_tile.x, world_tile.y)
-                        .unwrap_or(height);
-
-                    let new_height = original * (1.0 - blend) + height * blend;
-                    heights.insert(key, new_height);
-
-                    let pixels_per_tile = texture.width as i32 / terrain.chunk_size;
-
-                    if local.x < 0 || local.y < 0 {
-                        continue;
-                    }
-                    if (local.x + 1) * pixels_per_tile > texture.width as i32
-                        || (local.y + 1) * pixels_per_tile > texture.height as i32
-                    {
-                        continue;
-                    }
-
-                    for dy in 0..pixels_per_tile {
-                        for dx in 0..pixels_per_tile {
-                            let pixel_local_x = local.x * pixels_per_tile + dx;
-                            let pixel_local_y = local.y * pixels_per_tile + dy;
-
-                            let uv_in_tile = Vec2::new(
-                                (dx as f32 + 0.5) / pixels_per_tile as f32,
-                                (dy as f32 + 0.5) / pixels_per_tile as f32,
-                            );
-
-                            let world_pos = Vec2::new(
-                                (tile_x as f32 + uv_in_tile.x) * terrain.scale.x,
-                                (tile_y as f32 + uv_in_tile.y) * terrain.scale.y,
-                            );
-
-                            let perpendicular = (world_pos - line_point).dot(normal).abs();
-                            let mut fade = ShapeFX::smoothstep(bevel, 0.0, perpendicular);
-
-                            let cap_fade = {
-                                let cap_range = bevel * 2.0;
-
-                                let dist_to_start = (world_pos - start_pos).magnitude();
-                                let dist_to_end = (world_pos - end_pos).magnitude();
-
-                                // Use `smoothstep` to fade in at start and out at end
-                                let cap_fade_start =
-                                    ShapeFX::smoothstep(0.0, cap_range, dist_to_start);
-                                let cap_fade_end = ShapeFX::smoothstep(0.0, cap_range, dist_to_end);
-
-                                // Keep max of the two — i.e., full fade except near caps
-                                cap_fade_start.min(cap_fade_end)
-                            };
-
-                            fade *= cap_fade;
-
-                            if fade <= 0.01 {
+                        let pixel_key = (pixel_local_x, pixel_local_y);
+                        if let Some(&existing_fade) = written_blends.get(&pixel_key) {
+                            if fade <= existing_fade {
                                 continue;
                             }
+                        }
+                        written_blends.insert(pixel_key, fade);
 
-                            let line_t = (world_pos - start_pos).dot(edge) / edge.dot(edge);
-                            if !(0.0..=1.0).contains(&line_t) {
-                                continue;
-                            }
+                        let uv = Vec2::new(t_px, 0.5);
+                        let px = terrain.scale.x.max(terrain.scale.y);
 
-                            let uv = Vec2::new(line_t, 0.5);
-                            let px = terrain.scale.x.max(terrain.scale.y);
+                        let ctx = ShapeContext {
+                            point_world: world_pos,
+                            point: Vec2::new(pixel_local_x as f32, pixel_local_y as f32),
+                            uv,
+                            distance_world: perpendicular,
+                            distance: perpendicular / px,
+                            shape_id: seg.shape_id,
+                            px,
+                            anti_aliasing: 1.0,
+                            t: Some(t_px),
+                            line_dir: Some(seg.dir),
+                        };
 
-                            let ctx = ShapeContext {
-                                point_world: world_pos,
-                                point: Vec2::new(pixel_local_x as f32, pixel_local_y as f32),
-                                uv,
-                                distance_world: perpendicular,
-                                distance: perpendicular / px,
-                                shape_id: linedef.id,
-                                px,
-                                anti_aliasing: 1.0,
-                                t: Some(line_t),
-                                line_dir: Some(dir),
-                            };
+                        let mut pixel_color: Option<Vec4<f32>> = None;
+                        for node in &shapefx_nodes {
+                            pixel_color = graph_node.0.nodes[*node as usize]
+                                .evaluate_pixel(&ctx, pixel_color, &assets.palette)
+                                .or(pixel_color);
+                        }
 
-                            let mut pixel_color: Option<Vec4<f32>> = None;
-                            for node in &shapefx_nodes {
-                                pixel_color = graph_node.0.nodes[*node as usize]
-                                    .evaluate_pixel(&ctx, pixel_color, &assets.palette)
-                                    .or(pixel_color);
-                            }
+                        if let Some(color) = pixel_color {
+                            let rgb = color.map(|v| v * fade);
+                            let faded_color = Vec4::new(rgb.x, rgb.y, rgb.z, 1.0);
+                            let existing =
+                                texture.get_pixel(pixel_local_x as u32, pixel_local_y as u32);
+                            let existing_color = pixel_to_vec4(&existing);
+                            let blended = existing_color * (1.0 - fade) + faded_color * fade;
 
-                            if let Some(color) = pixel_color {
-                                let rgb = color.map(|v| v * fade);
-                                let faded_color = Vec4::new(rgb.x, rgb.y, rgb.z, 1.0);
-                                let existing =
-                                    texture.get_pixel(pixel_local_x as u32, pixel_local_y as u32);
-                                let existing_color = pixel_to_vec4(&existing);
-                                let blended = existing_color * (1.0 - fade) + faded_color * fade;
-
-                                let mut pixel = vec4_to_pixel(&blended);
-                                pixel[3] = 255;
-                                texture.set_pixel(
-                                    pixel_local_x as u32,
-                                    pixel_local_y as u32,
-                                    pixel,
-                                );
-                            }
+                            let mut pixel = vec4_to_pixel(&blended);
+                            pixel[3] = 255;
+                            texture.set_pixel(pixel_local_x as u32, pixel_local_y as u32, pixel);
                         }
                     }
                 }
