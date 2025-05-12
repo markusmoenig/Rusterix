@@ -64,6 +64,10 @@ pub struct Rasterizer {
     render_hit: Vec<u16>,
     render_miss: Vec<u16>,
 
+    /// Indicates to render terrain in 2D. As terrain has both 2D and 3D meshes rendered by the engine
+    /// We need to make sure to render only the right one.
+    pub render_terrain_in_d2: bool,
+
     pub hour: f32,
 }
 
@@ -120,6 +124,9 @@ impl Rasterizer {
             render_graph: ShapeFXGraph::default(),
             render_hit: vec![],
             render_miss: vec![],
+
+            render_terrain_in_d2: false,
+
             hour: 12.0,
         }
     }
@@ -257,17 +264,19 @@ impl Rasterizer {
                     );
                 }
 
-                if let Some(terrain) = &scene.terrain {
-                    for chunk in terrain.chunks.iter() {
-                        if let Some(batch) = &chunk.1.batch {
-                            self.d3_rasterize(
-                                &mut buffer,
-                                &mut z_buffer,
-                                tile,
-                                batch,
-                                scene,
-                                BatchType::Terrain,
-                            );
+                if !self.render_terrain_in_d2 {
+                    if let Some(terrain) = &scene.terrain {
+                        for chunk in terrain.chunks.iter() {
+                            if let Some(batch) = &chunk.1.batch {
+                                self.d3_rasterize(
+                                    &mut buffer,
+                                    &mut z_buffer,
+                                    tile,
+                                    batch,
+                                    scene,
+                                    BatchType::Terrain,
+                                );
+                            }
                         }
                     }
                 }
@@ -331,10 +340,18 @@ impl Rasterizer {
                 // 2D Pipeline
 
                 // Terrain in the background
-                if let Some(terrain) = &scene.terrain {
-                    for chunk in terrain.chunks.iter() {
-                        if let Some(batch) = &chunk.1.batch_d2 {
-                            self.d2_rasterize(&mut buffer, tile, batch, scene, BatchType::Terrain);
+                if self.render_terrain_in_d2 {
+                    if let Some(terrain) = &scene.terrain {
+                        for chunk in terrain.chunks.iter() {
+                            if let Some(batch) = &chunk.1.batch_d2 {
+                                self.d2_rasterize(
+                                    &mut buffer,
+                                    tile,
+                                    batch,
+                                    scene,
+                                    BatchType::Terrain,
+                                );
+                            }
                         }
                     }
                 }

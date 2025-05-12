@@ -328,6 +328,7 @@ impl Client {
         rast.render_graph = self.global.clone();
         rast.hour = self.server_time.to_f32();
         rast.mapmini = self.scene_d2.mapmini.clone();
+        rast.render_terrain_in_d2 = true;
         rast.rasterize(&mut self.scene_d2, pixels, width, height, 200);
 
         // Draw Messages
@@ -381,6 +382,7 @@ impl Client {
         rast.render_graph = self.global.clone();
         rast.hour = self.server_time.to_f32();
         rast.mapmini = self.scene_d3.mapmini.clone();
+        rast.render_terrain_in_d2 = false;
         rast.rasterize(&mut self.scene_d3, pixels, width, height, 64);
     }
 

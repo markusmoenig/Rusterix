@@ -438,7 +438,6 @@ impl Terrain {
 
     pub fn build_dirty_chunks(
         &mut self,
-        d2_mode: bool,
         assets: &Assets,
         map: &Map,
         pixels_per_tile: i32,
@@ -513,20 +512,10 @@ impl Terrain {
             .par_iter()
             .map(|&(cx, cy)| {
                 let chunk = &self.chunks[&(cx, cy)];
-
-                let mut batch_d2: Option<Batch<[f32; 2]>> = None;
-                let mut batch: Option<Batch<[f32; 4]>> = None;
-
-                if d2_mode {
-                    batch_d2 = Some(chunk.build_mesh_d2(self));
-                } else {
-                    batch = Some(chunk.build_mesh(self));
-                }
-
                 BatchJob {
                     coords: (cx, cy),
-                    batch_d2,
-                    batch,
+                    batch_d2: Some(chunk.build_mesh_d2(self)),
+                    batch: Some(chunk.build_mesh(self)),
                 }
             })
             .collect();
@@ -534,11 +523,8 @@ impl Terrain {
         // Write back
         for job in mesh_jobs {
             if let Some(chunk) = self.chunks.get_mut(&job.coords) {
-                if d2_mode {
-                    chunk.batch_d2 = job.batch_d2;
-                } else {
-                    chunk.batch = job.batch;
-                }
+                chunk.batch_d2 = job.batch_d2;
+                chunk.batch = job.batch;
                 chunk.clear_dirty();
             }
         }

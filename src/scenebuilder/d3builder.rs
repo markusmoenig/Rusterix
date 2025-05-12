@@ -381,7 +381,6 @@ impl D3Builder {
         if map.terrain.count_dirty_chunks() > 0 {
             let _start = get_time();
             map.terrain.build_dirty_chunks(
-                false,
                 assets,
                 &map.geometry_clone(),
                 self.tile_size / 2,
