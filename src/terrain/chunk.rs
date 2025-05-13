@@ -167,7 +167,7 @@ impl TerrainChunk {
 
         // let chunk_map = map.extract_chunk_geometry(bbox);
         for sector in &map.sectors {
-            if bbox.intersects(&sector.bounding_box(map)) {
+            if bbox.intersects(&sector.bounding_box(map).expanded(Vec2::broadcast(2.0))) {
                 if let Some(Value::Source(PixelSource::ShapeFXGraphId(graph_id))) =
                     sector.properties.get("region_graph")
                 {
@@ -190,7 +190,7 @@ impl TerrainChunk {
         // Group all linedefs with the same graph
         let mut linedef_groups: FxHashMap<Uuid, Vec<Linedef>> = FxHashMap::default();
         for linedef in &map.linedefs {
-            if bbox.intersects(&linedef.bounding_box(map)) {
+            if bbox.intersects(&linedef.bounding_box(map).expanded(Vec2::broadcast(2.0))) {
                 if let Some(Value::Source(PixelSource::ShapeFXGraphId(graph_id))) =
                     linedef.properties.get("region_graph")
                 {

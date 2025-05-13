@@ -387,7 +387,6 @@ impl Terrain {
     /// Iterate over all chunks and rebuild if dirty
     pub fn build_dirty_chunks(
         &mut self,
-        d2_mode: bool,
         assets: &Assets,
         map: &Map,
         pixels_per_tile: i32,
@@ -408,33 +407,28 @@ impl Terrain {
             unsafe {
                 let chunk = &mut *chunk_ptr;
 
-                let baked = self.bake_chunk(coords, assets, pixels_per_tile);
-                chunk.baked_texture = Some(baked);
+                let mut baked = self.bake_chunk(coords, assets, pixels_per_tile);
 
-                if !d2_mode {
-                    if modifiers {
-                        chunk.process_batch_modifiers(self, map, assets);
-                    } else {
-                        chunk.processed_heights = Some(chunk.heights.clone());
-                    }
+                if modifiers {
+                    chunk.process_batch_modifiers(self, map, assets, &mut baked);
                 } else {
-                    chunk.build_mesh_d2(self);
-                    chunk.clear_dirty();
+                    chunk.processed_heights = Some(chunk.heights.clone());
                 }
+                chunk.baked_texture = Some(baked);
+                // chunk.clear_dirty();
             }
         }
 
-        if !d2_mode {
-            for coords in dirty_coords {
-                let chunk_ptr =
-                    self.chunks.get_mut(&(coords.x, coords.y)).unwrap() as *mut TerrainChunk;
+        for coords in dirty_coords {
+            let chunk_ptr =
+                self.chunks.get_mut(&(coords.x, coords.y)).unwrap() as *mut TerrainChunk;
 
-                unsafe {
-                    let chunk = &mut *chunk_ptr;
+            unsafe {
+                let chunk = &mut *chunk_ptr;
 
-                    chunk.build_mesh(self);
-                    chunk.clear_dirty();
-                }
+                chunk.batch = Some(chunk.build_mesh(self));
+                chunk.batch_d2 = Some(chunk.build_mesh_d2(self));
+                chunk.clear_dirty();
             }
         }
     }*/

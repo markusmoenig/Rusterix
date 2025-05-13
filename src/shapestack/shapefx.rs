@@ -227,7 +227,7 @@ impl ShapeFX {
                 vec![
                     TheNodeTerminal {
                         name: "modifier".into(),
-                        category_name: "modifier".into(),
+                        category_name: "Modifier".into(),
                     },
                     TheNodeTerminal {
                         name: "row1".into(),
@@ -332,8 +332,10 @@ impl ShapeFX {
                 let shapefx_nodes = graph_node.0.collect_nodes_from(graph_node.1, 1);
 
                 let bevel = self.values.get_float_default("bevel", 0.5);
+                let fade_distance = self.values.get_float_default("fade_distance", 0.5);
                 let floor_height = sector.properties.get_float_default("floor_height", 0.0);
-
+                let noise_strength = self.values.get_float_default("fade_noise", 0.0);
+                let uv_scale = self.values.get_float_default("uv_scale", 1.0);
                 let mut expanded_bbox = *bbox;
                 expanded_bbox.expand(Vec2::broadcast(bevel));
 
@@ -370,6 +372,21 @@ impl ShapeFX {
                             let pixels_per_tile = texture.width as i32 / terrain.chunk_size;
 
                             for dy in 0..pixels_per_tile {
+                                if local.x < 0 || local.y < 0 {
+                                    continue;
+                                }
+                                let max_x = texture.width as i32;
+                                let max_y = texture.height as i32;
+                                let pixel_base_x = local.x * pixels_per_tile;
+                                let pixel_base_y = local.y * pixels_per_tile;
+
+                                if pixel_base_x < 0
+                                    || pixel_base_y < 0
+                                    || pixel_base_x + pixels_per_tile > max_x
+                                    || pixel_base_y + pixels_per_tile > max_y
+                                {
+                                    continue;
+                                }
                                 for dx in 0..pixels_per_tile {
                                     let pixel_local_x = local.x * pixels_per_tile + dx;
                                     let pixel_local_y = local.y * pixels_per_tile + dy;
@@ -385,16 +402,23 @@ impl ShapeFX {
                                         (y as f32 + uv_in_tile.y) * terrain.scale.y,
                                     );
 
-                                    let Some(sd_pixel) = sector.signed_distance(map, world_pos)
+                                    let Some(mut sd_pixel) = sector.signed_distance(map, world_pos)
                                     else {
                                         continue;
                                     };
+
+                                    if noise_strength > 0.0 {
+                                        let noise =
+                                            self.noise2d(&world_pos, Vec2::broadcast(0.5), 2);
+                                        sd_pixel += ((noise * 2.0 - 1.0) * noise_strength) / 10.0;
+                                    }
 
                                     // if sd_pixel >= bevel {
                                     //     continue;
                                     // }
 
-                                    let uv = (world_pos - bounds.min) / (bounds.max - bounds.min);
+                                    let uv = ((world_pos - bounds.min) / (bounds.max - bounds.min))
+                                        * uv_scale;
                                     let px = terrain.scale.x.max(terrain.scale.y);
 
                                     let ctx = ShapeContext {
@@ -420,24 +444,37 @@ impl ShapeFX {
                                             .or(pixel_color);
                                     }
 
-                                    if let Some(color) = pixel_color {
-                                        let fade_range = bevel * 2.0;
+                                    if let Some(mut color) = pixel_color {
+                                        // let fade_range = bevel * 2.0;
                                         // let fade =
                                         //     ShapeFX::smoothstep(fade_range, 0.0, sd_pixel);
 
-                                        let linear = 1.0 - (sd_pixel / fade_range).clamp(0.0, 1.0);
-                                        let fade = linear * linear;
+                                        // let linear = 1.0 - (sd_pixel / fade_range).clamp(0.0, 1.0);
+                                        // let fade = linear * linear;
+                                        let half_bevel = bevel * 0.5;
+                                        let core_half = (half_bevel - fade_distance).max(0.0);
 
-                                        //
+                                        let fade = if sd_pixel <= core_half {
+                                            1.0
+                                        } else if sd_pixel <= core_half + fade_distance {
+                                            let fade_t = (sd_pixel - core_half) / fade_distance;
+                                            //1.0 - fade_t // linear
+                                            1.0 - fade_t * fade_t * (3.0 - 2.0 * fade_t) // smoothstep
+                                        } else {
+                                            0.0
+                                        };
 
-                                        let rgb = color.map(|v| v * fade);
-                                        let faded_color = Vec4::new(rgb.x, rgb.y, rgb.z, 1.0);
-
+                                        if color.w < 0.99 {
+                                            color *= fade;
+                                        } else {
+                                            color *= fade;
+                                            color.w = fade;
+                                        }
                                         let existing = texture
                                             .get_pixel(pixel_local_x as u32, pixel_local_y as u32);
                                         let existing_color = pixel_to_vec4(&existing);
-                                        let blended =
-                                            existing_color * (1.0 - fade) + faded_color * fade;
+                                        let blended = existing_color * (1.0 - fade) + color;
+
                                         let mut pixel = vec4_to_pixel(&blended);
                                         pixel[3] = 255;
                                         texture.set_pixel(
@@ -515,6 +552,9 @@ impl ShapeFX {
 
         let shapefx_nodes = graph_node.0.collect_nodes_from(graph_node.1, 1);
         let bevel = self.values.get_float_default("bevel", 0.5);
+        let fade_distance = self.values.get_float_default("fade_distance", 0.5);
+        let noise_strength = self.values.get_float_default("fade_noise", 0.0);
+        let uv_scale = self.values.get_float_default("uv_scale", 1.0);
         let mut written_blends = FxHashMap::<(i32, i32), f32>::default();
 
         // 1. Collect all segments
@@ -580,6 +620,21 @@ impl ShapeFX {
                 heights.insert(key, new_height);
 
                 for dy in 0..pixels_per_tile {
+                    if local.x < 0 || local.y < 0 {
+                        continue;
+                    }
+                    let max_x = texture.width as i32;
+                    let max_y = texture.height as i32;
+                    let pixel_base_x = local.x * pixels_per_tile;
+                    let pixel_base_y = local.y * pixels_per_tile;
+
+                    if pixel_base_x < 0
+                        || pixel_base_y < 0
+                        || pixel_base_x + pixels_per_tile > max_x
+                        || pixel_base_y + pixels_per_tile > max_y
+                    {
+                        continue;
+                    }
                     for dx in 0..pixels_per_tile {
                         let pixel_local_x = local.x * pixels_per_tile + dx;
                         let pixel_local_y = local.y * pixels_per_tile + dy;
@@ -600,7 +655,26 @@ impl ShapeFX {
                             continue;
                         };
 
-                        let fade = ShapeFX::smoothstep(bevel, 0.0, perpendicular);
+                        // let fade = ShapeFX::smoothstep(bevel, 0.0, perpendicular);
+                        let half_bevel = bevel * 0.5;
+                        let core_half = (half_bevel - fade_distance).max(0.0);
+
+                        let mut perturbed = perpendicular;
+                        if noise_strength > 0.0 {
+                            let noise = self.noise2d(&world_pos, Vec2::broadcast(0.5), 2);
+                            perturbed += ((noise * 2.0 - 1.0) * noise_strength) / 10.0;
+                        }
+
+                        let fade = if perturbed <= core_half {
+                            1.0
+                        } else if perturbed <= core_half + fade_distance {
+                            let fade_t = (perturbed - core_half) / fade_distance;
+                            // 1.0 - fade_t // linear fade
+                            1.0 - fade_t * fade_t * (3.0 - 2.0 * fade_t) // smoothstep
+                        } else {
+                            0.0
+                        };
+
                         if fade <= 0.01 {
                             continue;
                         }
@@ -613,7 +687,16 @@ impl ShapeFX {
                         }
                         written_blends.insert(pixel_key, fade);
 
-                        let uv = Vec2::new(t_px, 0.5);
+                        // let uv = Vec2::new(t_px, 0.5);
+                        // Tangent-aligned UVs
+                        let along = (seg.end - seg.start).normalized();
+                        let across = Vec2::new(-along.y, along.x); // Perpendicular
+
+                        let local = world_pos - seg.start;
+                        let u = local.dot(along) / (seg.end - seg.start).magnitude(); // 0..1
+                        let v = local.dot(across); // can be positive or negative
+                        let uv = Vec2::new(u * uv_scale, v * uv_scale);
+
                         let px = terrain.scale.x.max(terrain.scale.y);
 
                         let ctx = ShapeContext {
@@ -636,13 +719,17 @@ impl ShapeFX {
                                 .or(pixel_color);
                         }
 
-                        if let Some(color) = pixel_color {
-                            let rgb = color.map(|v| v * fade);
-                            let faded_color = Vec4::new(rgb.x, rgb.y, rgb.z, 1.0);
-                            let existing =
-                                texture.get_pixel(pixel_local_x as u32, pixel_local_y as u32);
-                            let existing_color = pixel_to_vec4(&existing);
-                            let blended = existing_color * (1.0 - fade) + faded_color * fade;
+                        if let Some(mut color) = pixel_color {
+                            if color.w < 0.99 {
+                                color *= fade;
+                            } else {
+                                color *= fade;
+                                color.w = fade;
+                            }
+                            let existing = pixel_to_vec4(
+                                &texture.get_pixel(pixel_local_x as u32, pixel_local_y as u32),
+                            );
+                            let blended = existing * (1.0 - fade) + color;
 
                             let mut pixel = vec4_to_pixel(&blended);
                             pixel[3] = 255;
@@ -1170,7 +1257,14 @@ impl ShapeFX {
                 }
             }
             ShapeFXRole::Wood => {
-                let alpha = 1.0 - ShapeFX::smoothstep(-ctx.anti_aliasing, 0.0, ctx.distance);
+                // let alpha = 1.0 - ShapeFX::smoothstep(-ctx.anti_aliasing, 0.0, ctx.distance);
+
+                let alpha = if ctx.distance >= 0.0 {
+                    1.0 - (ctx.distance / ctx.px).clamp(0.0, 1.0)
+                } else {
+                    1.0
+                };
+
                 if alpha <= 0.0 {
                     return None;
                 }
@@ -1444,6 +1538,27 @@ impl ShapeFX {
                     "Smoothly blends the shape's height into the surrounding terrain over this distance.".into(),
                     self.values.get_float_default("bevel", 0.5),
                     0.0..=10.0,
+                ));
+                params.push(ShapeFXParam::Float(
+                    "fade_distance".into(),
+                    "Pixel Fade".into(),
+                    "Distance in world units over which the shape's color fades into the background.".into(),
+                    self.values.get_float_default("fade_distance", 0.5),
+                    0.0..=10.0,
+                ));
+                params.push(ShapeFXParam::Float(
+                    "fade_noise".into(),
+                    "Fade Noise".into(),
+                    "Adds noise-based distortion to the fade shape.".into(),
+                    self.values.get_float_default("fade_noise", 0.0),
+                    0.0..=1.0,
+                ));
+                params.push(ShapeFXParam::Float(
+                    "uv_scale".into(),
+                    "UV Scale".into(),
+                    "Tiling scale for procedural textures.".into(),
+                    self.values.get_float_default("uv_scale", 1.0),
+                    0.01..=20.0,
                 ));
             }
             ShapeFXRole::Fog => {
