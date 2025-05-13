@@ -50,6 +50,7 @@ pub enum ShapeFXRole {
     NoiseOverlay,
     Glow,
     Wood,
+    Stone,
     // Sector and Linedef Group
     // These nodes get attached to geometry and control mesh creation
     // or produce rendering fx like lights, particles etc.
@@ -99,6 +100,7 @@ impl FromStr for ShapeFXRole {
             "Noise Overlay" => Ok(ShapeFXRole::NoiseOverlay),
             "Glow" => Ok(ShapeFXRole::Glow),
             "Wood" => Ok(ShapeFXRole::Wood),
+            "Stone" => Ok(ShapeFXRole::Stone),
             "Sector Geometry" => Ok(ShapeFXRole::SectorGeometry),
             "Flatten" => Ok(ShapeFXRole::Flatten),
             "Render" => Ok(ShapeFXRole::Render),
@@ -154,6 +156,7 @@ impl ShapeFX {
             NoiseOverlay => "Noise Overlay".into(),
             Glow => "Glow".into(),
             Wood => "Wood".into(),
+            Stone => "Stone".into(),
             LinedefGeometry => "Linedef Geometry".into(),
             SectorGeometry => "Sector Geometry".into(),
             Flatten => "Flatten".into(),
@@ -335,6 +338,7 @@ impl ShapeFX {
                 let fade_distance = self.values.get_float_default("fade_distance", 0.5);
                 let floor_height = sector.properties.get_float_default("floor_height", 0.0);
                 let noise_strength = self.values.get_float_default("fade_noise", 0.0);
+                let uv_mode = self.values.get_int_default("uv_mode", 1);
                 let uv_scale = self.values.get_float_default("uv_scale", 1.0);
                 let mut expanded_bbox = *bbox;
                 expanded_bbox.expand(Vec2::broadcast(bevel));
@@ -417,8 +421,12 @@ impl ShapeFX {
                                     //     continue;
                                     // }
 
-                                    let uv = ((world_pos - bounds.min) / (bounds.max - bounds.min))
-                                        * uv_scale;
+                                    let uv = if uv_mode == 1 {
+                                        world_pos * uv_scale
+                                    } else {
+                                        ((world_pos - bounds.min) / (bounds.max - bounds.min))
+                                            * uv_scale
+                                    };
                                     let px = terrain.scale.x.max(terrain.scale.y);
 
                                     let ctx = ShapeContext {
@@ -554,6 +562,7 @@ impl ShapeFX {
         let bevel = self.values.get_float_default("bevel", 0.5);
         let fade_distance = self.values.get_float_default("fade_distance", 0.5);
         let noise_strength = self.values.get_float_default("fade_noise", 0.0);
+        let uv_mode = self.values.get_int_default("uv_mode", 1);
         let uv_scale = self.values.get_float_default("uv_scale", 1.0);
         let mut written_blends = FxHashMap::<(i32, i32), f32>::default();
 
@@ -687,16 +696,18 @@ impl ShapeFX {
                         }
                         written_blends.insert(pixel_key, fade);
 
-                        // let uv = Vec2::new(t_px, 0.5);
                         // Tangent-aligned UVs
                         let along = (seg.end - seg.start).normalized();
                         let across = Vec2::new(-along.y, along.x); // Perpendicular
 
-                        let local = world_pos - seg.start;
-                        let u = local.dot(along) / (seg.end - seg.start).magnitude(); // 0..1
-                        let v = local.dot(across); // can be positive or negative
-                        let uv = Vec2::new(u * uv_scale, v * uv_scale);
-
+                        let uv = if uv_mode == 1 {
+                            world_pos * uv_scale
+                        } else {
+                            let local = world_pos - seg.start;
+                            let u = local.dot(along) / (seg.end - seg.start).magnitude(); // 0..1
+                            let v = local.dot(across);
+                            Vec2::new(u, v) * uv_scale
+                        };
                         let px = terrain.scale.x.max(terrain.scale.y);
 
                         let ctx = ShapeContext {
@@ -719,17 +730,12 @@ impl ShapeFX {
                                 .or(pixel_color);
                         }
 
-                        if let Some(mut color) = pixel_color {
-                            if color.w < 0.99 {
-                                color *= fade;
-                            } else {
-                                color *= fade;
-                                color.w = fade;
-                            }
+                        if let Some(color) = pixel_color {
                             let existing = pixel_to_vec4(
                                 &texture.get_pixel(pixel_local_x as u32, pixel_local_y as u32),
                             );
-                            let blended = existing * (1.0 - fade) + color;
+                            let fade = fade * color.w;
+                            let blended = existing * (1.0 - fade) + color * fade;
 
                             let mut pixel = vec4_to_pixel(&blended);
                             pixel[3] = 255;
@@ -1257,8 +1263,6 @@ impl ShapeFX {
                 }
             }
             ShapeFXRole::Wood => {
-                // let alpha = 1.0 - ShapeFX::smoothstep(-ctx.anti_aliasing, 0.0, ctx.distance);
-
                 let alpha = if ctx.distance >= 0.0 {
                     1.0 - (ctx.distance / ctx.px).clamp(0.0, 1.0)
                 } else {
@@ -1322,6 +1326,60 @@ impl ShapeFX {
                 let mut c = light * (1.0 - t) + dark * t;
                 c.w = alpha;
                 c = c.map(|v| v.clamp(0.0, 1.0));
+                Some(c)
+            }
+            ShapeFXRole::Stone => {
+                let gap = self.values.get_float_default("gap", 0.2); // mortar width
+                let rounding = self.values.get_float_default("rounding", 0.2); // edge rounding
+                let rotation = self.values.get_float_default("rotation", 3.0); // random twist strength
+
+                // choose colours
+                let stone_idx = self.values.get_int_default("stone_color", 0);
+                let mortar_idx = self.values.get_int_default("mortar_color", 1);
+
+                let stone = palette
+                    .colors
+                    .get(stone_idx as usize)
+                    .and_then(|c| c.clone())
+                    .unwrap_or(TheColor::white())
+                    .to_vec4();
+                let mortar = palette
+                    .colors
+                    .get(mortar_idx as usize)
+                    .and_then(|c| c.clone())
+                    .unwrap_or(TheColor::black())
+                    .to_vec4();
+
+                // UVs – rotate with linedef if present
+                let uv = if let Some(dir) = ctx.line_dir {
+                    let along = dir.normalized(); // unit tangent
+                    let across = Vec2::new(-along.y, along.x); // unit normal
+
+                    // express world-position in that basis
+                    let p = ctx.point_world / ctx.px; // world → “pixel” units
+                    Vec2::new(p.dot(along), p.dot(across))
+                } else {
+                    ctx.uv
+                };
+
+                // uv += Vec2::new(
+                //     self.noise2d(&(uv / 8.5), Vec2::one(), 0),
+                //     self.noise2d(&(uv / 8.5 + 7.3), Vec2::one(), 0),
+                // ) * 0.008;
+
+                // get SDF + cell id
+                let (d, id) = self.box_divide(uv / 10.0, gap, rotation / 10.0, rounding);
+
+                let edge = ShapeFX::smoothstep(-0.08, 0.0, d);
+
+                // Subtle per-tile tint to break monotony
+                let shade = 0.85 + 0.3 * (id * 2.0 - 1.0); // 0.55‥1.15
+
+                // Blend stone ↔ mortar, then apply tint to the stone only
+                let shaded_stone = stone * shade;
+                let mut c = mortar * edge + shaded_stone * (1.0 - edge);
+                c.w = 1.0;
+
                 Some(c)
             }
             _ => None,
@@ -1531,6 +1589,41 @@ impl ShapeFX {
                     0.0..=360.0,
                 ));
             }
+            ShapeFXRole::Stone => {
+                params.push(ShapeFXParam::PaletteIndex(
+                    "stone_color".into(),
+                    "Stone Color".into(),
+                    "Color of the pavers.".into(),
+                    self.values.get_int_default("stone_color", 0),
+                ));
+                params.push(ShapeFXParam::PaletteIndex(
+                    "mortar_color".into(),
+                    "Mortar Color".into(),
+                    "Color of the gaps.".into(),
+                    self.values.get_int_default("mortar_color", 1),
+                ));
+                params.push(ShapeFXParam::Float(
+                    "gap".into(),
+                    "Gap Width".into(),
+                    "Thickness of the mortar.".into(),
+                    self.values.get_float_default("gap", 0.2),
+                    0.0..=1.0,
+                ));
+                params.push(ShapeFXParam::Float(
+                    "rounding".into(),
+                    "Corner Rounding".into(),
+                    "Smooth the brick corners.".into(),
+                    self.values.get_float_default("rounding", 0.2),
+                    0.0..=0.5,
+                ));
+                params.push(ShapeFXParam::Float(
+                    "rotation".into(),
+                    "Random Twist".into(),
+                    "Random rotation amount per tile.".into(),
+                    self.values.get_float_default("rotation", 3.0),
+                    0.0..=10.0,
+                ));
+            }
             Flatten => {
                 params.push(ShapeFXParam::Float(
                     "bevel".into(),
@@ -1552,6 +1645,13 @@ impl ShapeFX {
                     "Adds noise-based distortion to the fade shape.".into(),
                     self.values.get_float_default("fade_noise", 0.0),
                     0.0..=1.0,
+                ));
+                params.push(ShapeFXParam::Selector(
+                    "uv_mode".into(),
+                    "UV Mode".into(),
+                    "Controls how UV coordinates are calculated.".into(),
+                    vec!["Geometry Relative".into(), "World Space".into()],
+                    self.values.get_int_default("uv_mode", 1),
                 ));
                 params.push(ShapeFXParam::Float(
                     "uv_scale".into(),
@@ -1737,6 +1837,69 @@ impl ShapeFX {
             a *= 0.5;
         }
         v
+    }
+
+    #[inline(always)]
+    fn rot(&self, a: f32) -> Mat2<f32> {
+        let (s, c) = a.sin_cos();
+        Mat2::new(c, s, -s, c)
+    }
+
+    #[inline(always)]
+    fn hash21(&self, p: Vec2<f32>) -> f32 {
+        let mut p3 = Vec3::new(
+            (p.x * 0.1031).fract(),
+            (p.y * 0.1031).fract(),
+            (p.x * 0.1031).fract(),
+        );
+        let dot = p3.dot(Vec3::new(p3.y + 33.333, p3.z + 33.333, p3.x + 33.333));
+        p3 += Vec3::broadcast(dot);
+        ((p3.x + p3.y) * p3.z).fract()
+    }
+
+    // Shane — box-divide SDF
+    fn box_divide(&self, p: Vec2<f32>, gap: f32, rotation: f32, rounding: f32) -> (f32, f32) {
+        #[inline(always)]
+        fn s_box(p: Vec2<f32>, b: Vec2<f32>, r: f32) -> f32 {
+            let d = p.map(|v| v.abs()) - b + Vec2::broadcast(r);
+            d.x.max(d.y).min(0.0) + (d.map(|v| v.max(0.0))).magnitude() - r
+        }
+
+        let mut p = p;
+        let ip = p.map(|v| v.floor());
+        p -= ip;
+
+        let mut l = Vec2::broadcast(1.0);
+        let mut r = self.hash21(ip);
+        for _ in 0..6 {
+            r = (l + Vec2::new(r, r)).dot(Vec2::new(123.71, 439.43)).fract() * 0.4 + 0.3;
+
+            if l.x > l.y {
+                p = Vec2::new(p.y, p.x);
+                l = Vec2::new(l.y, l.x);
+            }
+
+            if p.x < r {
+                l.x /= r;
+                p.x /= r;
+            } else {
+                l.x /= 1.0 - r;
+                p.x = (p.x - r) / (1.0 - r);
+            }
+
+            if l.x > l.y {
+                p = Vec2::new(p.y, p.x);
+                l = Vec2::new(l.y, l.x);
+            }
+        }
+
+        p -= 0.5;
+        let id = self.hash21(ip + l);
+        p = self.rot((id - 0.5) * rotation) * p;
+
+        let th = l * 0.02 * gap;
+        let c = s_box(p, Vec2::broadcast(0.5) - th, rounding);
+        (c, id)
     }
 
     /// Get the dominant node color for sector previews
