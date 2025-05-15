@@ -338,7 +338,6 @@ impl ShapeFX {
                 let fade_distance = self.values.get_float_default("fade_distance", 0.5);
                 let floor_height = sector.properties.get_float_default("floor_height", 0.0);
                 let noise_strength = self.values.get_float_default("fade_noise", 0.0);
-                let uv_mode = self.values.get_int_default("uv_mode", 1);
                 let uv_scale = self.values.get_float_default("uv_scale", 1.0);
                 let mut expanded_bbox = *bbox;
                 expanded_bbox.expand(Vec2::broadcast(bevel));
@@ -413,20 +412,11 @@ impl ShapeFX {
 
                                     if noise_strength > 0.0 {
                                         let noise =
-                                            self.noise2d(&world_pos, Vec2::broadcast(0.5), 2);
-                                        sd_pixel += ((noise * 2.0 - 1.0) * noise_strength) / 10.0;
+                                            self.noise2d(&world_pos, Vec2::broadcast(1.0), 2);
+                                        sd_pixel += noise * noise_strength;
                                     }
 
-                                    // if sd_pixel >= bevel {
-                                    //     continue;
-                                    // }
-
-                                    let uv = if uv_mode == 1 {
-                                        world_pos * uv_scale
-                                    } else {
-                                        ((world_pos - bounds.min) / (bounds.max - bounds.min))
-                                            * uv_scale
-                                    };
+                                    let uv = world_pos / uv_scale;
                                     let px = terrain.scale.x.max(terrain.scale.y);
 
                                     let ctx = ShapeContext {
@@ -453,23 +443,31 @@ impl ShapeFX {
                                     }
 
                                     if let Some(mut color) = pixel_color {
-                                        // let fade_range = bevel * 2.0;
-                                        // let fade =
-                                        //     ShapeFX::smoothstep(fade_range, 0.0, sd_pixel);
-
-                                        // let linear = 1.0 - (sd_pixel / fade_range).clamp(0.0, 1.0);
-                                        // let fade = linear * linear;
-                                        let half_bevel = bevel * 0.5;
-                                        let core_half = (half_bevel - fade_distance).max(0.0);
-
-                                        let fade = if sd_pixel <= core_half {
-                                            1.0
-                                        } else if sd_pixel <= core_half + fade_distance {
-                                            let fade_t = (sd_pixel - core_half) / fade_distance;
-                                            //1.0 - fade_t // linear
-                                            1.0 - fade_t * fade_t * (3.0 - 2.0 * fade_t) // smoothstep
+                                        let fade = if fade_distance == 0.0 {
+                                            if sd_pixel <= 0.0 { 1.0 } else { 0.0 }
                                         } else {
-                                            0.0
+                                            let fd = fade_distance.abs();
+                                            if fade_distance > 0.0 {
+                                                // ----- fade OUTSIDE the border -----
+                                                if sd_pixel <= 0.0 {
+                                                    1.0
+                                                } else if sd_pixel <= fd {
+                                                    let t = sd_pixel / fd;
+                                                    1.0 - t * t * (3.0 - 2.0 * t) // smoothstep
+                                                } else {
+                                                    0.0
+                                                }
+                                            } else {
+                                                // ----- fade INSIDE the border -----
+                                                if sd_pixel <= -fd {
+                                                    1.0
+                                                } else if sd_pixel <= 0.0 {
+                                                    let t = (sd_pixel + fd) / fd;
+                                                    1.0 - t * t * (3.0 - 2.0 * t)
+                                                } else {
+                                                    0.0
+                                                }
+                                            }
                                         };
 
                                         if color.w < 0.99 {
@@ -560,10 +558,15 @@ impl ShapeFX {
 
         let shapefx_nodes = graph_node.0.collect_nodes_from(graph_node.1, 1);
         let bevel = self.values.get_float_default("bevel", 0.5);
+        let path_width = self.values.get_float_default("path_width", 2.0);
         let fade_distance = self.values.get_float_default("fade_distance", 0.5);
         let noise_strength = self.values.get_float_default("fade_noise", 0.0);
-        let uv_mode = self.values.get_int_default("uv_mode", 1);
         let uv_scale = self.values.get_float_default("uv_scale", 1.0);
+
+        let half_path = path_width * 0.5;
+        let fade_start = half_path;
+        let fade_end = half_path + fade_distance;
+
         let mut written_blends = FxHashMap::<(i32, i32), f32>::default();
 
         // 1. Collect all segments
@@ -664,22 +667,17 @@ impl ShapeFX {
                             continue;
                         };
 
-                        // let fade = ShapeFX::smoothstep(bevel, 0.0, perpendicular);
-                        let half_bevel = bevel * 0.5;
-                        let core_half = (half_bevel - fade_distance).max(0.0);
-
                         let mut perturbed = perpendicular;
                         if noise_strength > 0.0 {
-                            let noise = self.noise2d(&world_pos, Vec2::broadcast(0.5), 2);
-                            perturbed += ((noise * 2.0 - 1.0) * noise_strength) / 10.0;
+                            let noise = self.noise2d(&world_pos, Vec2::broadcast(10.0), 2);
+                            perturbed += noise * noise_strength;
                         }
 
-                        let fade = if perturbed <= core_half {
+                        let fade = if perturbed <= fade_start {
                             1.0
-                        } else if perturbed <= core_half + fade_distance {
-                            let fade_t = (perturbed - core_half) / fade_distance;
-                            // 1.0 - fade_t // linear fade
-                            1.0 - fade_t * fade_t * (3.0 - 2.0 * fade_t) // smoothstep
+                        } else if perturbed <= fade_end {
+                            let t = (perturbed - fade_start) / fade_distance; // 0‥1
+                            1.0 - t * t * (3.0 - 2.0 * t) // smoothstep
                         } else {
                             0.0
                         };
@@ -696,18 +694,7 @@ impl ShapeFX {
                         }
                         written_blends.insert(pixel_key, fade);
 
-                        // Tangent-aligned UVs
-                        let along = (seg.end - seg.start).normalized();
-                        let across = Vec2::new(-along.y, along.x); // Perpendicular
-
-                        let uv = if uv_mode == 1 {
-                            world_pos * uv_scale
-                        } else {
-                            let local = world_pos - seg.start;
-                            let u = local.dot(along) / (seg.end - seg.start).magnitude(); // 0..1
-                            let v = local.dot(across);
-                            Vec2::new(u, v) * uv_scale
-                        };
+                        let uv = world_pos / uv_scale;
                         let px = terrain.scale.x.max(terrain.scale.y);
 
                         let ctx = ShapeContext {
@@ -1352,12 +1339,9 @@ impl ShapeFX {
 
                 // UVs – rotate with linedef if present
                 let uv = if let Some(dir) = ctx.line_dir {
-                    let along = dir.normalized(); // unit tangent
-                    let across = Vec2::new(-along.y, along.x); // unit normal
-
-                    // express world-position in that basis
-                    let p = ctx.point_world / ctx.px; // world → “pixel” units
-                    Vec2::new(p.dot(along), p.dot(across))
+                    let along = dir.normalized();
+                    let across = Vec2::new(-along.y, along.x);
+                    Vec2::new(ctx.uv.dot(along), ctx.uv.dot(across))
                 } else {
                     ctx.uv
                 };
@@ -1635,9 +1619,10 @@ impl ShapeFX {
                 params.push(ShapeFXParam::Float(
                     "fade_distance".into(),
                     "Pixel Fade".into(),
-                    "Distance in world units over which the shape's color fades into the background.".into(),
+                    "Fades outward from the sector / linedef. For sectors negative fades start inward."
+                        .into(),
                     self.values.get_float_default("fade_distance", 0.5),
-                    0.0..=10.0,
+                    -10.0..=10.0,
                 ));
                 params.push(ShapeFXParam::Float(
                     "fade_noise".into(),
@@ -1646,12 +1631,12 @@ impl ShapeFX {
                     self.values.get_float_default("fade_noise", 0.0),
                     0.0..=1.0,
                 ));
-                params.push(ShapeFXParam::Selector(
-                    "uv_mode".into(),
-                    "UV Mode".into(),
-                    "Controls how UV coordinates are calculated.".into(),
-                    vec!["Geometry Relative".into(), "World Space".into()],
-                    self.values.get_int_default("uv_mode", 1),
+                params.push(ShapeFXParam::Float(
+                    "path_width".into(),
+                    "Path Width".into(),
+                    "Total width of the colorized path for linedefs. Ignored by sectors".into(),
+                    self.values.get_float_default("path_width", 2.0),
+                    0.0..=10.0,
                 ));
                 params.push(ShapeFXParam::Float(
                     "uv_scale".into(),

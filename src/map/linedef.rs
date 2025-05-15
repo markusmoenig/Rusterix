@@ -1,4 +1,4 @@
-use crate::{BBox, Map, PixelSource, Value, ValueContainer};
+use crate::{BBox, Map, ValueContainer};
 use theframework::prelude::*;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -20,12 +20,14 @@ pub struct Linedef {
 
 impl Linedef {
     pub fn new(id: u32, start_vertex: u32, end_vertex: u32) -> Self {
-        let mut properties = ValueContainer::default();
-        properties.set("wall_width", Value::Float(0.0));
-        properties.set("wall_height", Value::Float(0.0));
-        properties.set("row1_source", Value::Source(PixelSource::Off));
-        properties.set("row2_source", Value::Source(PixelSource::Off));
-        properties.set("row3_source", Value::Source(PixelSource::Off));
+        let properties = ValueContainer::default();
+        // properties.set("wall_width", Value::Float(0.0));
+        // properties.set("wall_height", Value::Float(0.0));
+        // properties.set("row1_source", Value::Source(PixelSource::Off));
+        // properties.set("row2_source", Value::Source(PixelSource::Off));
+        // properties.set("row3_source", Value::Source(PixelSource::Off));
+        // properties.set("row4_source", Value::Source(PixelSource::Off));
+        // properties.set("subdivisions", Value::Int(0));
         Self {
             id,
             creator_id: Uuid::new_v4(),
