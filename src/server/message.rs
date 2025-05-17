@@ -3,6 +3,7 @@ use theframework::prelude::*;
 
 /// Messages to the Region
 #[derive(Debug)]
+#[allow(clippy::large_enum_variant)]
 pub enum RegionMessage {
     /// Register a local player (which receives user based events).
     /// RegionInstanceId, PlayerId

@@ -282,7 +282,9 @@ impl Rasterizer {
                 }
 
                 // Call post-processing for missed geometry hits
-                if !self.render_miss.is_empty() || self.brush_preview.is_none() {
+                if !self.render_terrain_in_d2
+                    && (!self.render_miss.is_empty() || self.brush_preview.is_none())
+                {
                     for ty in 0..tile.height {
                         for tx in 0..tile.width {
                             let uv = Vec2::new(

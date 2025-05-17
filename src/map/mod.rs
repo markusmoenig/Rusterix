@@ -299,6 +299,35 @@ impl Map {
     }
 
     /// Generate a bounding box for all vertices in the map
+    pub fn bbox(&self) -> BBox {
+        // Find min and max coordinates among all vertices
+        let min_x = self
+            .vertices
+            .iter()
+            .map(|v| v.x)
+            .fold(f32::INFINITY, f32::min);
+        let max_x = self
+            .vertices
+            .iter()
+            .map(|v| v.x)
+            .fold(f32::NEG_INFINITY, f32::max);
+        let min_y = self
+            .vertices
+            .iter()
+            .map(|v| v.y)
+            .fold(f32::INFINITY, f32::min);
+        let max_y = self
+            .vertices
+            .iter()
+            .map(|v| v.y)
+            .fold(f32::NEG_INFINITY, f32::max);
+        BBox {
+            min: Vec2::new(min_x, min_y),
+            max: Vec2::new(max_x, max_y),
+        }
+    }
+
+    /// Generate a bounding box for all vertices in the map
     pub fn bounding_box(&self) -> Option<Vec4<f32>> {
         if self.vertices.is_empty() {
             return None; // No vertices in the map
@@ -1106,20 +1135,17 @@ impl Map {
 
     /// Finds a free vertex ID that can be used for creating a new vertex.
     pub fn find_free_vertex_id(&self) -> Option<u32> {
-        let free_id = (0..).find(|&id| !self.vertices.iter().any(|v| v.id == id));
-        free_id
+        (0..).find(|&id| !self.vertices.iter().any(|v| v.id == id))
     }
 
     /// Finds a free linedef ID that can be used for creating a new linedef.
     pub fn find_free_linedef_id(&self) -> Option<u32> {
-        let free_id = (0..).find(|&id| !self.linedefs.iter().any(|l| l.id == id));
-        free_id
+        (0..).find(|&id| !self.linedefs.iter().any(|l| l.id == id))
     }
 
     /// Finds a free sector ID that can be used for creating a new sector.
     pub fn find_free_sector_id(&self) -> Option<u32> {
-        let free_id = (0..).find(|&id| !self.sectors.iter().any(|s| s.id == id));
-        free_id
+        (0..).find(|&id| !self.sectors.iter().any(|s| s.id == id))
     }
 
     /// Check if the map has selected geometry.

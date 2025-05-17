@@ -3,6 +3,8 @@
 
 pub mod batch;
 pub mod camera;
+pub mod chunk;
+pub mod chunkbuilder;
 pub mod client;
 pub mod edge;
 pub mod intodata;
@@ -12,6 +14,7 @@ pub mod rect;
 pub mod rusterix;
 pub mod scene;
 pub mod scenebuilder;
+pub mod scenemanager;
 pub mod script;
 pub mod server;
 pub mod shader;
@@ -79,6 +82,8 @@ pub const WHITE: Pixel = [255, 255, 255, 255];
 pub use crate::{
     batch::{Batch, CullMode, PrimitiveMode},
     camera::{D3Camera, d3firstp::D3FirstPCamera, d3iso::D3IsoCamera, d3orbit::D3OrbitCamera},
+    chunk::Chunk,
+    chunkbuilder::{ChunkBuilder, d2preview::D2PreviewChunkBuilder},
     client::{Client, command::Command, daylight::Daylight},
     edge::Edges,
     intodata::IntoDataInput,
@@ -96,6 +101,7 @@ pub use crate::{
     scenebuilder::{
         d2builder::D2Builder, d2material::D2MaterialBuilder, d2preview::D2PreviewBuilder,
     },
+    scenemanager::*,
     script::mapscript::MapScript,
     server::{
         Server, ServerState,
@@ -129,6 +135,7 @@ pub use crate::{
 
 // Prelude
 pub mod prelude {
+    pub use crate::Chunk;
     pub use crate::Client;
     pub use crate::IntoDataInput;
     pub use crate::MapScript;
@@ -149,7 +156,9 @@ pub mod prelude {
     pub use crate::{Batch, CullMode, PrimitiveMode};
     pub use crate::{D3Camera, D3FirstPCamera, D3IsoCamera, D3OrbitCamera};
     pub use crate::{GridShader, Shader, VGrayGradientShader};
-    pub use crate::{Rect, Scene, Value, ValueContainer};
+    pub use crate::{
+        Rect, Scene, SceneManager, SceneManagerCmd, SceneManagerResult, Value, ValueContainer,
+    };
     pub use crate::{RepeatMode, SampleMode, Texture};
     pub use crate::{pixel_to_vec4, vec4_to_pixel};
 }
