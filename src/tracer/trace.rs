@@ -187,6 +187,25 @@ impl Tracer {
                         for _ in 0..bounces {
                             let mut hitinfo = HitInfo::default();
 
+                            // Evaluate chunks
+                            for (_coord, chunk) in scene.chunks.iter() {
+                                // if let Some(bbox) = self.static_bboxes.get(i) {
+                                //     if !bvh_ray.intersects_aabb(bbox) {
+                                //         continue;
+                                //     }
+                                // }
+
+                                for batch in &chunk.batches3d {
+                                    if let Some(mut hit) = batch.intersect(&ray, false) {
+                                        if hit.t < hitinfo.t
+                                            && self.evaluate_hit(&ray, scene, batch, &mut hit)
+                                        {
+                                            hitinfo = hit;
+                                        }
+                                    }
+                                }
+                            }
+
                             // Evaluate static
                             for (i, batch) in scene.d3_static.iter().enumerate() {
                                 if let Some(bbox) = self.static_bboxes.get(i) {

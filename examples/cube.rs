@@ -1,7 +1,7 @@
 use rusterix::prelude::*;
 use std::path::Path;
 use theframework::*;
-use vek::Vec2;
+use vek::{Vec2, Vec4};
 
 fn main() {
     let cube = Cube::new();
@@ -10,8 +10,7 @@ fn main() {
     () = app.run(Box::new(cube));
 }
 
-// This example uses raw draw calls into rusterix, bypassing the engine API.
-
+// This example uses static draw calls into rusterix, bypassing the game engine API.
 pub struct Cube {
     camera: D3OrbitCamera,
     scene: Scene,
@@ -26,6 +25,7 @@ impl TheTrait for Cube {
             vec![Batch2D::from_rectangle(0.0, 0.0, 200.0, 200.0)],
             vec![
                 Batch3D::from_box(-0.5, -0.5, -0.5, 1.0, 1.0, 1.0)
+                    .source(PixelSource::StaticTileIndex(0))
                     .cull_mode(CullMode::Off)
                     .with_computed_normals(),
             ],
@@ -35,25 +35,24 @@ impl TheTrait for Cube {
             "images/logo.png",
         )))]);
 
-        Self {
-            camera: D3OrbitCamera::new(),
-            scene,
-        }
+        let mut camera = D3OrbitCamera::new();
+        camera.set_parameter_f32("distance", 1.5);
+
+        Self { camera, scene }
     }
 
     /// Draw a cube and a rectangle
     fn draw(&mut self, pixels: &mut [u8], ctx: &mut TheContext) {
         let _start = get_time();
 
-        let projection_matrix_2d = None;
-
         // Set it up
         Rasterizer::setup(
-            projection_matrix_2d,
+            None,
             self.camera.view_matrix(),
             self.camera
                 .projection_matrix(ctx.width as f32, ctx.height as f32),
         )
+        .ambient(Vec4::one())
         .rasterize(
             &mut self.scene,
             pixels,     // Destination buffer

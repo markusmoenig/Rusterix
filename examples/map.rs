@@ -1,7 +1,7 @@
 use rusterix::prelude::*;
 use std::path::Path;
 use theframework::*;
-use vek::{Vec2, Vec3};
+use vek::{Vec2, Vec3, Vec4};
 
 #[derive(Debug, Clone, PartialEq)]
 #[allow(dead_code)]
@@ -68,7 +68,7 @@ impl TheTrait for Map {
         scene.d2_static = vec![
             Batch2D::from_rectangle(0.0, 0.0, 200.0, 200.0)
                 .receives_light(false)
-                .texture_index(scene.textures.len()),
+                .source(PixelSource::StaticTileIndex(0)),
         ];
         scene
             .textures
@@ -112,6 +112,7 @@ impl TheTrait for Map {
             self.camera
                 .projection_matrix(ctx.width as f32, ctx.height as f32),
         )
+        .ambient(Vec4::one())
         .rasterize(
             &mut self.scene,
             pixels,     // Destination buffer

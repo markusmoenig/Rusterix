@@ -1,6 +1,4 @@
-use crate::{
-    Assets, Batch3D, Chunk, ChunkBuilder, Map, Material, PixelSource, Tile, Value, ValueContainer,
-};
+use crate::{Assets, Batch3D, Chunk, ChunkBuilder, Map, Material, PixelSource, Tile, Value};
 use vek::Vec2;
 
 pub struct D3ChunkBuilder {}
@@ -123,7 +121,7 @@ impl ChunkBuilder for D3ChunkBuilder {
 
                     // Generate ceiling geometry
 
-                    let mut create_ceiling = true;
+                    let create_ceiling = true;
                     // if camera_id == "iso"
                     //     && sector.properties.get_int_default("ceiling_in_iso", 0) == 1
                     // {
@@ -265,8 +263,7 @@ impl ChunkBuilder for D3ChunkBuilder {
                                                 .and_then(|v| v.to_source()),
                                             repeat_sources,
                                             assets,
-                                            &linedef.properties,
-                                            map,
+                                            chunk,
                                         );
                                     }
                                 }
@@ -307,8 +304,7 @@ impl ChunkBuilder for D3ChunkBuilder {
                                 .and_then(|v| v.to_source()),
                             repeat_sources,
                             assets,
-                            &linedef.properties,
-                            map,
+                            chunk,
                         );
                     }
                 }
@@ -330,8 +326,7 @@ fn add_wall(
     row4_source: Option<&PixelSource>,
     repeat_last_row: bool,
     assets: &Assets,
-    properties: &ValueContainer,
-    map: &Map,
+    chunk: &mut Chunk,
 ) {
     let row_heights = if wall_height <= 1.0 {
         vec![wall_height]
@@ -374,6 +369,7 @@ fn add_wall(
             let batch = Batch3D::new(row_vertices, row_indices, row_uvs)
                 .repeat_mode(crate::RepeatMode::RepeatXY)
                 .source(PixelSource::StaticTileIndex(texture_index));
+            chunk.batches3d.push(batch);
         }
     };
 

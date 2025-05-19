@@ -2,8 +2,8 @@
 
 use crate::Texture;
 use crate::{
-    Assets, Batch2D, GridShader, Map, MapToolType, Material, Pixel, PixelSource, Rect, Scene,
-    Shader, Tile, Value, ValueContainer, WHITE,
+    Assets, Batch2D, GridShader, Map, MapToolType, Pixel, PixelSource, Rect, Scene, Shader, Tile,
+    Value, ValueContainer, WHITE,
 };
 use theframework::prelude::*;
 use vek::Vec2;

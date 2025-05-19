@@ -1,7 +1,7 @@
 use rusterix::prelude::*;
 use std::path::Path;
 use theframework::*;
-use vek::{Mat4, Vec2, Vec3};
+use vek::{Mat4, Vec2, Vec3, Vec4};
 
 fn main() {
     let demo = ObjDemo::new();
@@ -25,10 +25,11 @@ impl TheTrait for ObjDemo {
         let scene = Scene::from_static(
             vec![Batch2D::from_rectangle(0.0, 0.0, 200.0, 200.0)],
             vec![
-                Batch::from_obj(Path::new("examples/teapot.obj"))
-                    .sample_mode(SampleMode::Linear)
+                Batch3D::from_obj(Path::new("examples/teapot.obj"))
+                    .source(PixelSource::StaticTileIndex(0))
                     .repeat_mode(RepeatMode::RepeatXY)
-                    .transform(Mat4::scaling_3d(Vec3::new(0.35, -0.35, 0.35))),
+                    .transform(Mat4::scaling_3d(Vec3::new(0.35, -0.35, 0.35)))
+                    .with_computed_normals(),
             ],
         )
         .background(Box::new(VGrayGradientShader::new()))
@@ -36,10 +37,10 @@ impl TheTrait for ObjDemo {
             "images/logo.png",
         )))]);
 
-        Self {
-            camera: D3OrbitCamera::new(),
-            scene,
-        }
+        let mut camera = D3OrbitCamera::new();
+        camera.set_parameter_f32("distance", 1.5);
+
+        Self { camera, scene }
     }
 
     fn draw(&mut self, pixels: &mut [u8], ctx: &mut TheContext) {
@@ -54,6 +55,7 @@ impl TheTrait for ObjDemo {
             self.camera
                 .projection_matrix(ctx.width as f32, ctx.height as f32),
         )
+        .ambient(Vec4::one())
         .rasterize(
             &mut self.scene,
             pixels,     // Destination buffer

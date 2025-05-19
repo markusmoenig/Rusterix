@@ -9,8 +9,8 @@ use std::str::FromStr;
 
 use crate::prelude::*;
 use crate::{
-    AccumBuffer, BrushPreview, Command, D2PreviewBuilder, EntityAction, Rect, ShapeFXGraph, Tracer,
-    Value,
+    AccumBuffer, BrushPreview, Command, D2PreviewBuilder, EntityAction, Rect, RenderMode,
+    ShapeFXGraph, Tracer, Value,
     client::action::ClientAction,
     client::widget::{
         Widget, game::GameWidget, messages::MessagesWidget, screen::ScreenWidget, text::TextWidget,
@@ -328,11 +328,11 @@ impl Client {
         );
         let transform = translation_matrix * scale_matrix;
 
-        let mut rast = Rasterizer::setup(Some(transform), Mat4::identity(), Mat4::identity());
+        let mut rast = Rasterizer::setup(Some(transform), Mat4::identity(), Mat4::identity())
+            .render_mode(RenderMode::render_2d());
         rast.render_graph = self.global.clone();
         rast.hour = self.server_time.to_f32();
         rast.mapmini = self.scene.mapmini.clone();
-        rast.render_terrain_in_d2 = true;
         rast.rasterize(&mut self.scene, pixels, width, height, 200);
 
         // Draw Messages
@@ -381,22 +381,22 @@ impl Client {
             self.camera_d3.view_matrix(),
             self.camera_d3
                 .projection_matrix(width as f32, height as f32),
-        );
+        )
+        .render_mode(RenderMode::render_3d());
         rast.brush_preview = self.brush_preview.clone();
         rast.render_graph = self.global.clone();
         rast.hour = self.server_time.to_f32();
         rast.mapmini = self.scene.mapmini.clone();
-        rast.render_terrain_in_d2 = false;
-        rast.rasterize(&mut self.scene, pixels, width, height, 64);
+        rast.rasterize(&mut self.scene, pixels, width, height, 64)
     }
 
     /// Trace the 3D scene.
     pub fn trace(&mut self, accum: &mut AccumBuffer) {
-        self.scene_d3.animation_frame = self.animation_frame;
+        self.scene.animation_frame = self.animation_frame;
         let mut tracer = Tracer::default();
         tracer.render_graph = self.global.clone();
         tracer.hour = self.server_time.to_f32();
-        tracer.trace(self.camera_d3.as_ref(), &mut self.scene_d3, accum, 64);
+        tracer.trace(self.camera_d3.as_ref(), &mut self.scene, accum, 64);
     }
 
     /// Get an i32 config value

@@ -44,6 +44,7 @@ pub trait D3Camera: Send + Sync {
 
     /// Rotate (only used by orbit camera)
     fn rotate(&mut self, delta: Vec2<f32>) {}
+
     /// Zoom (only used by orbit camera)
     fn zoom(&mut self, delta: f32) {}
 }

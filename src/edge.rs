@@ -1,8 +1,9 @@
 #[derive(Debug, Clone, Copy)]
 pub struct Edges {
-    a: [f32; 3], // Stores the A coefficients for each edge
-    b: [f32; 3], // Stores the B coefficients for each edge
-    c: [f32; 3], // Stores the C coefficients for each edge
+    // Coefficients for each edge
+    a: [f32; 3],
+    b: [f32; 3],
+    c: [f32; 3],
     pub visible: bool,
 }
 

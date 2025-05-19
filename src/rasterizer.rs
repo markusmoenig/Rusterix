@@ -1,6 +1,6 @@
 use crate::{
     Batch2D, Batch3D, LightType, MapMini, Material, MaterialRole, Pixel, PixelSource,
-    PrimitiveMode, Ray, RepeatMode, Scene, Texture, pixel_to_vec4, vec4_to_pixel,
+    PrimitiveMode, Ray, RenderMode, RepeatMode, Scene, Texture, pixel_to_vec4, vec4_to_pixel,
 };
 use crate::{SampleMode, ShapeFXGraph};
 use rayon::prelude::*;
@@ -15,14 +15,9 @@ pub struct BrushPreview {
     pub falloff: f32,
 }
 
-#[derive(Clone, PartialEq)]
-enum BatchType {
-    Static,
-    Dynamic,
-    Terrain,
-}
-
 pub struct Rasterizer {
+    pub render_mode: RenderMode,
+
     pub projection_matrix_2d: Option<Mat3<f32>>,
 
     pub view_matrix: Mat4<f32>,
@@ -64,10 +59,7 @@ pub struct Rasterizer {
     render_hit: Vec<u16>,
     render_miss: Vec<u16>,
 
-    /// Indicates to render terrain in 2D. As terrain has both 2D and 3D meshes rendered by the engine
-    /// We need to make sure to render only the right one.
-    pub render_terrain_in_d2: bool,
-
+    /// The hour of the day.Used for procedural sky and ambient.
     pub hour: f32,
 }
 
@@ -94,6 +86,8 @@ impl Rasterizer {
         }
 
         Self {
+            render_mode: RenderMode::render_all(),
+
             inverse_view_matrix,
             inverse_projection_matrix: projection_matrix.inverted(),
 
@@ -125,10 +119,14 @@ impl Rasterizer {
             render_hit: vec![],
             render_miss: vec![],
 
-            render_terrain_in_d2: false,
-
             hour: 12.0,
         }
+    }
+
+    /// Sets the render mode using the builder pattern.
+    pub fn render_mode(mut self, render_mode: RenderMode) -> Self {
+        self.render_mode = render_mode;
+        self
     }
 
     /// Sets the sample mode using the builder pattern.
@@ -137,9 +135,15 @@ impl Rasterizer {
         self
     }
 
-    /// Sets the background using the builder pattern.
+    /// Sets the background color using the builder pattern.
     pub fn background(mut self, background: Pixel) -> Self {
         self.background_color = Some(background);
+        self
+    }
+
+    /// Sets the ambient color using the builder pattern.
+    pub fn ambient(mut self, ambient: Vec4<f32>) -> Self {
+        self.ambient_color = Some(ambient);
         self
     }
 
@@ -226,40 +230,42 @@ impl Rasterizer {
 
                 let mut z_buffer = vec![1.0_f32; tile.width * tile.height];
 
-                if let Some(shader) = &scene.background {
-                    for ty in 0..tile.height {
-                        for tx in 0..tile.width {
-                            let pixel = shader.shade_pixel(
-                                Vec2::new(
-                                    (tile.x + tx) as f32 / screen_size.x,
-                                    (tile.y + ty) as f32 / screen_size.y,
-                                ),
-                                screen_size,
-                            );
-                            let idx = (ty * tile.width + tx) * 4;
-                            buffer[idx..idx + 4].copy_from_slice(&pixel);
+                if !self.render_mode.ignore_background_shader {
+                    if let Some(shader) = &scene.background {
+                        for ty in 0..tile.height {
+                            for tx in 0..tile.width {
+                                let pixel = shader.shade_pixel(
+                                    Vec2::new(
+                                        (tile.x + tx) as f32 / screen_size.x,
+                                        (tile.y + ty) as f32 / screen_size.y,
+                                    ),
+                                    screen_size,
+                                );
+                                let idx = (ty * tile.width + tx) * 4;
+                                buffer[idx..idx + 4].copy_from_slice(&pixel);
+                            }
                         }
                     }
                 }
 
-                // Chunks
-                for chunk in scene.chunks.values() {
-                    for batch3d in &chunk.batches3d {
-                        self.d3_rasterize(&mut buffer, &mut z_buffer, tile, batch3d, scene);
+                if self.render_mode.supports3d() {
+                    // Chunks
+                    for chunk in scene.chunks.values() {
+                        for batch3d in &chunk.batches3d {
+                            self.d3_rasterize(&mut buffer, &mut z_buffer, tile, batch3d, scene);
+                        }
                     }
-                }
 
-                // Static
-                for batch in scene.d3_static.iter() {
-                    self.d3_rasterize(&mut buffer, &mut z_buffer, tile, batch, scene);
-                }
+                    // Static
+                    for batch in scene.d3_static.iter() {
+                        self.d3_rasterize(&mut buffer, &mut z_buffer, tile, batch, scene);
+                    }
 
-                // Dynamic
-                for batch in scene.d3_dynamic.iter() {
-                    self.d3_rasterize(&mut buffer, &mut z_buffer, tile, batch, scene);
-                }
+                    // Dynamic
+                    for batch in scene.d3_dynamic.iter() {
+                        self.d3_rasterize(&mut buffer, &mut z_buffer, tile, batch, scene);
+                    }
 
-                if !self.render_terrain_in_d2 {
                     if let Some(terrain) = &scene.terrain {
                         for chunk in terrain.chunks.iter() {
                             if let Some(batch) = &chunk.1.batch {
@@ -267,61 +273,61 @@ impl Rasterizer {
                             }
                         }
                     }
-                }
 
-                // Call post-processing for missed geometry hits
-                if !self.render_terrain_in_d2
-                    && (!self.render_miss.is_empty() || self.brush_preview.is_none())
-                {
-                    for ty in 0..tile.height {
-                        for tx in 0..tile.width {
-                            let uv = Vec2::new(
-                                (tile.x + tx) as f32 / self.width,
-                                (tile.y + ty) as f32 / self.height,
-                            );
-                            let z_idx = ty * tile.width + tx;
-                            if z_buffer[z_idx] == 1.0 {
-                                let mut color = Vec4::new(0.0, 0.0, 0.0, 1.0);
-                                let ray =
-                                    self.screen_ray((tile.x + tx) as f32, (tile.y + ty) as f32);
-                                for node in &self.render_miss {
-                                    self.render_graph.nodes[*node as usize].render_miss_d3(
-                                        &mut color,
-                                        &self.camera_pos,
-                                        &ray,
-                                        &uv,
-                                        self.hour,
-                                    );
-                                }
+                    // Call post-processing for missed geometry hits
+                    if !self.render_miss.is_empty() || self.brush_preview.is_some() {
+                        for ty in 0..tile.height {
+                            for tx in 0..tile.width {
+                                let uv = Vec2::new(
+                                    (tile.x + tx) as f32 / self.width,
+                                    (tile.y + ty) as f32 / self.height,
+                                );
+                                let z_idx = ty * tile.width + tx;
+                                if z_buffer[z_idx] == 1.0 {
+                                    let mut color = Vec4::new(0.0, 0.0, 0.0, 1.0);
+                                    let ray =
+                                        self.screen_ray((tile.x + tx) as f32, (tile.y + ty) as f32);
+                                    for node in &self.render_miss {
+                                        self.render_graph.nodes[*node as usize].render_miss_d3(
+                                            &mut color,
+                                            &self.camera_pos,
+                                            &ray,
+                                            &uv,
+                                            self.hour,
+                                        );
+                                    }
 
-                                // Brush preview
-                                if let Some(brush_preview) = &self.brush_preview {
-                                    if ray.dir.y.abs() > 1e-5 {
-                                        // Intersect with y=0 plane
-                                        let t = -ray.origin.y / ray.dir.y;
-                                        if t > 0.0 {
-                                            let world = ray.origin + ray.dir * t;
-                                            let dist = (world - brush_preview.position).magnitude();
-                                            if dist < brush_preview.radius {
-                                                let normalized = dist / brush_preview.radius;
-                                                let falloff =
-                                                    brush_preview.falloff.clamp(0.001, 1.0);
-                                                let fade =
-                                                    ((1.0 - normalized) / falloff).clamp(0.0, 1.0);
+                                    // Brush preview
+                                    if let Some(brush_preview) = &self.brush_preview {
+                                        if ray.dir.y.abs() > 1e-5 {
+                                            // Intersect with y=0 plane
+                                            let t = -ray.origin.y / ray.dir.y;
+                                            if t > 0.0 {
+                                                let world = ray.origin + ray.dir * t;
+                                                let dist =
+                                                    (world - brush_preview.position).magnitude();
+                                                if dist < brush_preview.radius {
+                                                    let normalized = dist / brush_preview.radius;
+                                                    let falloff =
+                                                        brush_preview.falloff.clamp(0.001, 1.0);
+                                                    let fade = ((1.0 - normalized) / falloff)
+                                                        .clamp(0.0, 1.0);
 
-                                                let blend = 0.2 + 0.6 * fade;
+                                                    let blend = 0.2 + 0.6 * fade;
 
-                                                for i in 0..3 {
-                                                    color[i] =
-                                                        (color[i] * (1.0 - blend) + blend).min(1.0);
+                                                    for i in 0..3 {
+                                                        color[i] = (color[i] * (1.0 - blend)
+                                                            + blend)
+                                                            .min(1.0);
+                                                    }
                                                 }
                                             }
                                         }
                                     }
-                                }
 
-                                let idx = (ty * tile.width + tx) * 4;
-                                buffer[idx..idx + 4].copy_from_slice(&vec4_to_pixel(&color));
+                                    let idx = (ty * tile.width + tx) * 4;
+                                    buffer[idx..idx + 4].copy_from_slice(&vec4_to_pixel(&color));
+                                }
                             }
                         }
                     }
@@ -348,21 +354,23 @@ impl Rasterizer {
                     }
                 }*/
 
-                // Chunks
-                for chunk in scene.chunks.values() {
-                    for batch2d in &chunk.batches2d {
-                        self.d2_rasterize(&mut buffer, tile, batch2d, scene);
+                if self.render_mode.supports2d() {
+                    // Chunks
+                    for chunk in scene.chunks.values() {
+                        for batch2d in &chunk.batches2d {
+                            self.d2_rasterize(&mut buffer, tile, batch2d, scene);
+                        }
                     }
-                }
 
-                // Static
-                for batch in scene.d2_static.iter() {
-                    self.d2_rasterize(&mut buffer, tile, batch, scene);
-                }
+                    // Static
+                    for batch in scene.d2_static.iter() {
+                        self.d2_rasterize(&mut buffer, tile, batch, scene);
+                    }
 
-                // Dynamic
-                for batch in scene.d2_dynamic.iter() {
-                    self.d2_rasterize(&mut buffer, tile, batch, scene);
+                    // Dynamic
+                    for batch in scene.d2_dynamic.iter() {
+                        self.d2_rasterize(&mut buffer, tile, batch, scene);
+                    }
                 }
 
                 buffer

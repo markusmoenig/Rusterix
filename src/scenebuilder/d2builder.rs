@@ -1,7 +1,7 @@
 // use crate::PrimitiveMode::*;
 
 // use crate::Texture;
-use crate::{Assets, Batch2D, Map, PixelSource, Scene, Tile, Value};
+use crate::{Assets, Batch2D, Map, PixelSource, Scene, Value};
 use theframework::prelude::*;
 use vek::Vec2;
 

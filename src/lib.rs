@@ -11,6 +11,7 @@ pub mod intodata;
 pub mod map;
 pub mod rasterizer;
 pub mod rect;
+pub mod rendermode;
 pub mod rusterix;
 pub mod scene;
 pub mod scenebuilder;
@@ -96,6 +97,7 @@ pub use crate::{
     },
     rasterizer::{BrushPreview, Rasterizer},
     rect::Rect,
+    rendermode::RenderMode,
     rusterix::Rusterix,
     scene::Scene,
     scenebuilder::{
@@ -140,6 +142,7 @@ pub mod prelude {
     pub use crate::IntoDataInput;
     pub use crate::MapScript;
     pub use crate::Rasterizer;
+    pub use crate::RenderMode;
     pub use crate::scenebuilder::{
         d2builder::D2Builder, d2material::D2MaterialBuilder, d2preview::D2PreviewBuilder,
         d3builder::D3Builder,
