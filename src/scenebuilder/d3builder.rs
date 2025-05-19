@@ -1,5 +1,5 @@
 use crate::{
-    Assets, Batch, D3Camera, Map, Material, PixelSource, SampleMode, Scene, Tile, Value,
+    Assets, Batch3D, D3Camera, Map, Material, PixelSource, SampleMode, Scene, Tile, Value,
     ValueContainer, get_time,
 };
 use theframework::prelude::*;
@@ -32,6 +32,8 @@ impl D3Builder {
         camera_id: &str,
         properties: &ValueContainer,
     ) -> Scene {
+        let scene = Scene::empty();
+        /*
         self.map = map.clone();
 
         let mut sample_mode = SampleMode::Nearest;
@@ -39,7 +41,6 @@ impl D3Builder {
             sample_mode = *sm;
         }
 
-        let mut scene = Scene::empty();
         // let atlas_size = atlas.width as f32;
         self.tile_size = properties.get_int_default("tile_size", 128);
 
@@ -365,7 +366,7 @@ impl D3Builder {
         scene.d3_static = batches;
         scene.textures = textures;
         scene.compute_static_normals();
-
+        */
         scene
     }
 
@@ -402,14 +403,13 @@ impl D3Builder {
         scene: &mut Scene,
     ) {
         scene.dynamic_lights = vec![];
-        let mut textures = vec![];
         let mut batches = vec![];
 
         fn add_billboard(
             start_vertex: &Vec2<f32>,
             end_vertex: &Vec2<f32>,
             scale: f32,
-            batch: &mut Batch<[f32; 4]>,
+            batch: &mut Batch3D,
         ) {
             let wall_vertices = vec![
                 [start_vertex.x, 0.0, start_vertex.y, 1.0],
@@ -425,7 +425,6 @@ impl D3Builder {
         }
 
         let camera_pos = Vec2::new(camera.position().x, camera.position().z);
-        let mut index = 0;
 
         // Billboard sectors (Rect)
         for sector in self.map.sectors.iter() {
@@ -448,23 +447,16 @@ impl D3Builder {
                             let start = position + perpendicular * 0.5 * scale;
                             let end = position - perpendicular * 0.5 * scale;
 
-                            let mut batch = Batch::emptyd3()
-                                .texture_index(index)
-                                .repeat_mode(crate::RepeatMode::RepeatXY);
+                            if let Some(tile) = source.tile_from_tile_list(assets) {
+                                if let Some(texture_index) = assets.tile_index(&tile.id) {
+                                    let mut batch = Batch3D::empty()
+                                        .repeat_mode(crate::RepeatMode::RepeatXY)
+                                        .source(PixelSource::StaticTileIndex(texture_index));
 
-                            add_billboard(&start, &end, scale, &mut batch);
-
-                            if let Some(tile) = source.to_tile(
-                                assets,
-                                self.tile_size as usize,
-                                &sector.properties,
-                                map,
-                            ) {
-                                textures.push(tile);
+                                    add_billboard(&start, &end, scale, &mut batch);
+                                    batches.push(batch);
+                                }
                             }
-
-                            batches.push(batch);
-                            index += 1;
                         }
                     }
                 }
@@ -503,20 +495,16 @@ impl D3Builder {
                         let start = entity_pos + perpendicular * 0.5;
                         let end = entity_pos - perpendicular * 0.5;
 
-                        let mut batch = Batch::emptyd3()
-                            .texture_index(index)
-                            .repeat_mode(crate::RepeatMode::RepeatXY);
+                        if let Some(tile) = source.tile_from_tile_list(assets) {
+                            if let Some(texture_index) = assets.tile_index(&tile.id) {
+                                let mut batch = Batch3D::empty()
+                                    .repeat_mode(crate::RepeatMode::RepeatXY)
+                                    .source(PixelSource::StaticTileIndex(texture_index));
 
-                        add_billboard(&start, &end, 2.0, &mut batch);
-
-                        if let Some(tile) =
-                            source.to_tile(assets, self.tile_size as usize, &entity.attributes, map)
-                        {
-                            textures.push(tile);
+                                add_billboard(&start, &end, 2.0, &mut batch);
+                                batches.push(batch);
+                            }
                         }
-
-                        batches.push(batch);
-                        index += 1;
                     }
                 }
             }
@@ -544,27 +532,23 @@ impl D3Builder {
                         let start = item_pos + perpendicular * 0.5;
                         let end = item_pos - perpendicular * 0.5;
 
-                        let mut batch = Batch::emptyd3()
-                            .texture_index(index)
-                            .repeat_mode(crate::RepeatMode::RepeatXY);
+                        if let Some(tile) = source.tile_from_tile_list(assets) {
+                            if let Some(texture_index) = assets.tile_index(&tile.id) {
+                                let mut batch = Batch3D::empty()
+                                    .repeat_mode(crate::RepeatMode::RepeatXY)
+                                    .source(PixelSource::StaticTileIndex(texture_index));
 
-                        add_billboard(&start, &end, 1.0, &mut batch);
-
-                        if let Some(tile) =
-                            source.to_tile(assets, self.tile_size as usize, &item.attributes, map)
-                        {
-                            textures.push(tile);
+                                add_billboard(&start, &end, 1.0, &mut batch);
+                                batches.push(batch);
+                            }
                         }
-
-                        batches.push(batch);
-                        index += 1;
                     }
                 }
             }
         }
 
         scene.d3_dynamic = batches;
-        scene.dynamic_textures = textures;
+        scene.dynamic_textures = vec![];
         scene.compute_dynamic_normals();
     }
 
@@ -585,7 +569,7 @@ impl D3Builder {
         properties: &ValueContainer,
         map: &Map,
         repeated_offsets: &mut FxHashMap<Uuid, usize>,
-        repeated_batches: &mut Vec<Batch<[f32; 4]>>,
+        repeated_batches: &mut Vec<Batch3D>,
         textures: &mut Vec<Tile>,
         sample_mode: &SampleMode,
     ) {
@@ -625,21 +609,11 @@ impl D3Builder {
                 };
 
             let row_indices = vec![(0, 1, 2), (0, 2, 3)];
-            if let Some(offset) = repeated_offsets.get(&tile.id) {
-                repeated_batches[*offset].add(row_vertices, row_indices, row_uvs);
-            } else {
-                let texture_index = textures.len();
 
-                let mut batch = Batch::emptyd3()
+            if let Some(texture_index) = assets.tile_index(&tile.id) {
+                let batch = Batch3D::new(row_vertices, row_indices, row_uvs)
                     .repeat_mode(crate::RepeatMode::RepeatXY)
-                    .cull_mode(crate::CullMode::Off)
-                    .sample_mode(*sample_mode)
-                    .texture_index(texture_index);
-
-                batch.add(row_vertices, row_indices, row_uvs);
-                textures.push(tile.clone());
-                repeated_offsets.insert(tile.id, repeated_batches.len());
-                repeated_batches.push(batch);
+                    .source(PixelSource::StaticTileIndex(texture_index));
             }
         };
 
@@ -652,9 +626,7 @@ impl D3Builder {
                 break;
             }
 
-            let source_tile = sources[i].and_then(|source| {
-                source.to_tile(assets, self.tile_size as usize, properties, map)
-            });
+            let source_tile = sources[i].and_then(|source| source.tile_from_tile_list(assets));
 
             let tile_to_use = if let Some(tile) = source_tile {
                 last_tile = Some(tile.clone());
@@ -699,7 +671,7 @@ impl D3Builder {
         texture_id: &Uuid,
         tiles: &FxHashMap<Uuid, Tile>,
         repeated_offsets: &mut FxHashMap<Uuid, usize>,
-        repeated_batches: &mut Vec<Batch<[f32; 4]>>,
+        repeated_batches: &mut Vec<Batch3D>,
         textures: &mut Vec<Tile>,
     ) {
         // Define sky vertices
@@ -716,22 +688,22 @@ impl D3Builder {
         // Define indices for rendering the quad
         let sky_indices = vec![(0, 1, 2), (0, 2, 3)];
 
-        if let Some(tile) = tiles.get(texture_id) {
-            // Create a new batch for the sky texture
-            let texture_index = textures.len();
+        // if let Some(tile) = tiles.get(texture_id) {
+        //     // Create a new batch for the sky texture
+        //     let texture_index = textures.len();
 
-            let mut batch = Batch::emptyd3()
-                .repeat_mode(crate::RepeatMode::RepeatXY)
-                .cull_mode(crate::CullMode::Off)
-                .sample_mode(crate::SampleMode::Linear)
-                .texture_index(texture_index)
-                .receives_light(false);
+        //     let mut batch = Batch::emptyd3()
+        //         .repeat_mode(crate::RepeatMode::RepeatXY)
+        //         .cull_mode(crate::CullMode::Off)
+        //         .sample_mode(crate::SampleMode::Linear)
+        //         .texture_index(texture_index)
+        //         .receives_light(false);
 
-            batch.add(sky_vertices, sky_indices, sky_uvs);
+        //     batch.add(sky_vertices, sky_indices, sky_uvs);
 
-            textures.push(tile.clone());
-            repeated_offsets.insert(tile.id, repeated_batches.len());
-            repeated_batches.push(batch);
-        }
+        //     textures.push(tile.clone());
+        //     repeated_offsets.insert(tile.id, repeated_batches.len());
+        //     repeated_batches.push(batch);
+        // }
     }
 }

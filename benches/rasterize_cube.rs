@@ -1,14 +1,16 @@
 use rusterix::prelude::*;
 use std::path::Path;
 
-use criterion::{criterion_group, criterion_main, Criterion};
+use criterion::{Criterion, criterion_group, criterion_main};
 
 fn rasterize_cube(c: &mut Criterion) {
     let mut scene = Scene::from_static(
-        vec![Batch::from_rectangle(0.0, 0.0, 200.0, 200.0)],
-        vec![Batch::from_box(-0.5, -0.5, -0.5, 1.0, 1.0, 1.0)
-            .sample_mode(SampleMode::Nearest)
-            .cull_mode(CullMode::Off)],
+        vec![Batch2D::from_rectangle(0.0, 0.0, 200.0, 200.0)],
+        vec![
+            Batch::from_box(-0.5, -0.5, -0.5, 1.0, 1.0, 1.0)
+                .sample_mode(SampleMode::Nearest)
+                .cull_mode(CullMode::Off),
+        ],
     )
     .background(Box::new(VGrayGradientShader::new()))
     .textures(vec![Tile::from_texture(Texture::from_image(Path::new(

@@ -1,5 +1,6 @@
-use crate::{Batch, CompiledLight, MapMini, Shader, Terrain, Tile};
+use crate::{Batch2D, Batch3D, Chunk, CompiledLight, MapMini, Shader, Terrain, Tile};
 use rayon::prelude::*;
+use theframework::prelude::*;
 use vek::{Mat3, Mat4};
 
 /// A scene of 2D and 3D batches which are passed to the rasterizer for rasterization.
@@ -13,16 +14,17 @@ pub struct Scene {
     /// The lights in the scene
     pub dynamic_lights: Vec<CompiledLight>,
 
-    /// 3D static batches which do not need to be changed.
-    pub d3_static: Vec<Batch<[f32; 4]>>,
+    /// 3D static batches which never change. Only use for scene with no async chunc rendering.
+    pub d3_static: Vec<Batch3D>,
+
     /// 3D dynamic batches which can be updated dynamically.
-    pub d3_dynamic: Vec<Batch<[f32; 4]>>,
+    pub d3_dynamic: Vec<Batch3D>,
 
     /// The 2D batches get rendered on top of the 3D batches (2D game or UI).
     /// Static 2D batches.
-    pub d2_static: Vec<Batch<[f32; 2]>>,
+    pub d2_static: Vec<Batch2D>,
     /// 2D dynamic batches which can be updated dynamically.
-    pub d2_dynamic: Vec<Batch<[f32; 2]>>,
+    pub d2_dynamic: Vec<Batch2D>,
 
     /// The list of textures which the batches index into.
     pub textures: Vec<Tile>,
@@ -38,6 +40,9 @@ pub struct Scene {
 
     /// Optional Terrain
     pub terrain: Option<Terrain>,
+
+    /// The build chunks
+    pub chunks: FxHashMap<(i32, i32), Chunk>,
 }
 
 impl Default for Scene {
@@ -64,11 +69,13 @@ impl Scene {
 
             mapmini: MapMini::default(),
             terrain: None,
+
+            chunks: FxHashMap::default(),
         }
     }
 
     // From static 2D and 3D meshes.
-    pub fn from_static(d2: Vec<Batch<[f32; 2]>>, d3: Vec<Batch<[f32; 4]>>) -> Self {
+    pub fn from_static(d2: Vec<Batch2D>, d3: Vec<Batch3D>) -> Self {
         Self {
             background: None,
             lights: vec![],
@@ -84,6 +91,8 @@ impl Scene {
 
             mapmini: MapMini::default(),
             terrain: None,
+
+            chunks: FxHashMap::default(),
         }
     }
 
@@ -116,9 +125,18 @@ impl Scene {
         projection_matrix_2d: Option<Mat3<f32>>,
         view_matrix_3d: Mat4<f32>,
         projection_matrix_3d: Mat4<f32>,
-        width: usize,
-        height: usize,
+        width: f32,
+        height: f32,
     ) {
+        self.chunks.par_iter_mut().for_each(|chunk| {
+            for chunk2d in &mut chunk.1.batches2d {
+                chunk2d.project(projection_matrix_2d);
+            }
+            for chunk3d in &mut chunk.1.batches3d {
+                chunk3d.clip_and_project(view_matrix_3d, projection_matrix_3d, width, height);
+            }
+        });
+
         self.d2_static.par_iter_mut().for_each(|batch| {
             batch.project(projection_matrix_2d);
         });
@@ -128,32 +146,17 @@ impl Scene {
         });
 
         self.d3_static.par_iter_mut().for_each(|batch| {
-            batch.clip_and_project(
-                view_matrix_3d,
-                projection_matrix_3d,
-                width as f32,
-                height as f32,
-            );
+            batch.clip_and_project(view_matrix_3d, projection_matrix_3d, width, height);
         });
 
         self.d3_dynamic.par_iter_mut().for_each(|batch| {
-            batch.clip_and_project(
-                view_matrix_3d,
-                projection_matrix_3d,
-                width as f32,
-                height as f32,
-            );
+            batch.clip_and_project(view_matrix_3d, projection_matrix_3d, width, height);
         });
 
         if let Some(terrain) = &mut self.terrain {
             terrain.chunks.par_iter_mut().for_each(|batch| {
                 if let Some(batch) = &mut batch.1.batch {
-                    batch.clip_and_project(
-                        view_matrix_3d,
-                        projection_matrix_3d,
-                        width as f32,
-                        height as f32,
-                    );
+                    batch.clip_and_project(view_matrix_3d, projection_matrix_3d, width, height);
                 }
                 if let Some(batch) = &mut batch.1.batch_d2 {
                     batch.project(projection_matrix_2d);

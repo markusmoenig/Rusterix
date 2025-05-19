@@ -1,5 +1,5 @@
 use crate::Terrain;
-use crate::{Assets, BBox, Batch, Linedef, Map, PixelSource, Texture, Value};
+use crate::{Assets, BBox, Batch2D, Batch3D, Linedef, Map, PixelSource, Texture, Value};
 use theframework::prelude::*;
 use vek::Vec2;
 
@@ -29,9 +29,9 @@ pub struct TerrainChunk {
     #[serde(with = "vectorize")]
     pub blend_modes: FxHashMap<(i32, i32), TerrainBlendMode>,
     #[serde(skip, default)]
-    pub batch: Option<Batch<[f32; 4]>>,
+    pub batch: Option<Batch3D>,
     #[serde(skip, default)]
-    pub batch_d2: Option<Batch<[f32; 2]>>,
+    pub batch_d2: Option<Batch2D>,
     #[serde(skip, default)]
     pub baked_texture: Option<Texture>,
     pub dirty: bool,
@@ -221,7 +221,7 @@ impl TerrainChunk {
         //self.processed_heights = Some(processed_heights.clone());
     }
 
-    pub fn build_mesh(&self, terrain: &Terrain) -> Batch<[f32; 4]> {
+    pub fn build_mesh(&self, terrain: &Terrain) -> Batch3D {
         let mut vertices = Vec::new();
         let mut uvs = Vec::new();
         let mut indices = Vec::new();
@@ -261,13 +261,13 @@ impl TerrainChunk {
             }
         }
 
-        let mut batch = Batch::new_3d(vertices, indices, uvs);
+        let mut batch = Batch3D::new(vertices, indices, uvs);
         batch.compute_vertex_normals();
         batch
     }
 
     /// Rebuilds a simple 2D rectangle batch mesh for this chunk
-    pub fn build_mesh_d2(&self, terrain: &Terrain) -> Batch<[f32; 2]> {
+    pub fn build_mesh_d2(&self, terrain: &Terrain) -> Batch2D {
         let min = self.origin;
         let max = self.origin + Vec2::new(terrain.chunk_size, terrain.chunk_size) - Vec2::new(1, 1);
 
@@ -283,6 +283,6 @@ impl TerrainChunk {
         let width = max_pos.x - min_pos.x;
         let height = max_pos.y - min_pos.y;
 
-        Batch::from_rectangle(min_pos.x, min_pos.y, width, height)
+        Batch2D::from_rectangle(min_pos.x, min_pos.y, width, height)
     }
 }

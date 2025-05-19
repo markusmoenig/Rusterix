@@ -2,8 +2,8 @@
 
 use crate::Texture;
 use crate::{
-    Assets, Batch, GridShader, Map, MapToolType, Material, Pixel, Rect, Scene, Shader, Tile, Value,
-    ValueContainer, WHITE,
+    Assets, Batch2D, GridShader, Map, MapToolType, Material, Pixel, PixelSource, Rect, Scene,
+    Shader, Tile, Value, ValueContainer, WHITE,
 };
 use theframework::prelude::*;
 use vek::Vec2;
@@ -66,6 +66,36 @@ impl D2PreviewBuilder {
         }
     }
 
+    pub fn set_properties(&mut self, properties: &ValueContainer) {
+        self.no_rect_geo = true; //properties.get_bool_default("no_rect_geo", true);
+        self.tile_size = properties.get_int_default("tile_size", 128);
+
+        self.textures.clear();
+        if let Some(Value::Texture(tex)) = properties.get("character_on") {
+            self.textures.push(Tile::from_texture(tex.clone()));
+        } else {
+            self.textures.push(Tile::from_texture(Texture::white()));
+        }
+
+        if let Some(Value::Texture(tex)) = properties.get("character_off") {
+            self.textures.push(Tile::from_texture(tex.clone()));
+        } else {
+            self.textures.push(Tile::from_texture(Texture::black()));
+        }
+
+        if let Some(Value::Texture(tex)) = properties.get("treasure_on") {
+            self.textures.push(Tile::from_texture(tex.clone()));
+        } else {
+            self.textures.push(Tile::from_texture(Texture::white()));
+        }
+
+        if let Some(Value::Texture(tex)) = properties.get("treasure_off") {
+            self.textures.push(Tile::from_texture(tex.clone()));
+        } else {
+            self.textures.push(Tile::from_texture(Texture::black()));
+        }
+    }
+
     pub fn build(
         &mut self,
         map: &Map,
@@ -73,7 +103,8 @@ impl D2PreviewBuilder {
         screen_size: Vec2<f32>,
         properties: &ValueContainer,
     ) -> Scene {
-        let mut scene = Scene::empty();
+        let scene = Scene::empty();
+        /*
         let atlas_size = assets.atlas.width as f32;
         self.no_rect_geo = properties.get_bool_default("no_rect_geo", true);
         self.tile_size = properties.get_int_default("tile_size", 128);
@@ -163,7 +194,7 @@ impl D2PreviewBuilder {
         let mut atlas_batch = Batch::emptyd2();
 
         // Repeated tile textures have their own batches
-        let mut repeated_batches: Vec<Batch<[f32; 2]>> = vec![];
+        let mut repeated_batches: Vec<Batch2D> = vec![];
         let mut repeated_offsets: FxHashMap<Uuid, usize> = FxHashMap::default();
 
         // Add Sectors
@@ -261,7 +292,7 @@ impl D2PreviewBuilder {
                             if material.is_some() {
                                 let texture_index = textures.len();
 
-                                let mut batch = Batch::emptyd2()
+                                let mut batch = Batch2D::empty()
                                     .repeat_mode(crate::RepeatMode::RepeatXY)
                                     .texture_index(texture_index)
                                     .receives_light(true);
@@ -278,7 +309,7 @@ impl D2PreviewBuilder {
                                 } else {
                                     let texture_index = textures.len();
 
-                                    let mut batch = Batch::emptyd2()
+                                    let mut batch = Batch2D::empty()
                                         .repeat_mode(crate::RepeatMode::RepeatXY)
                                         .texture_index(texture_index)
                                         .receives_light(true);
@@ -362,7 +393,7 @@ impl D2PreviewBuilder {
                                     } else {
                                         let texture_index = textures.len();
 
-                                        let mut batch = Batch::emptyd2()
+                                        let mut batch = Batch2D::empty()
                                             .repeat_mode(crate::RepeatMode::RepeatXY)
                                             .texture_index(texture_index)
                                             .receives_light(true);
@@ -429,7 +460,7 @@ impl D2PreviewBuilder {
                                     } else {
                                         let texture_index = textures.len();
 
-                                        let mut batch = Batch::emptyd2()
+                                        let mut batch = Batch2D::empty()
                                             .repeat_mode(crate::RepeatMode::RepeatXY)
                                             .texture_index(texture_index)
                                             .receives_light(true);
@@ -451,12 +482,13 @@ impl D2PreviewBuilder {
         }
 
         let mut batches = repeated_batches;
-        batches.extend(vec![atlas_batch]);
+        // batches.extend(vec![atlas_batch]);
 
         let tiles = assets.blocking_tiles();
         scene.mapmini = map.as_mini(&tiles);
         scene.d2_static = batches;
         scene.textures = textures;
+        */
         scene
     }
 
@@ -496,6 +528,17 @@ impl D2PreviewBuilder {
         let size_y = size_x * screen_aspect / 2.0;
 
         scene.dynamic_lights = vec![];
+        scene.d2_dynamic = vec![];
+
+        // Grid
+        if self.draw_grid {
+            if scene.background.is_none() {
+                let grid_shader = GridShader::new();
+                scene.background = Some(Box::new(grid_shader));
+            }
+        } else {
+            scene.background = None;
+        }
 
         // Adjust the grid shader
         if let Some(grid_shader) = &mut scene.background {
@@ -504,45 +547,24 @@ impl D2PreviewBuilder {
             grid_shader.set_parameter_vec2("offset", Vec2::new(map.offset.x, -map.offset.y));
         }
 
-        let mut textures = self.textures.clone();
-
-        let mut white_batch = Batch::emptyd2()
-            .texture_index(0)
-            .mode(crate::PrimitiveMode::Lines);
-        let mut selected_batch = Batch::emptyd2().texture_index(1);
-        let mut selected_batch_lines = Batch::emptyd2()
-            .color(self.selection_color)
-            .mode(crate::PrimitiveMode::Lines);
-        let mut gray_batch = Batch::emptyd2().texture_index(2);
-        let mut gray_batch_lines = Batch::emptyd2()
-            .texture_index(2)
-            .color([128, 128, 128, 255])
-            .mode(crate::PrimitiveMode::Lines);
-        let mut clip_batch = Batch::emptyd2().texture_index(3);
-        let mut yellow_batch = Batch::emptyd2().texture_index(4);
-        let mut red_batch = Batch::emptyd2().texture_index(5);
-        let mut character_on_batch = Batch::emptyd2().texture_index(6);
-        let mut character_off_batch = Batch::emptyd2().texture_index(7);
-        let mut treasure_on_batch = Batch::emptyd2().texture_index(8);
-        let mut treasure_off_batch = Batch::emptyd2().texture_index(9);
-        // let mut light_on_batch = Batch::emptyd2().texture_index(10);
-        // let mut light_off_batch = Batch::emptyd2().texture_index(11);
-
-        let mut repeated_batches: Vec<Batch<[f32; 2]>> = vec![];
-        let mut repeated_offsets: FxHashMap<Uuid, usize> = FxHashMap::default();
-
         // Add the clipping area
         if let Some(clip_rect) = self.clip_rect {
-            let tl = self.map_grid_to_local(screen_size, Vec2::new(clip_rect.x, clip_rect.y), map);
             let size = self.map_grid_to_local(
                 screen_size,
                 Vec2::new(clip_rect.width, clip_rect.height),
                 map,
             );
-            clip_batch.add_rectangle(tl.x, tl.y, size.x, size.y);
+            let tl = Vec2::new(clip_rect.x, clip_rect.y);
+            let batch = Batch2D::from_rectangle(tl.x, tl.y, size.x, size.y)
+                .source(PixelSource::Pixel([255, 255, 255, 30]));
+            scene.d2_dynamic.push(batch);
         }
 
         // Add Vertices
+
+        let mut selected_batch = Batch2D::empty().source(PixelSource::Pixel(self.selection_color));
+        let mut batch = Batch2D::empty().source(PixelSource::Pixel([128, 128, 128, 255]));
+
         if self.map_tool_type == MapToolType::Selection
             || self.map_tool_type == MapToolType::Vertex
             || self.map_tool_type == MapToolType::Sector
@@ -599,7 +621,7 @@ impl D2PreviewBuilder {
                             size_y * 2.0,
                         );
                     } else {
-                        gray_batch.add_rectangle(
+                        batch.add_rectangle(
                             pos.x - size_x,
                             pos.y - size_y,
                             size_x * 2.0,
@@ -609,6 +631,8 @@ impl D2PreviewBuilder {
                 }
             }
         }
+        scene.d2_dynamic.push(selected_batch);
+        scene.d2_dynamic.push(batch);
 
         // Add Lines
         if self.map_tool_type == MapToolType::Selection
@@ -711,14 +735,22 @@ impl D2PreviewBuilder {
             }
 
             // Draw non-selected lines first
+            let mut batch = Batch2D::empty()
+                .source(PixelSource::Pixel(WHITE))
+                .mode(crate::PrimitiveMode::Lines);
             for (start_pos, end_pos) in non_selected_lines {
-                white_batch.add_line(start_pos, end_pos, 0.05);
+                batch.add_line(start_pos, end_pos, 0.05);
             }
+            scene.d2_dynamic.push(batch);
 
             // Draw selected lines last
+            let mut batch = Batch2D::empty()
+                .source(PixelSource::Pixel(self.selection_color))
+                .mode(crate::PrimitiveMode::Lines);
             for (start_pos, end_pos) in selected_lines {
-                selected_batch_lines.add_line(start_pos, end_pos, 0.05);
+                batch.add_line(start_pos, end_pos, 0.05);
             }
+            scene.d2_dynamic.push(batch);
         }
 
         if self.map_tool_type != MapToolType::Effects {
@@ -749,23 +781,27 @@ impl D2PreviewBuilder {
 
                 if let Some(Value::Source(source)) = entity.attributes.get("source") {
                     if entity.attributes.get_bool_default("visible", false) {
-                        if let Some(tile) = source.to_tile(assets, 100, &entity.attributes, map) {
-                            let texture_index = textures.len();
-
-                            let mut batch = Batch::emptyd2()
-                                .texture_index(texture_index)
-                                .receives_light(true);
-
-                            batch.add_rectangle(pos.x - hsize, pos.y - hsize, size, size);
-                            textures.push(tile.clone());
-                            repeated_offsets.insert(tile.id, repeated_batches.len());
-                            repeated_batches.push(batch);
+                        if let Some(tile) = source.tile_from_tile_list(assets) {
+                            if let Some(texture_index) = assets.tile_index(&tile.id) {
+                                let mut batch = Batch2D::from_rectangle(
+                                    pos.x - hsize,
+                                    pos.y - hsize,
+                                    size,
+                                    size,
+                                )
+                                .source(PixelSource::StaticTileIndex(texture_index));
+                                scene.d2_dynamic.push(batch);
+                            }
                         }
                     }
                 } else if Some(entity.creator_id) == map.selected_entity_item {
-                    character_on_batch.add_rectangle(pos.x - hsize, pos.y - hsize, size, size);
+                    let batch = Batch2D::from_rectangle(pos.x - hsize, pos.y - hsize, size, size)
+                        .source(PixelSource::DynamicTileIndex(0));
+                    scene.d2_dynamic.push(batch);
                 } else {
-                    character_off_batch.add_rectangle(pos.x - hsize, pos.y - hsize, size, size);
+                    let batch = Batch2D::from_rectangle(pos.x - hsize, pos.y - hsize, size, size)
+                        .source(PixelSource::DynamicTileIndex(1));
+                    scene.d2_dynamic.push(batch);
                 }
             }
 
@@ -785,26 +821,34 @@ impl D2PreviewBuilder {
 
                 if let Some(Value::Source(source)) = item.attributes.get("source") {
                     if item.attributes.get_bool_default("visible", false) {
-                        if let Some(tile) = source.to_tile(assets, 100, &item.attributes, map) {
-                            let texture_index = textures.len();
-
-                            let mut batch = Batch::emptyd2()
-                                .texture_index(texture_index)
-                                .receives_light(true);
-
-                            batch.add_rectangle(pos.x - hsize, pos.y - hsize, size, size);
-                            textures.push(tile.clone());
-                            repeated_offsets.insert(tile.id, repeated_batches.len());
-                            repeated_batches.push(batch);
+                        if let Some(tile) = source.tile_from_tile_list(assets) {
+                            if let Some(texture_index) = assets.tile_index(&tile.id) {
+                                let batch = Batch2D::from_rectangle(
+                                    pos.x - hsize,
+                                    pos.y - hsize,
+                                    size,
+                                    size,
+                                )
+                                .source(PixelSource::StaticTileIndex(texture_index));
+                                scene.d2_dynamic.push(batch);
+                            }
                         }
                     }
                 } else if Some(item.creator_id) == map.selected_entity_item {
-                    treasure_on_batch.add_rectangle(pos.x - hsize, pos.y - hsize, size, size);
+                    let batch = Batch2D::from_rectangle(pos.x - hsize, pos.y - hsize, size, size)
+                        .source(PixelSource::DynamicTileIndex(2));
+                    scene.d2_dynamic.push(batch);
                 } else {
-                    treasure_off_batch.add_rectangle(pos.x - hsize, pos.y - hsize, size, size);
+                    let batch = Batch2D::from_rectangle(pos.x - hsize, pos.y - hsize, size, size)
+                        .source(PixelSource::DynamicTileIndex(3));
+                    scene.d2_dynamic.push(batch);
                 }
             }
         }
+
+        let mut white_batch = Batch2D::empty()
+            .source(PixelSource::Pixel(WHITE))
+            .mode(crate::PrimitiveMode::Lines);
 
         // For rectangle selection preview
         if let Some(rect) = map.curr_rectangle {
@@ -832,26 +876,28 @@ impl D2PreviewBuilder {
 
         // For line action previews
         if let Some(grid_pos) = map.curr_grid_pos {
-            let local = self.map_grid_to_local(screen_size, grid_pos, map);
             if let Some(mouse_pos) = map.curr_mouse_pos {
-                white_batch.add_line(local, mouse_pos, 1.0)
+                white_batch.add_line(grid_pos, mouse_pos, 1.0)
             }
         }
+        scene.d2_dynamic.push(white_batch);
 
         // Hover Cursor
         if self.map_tool_type != MapToolType::Rect {
             if let Some(hover_pos) = self.hover_cursor {
-                let pos = self.map_grid_to_local(screen_size, hover_pos, map);
-
+                let mut yellow_batch =
+                    Batch2D::empty().source(PixelSource::Pixel(vek::Rgba::yellow().into_array()));
                 yellow_batch.add_rectangle(
-                    pos.x - size_x,
-                    pos.y - size_y,
+                    hover_pos.x - size_x,
+                    hover_pos.y - size_y,
                     size_x * 2.0,
                     size_y * 2.0,
                 );
+                scene.d2_dynamic.push(yellow_batch);
             }
         }
 
+        /*
         // Camera Pos
         if let Some(camera_pos) = self.camera_pos {
             let camera_grid_pos =
@@ -876,25 +922,9 @@ impl D2PreviewBuilder {
                 );
             }
         }
+        */
 
-        let mut batches = repeated_batches;
-        batches.extend(vec![
-            clip_batch,
-            white_batch,
-            selected_batch,
-            selected_batch_lines,
-            gray_batch,
-            gray_batch_lines,
-            yellow_batch,
-            red_batch,
-            character_on_batch,
-            character_off_batch,
-            treasure_on_batch,
-            treasure_off_batch,
-        ]);
-
-        scene.d2_dynamic = batches;
-        scene.dynamic_textures = textures;
+        scene.dynamic_textures = self.textures.clone();
     }
 
     pub fn set_map_tool_type(&mut self, tool: MapToolType) {

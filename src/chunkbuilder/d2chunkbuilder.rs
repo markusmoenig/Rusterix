@@ -1,0 +1,201 @@
+use crate::{Assets, Batch2D, Chunk, ChunkBuilder, Map, PixelSource, Value};
+use vek::Vec2;
+
+pub struct D2ChunkBuilder {}
+
+impl ChunkBuilder for D2ChunkBuilder {
+    fn new() -> Self {
+        Self {}
+    }
+
+    fn build(&mut self, map: &Map, assets: &Assets, chunk: &mut Chunk) {
+        let sectors = map.sorted_sectors_by_area();
+        for sector in &sectors {
+            let bbox = sector.bounding_box(map);
+            if bbox.intersects(&chunk.bbox) && chunk.bbox.contains(bbox.center()) {
+                if let Some(geo) = sector.generate_geometry(map) {
+                    let mut vertices: Vec<[f32; 2]> = vec![];
+                    let mut uvs: Vec<[f32; 2]> = vec![];
+
+                    let mut repeat = true;
+                    if sector.properties.get_int_default("tile_mode", 1) == 0 {
+                        repeat = false;
+                    }
+
+                    // Use the floor or ceiling source
+                    let mut source = sector.properties.get("floor_source");
+                    if source.is_none() {
+                        //|| self.activated_widgets.contains(&sector.id) {
+                        source = sector.properties.get("ceiling_source");
+                    }
+
+                    if let Some(Value::Source(pixelsource)) = source {
+                        if let Some(tile) = pixelsource.tile_from_tile_list(assets) {
+                            for vertex in &geo.0 {
+                                let local = Vec2::new(vertex[0], vertex[1]);
+
+                                let repeat = true;
+                                let index = 0;
+
+                                if !repeat {
+                                    let uv = [
+                                        (tile.uvs[index].x as f32
+                                            + ((vertex[0] - bbox.min.x)
+                                                / (bbox.max.x - bbox.min.x)
+                                                * tile.uvs[index].z as f32))
+                                            / tile.textures[0].width as f32,
+                                        ((tile.uvs[index].y as f32
+                                            + (vertex[1] - bbox.min.y)
+                                                / (bbox.max.y - bbox.min.y)
+                                                * tile.uvs[index].w as f32)
+                                            / tile.textures[0].height as f32),
+                                    ];
+                                    uvs.push(uv);
+                                } else {
+                                    let texture_scale = 1.0;
+                                    let uv = [
+                                        (vertex[0] - bbox.min.x) / texture_scale,
+                                        (vertex[1] - bbox.min.y) / texture_scale,
+                                    ];
+                                    uvs.push(uv);
+                                }
+                                vertices.push([local.x, local.y]);
+                            }
+
+                            if let Some(texture_index) = assets.tile_index(&tile.id) {
+                                let batch = Batch2D::new(vertices, geo.1, uvs)
+                                    .repeat_mode(if repeat {
+                                        crate::RepeatMode::RepeatXY
+                                    } else {
+                                        crate::RepeatMode::ClampXY
+                                    })
+                                    .source(PixelSource::StaticTileIndex(texture_index));
+                                chunk.batches2d.push(batch);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Walls
+        for sector in &sectors {
+            let bbox = sector.bounding_box(map);
+            if bbox.intersects(&chunk.bbox) {
+                if let Some(hash) = sector.generate_wall_geometry_by_linedef(map) {
+                    for (linedef_id, geo) in hash.iter() {
+                        let mut source = None;
+
+                        if let Some(linedef) = map.find_linedef(*linedef_id) {
+                            if let Some(Value::Source(pixelsource)) =
+                                linedef.properties.get("row1_source")
+                            {
+                                source = Some(pixelsource);
+                            }
+                        }
+
+                        let mut vertices: Vec<[f32; 2]> = vec![];
+                        let mut uvs: Vec<[f32; 2]> = vec![];
+                        let bbox = sector.bounding_box(map);
+
+                        let repeat = true;
+
+                        if let Some(pixelsource) = source {
+                            if let Some(tile) = pixelsource.tile_from_tile_list(assets) {
+                                for vertex in &geo.0 {
+                                    let local = Vec2::new(vertex[0], vertex[1]);
+                                    let index = 0;
+
+                                    if !repeat {
+                                        let uv = [
+                                            (tile.uvs[index].x as f32
+                                                + ((vertex[0] - bbox.min.x)
+                                                    / (bbox.max.x - bbox.min.x)
+                                                    * tile.uvs[index].z as f32))
+                                                / tile.textures[0].width as f32,
+                                            ((tile.uvs[index].y as f32
+                                                + (vertex[1] - bbox.min.y)
+                                                    / (bbox.max.y - bbox.min.y)
+                                                    * tile.uvs[index].w as f32)
+                                                / tile.textures[0].height as f32),
+                                        ];
+                                        uvs.push(uv);
+                                    } else {
+                                        let texture_scale = 1.0;
+                                        let uv = [
+                                            (vertex[0] - bbox.min.x) / texture_scale,
+                                            (vertex[1] - bbox.min.y) / texture_scale,
+                                        ];
+                                        uvs.push(uv);
+                                    }
+                                    vertices.push([local.x, local.y]);
+                                }
+
+                                if let Some(texture_index) = assets.tile_index(&tile.id) {
+                                    let batch = Batch2D::new(vertices, geo.1.clone(), uvs)
+                                        .repeat_mode(if repeat {
+                                            crate::RepeatMode::RepeatXY
+                                        } else {
+                                            crate::RepeatMode::ClampXY
+                                        })
+                                        .source(PixelSource::StaticTileIndex(texture_index));
+                                    chunk.batches2d.push(batch);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Add standalone walls
+        for linedef in &map.linedefs {
+            let bbox = linedef.bounding_box(map);
+            if bbox.intersects(&chunk.bbox)
+                && linedef.front_sector.is_none()
+                && linedef.back_sector.is_none()
+                && linedef.properties.get_float_default("wall_width", 0.0) > 0.0
+            {
+                if let Some(hash) =
+                    crate::map::geometry::generate_line_segments_d2(map, &[linedef.id])
+                {
+                    for (_linedef_id, geo) in hash.iter() {
+                        let mut source = None;
+
+                        if let Some(Value::Source(pixelsource)) =
+                            linedef.properties.get("row1_source")
+                        {
+                            source = Some(pixelsource);
+                        }
+
+                        let mut vertices: Vec<[f32; 2]> = vec![];
+                        let mut uvs: Vec<[f32; 2]> = vec![];
+
+                        if let Some(pixelsource) = source {
+                            if let Some(tile) = pixelsource.tile_from_tile_list(assets) {
+                                if let Some(texture_index) = assets.tile_index(&tile.id) {
+                                    for vertex in &geo.0 {
+                                        let local = Vec2::new(vertex[0], vertex[1]);
+
+                                        let texture_scale = 1.0;
+                                        let uv = [
+                                            (vertex[0]) / texture_scale,
+                                            (vertex[1]) / texture_scale,
+                                        ];
+                                        uvs.push(uv);
+                                        vertices.push([local.x, local.y]);
+                                    }
+
+                                    let batch = Batch2D::new(vertices, geo.1.clone(), uvs)
+                                        .repeat_mode(crate::RepeatMode::RepeatXY)
+                                        .source(PixelSource::StaticTileIndex(texture_index));
+                                    chunk.batches2d.push(batch);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

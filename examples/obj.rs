@@ -23,11 +23,13 @@ impl TheTrait for ObjDemo {
         Self: Sized,
     {
         let scene = Scene::from_static(
-            vec![Batch::from_rectangle(0.0, 0.0, 200.0, 200.0)],
-            vec![Batch::from_obj(Path::new("examples/teapot.obj"))
-                .sample_mode(SampleMode::Linear)
-                .repeat_mode(RepeatMode::RepeatXY)
-                .transform(Mat4::scaling_3d(Vec3::new(0.35, -0.35, 0.35)))],
+            vec![Batch2D::from_rectangle(0.0, 0.0, 200.0, 200.0)],
+            vec![
+                Batch::from_obj(Path::new("examples/teapot.obj"))
+                    .sample_mode(SampleMode::Linear)
+                    .repeat_mode(RepeatMode::RepeatXY)
+                    .transform(Mat4::scaling_3d(Vec3::new(0.35, -0.35, 0.35))),
+            ],
         )
         .background(Box::new(VGrayGradientShader::new()))
         .textures(vec![Tile::from_texture(Texture::from_image(Path::new(

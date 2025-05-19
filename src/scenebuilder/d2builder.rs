@@ -1,7 +1,7 @@
 // use crate::PrimitiveMode::*;
 
 // use crate::Texture;
-use crate::{Assets, Batch, Map, Scene, Tile, Value};
+use crate::{Assets, Batch2D, Map, PixelSource, Scene, Tile, Value};
 use theframework::prelude::*;
 use vek::Vec2;
 
@@ -27,16 +27,6 @@ impl D2Builder {
     pub fn build(&mut self, map: &Map, assets: &Assets, screen_size: Vec2<f32>) -> Scene {
         let mut scene = Scene::empty();
         let atlas_size = assets.atlas.width as f32;
-
-        let mut textures = vec![Tile::from_texture(assets.atlas.clone())];
-
-        // --
-
-        let mut atlas_batch = Batch::emptyd2();
-
-        // Repeated tile textures have their own batches
-        let mut repeated_batches: Vec<Batch<[f32; 2]>> = vec![];
-        let mut repeated_offsets: FxHashMap<Uuid, usize> = FxHashMap::default();
 
         for sector in &map.sectors {
             if let Some(geo) = sector.generate_geometry(map) {
@@ -110,25 +100,16 @@ impl D2Builder {
                             vertices.push([local.x, local.y]);
                         }
 
-                        if repeat {
-                            if let Some(offset) = repeated_offsets.get(&tile.id) {
-                                repeated_batches[*offset].add(vertices, geo.1, uvs);
-                            } else {
-                                let texture_index = textures.len();
-
-                                let mut batch = Batch::emptyd2()
-                                    .repeat_mode(crate::RepeatMode::RepeatXY)
-                                    .texture_index(texture_index)
-                                    .receives_light(true);
-
-                                batch.add(vertices, geo.1, uvs);
-
-                                textures.push(tile.clone());
-                                repeated_offsets.insert(tile.id, repeated_batches.len());
-                                repeated_batches.push(batch);
-                            }
-                        } else {
-                            atlas_batch.add(vertices, geo.1, uvs);
+                        if let Some(texture_index) = assets.tile_index(&tile.id) {
+                            let batch = Batch2D::new(vertices, geo.1, uvs)
+                                .repeat_mode(if repeat {
+                                    crate::RepeatMode::RepeatXY
+                                } else {
+                                    crate::RepeatMode::ClampXY
+                                })
+                                .source(PixelSource::StaticTileIndex(texture_index))
+                                .receives_light(true);
+                            scene.d2_static.push(batch);
                         }
                     }
                 }
@@ -154,12 +135,9 @@ impl D2Builder {
                     let bbox = sector.bounding_box(map);
 
                     let repeat = true;
-                    let tile_size = 100;
 
                     if let Some(pixelsource) = source {
-                        if let Some(tile) =
-                            pixelsource.to_tile(assets, tile_size, &sector.properties, map)
-                        {
+                        if let Some(tile) = pixelsource.tile_from_tile_list(assets) {
                             for vertex in &geo.0 {
                                 let local = self.map_grid_to_local(
                                     screen_size,
@@ -194,25 +172,16 @@ impl D2Builder {
                                 vertices.push([local.x, local.y]);
                             }
 
-                            if repeat {
-                                if let Some(offset) = repeated_offsets.get(&tile.id) {
-                                    repeated_batches[*offset].add(vertices, geo.1.clone(), uvs);
-                                } else {
-                                    let texture_index = textures.len();
-
-                                    let mut batch = Batch::emptyd2()
-                                        .repeat_mode(crate::RepeatMode::RepeatXY)
-                                        .texture_index(texture_index)
-                                        .receives_light(true);
-
-                                    batch.add(vertices, geo.1.clone(), uvs);
-
-                                    textures.push(tile.clone());
-                                    repeated_offsets.insert(tile.id, repeated_batches.len());
-                                    repeated_batches.push(batch);
-                                }
-                            } else {
-                                atlas_batch.add(vertices, geo.1.clone(), uvs);
+                            if let Some(texture_index) = assets.tile_index(&tile.id) {
+                                let batch = Batch2D::new(vertices, geo.1.clone(), uvs)
+                                    .repeat_mode(if repeat {
+                                        crate::RepeatMode::RepeatXY
+                                    } else {
+                                        crate::RepeatMode::ClampXY
+                                    })
+                                    .source(PixelSource::StaticTileIndex(texture_index))
+                                    .receives_light(true);
+                                scene.d2_static.push(batch);
                             }
                         }
                     }
@@ -241,43 +210,31 @@ impl D2Builder {
                         let mut vertices: Vec<[f32; 2]> = vec![];
                         let mut uvs: Vec<[f32; 2]> = vec![];
 
-                        let tile_size = 100;
                         if let Some(pixelsource) = source {
-                            if let Some(tile) =
-                                pixelsource.to_tile(assets, tile_size, &linedef.properties, map)
-                            {
-                                for vertex in &geo.0 {
-                                    let local = self.map_grid_to_local(
-                                        screen_size,
-                                        Vec2::new(vertex[0], vertex[1]),
-                                        map,
-                                    );
+                            if let Some(tile) = pixelsource.tile_from_tile_list(assets) {
+                                if let Some(texture_index) = assets.tile_index(&tile.id) {
+                                    for vertex in &geo.0 {
+                                        let local = self.map_grid_to_local(
+                                            screen_size,
+                                            Vec2::new(vertex[0], vertex[1]),
+                                            map,
+                                        );
 
-                                    let texture_scale = 1.0;
-                                    let uv =
-                                        [(vertex[0]) / texture_scale, (vertex[1]) / texture_scale];
-                                    uvs.push(uv);
-                                    vertices.push([local.x, local.y]);
-                                }
+                                        let texture_scale = 1.0;
+                                        let uv = [
+                                            (vertex[0]) / texture_scale,
+                                            (vertex[1]) / texture_scale,
+                                        ];
+                                        uvs.push(uv);
+                                        vertices.push([local.x, local.y]);
+                                    }
 
-                                if let Some(offset) = repeated_offsets.get(&tile.id) {
-                                    repeated_batches[*offset].add(vertices, geo.1.clone(), uvs);
-                                } else {
-                                    let texture_index = textures.len();
-
-                                    let mut batch = Batch::emptyd2()
+                                    let batch = Batch2D::new(vertices, geo.1.clone(), uvs)
                                         .repeat_mode(crate::RepeatMode::RepeatXY)
-                                        .texture_index(texture_index)
+                                        .source(PixelSource::StaticTileIndex(texture_index))
                                         .receives_light(true);
-
-                                    batch.add(vertices, geo.1.clone(), uvs);
-
-                                    textures.push(tile.clone());
-                                    repeated_offsets.insert(tile.id, repeated_batches.len());
-                                    repeated_batches.push(batch);
+                                    scene.d2_static.push(batch);
                                 }
-                            } else {
-                                // atlas_batch.add(vertices, geo.1.clone(), uvs);
                             }
                         }
                     }
@@ -285,13 +242,10 @@ impl D2Builder {
             }
         }
 
-        let mut batches = repeated_batches;
-        batches.extend(vec![atlas_batch]);
+        // let mut batches = repeated_batches;
 
         let tiles = assets.blocking_tiles();
         scene.mapmini = map.as_mini(&tiles);
-        scene.d2_static = batches;
-        scene.textures = textures;
         scene
     }
 
@@ -327,7 +281,7 @@ impl D2Builder {
     ) {
         scene.dynamic_lights = vec![];
 
-        let mut repeated_batches: Vec<Batch<[f32; 2]>> = vec![];
+        let mut repeated_batches: Vec<Batch2D> = vec![];
         let mut repeated_offsets: FxHashMap<Uuid, usize> = FxHashMap::default();
 
         let mut textures = vec![];
@@ -359,17 +313,17 @@ impl D2Builder {
 
             if let Some(Value::Source(source)) = entity.attributes.get("source") {
                 if entity.attributes.get_bool_default("visible", false) {
-                    if let Some(tile) = source.to_tile(assets, 100, &entity.attributes, map) {
-                        let texture_index = textures.len();
+                    if let Some(tile) = source.tile_from_tile_list(assets) {
+                        if let Some(texture_index) = assets.tile_index(&tile.id) {
+                            let mut batch = Batch2D::empty()
+                                .source(PixelSource::StaticTileIndex(texture_index))
+                                .receives_light(true);
 
-                        let mut batch = Batch::emptyd2()
-                            .texture_index(texture_index)
-                            .receives_light(true);
-
-                        batch.add_rectangle(pos.x - hsize, pos.y - hsize, size, size);
-                        textures.push(tile.clone());
-                        repeated_offsets.insert(tile.id, repeated_batches.len());
-                        repeated_batches.push(batch);
+                            batch.add_rectangle(pos.x - hsize, pos.y - hsize, size, size);
+                            textures.push(tile.clone());
+                            repeated_offsets.insert(tile.id, repeated_batches.len());
+                            repeated_batches.push(batch);
+                        }
                     }
                 }
             }
@@ -390,17 +344,17 @@ impl D2Builder {
 
             if let Some(Value::Source(source)) = item.attributes.get("source") {
                 if item.attributes.get_bool_default("visible", false) {
-                    if let Some(tile) = source.to_tile(assets, 100, &item.attributes, map) {
-                        let texture_index = textures.len();
+                    if let Some(tile) = source.tile_from_tile_list(assets) {
+                        if let Some(texture_index) = assets.tile_index(&tile.id) {
+                            let mut batch = Batch2D::empty()
+                                .source(PixelSource::StaticTileIndex(texture_index))
+                                .receives_light(true);
 
-                        let mut batch = Batch::emptyd2()
-                            .texture_index(texture_index)
-                            .receives_light(true);
-
-                        batch.add_rectangle(pos.x - hsize, pos.y - hsize, size, size);
-                        textures.push(tile.clone());
-                        repeated_offsets.insert(tile.id, repeated_batches.len());
-                        repeated_batches.push(batch);
+                            batch.add_rectangle(pos.x - hsize, pos.y - hsize, size, size);
+                            textures.push(tile.clone());
+                            repeated_offsets.insert(tile.id, repeated_batches.len());
+                            repeated_batches.push(batch);
+                        }
                     }
                 }
             }

@@ -1,7 +1,7 @@
 use crate::SampleMode;
 use crate::{
-    AccumBuffer, Batch, D3Camera, HitInfo, MaterialRole, Pixel, Ray, Scene, ShapeFXGraph,
-    pixel_to_vec4,
+    AccumBuffer, Batch3D, D3Camera, HitInfo, MaterialRole, Pixel, PixelSource, Ray, Scene,
+    ShapeFXGraph, pixel_to_vec4,
 };
 use SampleMode::*;
 use bvh::aabb::Aabb;
@@ -26,13 +26,6 @@ fn _aces_tonemap(x: f32) -> f32 {
     const D: f32 = 0.59;
     const E: f32 = 0.14;
     ((x * (A * x + B)) / (x * (C * x + D) + E)).clamp(0.0, 1.0)
-}
-
-#[derive(Clone, PartialEq)]
-enum BatchType {
-    Static,
-    Dynamic,
-    Terrain,
 }
 
 pub struct Tracer {
@@ -204,13 +197,7 @@ impl Tracer {
 
                                 if let Some(mut hit) = batch.intersect(&ray, false) {
                                     if hit.t < hitinfo.t
-                                        && self.evaluate_hit(
-                                            &ray,
-                                            scene,
-                                            batch,
-                                            &mut hit,
-                                            BatchType::Static,
-                                        )
+                                        && self.evaluate_hit(&ray, scene, batch, &mut hit)
                                     {
                                         hitinfo = hit;
                                     }
@@ -227,13 +214,7 @@ impl Tracer {
 
                                 if let Some(mut hit) = batch.intersect(&ray, false) {
                                     if hit.t < hitinfo.t
-                                        && self.evaluate_hit(
-                                            &ray,
-                                            scene,
-                                            batch,
-                                            &mut hit,
-                                            BatchType::Dynamic,
-                                        )
+                                        && self.evaluate_hit(&ray, scene, batch, &mut hit)
                                     {
                                         hitinfo = hit;
                                     }
@@ -246,13 +227,7 @@ impl Tracer {
                                     if let Some(batch) = &chunk.1.batch {
                                         if let Some(mut hit) = batch.intersect(&ray, false) {
                                             if hit.t < hitinfo.t
-                                                && self.evaluate_hit(
-                                                    &ray,
-                                                    scene,
-                                                    batch,
-                                                    &mut hit,
-                                                    BatchType::Terrain,
-                                                )
+                                                && self.evaluate_hit(&ray, scene, batch, &mut hit)
                                             {
                                                 hitinfo = hit;
                                             }
@@ -366,17 +341,10 @@ impl Tracer {
         buffer.frame += 1;
     }
 
-    fn evaluate_hit(
-        &self,
-        ray: &Ray,
-        scene: &Scene,
-        batch: &Batch<[f32; 4]>,
-        hit: &mut HitInfo,
-        batch_type: BatchType,
-    ) -> bool {
-        let mut texel = match batch_type {
-            BatchType::Static => {
-                let textile = &scene.textures[batch.texture_index];
+    fn evaluate_hit(&self, ray: &Ray, scene: &Scene, batch: &Batch3D, hit: &mut HitInfo) -> bool {
+        let mut texel = match batch.source {
+            PixelSource::StaticTileIndex(index) => {
+                let textile = &scene.textures[index as usize];
                 let index = scene.animation_frame % textile.textures.len();
                 pixel_to_vec4(&textile.textures[index].sample(
                     hit.uv.x,
@@ -385,8 +353,8 @@ impl Tracer {
                     batch.repeat_mode,
                 ))
             }
-            BatchType::Dynamic => {
-                let textile = &scene.dynamic_textures[batch.texture_index];
+            PixelSource::DynamicTileIndex(index) => {
+                let textile = &scene.dynamic_textures[index as usize];
                 let index = scene.animation_frame % textile.textures.len();
                 pixel_to_vec4(&textile.textures[index].sample(
                     hit.uv.x,
@@ -395,7 +363,8 @@ impl Tracer {
                     batch.repeat_mode,
                 ))
             }
-            BatchType::Terrain => {
+            PixelSource::Pixel(col) => pixel_to_vec4(&col),
+            PixelSource::Terrain => {
                 if let Some(terrain) = &scene.terrain {
                     let w = ray.at(hit.t);
                     pixel_to_vec4(&terrain.sample_baked(Vec2::new(w.x, w.y)))
@@ -403,6 +372,7 @@ impl Tracer {
                     Vec4::zero()
                 }
             }
+            _ => Vec4::zero(),
         };
         let tex_lin = texel.map(srgb_to_linear);
         if let Some(material) = &batch.material {

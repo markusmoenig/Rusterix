@@ -1,5 +1,8 @@
-pub mod batchd2;
-pub mod batchd3;
+pub mod batch2d;
+pub mod batch3d;
+
+// pub mod batchd2;
+// pub mod batchd3;
 
 use crate::{Edges, Material, Pixel, Rect, RepeatMode, SampleMode};
 use vek::{Mat3, Mat4, Vec3};

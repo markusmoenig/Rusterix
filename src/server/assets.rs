@@ -15,6 +15,9 @@ pub struct Assets {
     pub materials: FxHashMap<Uuid, Tile>,
     pub textures: FxHashMap<String, Texture>,
 
+    pub tile_list: Vec<Tile>,
+    pub tile_indices: FxHashMap<Uuid, u16>,
+
     pub screens: FxHashMap<String, Map>,
 
     pub config: String,
@@ -39,6 +42,8 @@ impl Assets {
             items: FxHashMap::default(),
             tiles: FxHashMap::default(),
             textures: FxHashMap::default(),
+            tile_list: vec![],
+            tile_indices: FxHashMap::default(),
             materials: FxHashMap::default(),
             screens: FxHashMap::default(),
             config: String::new(),
@@ -46,6 +51,17 @@ impl Assets {
             fonts: FxHashMap::default(),
             palette: ThePalette::default(),
         }
+    }
+
+    /// Clears the tile list.
+    pub fn clean_tile_list(&mut self) {
+        self.tile_list.clear();
+        self.tile_indices.clear();
+    }
+
+    /// Returns the index into the tile_list for the given Tile Id
+    pub fn tile_index(&self, id: &Uuid) -> Option<u16> {
+        self.tile_indices.get(id).copied()
     }
 
     /// Set the tiles and atlas from a list of RGBA tiles.
@@ -117,14 +133,36 @@ impl Assets {
 
         self.atlas = Texture::new(atlas, atlas_size as usize, atlas_size as usize);
         self.tiles = tiles;
+
+        // Update tile_list and tile_indices
+        for (id, tile) in &self.tiles {
+            if let Some(&index) = self.tile_indices.get(id) {
+                self.tile_list[index as usize] = tile.clone();
+            } else {
+                let index = self.tile_list.len() as u16;
+                self.tile_indices.insert(*id, index);
+                self.tile_list.push(tile.clone());
+            }
+        }
     }
 
     /// Compile the materials.
-    pub fn set_materials(&mut self, mut materials: FxHashMap<Uuid, Map>) {
+    pub fn set_materials(&mut self, materials: FxHashMap<Uuid, Map>) {
         let mut tiles = FxHashMap::default();
-        for map in materials.values_mut() {
+        for (uuid, map) in materials.iter() {
             if let Some(Value::Texture(texture)) = map.properties.get("material") {
-                tiles.insert(map.id, Tile::from_texture(texture.clone()));
+                let mut tile = Tile::from_texture(texture.clone());
+                tile.id = *uuid;
+                tiles.insert(map.id, tile.clone());
+
+                // Add it to the tile_list
+                if let Some(&index) = self.tile_indices.get(&tile.id) {
+                    self.tile_list[index as usize] = tile;
+                } else {
+                    let index = self.tile_list.len() as u16;
+                    self.tile_indices.insert(tile.id, index);
+                    self.tile_list.push(tile);
+                }
             }
         }
         self.materials = tiles;

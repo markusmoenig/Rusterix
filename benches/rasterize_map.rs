@@ -2,7 +2,7 @@ use rusterix::prelude::*;
 use std::path::Path;
 use vek::{Vec2, Vec3};
 
-use criterion::{criterion_group, criterion_main, Criterion};
+use criterion::{Criterion, criterion_group, criterion_main};
 
 fn rasterize_map(c: &mut Criterion) {
     let mut camera: Box<dyn D3Camera> = Box::new(D3FirstPCamera::new());
@@ -36,7 +36,7 @@ fn rasterize_map(c: &mut Criterion) {
 
     // Add logo on top of the scene
     scene.d2_static =
-        vec![Batch::from_rectangle(0.0, 0.0, 200.0, 200.0).texture_index(scene.textures.len())];
+        vec![Batch2D::from_rectangle(0.0, 0.0, 200.0, 200.0).texture_index(scene.textures.len())];
     scene
         .textures
         .push(Tile::from_texture(Texture::from_image(Path::new(

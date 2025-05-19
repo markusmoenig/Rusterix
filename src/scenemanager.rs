@@ -1,20 +1,22 @@
-use crate::{Assets, BBox, Chunk, ChunkBuilder, Map};
+use crate::{Assets, BBox, Chunk, ChunkBuilder, D2ChunkBuilder, D3ChunkBuilder, Map, Tile};
 use crossbeam::channel::{self, Receiver, Sender};
 use std::thread::{self, JoinHandle};
+use std::time::Duration;
 use theframework::prelude::*;
 
 #[allow(clippy::large_enum_variant)]
 pub enum SceneManagerCmd {
-    SetTextures(FxHashMap<Uuid, TheRGBATile>),
-    SetMaterials(FxHashMap<Uuid, Map>),
+    SetTileList(Vec<Tile>, FxHashMap<Uuid, u16>),
     SetPalette(ThePalette),
     SetMap(Map),
+    SetBuilder2D(Option<Box<dyn ChunkBuilder>>),
     Quit,
 }
 
-#[derive(Debug)]
+// #[derive(Debug)]
 pub enum SceneManagerResult {
     Startup,
+    Chunk(Chunk),
     Quit,
 }
 
@@ -60,16 +62,16 @@ impl SceneManager {
         }
     }
 
-    pub fn set_textures(&self, textures: FxHashMap<Uuid, TheRGBATile>) {
-        self.send(SceneManagerCmd::SetTextures(textures));
-    }
-
-    pub fn set_materials(&self, materials: FxHashMap<Uuid, Map>) {
-        self.send(SceneManagerCmd::SetMaterials(materials));
+    pub fn set_tile_list(&self, tiles: Vec<Tile>, tile_indices: FxHashMap<Uuid, u16>) {
+        self.send(SceneManagerCmd::SetTileList(tiles, tile_indices));
     }
 
     pub fn set_palette(&self, palette: ThePalette) {
         self.send(SceneManagerCmd::SetPalette(palette));
+    }
+
+    pub fn set_builder_2d(&self, builder: Option<Box<dyn ChunkBuilder>>) {
+        self.send(SceneManagerCmd::SetBuilder2D(builder));
     }
 
     pub fn set_map(&self, map: Map) {
@@ -89,54 +91,77 @@ impl SceneManager {
         let chunk_size = 16;
         let mut dirty: FxHashSet<(i32, i32)> = FxHashSet::default();
 
-        let mut chunk_builder_d2: Option<Box<dyn ChunkBuilder>> = None;
+        let mut chunk_builder_d2: Option<Box<dyn ChunkBuilder>> =
+            Some(Box::new(D2ChunkBuilder::new()));
 
-        let mut exit_loop = false;
+        let mut chunk_builder_d3: Option<Box<dyn ChunkBuilder>> =
+            Some(Box::new(D3ChunkBuilder::new()));
+
+        let tick = crossbeam::channel::tick(Duration::from_millis(5));
         self.renderer_thread = Some(thread::spawn(move || {
             loop {
-                if exit_loop {
-                    break;
-                }
-                while let Ok(cmd) = rx.try_recv() {
-                    match cmd {
-                        SceneManagerCmd::SetTextures(textures) => {
-                            println!("SceneManagerCmd::SetTextures({})", textures.len());
-                            assets.set_rgba_tiles(textures);
+                crossbeam::select! {
+                    recv(rx) -> msg => {
+                        match msg {
+                            Ok(cmd) => {
+                                match cmd {
+                                    SceneManagerCmd::SetTileList(tiles, indices) => {
+                                        println!("SceneManagerCmd::SetTileList({})", tiles.len());
+                                        assets.tile_list = tiles;
+                                        assets.tile_indices = indices;
+                                        dirty = Self::generate_chunk_coords(&map.bbox(), chunk_size);
+                                    }
+                                    SceneManagerCmd::SetPalette(palette) => {
+                                        println!("SceneManagerCmd::SetPalette()");
+                                        assets.palette = palette;
+                                    }
+                                    SceneManagerCmd::SetBuilder2D(builder) => {
+                                        println!("SceneManagerCmd::SetBuilder2D()");
+                                        chunk_builder_d2 = builder;
+                                        dirty = Self::generate_chunk_coords(&map.bbox(), chunk_size);
+                                    }
+                                    SceneManagerCmd::SetMap(new_map) => {
+                                        map = new_map;
+                                        let bbox = map.bbox();
+                                        println!(
+                                            "SceneManagerCmd::SetMap(Min: {}, Max: {})",
+                                            bbox.min, bbox.max
+                                        );
+                                        dirty = Self::generate_chunk_coords(&bbox, chunk_size);
+                                    }
+                                    SceneManagerCmd::Quit => {
+                                        result_tx.send(SceneManagerResult::Quit).ok();
+                                        return;
+                                    }
+                                }
+                            }
+                            Err(_) => {
+                                println!("SceneManager: channel closed");
+                                return;
+                            }
                         }
-                        SceneManagerCmd::SetMaterials(materials) => {
-                            println!("SceneManagerCmd::SetMaterials({})", materials.len());
-                            assets.set_materials(materials);
+                    },
+                    recv(tick) -> _ => {
+                        if let Some(&coord) = dirty.iter().next() {
+                            dirty.remove(&coord);
+
+                            println!("Processing chunk at {:?}", coord);
+
+                            let mut chunk = Chunk::new(Vec2::new(coord.0, coord.1), chunk_size);
+
+                            if let Some(cb_d2) = &mut chunk_builder_d2 {
+                                cb_d2.build(&map, &assets, &mut chunk);
+                            }
+
+                            if let Some(cb_d3) = &mut chunk_builder_d3 {
+                                cb_d3.build(&map, &assets, &mut chunk);
+                                for chunk3d in &mut chunk.batches3d {
+                                    chunk3d.compute_vertex_normals();
+                                }
+                            }
+
+                            result_tx.send(SceneManagerResult::Chunk(chunk)).ok();
                         }
-                        SceneManagerCmd::SetPalette(palette) => {
-                            println!("SceneManagerCmd::SetPalette()");
-                            assets.palette = palette;
-                        }
-                        SceneManagerCmd::SetMap(new_map) => {
-                            map = new_map;
-                            let bbox = map.bbox();
-                            println!(
-                                "SceneManagerCmd::SetMap(Min: {}, Max: {})",
-                                bbox.min, bbox.max
-                            );
-
-                            dirty = Self::generate_chunk_coords(&bbox, chunk_size);
-                        }
-                        SceneManagerCmd::Quit => {
-                            exit_loop = true;
-                        }
-                    }
-                }
-
-                // Process one chunk
-                if let Some(&coord) = dirty.iter().next() {
-                    dirty.remove(&coord);
-
-                    println!("Processing chunk at {:?}", coord);
-
-                    let mut chunk = Chunk::new(coord);
-
-                    if let Some(cb_d2) = &mut chunk_builder_d2 {
-                        cb_d2.build(&map, &assets, &mut chunk);
                     }
                 }
             }
@@ -153,7 +178,7 @@ impl SceneManager {
         let mut coords = FxHashSet::default();
         for y in min_y..max_y {
             for x in min_x..max_x {
-                coords.insert((x, y));
+                coords.insert((x * chunk_size, y * chunk_size));
             }
         }
         coords

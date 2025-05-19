@@ -1,4 +1,5 @@
-pub mod d2preview;
+pub mod d2chunkbuilder;
+pub mod d3chunkbuilder;
 
 use crate::{Assets, Chunk, Map};
 

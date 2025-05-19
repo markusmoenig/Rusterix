@@ -1,4 +1,4 @@
-use crate::{Assets, BLACK, Map, Texture, Tile, ValueContainer};
+use crate::{Assets, BLACK, Map, Pixel, Texture, Tile, ValueContainer};
 use theframework::prelude::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -27,6 +27,10 @@ pub enum PixelSource {
     MaterialId(Uuid),
     Color(TheColor),
     ShapeFXGraphId(Uuid),
+    StaticTileIndex(u16),
+    DynamicTileIndex(u16),
+    Pixel(Pixel),
+    Terrain,
 }
 
 use PixelSource::*;
@@ -107,6 +111,20 @@ impl PixelSource {
                 };
                 tile.append(texture);
                 Some(tile)
+            }
+            _ => None,
+        }
+    }
+
+    /// Generate a tile from the tile_list indices
+    pub fn tile_from_tile_list(&self, assets: &Assets) -> Option<Tile> {
+        match self {
+            TileId(id) | MaterialId(id) => {
+                if let Some(index) = assets.tile_indices.get(id) {
+                    assets.tile_list.get(*index as usize).cloned()
+                } else {
+                    None
+                }
             }
             _ => None,
         }

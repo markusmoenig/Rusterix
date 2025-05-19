@@ -80,10 +80,10 @@ pub const WHITE: Pixel = [255, 255, 255, 255];
 
 // Re-exports
 pub use crate::{
-    batch::{Batch, CullMode, PrimitiveMode},
+    batch::{CullMode, PrimitiveMode, batch2d::Batch2D, batch3d::Batch3D},
     camera::{D3Camera, d3firstp::D3FirstPCamera, d3iso::D3IsoCamera, d3orbit::D3OrbitCamera},
     chunk::Chunk,
-    chunkbuilder::{ChunkBuilder, d2preview::D2PreviewChunkBuilder},
+    chunkbuilder::{ChunkBuilder, d2chunkbuilder::D2ChunkBuilder, d3chunkbuilder::D3ChunkBuilder},
     client::{Client, command::Command, daylight::Daylight},
     edge::Edges,
     intodata::IntoDataInput,
@@ -153,7 +153,7 @@ pub mod prelude {
         RegionMessage, Server, Wallet,
     };
     pub use crate::{BLACK, Pixel, TRANSPARENT, WHITE};
-    pub use crate::{Batch, CullMode, PrimitiveMode};
+    pub use crate::{Batch2D, Batch3D, CullMode, PrimitiveMode};
     pub use crate::{D3Camera, D3FirstPCamera, D3IsoCamera, D3OrbitCamera};
     pub use crate::{GridShader, Shader, VGrayGradientShader};
     pub use crate::{

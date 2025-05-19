@@ -33,6 +33,8 @@ pub struct Client {
     pub scene_d2: Scene,
     pub scene_d3: Scene,
 
+    pub scene: Scene,
+
     pub animation_frame: usize,
     pub server_time: TheTime,
 
@@ -107,6 +109,8 @@ impl Client {
 
             scene_d2: Scene::default(),
             scene_d3: Scene::default(),
+
+            scene: Scene::default(),
 
             animation_frame: 0,
             server_time: TheTime::default(),
@@ -191,7 +195,7 @@ impl Client {
     /// Apply the entities to the 2D scene.
     pub fn apply_entities_items_d2(&mut self, screen_size: Vec2<f32>, map: &Map, assets: &Assets) {
         self.builder_d2
-            .build_entities_items(map, assets, &mut self.scene_d2, screen_size);
+            .build_entities_items(map, assets, &mut self.scene, screen_size);
     }
 
     /// Build the 3D scene from the map.
@@ -305,7 +309,7 @@ impl Client {
             grid_space_pos + Vec2::new(map.offset.x, -map.offset.y) + screen_size / 2.0
         }
 
-        self.scene_d2.animation_frame = self.animation_frame;
+        self.scene.animation_frame = self.animation_frame;
         let screen_size = Vec2::new(width as f32, height as f32);
         let translation_matrix = Mat3::<f32>::translation_2d(Vec2::new(
             map.offset.x + screen_size.x / 2.0,
@@ -327,9 +331,9 @@ impl Client {
         let mut rast = Rasterizer::setup(Some(transform), Mat4::identity(), Mat4::identity());
         rast.render_graph = self.global.clone();
         rast.hour = self.server_time.to_f32();
-        rast.mapmini = self.scene_d2.mapmini.clone();
+        rast.mapmini = self.scene.mapmini.clone();
         rast.render_terrain_in_d2 = true;
-        rast.rasterize(&mut self.scene_d2, pixels, width, height, 200);
+        rast.rasterize(&mut self.scene, pixels, width, height, 200);
 
         // Draw Messages
 
@@ -370,7 +374,7 @@ impl Client {
 
     /// Draw the 3D scene.
     pub fn draw_d3(&mut self, _map: &Map, pixels: &mut [u8], width: usize, height: usize) {
-        self.scene_d3.animation_frame = self.animation_frame;
+        self.scene.animation_frame = self.animation_frame;
 
         let mut rast = Rasterizer::setup(
             None,
@@ -381,9 +385,9 @@ impl Client {
         rast.brush_preview = self.brush_preview.clone();
         rast.render_graph = self.global.clone();
         rast.hour = self.server_time.to_f32();
-        rast.mapmini = self.scene_d3.mapmini.clone();
+        rast.mapmini = self.scene.mapmini.clone();
         rast.render_terrain_in_d2 = false;
-        rast.rasterize(&mut self.scene_d3, pixels, width, height, 64);
+        rast.rasterize(&mut self.scene, pixels, width, height, 64);
     }
 
     /// Trace the 3D scene.

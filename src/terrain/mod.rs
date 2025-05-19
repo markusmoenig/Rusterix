@@ -1,5 +1,6 @@
 use crate::{
-    Assets, BBox, Batch, Map, Pixel, PixelSource, Ray, TerrainBlendMode, TerrainChunk, Texture,
+    Assets, BBox, Batch2D, Batch3D, Map, Pixel, PixelSource, Ray, TerrainBlendMode, TerrainChunk,
+    Texture,
 };
 use rayon::prelude::*;
 use theframework::prelude::*;
@@ -491,8 +492,8 @@ impl Terrain {
 
         struct BatchJob {
             coords: (i32, i32),
-            batch_d2: Option<Batch<[f32; 2]>>,
-            batch: Option<Batch<[f32; 4]>>,
+            batch_d2: Option<Batch2D>,
+            batch: Option<Batch3D>,
         }
 
         // Parallel process batch jobs

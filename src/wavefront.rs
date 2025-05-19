@@ -1,4 +1,4 @@
-use crate::Batch;
+use crate::Batch3D;
 
 #[derive(Clone, Debug)]
 pub struct Wavefront {
@@ -88,7 +88,7 @@ impl Wavefront {
     }
 
     /// Convert the Wavefront object into a Batch for rendering.
-    pub fn to_batch(self) -> Batch<[f32; 4]> {
+    pub fn to_batch(self) -> Batch3D {
         let uvs = if self.texture_coords.is_empty() {
             // Generate default UVs if none exist
             self.vertices.iter().map(|v| [v[0], v[1]]).collect()
@@ -97,6 +97,6 @@ impl Wavefront {
             self.texture_coords
         };
 
-        Batch::new_3d(self.vertices, self.indices, uvs)
+        Batch3D::new(self.vertices, self.indices, uvs)
     }
 }

@@ -1,6 +1,6 @@
 use crate::{
-    Batch, LightType, MapMini, Material, MaterialRole, Pixel, PrimitiveMode, Ray, RepeatMode,
-    Scene, Texture, pixel_to_vec4, vec4_to_pixel,
+    Batch2D, Batch3D, LightType, MapMini, Material, MaterialRole, Pixel, PixelSource,
+    PrimitiveMode, Ray, RepeatMode, Scene, Texture, pixel_to_vec4, vec4_to_pixel,
 };
 use crate::{SampleMode, ShapeFXGraph};
 use rayon::prelude::*;
@@ -172,8 +172,8 @@ impl Rasterizer {
             self.projection_matrix_2d,
             self.view_matrix,
             self.projection_matrix,
-            width,
-            height,
+            self.width,
+            self.height,
         );
 
         self.render_hit = self.render_graph.collect_nodes_from(0, 0);
@@ -242,40 +242,28 @@ impl Rasterizer {
                     }
                 }
 
-                for batch in scene.d3_static.iter() {
-                    self.d3_rasterize(
-                        &mut buffer,
-                        &mut z_buffer,
-                        tile,
-                        batch,
-                        scene,
-                        BatchType::Static,
-                    );
+                // Chunks
+                for chunk in scene.chunks.values() {
+                    for batch3d in &chunk.batches3d {
+                        self.d3_rasterize(&mut buffer, &mut z_buffer, tile, batch3d, scene);
+                    }
                 }
 
+                // Static
+                for batch in scene.d3_static.iter() {
+                    self.d3_rasterize(&mut buffer, &mut z_buffer, tile, batch, scene);
+                }
+
+                // Dynamic
                 for batch in scene.d3_dynamic.iter() {
-                    self.d3_rasterize(
-                        &mut buffer,
-                        &mut z_buffer,
-                        tile,
-                        batch,
-                        scene,
-                        BatchType::Dynamic,
-                    );
+                    self.d3_rasterize(&mut buffer, &mut z_buffer, tile, batch, scene);
                 }
 
                 if !self.render_terrain_in_d2 {
                     if let Some(terrain) = &scene.terrain {
                         for chunk in terrain.chunks.iter() {
                             if let Some(batch) = &chunk.1.batch {
-                                self.d3_rasterize(
-                                    &mut buffer,
-                                    &mut z_buffer,
-                                    tile,
-                                    batch,
-                                    scene,
-                                    BatchType::Terrain,
-                                );
+                                self.d3_rasterize(&mut buffer, &mut z_buffer, tile, batch, scene);
                             }
                         }
                     }
@@ -339,6 +327,8 @@ impl Rasterizer {
                     }
                 }
 
+                /*
+
                 // 2D Pipeline
 
                 // Terrain in the background
@@ -356,15 +346,23 @@ impl Rasterizer {
                             }
                         }
                     }
+                }*/
+
+                // Chunks
+                for chunk in scene.chunks.values() {
+                    for batch2d in &chunk.batches2d {
+                        self.d2_rasterize(&mut buffer, tile, batch2d, scene);
+                    }
                 }
 
-                // Render 2D geometry
+                // Static
                 for batch in scene.d2_static.iter() {
-                    self.d2_rasterize(&mut buffer, tile, batch, scene, BatchType::Static);
+                    self.d2_rasterize(&mut buffer, tile, batch, scene);
                 }
 
+                // Dynamic
                 for batch in scene.d2_dynamic.iter() {
-                    self.d2_rasterize(&mut buffer, tile, batch, scene, BatchType::Dynamic);
+                    self.d2_rasterize(&mut buffer, tile, batch, scene);
                 }
 
                 buffer
@@ -396,14 +394,7 @@ impl Rasterizer {
 
     /// Rasterizes a 2D batch.
     #[inline(always)]
-    fn d2_rasterize(
-        &self,
-        buffer: &mut [u8],
-        tile: &TileRect,
-        batch: &Batch<[f32; 2]>,
-        scene: &Scene,
-        batch_type: BatchType,
-    ) {
+    fn d2_rasterize(&self, buffer: &mut [u8], tile: &TileRect, batch: &Batch2D, scene: &Scene) {
         if let Some(bbox) = batch.bounding_box {
             if bbox.x < (tile.x + tile.width) as f32
                 && (bbox.x + bbox.width) > tile.x as f32
@@ -479,24 +470,6 @@ impl Rasterizer {
                                         let u = uv0[0] * w[0] + uv1[0] * w[1] + uv2[0] * w[2];
                                         let v = uv0[1] * w[0] + uv1[1] * w[1] + uv2[1] * w[2];
 
-                                        // Sample the texture
-
-                                        // let textures = if dynamic {
-                                        //     &scene.dynamic_textures
-                                        // } else {
-                                        //     &scene.textures
-                                        // };
-
-                                        // let t = &textures[batch.texture_index];
-                                        // let index = scene.animation_frame % t.textures.len();
-
-                                        // let mut texel = t.textures[index].sample(
-                                        //     u,
-                                        //     v,
-                                        //     self.sample_mode,
-                                        //     batch.repeat_mode,
-                                        // );
-
                                         // Calculate grid and world positions
                                         let grid_space_pos = Vec2::new(tx as f32, ty as f32)
                                             - Vec2::new(self.width, self.height) / 2.0
@@ -506,9 +479,9 @@ impl Rasterizer {
                                             );
                                         let world = grid_space_pos / self.scaled2;
 
-                                        let mut texel = match batch_type {
-                                            BatchType::Static => {
-                                                let textile = &scene.textures[batch.texture_index];
+                                        let mut texel = match batch.source {
+                                            PixelSource::StaticTileIndex(index) => {
+                                                let textile = &scene.textures[index as usize];
                                                 let index =
                                                     scene.animation_frame % textile.textures.len();
                                                 textile.textures[index].sample(
@@ -518,9 +491,9 @@ impl Rasterizer {
                                                     batch.repeat_mode,
                                                 )
                                             }
-                                            BatchType::Dynamic => {
+                                            PixelSource::DynamicTileIndex(index) => {
                                                 let textile =
-                                                    &scene.dynamic_textures[batch.texture_index];
+                                                    &scene.dynamic_textures[index as usize];
                                                 let index =
                                                     scene.animation_frame % textile.textures.len();
                                                 textile.textures[index].sample(
@@ -530,13 +503,15 @@ impl Rasterizer {
                                                     batch.repeat_mode,
                                                 )
                                             }
-                                            BatchType::Terrain => {
+                                            PixelSource::Pixel(col) => col,
+                                            PixelSource::Terrain => {
                                                 if let Some(terrain) = &scene.terrain {
                                                     terrain.sample_baked(world)
                                                 } else {
                                                     [0, 0, 0, 0]
                                                 }
                                             }
+                                            _ => [0, 0, 0, 0],
                                         };
 
                                         if let Some(material) = &batch.material {
@@ -649,7 +624,11 @@ impl Rasterizer {
                                 &[p1[0], p1[1]],
                                 &mut buffer[..],
                                 tile,
-                                &batch.color,
+                                &if let PixelSource::Pixel(color) = &batch.source {
+                                    *color
+                                } else {
+                                    crate::WHITE
+                                },
                             );
                         }
                     }
@@ -663,7 +642,11 @@ impl Rasterizer {
                                 &[p1[0], p1[1]],
                                 &mut buffer[..],
                                 tile,
-                                &batch.color,
+                                &if let PixelSource::Pixel(color) = &batch.source {
+                                    *color
+                                } else {
+                                    crate::WHITE
+                                },
                             );
                         }
                     }
@@ -679,7 +662,11 @@ impl Rasterizer {
                                 &[p1[0], p1[1]],
                                 &mut buffer[..],
                                 tile,
-                                &batch.color,
+                                &if let PixelSource::Pixel(color) = &batch.source {
+                                    *color
+                                } else {
+                                    crate::WHITE
+                                },
                             );
                         }
                     }
@@ -695,9 +682,8 @@ impl Rasterizer {
         buffer: &mut [u8],
         z_buffer: &mut [f32],
         tile: &TileRect,
-        batch: &Batch<[f32; 4]>,
+        batch: &Batch3D,
         scene: &Scene,
-        batch_type: BatchType,
     ) {
         // Bounding box check for the tile with the batch bbox
         if let Some(bbox) = batch.bounding_box {
@@ -792,10 +778,21 @@ impl Rasterizer {
                                             let world = self.screen_to_world(p[0], p[1], z);
                                             let world_2d = Vec2::new(world.x, world.z);
 
-                                            let mut texel = match batch_type {
-                                                BatchType::Static => {
+                                            let mut texel = match batch.source {
+                                                PixelSource::StaticTileIndex(index) => {
+                                                    let textile = &scene.textures[index as usize];
+                                                    let index = scene.animation_frame
+                                                        % textile.textures.len();
+                                                    textile.textures[index].sample(
+                                                        interpolated_u,
+                                                        interpolated_v,
+                                                        self.sample_mode,
+                                                        batch.repeat_mode,
+                                                    )
+                                                }
+                                                PixelSource::DynamicTileIndex(index) => {
                                                     let textile =
-                                                        &scene.textures[batch.texture_index];
+                                                        &scene.dynamic_textures[index as usize];
                                                     let index = scene.animation_frame
                                                         % textile.textures.len();
                                                     textile.textures[index].sample(
@@ -805,19 +802,8 @@ impl Rasterizer {
                                                         batch.repeat_mode,
                                                     )
                                                 }
-                                                BatchType::Dynamic => {
-                                                    let textile = &scene.dynamic_textures
-                                                        [batch.texture_index];
-                                                    let index = scene.animation_frame
-                                                        % textile.textures.len();
-                                                    textile.textures[index].sample(
-                                                        interpolated_u,
-                                                        interpolated_v,
-                                                        self.sample_mode,
-                                                        batch.repeat_mode,
-                                                    )
-                                                }
-                                                BatchType::Terrain => {
+                                                PixelSource::Pixel(col) => col,
+                                                PixelSource::Terrain => {
                                                     if let Some(terrain) = &scene.terrain {
                                                         let mut texel =
                                                             terrain.sample_baked(world_2d);
@@ -854,8 +840,8 @@ impl Rasterizer {
                                                         [255, 0, 0, 255]
                                                     }
                                                 }
+                                                _ => [0, 0, 0, 0],
                                             };
-                                            // let normal: Option<Vec3<f32>> = None;
 
                                             let normal = if !batch.normals.is_empty() {
                                                 let n0 = batch.clipped_normals[i0];
@@ -1042,7 +1028,11 @@ impl Rasterizer {
                                 &[p1[0], p1[1]],
                                 &mut buffer[..],
                                 tile,
-                                &batch.color,
+                                &if let PixelSource::Pixel(color) = &batch.source {
+                                    *color
+                                } else {
+                                    crate::WHITE
+                                },
                             );
                         }
                     }
@@ -1056,7 +1046,11 @@ impl Rasterizer {
                                 &[p1[0], p1[1]],
                                 &mut buffer[..],
                                 tile,
-                                &batch.color,
+                                &if let PixelSource::Pixel(color) = &batch.source {
+                                    *color
+                                } else {
+                                    crate::WHITE
+                                },
                             );
                         }
                     }
@@ -1072,7 +1066,11 @@ impl Rasterizer {
                                 &[p1[0], p1[1]],
                                 &mut buffer[..],
                                 tile,
-                                &batch.color,
+                                &if let PixelSource::Pixel(color) = &batch.source {
+                                    *color
+                                } else {
+                                    crate::WHITE
+                                },
                             );
                         }
                     }
