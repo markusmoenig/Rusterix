@@ -1,6 +1,6 @@
 use crate::SampleMode;
 use crate::{
-    AccumBuffer, Batch3D, D3Camera, HitInfo, MaterialRole, Pixel, PixelSource, Ray, Scene,
+    AccumBuffer, Assets, Batch3D, D3Camera, HitInfo, MaterialRole, Pixel, PixelSource, Ray, Scene,
     ShapeFXGraph, pixel_to_vec4,
 };
 use SampleMode::*;
@@ -108,6 +108,7 @@ impl Tracer {
         scene: &mut Scene,
         buffer: &mut AccumBuffer,
         tile_size: usize,
+        assets: &Assets,
     ) {
         let width = buffer.width;
         let height = buffer.height;
@@ -198,7 +199,8 @@ impl Tracer {
                                 for batch in &chunk.batches3d {
                                     if let Some(mut hit) = batch.intersect(&ray, false) {
                                         if hit.t < hitinfo.t
-                                            && self.evaluate_hit(&ray, scene, batch, &mut hit)
+                                            && self
+                                                .evaluate_hit(&ray, scene, batch, &mut hit, assets)
                                         {
                                             hitinfo = hit;
                                         }
@@ -216,7 +218,7 @@ impl Tracer {
 
                                 if let Some(mut hit) = batch.intersect(&ray, false) {
                                     if hit.t < hitinfo.t
-                                        && self.evaluate_hit(&ray, scene, batch, &mut hit)
+                                        && self.evaluate_hit(&ray, scene, batch, &mut hit, assets)
                                     {
                                         hitinfo = hit;
                                     }
@@ -233,7 +235,7 @@ impl Tracer {
 
                                 if let Some(mut hit) = batch.intersect(&ray, false) {
                                     if hit.t < hitinfo.t
-                                        && self.evaluate_hit(&ray, scene, batch, &mut hit)
+                                        && self.evaluate_hit(&ray, scene, batch, &mut hit, assets)
                                     {
                                         hitinfo = hit;
                                     }
@@ -246,7 +248,9 @@ impl Tracer {
                                     if let Some(batch) = &chunk.1.batch {
                                         if let Some(mut hit) = batch.intersect(&ray, false) {
                                             if hit.t < hitinfo.t
-                                                && self.evaluate_hit(&ray, scene, batch, &mut hit)
+                                                && self.evaluate_hit(
+                                                    &ray, scene, batch, &mut hit, assets,
+                                                )
                                             {
                                                 hitinfo = hit;
                                             }
@@ -360,10 +364,17 @@ impl Tracer {
         buffer.frame += 1;
     }
 
-    fn evaluate_hit(&self, ray: &Ray, scene: &Scene, batch: &Batch3D, hit: &mut HitInfo) -> bool {
+    fn evaluate_hit(
+        &self,
+        ray: &Ray,
+        scene: &Scene,
+        batch: &Batch3D,
+        hit: &mut HitInfo,
+        assets: &Assets,
+    ) -> bool {
         let mut texel = match batch.source {
             PixelSource::StaticTileIndex(index) => {
-                let textile = &scene.textures[index as usize];
+                let textile = &assets.tile_list[index as usize];
                 let index = scene.animation_frame % textile.textures.len();
                 pixel_to_vec4(&textile.textures[index].sample(
                     hit.uv.x,

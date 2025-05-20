@@ -132,9 +132,9 @@ impl GameWidget {
         }
     }
 
-    pub fn draw(&mut self, map: &Map, time: &TheTime) {
+    pub fn draw(&mut self, map: &Map, time: &TheTime, assets: &Assets) {
         if self.camera == PlayerCamera::D2 {
-            self.draw_d2(map, time);
+            self.draw_d2(map, time, assets);
         } else {
             let width = self.buffer.dim().width as usize;
             let height = self.buffer.dim().height as usize;
@@ -153,12 +153,19 @@ impl GameWidget {
             );
             rast.mapmini = self.scene.mapmini.clone();
             // rast.background_color = Some(vec4_to_pixel(&Vec4::new(ac.x, ac.y, ac.z, 1.0)));
-            rast.rasterize(&mut self.scene, self.buffer.pixels_mut(), width, height, 40);
+            rast.rasterize(
+                &mut self.scene,
+                self.buffer.pixels_mut(),
+                width,
+                height,
+                40,
+                assets,
+            );
         }
     }
 
     /// Draw the 2D scene.
-    pub fn draw_d2(&mut self, _map: &Map, _time: &TheTime) {
+    pub fn draw_d2(&mut self, _map: &Map, _time: &TheTime, assets: &Assets) {
         let width = self.buffer.dim().width as usize;
         let height = self.buffer.dim().height as usize;
 
@@ -242,7 +249,14 @@ impl GameWidget {
         let mut rast = Rasterizer::setup(Some(transform), Mat4::identity(), Mat4::identity());
         rast.mapmini = self.scene.mapmini.clone();
 
-        rast.rasterize(&mut self.scene, self.buffer.pixels_mut(), width, height, 40);
+        rast.rasterize(
+            &mut self.scene,
+            self.buffer.pixels_mut(),
+            width,
+            height,
+            40,
+            assets,
+        );
 
         // Draw Messages
 

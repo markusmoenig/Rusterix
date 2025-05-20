@@ -41,6 +41,42 @@ impl Light {
         }
     }
 
+    /// Set the position with the builder pattern.
+    pub fn with_position(mut self, position: Vec3<f32>) -> Self {
+        self.set_position(position);
+        self
+    }
+
+    /// Set the color with the builder pattern.
+    pub fn with_color(mut self, color: [f32; 3]) -> Self {
+        self.set_color(color);
+        self
+    }
+
+    /// Set the intensity with the builder pattern.
+    pub fn with_intensity(mut self, intensity: f32) -> Self {
+        self.set_intensity(intensity);
+        self
+    }
+
+    /// Set the start distance with the builder pattern.
+    pub fn with_start_distance(mut self, start: f32) -> Self {
+        self.set_start_distance(start);
+        self
+    }
+
+    /// Set the end distance with the builder pattern.
+    pub fn with_end_distance(mut self, end: f32) -> Self {
+        self.set_end_distance(end);
+        self
+    }
+
+    /// Set the flicker with the builder pattern.
+    pub fn with_flicker(mut self, flicker: f32) -> Self {
+        self.set_flicker(flicker);
+        self
+    }
+
     /// Helper: get the position from the ValueContainer (defaults to [0,0,0] if not found)
     fn get_position(&self) -> Vec3<f32> {
         let p = self

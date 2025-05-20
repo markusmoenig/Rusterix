@@ -98,13 +98,13 @@ impl D2PreviewBuilder {
 
     pub fn build(
         &mut self,
-        map: &Map,
-        assets: &Assets,
-        screen_size: Vec2<f32>,
-        properties: &ValueContainer,
+        _map: &Map,
+        _assets: &Assets,
+        _screen_size: Vec2<f32>,
+        _properties: &ValueContainer,
     ) -> Scene {
-        let scene = Scene::empty();
         /*
+        let scene = Scene::empty();
         let atlas_size = assets.atlas.width as f32;
         self.no_rect_geo = properties.get_bool_default("no_rect_geo", true);
         self.tile_size = properties.get_int_default("tile_size", 128);
@@ -488,8 +488,9 @@ impl D2PreviewBuilder {
         scene.mapmini = map.as_mini(&tiles);
         scene.d2_static = batches;
         scene.textures = textures;
-        */
         scene
+        */
+        Scene::default()
     }
 
     /// Build and bake the terrain
@@ -783,7 +784,7 @@ impl D2PreviewBuilder {
                     if entity.attributes.get_bool_default("visible", false) {
                         if let Some(tile) = source.tile_from_tile_list(assets) {
                             if let Some(texture_index) = assets.tile_index(&tile.id) {
-                                let mut batch = Batch2D::from_rectangle(
+                                let batch = Batch2D::from_rectangle(
                                     pos.x - hsize,
                                     pos.y - hsize,
                                     size,

@@ -1,8 +1,4 @@
-use crate::{
-    Assets, Batch3D, D3Camera, Map, Material, PixelSource, SampleMode, Scene, Tile, Value,
-    ValueContainer, get_time,
-};
-use theframework::prelude::*;
+use crate::{Assets, Batch3D, D3Camera, Map, PixelSource, Scene, Value, ValueContainer, get_time};
 use vek::Vec2;
 
 pub struct D3Builder {
@@ -26,14 +22,14 @@ impl D3Builder {
 
     pub fn build(
         &mut self,
-        map: &Map,
-        assets: &Assets,
+        _map: &Map,
+        _assets: &Assets,
         _screen_size: Vec2<f32>,
-        camera_id: &str,
-        properties: &ValueContainer,
+        _camera_id: &str,
+        _properties: &ValueContainer,
     ) -> Scene {
-        let scene = Scene::empty();
         /*
+        let scene = Scene::empty();
         self.map = map.clone();
 
         let mut sample_mode = SampleMode::Nearest;
@@ -366,8 +362,9 @@ impl D3Builder {
         scene.d3_static = batches;
         scene.textures = textures;
         scene.compute_static_normals();
-        */
         scene
+        */
+        Scene::default()
     }
 
     /// Build and bake the terrain
@@ -552,6 +549,7 @@ impl D3Builder {
         scene.compute_dynamic_normals();
     }
 
+    /*
     /// Adds a wall to the appropriate batch based on up to 4 input textures.
     #[allow(clippy::too_many_arguments)]
     fn add_wall(
@@ -664,8 +662,9 @@ impl D3Builder {
                 }
             }
         }
-    }
+    }*/
 
+    /*
     /// Adds a skybox or skymap
     fn add_sky(
         texture_id: &Uuid,
@@ -705,5 +704,5 @@ impl D3Builder {
         //     repeated_offsets.insert(tile.id, repeated_batches.len());
         //     repeated_batches.push(batch);
         // }
-    }
+    }*/
 }

@@ -107,8 +107,7 @@ impl D2Builder {
                                 } else {
                                     crate::RepeatMode::ClampXY
                                 })
-                                .source(PixelSource::StaticTileIndex(texture_index))
-                                .receives_light(true);
+                                .source(PixelSource::StaticTileIndex(texture_index));
                             scene.d2_static.push(batch);
                         }
                     }
@@ -179,8 +178,7 @@ impl D2Builder {
                                     } else {
                                         crate::RepeatMode::ClampXY
                                     })
-                                    .source(PixelSource::StaticTileIndex(texture_index))
-                                    .receives_light(true);
+                                    .source(PixelSource::StaticTileIndex(texture_index));
                                 scene.d2_static.push(batch);
                             }
                         }
@@ -231,8 +229,7 @@ impl D2Builder {
 
                                     let batch = Batch2D::new(vertices, geo.1.clone(), uvs)
                                         .repeat_mode(crate::RepeatMode::RepeatXY)
-                                        .source(PixelSource::StaticTileIndex(texture_index))
-                                        .receives_light(true);
+                                        .source(PixelSource::StaticTileIndex(texture_index));
                                     scene.d2_static.push(batch);
                                 }
                             }
@@ -241,8 +238,6 @@ impl D2Builder {
                 }
             }
         }
-
-        // let mut batches = repeated_batches;
 
         let tiles = assets.blocking_tiles();
         scene.mapmini = map.as_mini(&tiles);

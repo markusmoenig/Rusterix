@@ -81,7 +81,7 @@ impl ChunkBuilder for D2ChunkBuilder {
         // Walls
         for sector in &sectors {
             let bbox = sector.bounding_box(map);
-            if bbox.intersects(&chunk.bbox) {
+            if bbox.intersects(&chunk.bbox) && chunk.bbox.contains(bbox.center()) {
                 if let Some(hash) = sector.generate_wall_geometry_by_linedef(map) {
                     for (linedef_id, geo) in hash.iter() {
                         let mut source = None;
@@ -152,6 +152,7 @@ impl ChunkBuilder for D2ChunkBuilder {
         for linedef in &map.linedefs {
             let bbox = linedef.bounding_box(map);
             if bbox.intersects(&chunk.bbox)
+                && chunk.bbox.contains(bbox.center())
                 && linedef.front_sector.is_none()
                 && linedef.back_sector.is_none()
                 && linedef.properties.get_float_default("wall_width", 0.0) > 0.0

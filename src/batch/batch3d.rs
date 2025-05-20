@@ -207,6 +207,12 @@ impl Batch3D {
         Batch3D::new(vertices, indices, uvs)
     }
 
+    /// Sets the background shader using the builder pattern.
+    pub fn material(mut self, material: Material) -> Self {
+        self.material = Some(material);
+        self
+    }
+
     /// Add a set of geometry to the batch.
     pub fn add(
         &mut self,

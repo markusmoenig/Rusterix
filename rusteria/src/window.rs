@@ -39,6 +39,7 @@ pub struct Editor {
     preview_mode: PreviewMode,
     scene: Scene,
     movement: Movement,
+    assets: Assets,
 }
 
 impl TheTrait for Editor {
@@ -53,6 +54,7 @@ impl TheTrait for Editor {
             preview_mode: D2,
             scene: Scene::default(),
             movement: Off,
+            assets: Assets::default(),
         }
     }
 
@@ -157,6 +159,7 @@ impl TheTrait for Editor {
                         ctx.width,
                         ctx.height,
                         200,
+                        &self.assets,
                     );
 
                     let _stop = get_time();

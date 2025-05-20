@@ -181,7 +181,7 @@ impl Client {
     }
 
     /// Build the 2D scene from the map.
-    pub fn build_scene_d2(
+    pub fn build_custom_scene_d2(
         &mut self,
         screen_size: Vec2<f32>,
         map: &Map,
@@ -190,6 +190,8 @@ impl Client {
     ) {
         self.curr_map_id = map.id;
         self.scene_d2 = self.builder_d2.build(map, assets, screen_size, values);
+        self.builder_d2
+            .build_entities_items(map, assets, &mut self.scene_d2, screen_size);
     }
 
     /// Apply the entities to the 2D scene.
@@ -199,7 +201,7 @@ impl Client {
     }
 
     /// Build the 3D scene from the map.
-    pub fn build_scene_d3(&mut self, map: &Map, assets: &Assets, values: &ValueContainer) {
+    pub fn build_custom_scene_d3(&mut self, map: &Map, assets: &Assets, values: &ValueContainer) {
         self.curr_map_id = map.id;
         self.scene_d3 = self.builder_d3.build(
             map,
@@ -299,7 +301,50 @@ impl Client {
     }
 
     /// Draw the 2D scene.
-    pub fn draw_d2(&mut self, map: &Map, pixels: &mut [u8], width: usize, height: usize) {
+    pub fn draw_custom_d2(
+        &mut self,
+        map: &Map,
+        pixels: &mut [u8],
+        width: usize,
+        height: usize,
+        assets: &Assets,
+    ) {
+        self.scene.animation_frame = self.animation_frame;
+        let screen_size = Vec2::new(width as f32, height as f32);
+        let translation_matrix = Mat3::<f32>::translation_2d(Vec2::new(
+            map.offset.x + screen_size.x / 2.0,
+            -map.offset.y + screen_size.y / 2.0,
+        ));
+        let scale_matrix = Mat3::new(
+            map.grid_size,
+            0.0,
+            0.0,
+            0.0,
+            map.grid_size,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+        );
+        let transform = translation_matrix * scale_matrix;
+
+        let mut rast = Rasterizer::setup(Some(transform), Mat4::identity(), Mat4::identity())
+            .render_mode(RenderMode::render_2d());
+        rast.render_graph = self.global.clone();
+        rast.hour = self.server_time.to_f32();
+        rast.mapmini = self.scene.mapmini.clone();
+        rast.rasterize(&mut self.scene_d2, pixels, width, height, 64, assets);
+    }
+
+    /// Draw the 2D scene.
+    pub fn draw_d2(
+        &mut self,
+        map: &Map,
+        pixels: &mut [u8],
+        width: usize,
+        height: usize,
+        assets: &Assets,
+    ) {
         pub fn map_grid_to_local(
             screen_size: Vec2<f32>,
             grid_pos: Vec2<f32>,
@@ -333,7 +378,7 @@ impl Client {
         rast.render_graph = self.global.clone();
         rast.hour = self.server_time.to_f32();
         rast.mapmini = self.scene.mapmini.clone();
-        rast.rasterize(&mut self.scene, pixels, width, height, 200);
+        rast.rasterize(&mut self.scene, pixels, width, height, 64, assets);
 
         // Draw Messages
 
@@ -373,7 +418,14 @@ impl Client {
     }
 
     /// Draw the 3D scene.
-    pub fn draw_d3(&mut self, _map: &Map, pixels: &mut [u8], width: usize, height: usize) {
+    pub fn draw_d3(
+        &mut self,
+        _map: &Map,
+        pixels: &mut [u8],
+        width: usize,
+        height: usize,
+        assets: &Assets,
+    ) {
         self.scene.animation_frame = self.animation_frame;
 
         let mut rast = Rasterizer::setup(
@@ -387,16 +439,16 @@ impl Client {
         rast.render_graph = self.global.clone();
         rast.hour = self.server_time.to_f32();
         rast.mapmini = self.scene.mapmini.clone();
-        rast.rasterize(&mut self.scene, pixels, width, height, 64)
+        rast.rasterize(&mut self.scene, pixels, width, height, 64, assets)
     }
 
     /// Trace the 3D scene.
-    pub fn trace(&mut self, accum: &mut AccumBuffer) {
+    pub fn trace(&mut self, accum: &mut AccumBuffer, assets: &Assets) {
         self.scene.animation_frame = self.animation_frame;
         let mut tracer = Tracer::default();
         tracer.render_graph = self.global.clone();
         tracer.hour = self.server_time.to_f32();
-        tracer.trace(self.camera_d3.as_ref(), &mut self.scene, accum, 64);
+        tracer.trace(self.camera_d3.as_ref(), &mut self.scene, accum, 64, assets);
     }
 
     /// Get an i32 config value
@@ -635,7 +687,7 @@ impl Client {
         // First process the game widgets
         for widget in self.game_widgets.values_mut() {
             widget.apply_entities(map, assets);
-            widget.draw(map, &self.server_time);
+            widget.draw(map, &self.server_time, assets);
 
             self.target
                 .copy_into(widget.rect.x as i32, widget.rect.y as i32, &widget.buffer);
@@ -657,7 +709,7 @@ impl Client {
             widget.offset = Vec2::new(start_x, start_y);
 
             widget.build(screen, assets);
-            widget.draw(screen, &self.server_time);
+            widget.draw(screen, &self.server_time, assets);
 
             self.target.blend_into(0, 0, &widget.buffer);
         }

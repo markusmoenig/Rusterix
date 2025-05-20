@@ -159,6 +159,7 @@ pub mod prelude {
     pub use crate::{Batch2D, Batch3D, CullMode, PrimitiveMode};
     pub use crate::{D3Camera, D3FirstPCamera, D3IsoCamera, D3OrbitCamera};
     pub use crate::{GridShader, Shader, VGrayGradientShader};
+    pub use crate::{Material, MaterialModifier, MaterialRole};
     pub use crate::{
         Rect, Scene, SceneManager, SceneManagerCmd, SceneManagerResult, Value, ValueContainer,
     };

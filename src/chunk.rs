@@ -1,4 +1,4 @@
-use crate::{BBox, Batch2D, Batch3D};
+use crate::{BBox, Batch2D, Batch3D, CompiledLight};
 use vek::Vec2;
 
 /// A chunk of 2D and 3D batches which make up a Scene.
@@ -9,6 +9,8 @@ pub struct Chunk {
 
     pub batches2d: Vec<Batch2D>,
     pub batches3d: Vec<Batch3D>,
+
+    pub lights: Vec<CompiledLight>,
 }
 
 impl Chunk {
@@ -21,6 +23,7 @@ impl Chunk {
             bbox,
             batches2d: vec![],
             batches3d: vec![],
+            lights: vec![],
         }
     }
 }

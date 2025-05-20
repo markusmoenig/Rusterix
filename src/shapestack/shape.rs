@@ -284,7 +284,7 @@ impl Shape {
         params
     }
 
-    pub fn preview(&mut self, buffer: &mut TheRGBABuffer) {
+    pub fn preview(&mut self, buffer: &mut TheRGBABuffer, assets: &Assets) {
         buffer.fill(BLACK);
 
         let width = buffer.dim().width as f32;
@@ -322,6 +322,7 @@ impl Shape {
                 width as usize,
                 height as usize,
                 40,
+                assets,
             );
         }
     }

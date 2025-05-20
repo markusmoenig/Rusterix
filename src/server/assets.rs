@@ -276,4 +276,10 @@ impl Assets {
     pub fn add_entity(&mut self, name: String, code: String, data: String) {
         self.entities.insert(name, (code, data));
     }
+
+    /// Sets textures using the builder pattern.
+    pub fn textures(mut self, textures: Vec<Tile>) -> Self {
+        self.tile_list = textures;
+        self
+    }
 }

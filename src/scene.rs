@@ -26,9 +26,6 @@ pub struct Scene {
     /// 2D dynamic batches which can be updated dynamically.
     pub d2_dynamic: Vec<Batch2D>,
 
-    /// The list of textures which the batches index into.
-    pub textures: Vec<Tile>,
-
     /// The list of textures which the d3_dynamic batches index into.
     pub dynamic_textures: Vec<Tile>,
 
@@ -62,7 +59,6 @@ impl Scene {
             d3_dynamic: vec![],
             d2_static: vec![],
             d2_dynamic: vec![],
-            textures: vec![],
             dynamic_textures: vec![],
 
             animation_frame: 1,
@@ -84,7 +80,6 @@ impl Scene {
             d3_dynamic: vec![],
             d2_static: d2,
             d2_dynamic: vec![],
-            textures: vec![],
             dynamic_textures: vec![],
 
             animation_frame: 1,
@@ -99,12 +94,6 @@ impl Scene {
     /// Sets the background shader using the builder pattern.
     pub fn background(mut self, background: Box<dyn Shader>) -> Self {
         self.background = Some(background);
-        self
-    }
-
-    /// Sets the background shader using the builder pattern.
-    pub fn textures(mut self, textures: Vec<Tile>) -> Self {
-        self.textures = textures;
         self
     }
 

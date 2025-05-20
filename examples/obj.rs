@@ -1,5 +1,6 @@
 use rusterix::prelude::*;
 use std::path::Path;
+use std::time::Instant;
 use theframework::*;
 use vek::{Mat4, Vec2, Vec3, Vec4};
 
@@ -15,6 +16,8 @@ fn main() {
 pub struct ObjDemo {
     camera: D3OrbitCamera,
     scene: Scene,
+    assets: Assets,
+    start_time: Instant,
 }
 
 impl TheTrait for ObjDemo {
@@ -32,36 +35,51 @@ impl TheTrait for ObjDemo {
                     .with_computed_normals(),
             ],
         )
-        .background(Box::new(VGrayGradientShader::new()))
-        .textures(vec![Tile::from_texture(Texture::from_image(Path::new(
-            "images/logo.png",
-        )))]);
+        .lights(vec![
+            Light::new(LightType::Point)
+                .with_intensity(1.0)
+                .with_color([1.0, 1.0, 0.95])
+                .compile(),
+        ])
+        .background(Box::new(VGrayGradientShader::new()));
+
+        let assets = Assets::default().textures(vec![Tile::from_texture(Texture::from_image(
+            Path::new("images/logo.png"),
+        ))]);
 
         let mut camera = D3OrbitCamera::new();
         camera.set_parameter_f32("distance", 1.5);
 
-        Self { camera, scene }
+        Self {
+            camera,
+            scene,
+            start_time: Instant::now(),
+            assets,
+        }
     }
 
     fn draw(&mut self, pixels: &mut [u8], ctx: &mut TheContext) {
         let _start = get_time();
 
-        let projection_matrix_2d = None;
+        // Animate light in circle around Y-axis
+        let elapsed = self.start_time.elapsed().as_secs_f32() * 1.5;
+        self.scene.lights[0].position = Vec3::new(2.0 * elapsed.cos(), 0.8, 2.0 * elapsed.sin());
 
         // Set it up
         Rasterizer::setup(
-            projection_matrix_2d,
+            None,
             self.camera.view_matrix(),
             self.camera
                 .projection_matrix(ctx.width as f32, ctx.height as f32),
         )
-        .ambient(Vec4::one())
+        .ambient(Vec4::broadcast(0.8))
         .rasterize(
             &mut self.scene,
             pixels,     // Destination buffer
             ctx.width,  // Destination buffer width
             ctx.height, // Destination buffer height
-            200,        // Tile size
+            60,         // Tile size
+            &self.assets,
         );
 
         let _stop = get_time();

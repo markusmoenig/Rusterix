@@ -145,7 +145,7 @@ impl SceneManager {
                         if let Some(&coord) = dirty.iter().next() {
                             dirty.remove(&coord);
 
-                            println!("Processing chunk at {:?}", coord);
+                            // println!("Processing chunk at {:?}", coord);
 
                             let mut chunk = Chunk::new(Vec2::new(coord.0, coord.1), chunk_size);
 

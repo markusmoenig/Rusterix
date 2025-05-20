@@ -1,5 +1,5 @@
 use crate::{
-    Batch2D, Batch3D, LightType, MapMini, Material, MaterialRole, Pixel, PixelSource,
+    Assets, Batch2D, Batch3D, LightType, MapMini, Material, MaterialRole, Pixel, PixelSource,
     PrimitiveMode, Ray, RenderMode, RepeatMode, Scene, Texture, pixel_to_vec4, vec4_to_pixel,
 };
 use crate::{SampleMode, ShapeFXGraph};
@@ -155,6 +155,7 @@ impl Rasterizer {
         width: usize,
         height: usize,
         tile_size: usize,
+        assets: &Assets,
     ) {
         self.width = width as f32;
         self.height = height as f32;
@@ -180,6 +181,15 @@ impl Rasterizer {
             self.height,
         );
 
+        // We append the in-scope chunk lights to the dynamic lights
+        for chunk in scene.chunks.values() {
+            for light in &chunk.lights {
+                scene.dynamic_lights.push(light.clone());
+            }
+        }
+
+        // We collect the nodes for dynamic hit and miss post processing
+        // from the terminals of the render node.
         self.render_hit = self.render_graph.collect_nodes_from(0, 0);
         self.render_miss = self.render_graph.collect_nodes_from(0, 1);
 
@@ -193,6 +203,8 @@ impl Rasterizer {
             self.render_graph.nodes[*node as usize].render_setup(self.hour);
         }
 
+        // Render a node based ambient color (procedural Sky) or if not
+        // available use the ambient color (if any)
         for node in &mut self.render_miss {
             if let Some(ambient) =
                 self.render_graph.nodes[*node as usize].render_ambient_color(self.hour)
@@ -252,24 +264,38 @@ impl Rasterizer {
                     // Chunks
                     for chunk in scene.chunks.values() {
                         for batch3d in &chunk.batches3d {
-                            self.d3_rasterize(&mut buffer, &mut z_buffer, tile, batch3d, scene);
+                            self.d3_rasterize(
+                                &mut buffer,
+                                &mut z_buffer,
+                                tile,
+                                batch3d,
+                                scene,
+                                assets,
+                            );
                         }
                     }
 
                     // Static
                     for batch in scene.d3_static.iter() {
-                        self.d3_rasterize(&mut buffer, &mut z_buffer, tile, batch, scene);
+                        self.d3_rasterize(&mut buffer, &mut z_buffer, tile, batch, scene, assets);
                     }
 
                     // Dynamic
                     for batch in scene.d3_dynamic.iter() {
-                        self.d3_rasterize(&mut buffer, &mut z_buffer, tile, batch, scene);
+                        self.d3_rasterize(&mut buffer, &mut z_buffer, tile, batch, scene, assets);
                     }
 
                     if let Some(terrain) = &scene.terrain {
                         for chunk in terrain.chunks.iter() {
                             if let Some(batch) = &chunk.1.batch {
-                                self.d3_rasterize(&mut buffer, &mut z_buffer, tile, batch, scene);
+                                self.d3_rasterize(
+                                    &mut buffer,
+                                    &mut z_buffer,
+                                    tile,
+                                    batch,
+                                    scene,
+                                    assets,
+                                );
                             }
                         }
                     }
@@ -358,18 +384,18 @@ impl Rasterizer {
                     // Chunks
                     for chunk in scene.chunks.values() {
                         for batch2d in &chunk.batches2d {
-                            self.d2_rasterize(&mut buffer, tile, batch2d, scene);
+                            self.d2_rasterize(&mut buffer, tile, batch2d, scene, assets);
                         }
                     }
 
                     // Static
                     for batch in scene.d2_static.iter() {
-                        self.d2_rasterize(&mut buffer, tile, batch, scene);
+                        self.d2_rasterize(&mut buffer, tile, batch, scene, assets);
                     }
 
                     // Dynamic
                     for batch in scene.d2_dynamic.iter() {
-                        self.d2_rasterize(&mut buffer, tile, batch, scene);
+                        self.d2_rasterize(&mut buffer, tile, batch, scene, assets);
                     }
                 }
 
@@ -402,7 +428,14 @@ impl Rasterizer {
 
     /// Rasterizes a 2D batch.
     #[inline(always)]
-    fn d2_rasterize(&self, buffer: &mut [u8], tile: &TileRect, batch: &Batch2D, scene: &Scene) {
+    fn d2_rasterize(
+        &self,
+        buffer: &mut [u8],
+        tile: &TileRect,
+        batch: &Batch2D,
+        scene: &Scene,
+        assets: &Assets,
+    ) {
         if let Some(bbox) = batch.bounding_box {
             if bbox.x < (tile.x + tile.width) as f32
                 && (bbox.x + bbox.width) > tile.x as f32
@@ -489,7 +522,7 @@ impl Rasterizer {
 
                                         let mut texel = match batch.source {
                                             PixelSource::StaticTileIndex(index) => {
-                                                let textile = &scene.textures[index as usize];
+                                                let textile = &assets.tile_list[index as usize];
                                                 let index =
                                                     scene.animation_frame % textile.textures.len();
                                                 textile.textures[index].sample(
@@ -692,6 +725,7 @@ impl Rasterizer {
         tile: &TileRect,
         batch: &Batch3D,
         scene: &Scene,
+        assets: &Assets,
     ) {
         // Bounding box check for the tile with the batch bbox
         if let Some(bbox) = batch.bounding_box {
@@ -788,7 +822,7 @@ impl Rasterizer {
 
                                             let mut texel = match batch.source {
                                                 PixelSource::StaticTileIndex(index) => {
-                                                    let textile = &scene.textures[index as usize];
+                                                    let textile = &assets.tile_list[index as usize];
                                                     let index = scene.animation_frame
                                                         % textile.textures.len();
                                                     textile.textures[index].sample(

@@ -52,12 +52,12 @@ impl ScreenWidget {
         );
     }
 
-    pub fn draw(&mut self, map: &Map, time: &TheTime) {
-        self.draw_d2(map, time);
+    pub fn draw(&mut self, map: &Map, time: &TheTime, assets: &Assets) {
+        self.draw_d2(map, time, assets);
     }
 
     /// Draw the 2D scene.
-    pub fn draw_d2(&mut self, _map: &Map, _time: &TheTime) {
+    pub fn draw_d2(&mut self, _map: &Map, _time: &TheTime, assets: &Assets) {
         let width = self.buffer.dim().width as usize;
         let height = self.buffer.dim().height as usize;
 
@@ -83,6 +83,13 @@ impl ScreenWidget {
         rast.preserve_transparency = true;
         rast.mapmini = self.scene.mapmini.clone();
 
-        rast.rasterize(&mut self.scene, self.buffer.pixels_mut(), width, height, 40);
+        rast.rasterize(
+            &mut self.scene,
+            self.buffer.pixels_mut(),
+            width,
+            height,
+            40,
+            assets,
+        );
     }
 }

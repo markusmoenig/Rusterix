@@ -79,6 +79,7 @@ impl Rusterix {
         self.client.process_messages(map, messages);
     }
 
+    /*
     /// Build the client scene based on the maps camera mode, or, if the game is running on the PlayerCamera.
     pub fn build_scene(
         &mut self,
@@ -119,7 +120,7 @@ impl Rusterix {
                 self.set_d3();
             }
         }
-    }
+    }*/
 
     pub fn build_terrain(&mut self, map: &mut Map, modifiers: bool) {
         match self.draw_mode {
@@ -157,6 +158,17 @@ impl Rusterix {
         }
     }
 
+    /// Build the client scene in D2.
+    pub fn build_custom_scene_d2(
+        &mut self,
+        screen_size: Vec2<f32>,
+        map: &Map,
+        values: &ValueContainer,
+    ) {
+        self.client
+            .build_custom_scene_d2(screen_size, map, &self.assets, values);
+    }
+
     /// Builds the entities and items w/o changing char positions
     pub fn build_entities_items_d3(&mut self, map: &Map) {
         self.client.builder_d3.build_entities_items(
@@ -168,12 +180,8 @@ impl Rusterix {
     }
 
     /// Build the client scene in D3.
-    pub fn build_scene_d3(&mut self, map: &Map, values: &ValueContainer) {
-        if self.is_dirty_d3 {
-            self.client.build_scene_d3(map, &self.assets, values);
-            self.is_dirty_d3 = false;
-        }
-        self.set_d3();
+    pub fn build_custom_scene_d3(&mut self, map: &Map, values: &ValueContainer) {
+        self.client.build_custom_scene_d3(map, &self.assets, values);
     }
 
     /// Rebuild the terrain in D2.
@@ -186,20 +194,40 @@ impl Rusterix {
         self.client.build_terrain_d3(map, &self.assets, modifiers);
     }
 
+    /// Draw the client custom scene in 2D.
+    pub fn draw_custom_d2(&mut self, map: &Map, pixels: &mut [u8], width: usize, height: usize) {
+        self.client
+            .draw_custom_d2(map, pixels, width, height, &self.assets);
+    }
+
+    /// Draw the client scene in 2D.
+    pub fn draw_d2(&mut self, map: &Map, pixels: &mut [u8], width: usize, height: usize) {
+        self.client
+            .draw_d2(map, pixels, width, height, &self.assets);
+    }
+
+    /// Draw the client scene in 3D
+    pub fn draw_d3(&mut self, map: &Map, pixels: &mut [u8], width: usize, height: usize) {
+        self.client
+            .draw_d3(map, pixels, width, height, &self.assets);
+    }
+
     /// Draw the client scene.
     pub fn draw_scene(&mut self, map: &Map, pixels: &mut [u8], width: usize, height: usize) {
         match self.draw_mode {
             D2 => {
-                self.client.draw_d2(map, pixels, width, height);
+                self.client
+                    .draw_d2(map, pixels, width, height, &self.assets);
             }
             D3 => {
-                self.client.draw_d3(map, pixels, width, height);
+                self.client
+                    .draw_d3(map, pixels, width, height, &self.assets);
             }
         }
     }
 
-    pub fn trace_scene(&mut self, _map: &Map, accum: &mut AccumBuffer) {
-        self.client.trace(accum);
+    pub fn trace_scene(&mut self, accum: &mut AccumBuffer) {
+        self.client.trace(accum, &self.assets);
     }
 
     /// Set up the client for processing the game.
