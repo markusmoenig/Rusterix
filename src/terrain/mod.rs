@@ -454,21 +454,22 @@ impl Terrain {
 
         // SAFETY: self is not mutably accessed while shared references are active
         unsafe {
-            let baked =
+            let mut baked =
                 (*ptr_self).bake_chunk(&Vec2::new(coord.0, coord.1), assets, pixels_per_tile);
 
             let chunk_mut = &mut *chunk_ptr;
 
             let processed_heights = if modifiers {
-                Some(chunk_mut.process_batch_modifiers(&*ptr_self, map, assets, &mut baked.clone()))
+                Some(chunk_mut.process_batch_modifiers(&*ptr_self, map, assets, &mut baked))
             } else {
                 Some(chunk_mut.heights.clone())
             };
 
+            chunk_mut.processed_heights = processed_heights;
+
             let batch2d = chunk_mut.build_mesh_d2(&*ptr_self);
             let batch3d = chunk_mut.build_mesh(&*ptr_self);
 
-            chunk_mut.processed_heights = processed_heights;
             chunk_mut.clear_dirty();
 
             chunk.terrain_texture = Some(baked);

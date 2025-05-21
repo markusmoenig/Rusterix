@@ -1,5 +1,5 @@
 use crate::{
-    Assets, BBox, Chunk, ChunkBuilder, D2ChunkBuilder, D3ChunkBuilder, Map, Terrain, Tile,
+    Assets, BBox, Batch3D, Chunk, ChunkBuilder, D2ChunkBuilder, D3ChunkBuilder, Map, Terrain, Tile,
 };
 use crossbeam::channel::{self, Receiver, Sender};
 use std::thread::{self, JoinHandle};
@@ -20,6 +20,7 @@ pub enum SceneManagerCmd {
 pub enum SceneManagerResult {
     Startup,
     Chunk(Chunk),
+    UpdatedBatch3D((i32, i32), Batch3D),
     Quit,
 }
 
@@ -95,6 +96,7 @@ impl SceneManager {
 
         let chunk_size = 16;
         let mut dirty: FxHashSet<(i32, i32)> = FxHashSet::default();
+        let mut all: FxHashSet<(i32, i32)> = FxHashSet::default();
 
         let mut chunk_builder_d2: Option<Box<dyn ChunkBuilder>> =
             Some(Box::new(D2ChunkBuilder::new()));
@@ -138,6 +140,7 @@ impl SceneManager {
                                             bbox.min, bbox.max
                                         );
                                         dirty = Self::generate_chunk_coords(&bbox, chunk_size);
+                                        all = dirty.clone();
                                     }
                                     SceneManagerCmd::Quit => {
                                         result_tx.send(SceneManagerResult::Quit).ok();
@@ -171,7 +174,23 @@ impl SceneManager {
                             }
 
                             terrain.build_chunk_at((coord.0 / chunk_size, coord.1 / chunk_size), &assets, &map, 64, &mut chunk, true);
+                            map.terrain = terrain.clone();
                             result_tx.send(SceneManagerResult::Chunk(chunk)).ok();
+
+                            if dirty.is_empty() {
+                                // When finished we need to recompute all 3D terrain meshes
+                                // to correct cross boundary errors
+                                for coord in &all {
+                                    let local = terrain.get_chunk_coords(coord.0, coord.1);
+                                    if let Some(ch) = terrain.chunks.get_mut(&local).cloned() {
+                                        let batch = ch.build_mesh(&map.terrain);
+                                        // println!("{:?} {}", coord, batch.vertices.len());
+                                        if !batch.vertices.is_empty() {
+                                            result_tx.send(SceneManagerResult::UpdatedBatch3D(*coord, batch)).ok();
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
