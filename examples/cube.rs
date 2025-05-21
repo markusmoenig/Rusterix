@@ -30,12 +30,12 @@ impl TheTrait for Cube {
                 Batch3D::from_box(-0.5, -0.5, -0.5, 1.0, 1.0, 1.0)
                     .source(PixelSource::StaticTileIndex(0))
                     .cull_mode(CullMode::Off)
-                    // Metallic material which is based on half of the inverse
+                    // Metallic material which is based on half of the
                     // saturation of the pixel color
                     .material(Material::new(
                         MaterialRole::Metallic,
-                        MaterialModifier::InvSaturation,
-                        0.4,
+                        MaterialModifier::Saturation,
+                        0.6,
                         0.0,
                     ))
                     .with_computed_normals(),

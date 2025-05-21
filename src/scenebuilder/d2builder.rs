@@ -7,7 +7,6 @@ use vek::Vec2;
 
 pub struct D2Builder {
     pub activated_widgets: Vec<u32>,
-    tile_size: i32,
 }
 
 impl Default for D2Builder {
@@ -20,13 +19,11 @@ impl D2Builder {
     pub fn new() -> Self {
         Self {
             activated_widgets: vec![],
-            tile_size: 128,
         }
     }
 
     pub fn build(&mut self, map: &Map, assets: &Assets, screen_size: Vec2<f32>) -> Scene {
         let mut scene = Scene::empty();
-        let atlas_size = assets.atlas.width as f32;
 
         for sector in &map.sectors {
             if let Some(geo) = sector.generate_geometry(map) {
@@ -75,18 +72,10 @@ impl D2Builder {
                                 map,
                             );
 
-                            let index = 0;
-
                             if !repeat {
                                 let uv = [
-                                    (tile.uvs[index].x as f32
-                                        + ((vertex[0] - bbox.min.x) / (bbox.max.x - bbox.min.x)
-                                            * tile.uvs[index].z as f32))
-                                        / atlas_size,
-                                    ((tile.uvs[index].y as f32
-                                        + (vertex[1] - bbox.min.y) / (bbox.max.y - bbox.min.y)
-                                            * tile.uvs[index].w as f32)
-                                        / atlas_size),
+                                    (vertex[0] - bbox.min.x) / (bbox.max.x - bbox.min.x),
+                                    (vertex[1] - bbox.min.y) / (bbox.max.y - bbox.min.y),
                                 ];
                                 uvs.push(uv);
                             } else {
@@ -144,20 +133,10 @@ impl D2Builder {
                                     map,
                                 );
 
-                                let index = 0;
-
                                 if !repeat {
                                     let uv = [
-                                        (tile.uvs[index].x as f32
-                                            + ((vertex[0] - bbox.min.x)
-                                                / (bbox.max.x - bbox.min.x)
-                                                * tile.uvs[index].z as f32))
-                                            / atlas_size,
-                                        ((tile.uvs[index].y as f32
-                                            + (vertex[1] - bbox.min.y)
-                                                / (bbox.max.y - bbox.min.y)
-                                                * tile.uvs[index].w as f32)
-                                            / atlas_size),
+                                        (vertex[0] - bbox.min.x) / (bbox.max.x - bbox.min.x),
+                                        (vertex[1] - bbox.min.y) / (bbox.max.y - bbox.min.y),
                                     ];
                                     uvs.push(uv);
                                 } else {
@@ -242,28 +221,6 @@ impl D2Builder {
         let tiles = assets.blocking_tiles();
         scene.mapmini = map.as_mini(&tiles);
         scene
-    }
-
-    /// Build and bake the terrain
-    pub fn build_terrain(
-        &self,
-        map: &mut Map,
-        assets: &Assets,
-        scene: &mut Scene,
-        modifiers: bool,
-    ) {
-        map.terrain.clean_d3();
-        if map.terrain.count_dirty_chunks() > 0 {
-            map.terrain.build_dirty_chunks(
-                assets,
-                &map.geometry_clone(),
-                self.tile_size / 2,
-                modifiers,
-            );
-            scene.terrain = Some(map.terrain.clone());
-        } else if scene.terrain.is_none() {
-            scene.terrain = Some(map.terrain.clone());
-        }
     }
 
     #[allow(clippy::too_many_arguments)]

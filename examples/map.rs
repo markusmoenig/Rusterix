@@ -1,5 +1,5 @@
 use rusterix::prelude::*;
-use std::path::Path;
+// use std::path::Path;
 use theframework::*;
 use vek::{Vec2, Vec3, Vec4};
 
@@ -30,6 +30,7 @@ pub struct Map {
     scene: Scene,
     entity: Entity,
     movement: Movement,
+    assets: Assets,
 }
 
 impl TheTrait for Map {
@@ -70,17 +71,18 @@ impl TheTrait for Map {
                 .receives_light(false)
                 .source(PixelSource::StaticTileIndex(0)),
         ];
-        scene
-            .textures
-            .push(Tile::from_texture(Texture::from_image(Path::new(
-                "images/logo.png",
-            ))));
+        // scene
+        //     .textures
+        //     .push(Tile::from_texture(Texture::from_image(Path::new(
+        //         "images/logo.png",
+        //     ))));
 
         Self {
             camera,
             scene,
             entity,
             movement: Off,
+            assets,
         }
     }
 
@@ -118,7 +120,8 @@ impl TheTrait for Map {
             pixels,     // Destination buffer
             ctx.width,  // Destination buffer width
             ctx.height, // Destination buffer height
-            30,         // Tile size
+            40,         // Tile size
+            &self.assets,
         );
 
         let _stop = get_time();

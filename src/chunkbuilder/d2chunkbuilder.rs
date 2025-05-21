@@ -33,22 +33,12 @@ impl ChunkBuilder for D2ChunkBuilder {
                         if let Some(tile) = pixelsource.tile_from_tile_list(assets) {
                             for vertex in &geo.0 {
                                 let local = Vec2::new(vertex[0], vertex[1]);
-
                                 let repeat = true;
-                                let index = 0;
 
                                 if !repeat {
                                     let uv = [
-                                        (tile.uvs[index].x as f32
-                                            + ((vertex[0] - bbox.min.x)
-                                                / (bbox.max.x - bbox.min.x)
-                                                * tile.uvs[index].z as f32))
-                                            / tile.textures[0].width as f32,
-                                        ((tile.uvs[index].y as f32
-                                            + (vertex[1] - bbox.min.y)
-                                                / (bbox.max.y - bbox.min.y)
-                                                * tile.uvs[index].w as f32)
-                                            / tile.textures[0].height as f32),
+                                        (vertex[0] - bbox.min.x) / (bbox.max.x - bbox.min.x),
+                                        (vertex[1] - bbox.min.y) / (bbox.max.y - bbox.min.y),
                                     ];
                                     uvs.push(uv);
                                 } else {
@@ -104,20 +94,11 @@ impl ChunkBuilder for D2ChunkBuilder {
                             if let Some(tile) = pixelsource.tile_from_tile_list(assets) {
                                 for vertex in &geo.0 {
                                     let local = Vec2::new(vertex[0], vertex[1]);
-                                    let index = 0;
 
                                     if !repeat {
                                         let uv = [
-                                            (tile.uvs[index].x as f32
-                                                + ((vertex[0] - bbox.min.x)
-                                                    / (bbox.max.x - bbox.min.x)
-                                                    * tile.uvs[index].z as f32))
-                                                / tile.textures[0].width as f32,
-                                            ((tile.uvs[index].y as f32
-                                                + (vertex[1] - bbox.min.y)
-                                                    / (bbox.max.y - bbox.min.y)
-                                                    * tile.uvs[index].w as f32)
-                                                / tile.textures[0].height as f32),
+                                            (vertex[0] - bbox.min.x) / (bbox.max.x - bbox.min.x),
+                                            (vertex[1] - bbox.min.y) / (bbox.max.y - bbox.min.y),
                                         ];
                                         uvs.push(uv);
                                     } else {

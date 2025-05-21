@@ -1,6 +1,7 @@
 use crate::{
-    Assets, Batch2D, Batch3D, LightType, MapMini, Material, MaterialRole, Pixel, PixelSource,
-    PrimitiveMode, Ray, RenderMode, RepeatMode, Scene, Texture, pixel_to_vec4, vec4_to_pixel,
+    Assets, Batch2D, Batch3D, Chunk, LightType, MapMini, Material, MaterialRole, Pixel,
+    PixelSource, PrimitiveMode, Ray, RenderMode, RepeatMode, Scene, Texture, pixel_to_vec4,
+    vec4_to_pixel,
 };
 use crate::{SampleMode, ShapeFXGraph};
 use rayon::prelude::*;
@@ -271,33 +272,46 @@ impl Rasterizer {
                                 batch3d,
                                 scene,
                                 assets,
+                                Some(chunk),
+                            );
+                        }
+                        if let Some(terrain_chunk) = &chunk.terrain_batch3d {
+                            self.d3_rasterize(
+                                &mut buffer,
+                                &mut z_buffer,
+                                tile,
+                                terrain_chunk,
+                                scene,
+                                assets,
+                                Some(chunk),
                             );
                         }
                     }
 
                     // Static
                     for batch in scene.d3_static.iter() {
-                        self.d3_rasterize(&mut buffer, &mut z_buffer, tile, batch, scene, assets);
+                        self.d3_rasterize(
+                            &mut buffer,
+                            &mut z_buffer,
+                            tile,
+                            batch,
+                            scene,
+                            assets,
+                            None,
+                        );
                     }
 
                     // Dynamic
                     for batch in scene.d3_dynamic.iter() {
-                        self.d3_rasterize(&mut buffer, &mut z_buffer, tile, batch, scene, assets);
-                    }
-
-                    if let Some(terrain) = &scene.terrain {
-                        for chunk in terrain.chunks.iter() {
-                            if let Some(batch) = &chunk.1.batch {
-                                self.d3_rasterize(
-                                    &mut buffer,
-                                    &mut z_buffer,
-                                    tile,
-                                    batch,
-                                    scene,
-                                    assets,
-                                );
-                            }
-                        }
+                        self.d3_rasterize(
+                            &mut buffer,
+                            &mut z_buffer,
+                            tile,
+                            batch,
+                            scene,
+                            assets,
+                            None,
+                        );
                     }
 
                     // Call post-processing for missed geometry hits
@@ -384,18 +398,35 @@ impl Rasterizer {
                     // Chunks
                     for chunk in scene.chunks.values() {
                         for batch2d in &chunk.batches2d {
-                            self.d2_rasterize(&mut buffer, tile, batch2d, scene, assets);
+                            self.d2_rasterize(
+                                &mut buffer,
+                                tile,
+                                batch2d,
+                                scene,
+                                assets,
+                                Some(chunk),
+                            );
+                        }
+                        if let Some(terrain_chunk) = &chunk.terrain_batch2d {
+                            self.d2_rasterize(
+                                &mut buffer,
+                                tile,
+                                terrain_chunk,
+                                scene,
+                                assets,
+                                Some(chunk),
+                            );
                         }
                     }
 
                     // Static
                     for batch in scene.d2_static.iter() {
-                        self.d2_rasterize(&mut buffer, tile, batch, scene, assets);
+                        self.d2_rasterize(&mut buffer, tile, batch, scene, assets, None);
                     }
 
                     // Dynamic
                     for batch in scene.d2_dynamic.iter() {
-                        self.d2_rasterize(&mut buffer, tile, batch, scene, assets);
+                        self.d2_rasterize(&mut buffer, tile, batch, scene, assets, None);
                     }
                 }
 
@@ -435,6 +466,7 @@ impl Rasterizer {
         batch: &Batch2D,
         scene: &Scene,
         assets: &Assets,
+        chunk: Option<&Chunk>,
     ) {
         if let Some(bbox) = batch.bounding_box {
             if bbox.x < (tile.x + tile.width) as f32
@@ -546,8 +578,8 @@ impl Rasterizer {
                                             }
                                             PixelSource::Pixel(col) => col,
                                             PixelSource::Terrain => {
-                                                if let Some(terrain) = &scene.terrain {
-                                                    terrain.sample_baked(world)
+                                                if let Some(chunk) = chunk {
+                                                    chunk.sample_terrain_texture(world, Vec2::one())
                                                 } else {
                                                     [0, 0, 0, 0]
                                                 }
@@ -718,6 +750,7 @@ impl Rasterizer {
 
     /// Rasterizes a 3D batch.
     #[inline(always)]
+    #[allow(clippy::too_many_arguments)]
     fn d3_rasterize(
         &self,
         buffer: &mut [u8],
@@ -726,6 +759,7 @@ impl Rasterizer {
         batch: &Batch3D,
         scene: &Scene,
         assets: &Assets,
+        chunk: Option<&Chunk>,
     ) {
         // Bounding box check for the tile with the batch bbox
         if let Some(bbox) = batch.bounding_box {
@@ -846,9 +880,12 @@ impl Rasterizer {
                                                 }
                                                 PixelSource::Pixel(col) => col,
                                                 PixelSource::Terrain => {
-                                                    if let Some(terrain) = &scene.terrain {
-                                                        let mut texel =
-                                                            terrain.sample_baked(world_2d);
+                                                    if let Some(chunk) = chunk {
+                                                        let mut texel = chunk
+                                                            .sample_terrain_texture(
+                                                                world_2d,
+                                                                Vec2::one(),
+                                                            );
                                                         if let Some(brush_preview) =
                                                             &self.brush_preview
                                                         {

@@ -1,4 +1,4 @@
-use crate::{Batch2D, Batch3D, Chunk, CompiledLight, MapMini, Shader, Terrain, Tile};
+use crate::{Batch2D, Batch3D, Chunk, CompiledLight, MapMini, Shader, Tile};
 use rayon::prelude::*;
 use theframework::prelude::*;
 use vek::{Mat3, Mat4};
@@ -35,9 +35,6 @@ pub struct Scene {
     /// For 2D grid conversion when we dont use a matrix
     pub mapmini: MapMini,
 
-    /// Optional Terrain
-    pub terrain: Option<Terrain>,
-
     /// The build chunks
     pub chunks: FxHashMap<(i32, i32), Chunk>,
 }
@@ -64,7 +61,6 @@ impl Scene {
             animation_frame: 1,
 
             mapmini: MapMini::default(),
-            terrain: None,
 
             chunks: FxHashMap::default(),
         }
@@ -85,7 +81,6 @@ impl Scene {
             animation_frame: 1,
 
             mapmini: MapMini::default(),
-            terrain: None,
 
             chunks: FxHashMap::default(),
         }
@@ -121,8 +116,15 @@ impl Scene {
             for chunk2d in &mut chunk.1.batches2d {
                 chunk2d.project(projection_matrix_2d);
             }
+            if let Some(terrain2d) = &mut chunk.1.terrain_batch2d {
+                terrain2d.project(projection_matrix_2d);
+            }
+
             for chunk3d in &mut chunk.1.batches3d {
                 chunk3d.clip_and_project(view_matrix_3d, projection_matrix_3d, width, height);
+            }
+            if let Some(terrain3d) = &mut chunk.1.terrain_batch3d {
+                terrain3d.clip_and_project(view_matrix_3d, projection_matrix_3d, width, height);
             }
         });
 
@@ -141,17 +143,6 @@ impl Scene {
         self.d3_dynamic.par_iter_mut().for_each(|batch| {
             batch.clip_and_project(view_matrix_3d, projection_matrix_3d, width, height);
         });
-
-        if let Some(terrain) = &mut self.terrain {
-            terrain.chunks.par_iter_mut().for_each(|batch| {
-                if let Some(batch) = &mut batch.1.batch {
-                    batch.clip_and_project(view_matrix_3d, projection_matrix_3d, width, height);
-                }
-                if let Some(batch) = &mut batch.1.batch_d2 {
-                    batch.project(projection_matrix_2d);
-                }
-            });
-        }
     }
 
     /// Computes the normals for the static models

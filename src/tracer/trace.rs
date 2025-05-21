@@ -242,23 +242,6 @@ impl Tracer {
                                 }
                             }
 
-                            // Evaluate terrain
-                            if let Some(terrain) = &scene.terrain {
-                                for chunk in terrain.chunks.iter() {
-                                    if let Some(batch) = &chunk.1.batch {
-                                        if let Some(mut hit) = batch.intersect(&ray, false) {
-                                            if hit.t < hitinfo.t
-                                                && self.evaluate_hit(
-                                                    &ray, scene, batch, &mut hit, assets,
-                                                )
-                                            {
-                                                hitinfo = hit;
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-
                             // Hit
                             if hitinfo.t < f32::MAX {
                                 if let Some(normal) = hitinfo.normal {
@@ -366,7 +349,7 @@ impl Tracer {
 
     fn evaluate_hit(
         &self,
-        ray: &Ray,
+        _ray: &Ray,
         scene: &Scene,
         batch: &Batch3D,
         hit: &mut HitInfo,
@@ -395,12 +378,12 @@ impl Tracer {
             }
             PixelSource::Pixel(col) => pixel_to_vec4(&col),
             PixelSource::Terrain => {
-                if let Some(terrain) = &scene.terrain {
-                    let w = ray.at(hit.t);
-                    pixel_to_vec4(&terrain.sample_baked(Vec2::new(w.x, w.y)))
-                } else {
-                    Vec4::zero()
-                }
+                // if let Some(terrain) = &scene.terrain {
+                //     let w = ray.at(hit.t);
+                //     pixel_to_vec4(&terrain.sample_baked(Vec2::new(w.x, w.y)))
+                // } else {
+                Vec4::zero()
+                // }
             }
             _ => Vec4::zero(),
         };

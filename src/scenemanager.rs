@@ -1,4 +1,6 @@
-use crate::{Assets, BBox, Chunk, ChunkBuilder, D2ChunkBuilder, D3ChunkBuilder, Map, Tile};
+use crate::{
+    Assets, BBox, Chunk, ChunkBuilder, D2ChunkBuilder, D3ChunkBuilder, Map, Terrain, Tile,
+};
 use crossbeam::channel::{self, Receiver, Sender};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
@@ -14,6 +16,7 @@ pub enum SceneManagerCmd {
 }
 
 // #[derive(Debug)]
+#[allow(clippy::large_enum_variant)]
 pub enum SceneManagerResult {
     Startup,
     Chunk(Chunk),
@@ -88,6 +91,8 @@ impl SceneManager {
 
         let mut assets = Assets::default();
         let mut map = Map::default();
+        let mut terrain = Terrain::default();
+
         let chunk_size = 16;
         let mut dirty: FxHashSet<(i32, i32)> = FxHashSet::default();
 
@@ -122,7 +127,12 @@ impl SceneManager {
                                     }
                                     SceneManagerCmd::SetMap(new_map) => {
                                         map = new_map;
-                                        let bbox = map.bbox();
+                                        terrain = map.terrain.clone();
+                                        // map.terrain = Terrain::default();
+                                        let mut bbox = map.bbox();
+                                        if let Some(tbbox) = terrain.compute_bounds() {
+                                            bbox.expand_bbox(tbbox);
+                                        }
                                         println!(
                                             "SceneManagerCmd::SetMap(Min: {}, Max: {})",
                                             bbox.min, bbox.max
@@ -160,6 +170,7 @@ impl SceneManager {
                                 }
                             }
 
+                            terrain.build_chunk_at((coord.0 / chunk_size, coord.1 / chunk_size), &assets, &map, 64, &mut chunk, true);
                             result_tx.send(SceneManagerResult::Chunk(chunk)).ok();
                         }
                     }

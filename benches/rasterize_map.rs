@@ -1,5 +1,4 @@
 use rusterix::prelude::*;
-use std::path::Path;
 use vek::{Vec2, Vec3};
 
 use criterion::{Criterion, criterion_group, criterion_main};
@@ -38,11 +37,6 @@ fn rasterize_map(c: &mut Criterion) {
     scene.d2_static = vec![
         Batch2D::from_rectangle(0.0, 0.0, 200.0, 200.0).source(PixelSource::StaticTileIndex(0)),
     ];
-    scene
-        .textures
-        .push(Tile::from_texture(Texture::from_image(Path::new(
-            "images/logo.png",
-        ))));
 
     let width = 2000_usize;
     let height = 2000_usize;
@@ -58,7 +52,7 @@ fn rasterize_map(c: &mut Criterion) {
                 camera.view_matrix(),
                 camera.projection_matrix(width as f32, height as f32),
             )
-            .rasterize(&mut scene, &mut pixels[..], width, height, 30);
+            .rasterize(&mut scene, &mut pixels[..], width, height, 40, &assets);
         })
     });
 }

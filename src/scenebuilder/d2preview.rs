@@ -493,28 +493,6 @@ impl D2PreviewBuilder {
         Scene::default()
     }
 
-    /// Build and bake the terrain
-    pub fn build_terrain(
-        &self,
-        map: &mut Map,
-        assets: &Assets,
-        scene: &mut Scene,
-        modifiers: bool,
-    ) {
-        map.terrain.clean_d3();
-        if map.terrain.count_dirty_chunks() > 0 {
-            map.terrain.build_dirty_chunks(
-                assets,
-                &map.geometry_clone(),
-                self.tile_size / 2,
-                modifiers,
-            );
-            scene.terrain = Some(map.terrain.clone());
-        } else {
-            scene.terrain = Some(map.terrain.clone());
-        }
-    }
-
     #[allow(clippy::too_many_arguments)]
     pub fn build_entities_items(
         &self,

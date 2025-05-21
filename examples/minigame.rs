@@ -1,5 +1,5 @@
 use rusterix::{prelude::*, rusterix::Rusterix};
-use std::path::Path;
+// use std::path::Path;
 use theframework::prelude::*;
 
 fn main() {
@@ -31,12 +31,12 @@ impl TheTrait for MiniGame {
         let camera = Box::new(D3FirstPCamera::new());
         rusterix.client.set_camera_d3(camera);
 
-        if let Some(map) = rusterix.assets.get_map("world") {
-            // Build the 3D scene from the map meta data
-            rusterix
-                .client
-                .build_scene_d3(map, &rusterix.assets, &ValueContainer::default());
-        }
+        // if let Some(map) = rusterix.assets.get_map("world") {
+        //     // Build the 3D scene from the map meta data
+        //     rusterix
+        //         .client
+        //         .build_scene_d3(map, &rusterix.assets, &ValueContainer::default());
+        // }
 
         // Add logo on top of the scene
         rusterix.client.scene_d3.d2_static = vec![
@@ -44,13 +44,13 @@ impl TheTrait for MiniGame {
                 .receives_light(false)
                 .source(PixelSource::StaticTileIndex(0)),
         ];
-        rusterix
-            .client
-            .scene_d3
-            .textures
-            .push(Tile::from_texture(Texture::from_image(Path::new(
-                "images/logo.png",
-            ))));
+        // rusterix
+        //     .client
+        //     .scene_d3
+        //     .textures
+        //     .push(Tile::from_texture(Texture::from_image(Path::new(
+        //         "images/logo.png",
+        //     ))));
 
         Self { rusterix }
     }

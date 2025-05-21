@@ -262,6 +262,7 @@ impl TerrainChunk {
         }
 
         let mut batch = Batch3D::new(vertices, indices, uvs);
+        batch.source = PixelSource::Terrain;
         batch.compute_vertex_normals();
         batch
     }
@@ -283,6 +284,8 @@ impl TerrainChunk {
         let width = max_pos.x - min_pos.x;
         let height = max_pos.y - min_pos.y;
 
-        Batch2D::from_rectangle(min_pos.x, min_pos.y, width, height)
+        let mut batch = Batch2D::from_rectangle(min_pos.x, min_pos.y, width, height);
+        batch.source = PixelSource::Terrain;
+        batch
     }
 }

@@ -1,4 +1,3 @@
-use crate::MapCamera;
 use crate::{AccumBuffer, Command, PlayerCamera, prelude::*};
 use vek::Vec2;
 
@@ -122,17 +121,6 @@ impl Rusterix {
         }
     }*/
 
-    pub fn build_terrain(&mut self, map: &mut Map, modifiers: bool) {
-        match self.draw_mode {
-            D2 => {
-                self.client.build_terrain_d2(map, &self.assets, modifiers);
-            }
-            D3 => {
-                self.client.build_terrain_d3(map, &self.assets, modifiers);
-            }
-        }
-    }
-
     /// Apply the entities to the 3D scene.
     pub fn apply_entities_items(&mut self, screen_size: Vec2<f32>, map: &Map) {
         for e in map.entities.iter() {
@@ -182,16 +170,6 @@ impl Rusterix {
     /// Build the client scene in D3.
     pub fn build_custom_scene_d3(&mut self, map: &Map, values: &ValueContainer) {
         self.client.build_custom_scene_d3(map, &self.assets, values);
-    }
-
-    /// Rebuild the terrain in D2.
-    pub fn build_terrain_d2(&mut self, map: &mut Map, modifiers: bool) {
-        self.client.build_terrain_d2(map, &self.assets, modifiers);
-    }
-
-    /// Rebuild the terrain in D3.
-    pub fn build_terrain_d3(&mut self, map: &mut Map, modifiers: bool) {
-        self.client.build_terrain_d3(map, &self.assets, modifiers);
     }
 
     /// Draw the client custom scene in 2D.

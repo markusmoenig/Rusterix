@@ -1,6 +1,6 @@
 use crate::{
-    Assets, BBox, Batch2D, Batch3D, Map, Pixel, PixelSource, Ray, TerrainBlendMode, TerrainChunk,
-    Texture,
+    Assets, BBox, Batch2D, Batch3D, Chunk, Map, Pixel, PixelSource, Ray, TerrainBlendMode,
+    TerrainChunk, Texture,
 };
 use rayon::prelude::*;
 use theframework::prelude::*;
@@ -433,6 +433,49 @@ impl Terrain {
             }
         }
     }*/
+
+    pub fn build_chunk_at(
+        &mut self,
+        coord: (i32, i32),
+        assets: &Assets,
+        map: &Map,
+        pixels_per_tile: i32,
+        chunk: &mut Chunk,
+        modifiers: bool,
+    ) {
+        // Safety: we manually ensure mutable and shared accesses do not alias
+        let ptr_self = self as *mut Self;
+
+        // Ensure the terrain chunk exists
+        let chunk_ptr = match self.chunks.get_mut(&coord) {
+            Some(c) => c as *mut TerrainChunk,
+            None => return,
+        };
+
+        // SAFETY: self is not mutably accessed while shared references are active
+        unsafe {
+            let baked =
+                (*ptr_self).bake_chunk(&Vec2::new(coord.0, coord.1), assets, pixels_per_tile);
+
+            let chunk_mut = &mut *chunk_ptr;
+
+            let processed_heights = if modifiers {
+                Some(chunk_mut.process_batch_modifiers(&*ptr_self, map, assets, &mut baked.clone()))
+            } else {
+                Some(chunk_mut.heights.clone())
+            };
+
+            let batch2d = chunk_mut.build_mesh_d2(&*ptr_self);
+            let batch3d = chunk_mut.build_mesh(&*ptr_self);
+
+            chunk_mut.processed_heights = processed_heights;
+            chunk_mut.clear_dirty();
+
+            chunk.terrain_texture = Some(baked);
+            chunk.terrain_batch2d = Some(batch2d);
+            chunk.terrain_batch3d = Some(batch3d);
+        }
+    }
 
     pub fn build_dirty_chunks(
         &mut self,

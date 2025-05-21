@@ -1,9 +1,8 @@
-use crate::{Assets, Batch3D, D3Camera, Map, PixelSource, Scene, Value, ValueContainer, get_time};
+use crate::{Assets, Batch3D, D3Camera, Map, PixelSource, Scene, Value, ValueContainer};
 use vek::Vec2;
 
 pub struct D3Builder {
     map: Map,
-    tile_size: i32,
 }
 
 impl Default for D3Builder {
@@ -16,7 +15,6 @@ impl D3Builder {
     pub fn new() -> Self {
         Self {
             map: Map::default(),
-            tile_size: 128,
         }
     }
 
@@ -365,31 +363,6 @@ impl D3Builder {
         scene
         */
         Scene::default()
-    }
-
-    /// Build and bake the terrain
-    pub fn build_terrain(
-        &self,
-        map: &mut Map,
-        assets: &Assets,
-        scene: &mut Scene,
-        modifiers: bool,
-    ) {
-        map.terrain.clean_d2();
-        if map.terrain.count_dirty_chunks() > 0 {
-            let _start = get_time();
-            map.terrain.build_dirty_chunks(
-                assets,
-                &map.geometry_clone(),
-                self.tile_size / 2,
-                modifiers,
-            );
-            let _stop = get_time();
-            scene.terrain = Some(map.terrain.clone());
-            println!("Execution time: {:?} ms.", _stop - _start);
-        } else if scene.terrain.is_none() {
-            scene.terrain = Some(map.terrain.clone());
-        }
     }
 
     pub fn build_entities_items(
