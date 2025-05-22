@@ -373,27 +373,6 @@ impl Rasterizer {
                     }
                 }
 
-                /*
-
-                // 2D Pipeline
-
-                // Terrain in the background
-                if self.render_terrain_in_d2 {
-                    if let Some(terrain) = &scene.terrain {
-                        for chunk in terrain.chunks.iter() {
-                            if let Some(batch) = &chunk.1.batch_d2 {
-                                self.d2_rasterize(
-                                    &mut buffer,
-                                    tile,
-                                    batch,
-                                    scene,
-                                    BatchType::Terrain,
-                                );
-                            }
-                        }
-                    }
-                }*/
-
                 if self.render_mode.supports2d() {
                     // Chunks
                     for chunk in scene.chunks.values() {

@@ -68,26 +68,6 @@ pub enum ShapeFXRole {
 
 use ShapeFXRole::*;
 
-// impl fmt::Display for ShapeFXRole {
-//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-//         let s = match self {
-//             ShapeFXRole::MaterialGeometry => "Material Geometry",
-//             ShapeFXRole::Gradient => "Gradient",
-//             ShapeFXRole::Color => "Color",
-//             ShapeFXRole::Outline => "Outline",
-//             ShapeFXRole::NoiseOverlay => "Noise Overlay",
-//             ShapeFXRole::Glow => "Glow",
-//             ShapeFXRole::RegionGeometry => "Region Geometry",
-//             ShapeFXRole::Flatten => "Flatten",
-//             ShapeFXRole::Render => "Render",
-//             ShapeFXRole::Lights => "Lights",
-//             ShapeFXRole::Fog => "Fog",
-//             ShapeFXRole::Sky => "Sky",
-//         };
-//         write!(f, "{}", s)
-//     }
-// }
-
 impl FromStr for ShapeFXRole {
     type Err = ();
 
@@ -342,6 +322,8 @@ impl ShapeFX {
                 let mut expanded_bbox = *bbox;
                 expanded_bbox.expand(Vec2::broadcast(bevel));
 
+                let chunk_bbox = chunk.bounds();
+
                 let mut bounds = sector.bounding_box(map);
                 bounds.expand(Vec2::broadcast(bevel));
 
@@ -363,14 +345,17 @@ impl ShapeFX {
                         };
 
                         if sd < bevel * 4.0 {
-                            let local = chunk.world_to_local(Vec2::new(x, y));
+                            let world = Vec2::new(x, y);
+                            let local = chunk.world_to_local(world);
                             let s = Self::smoothstep(0.0, bevel, bevel - sd);
-                            // let original =
-                            // *heights.get(&(local.x, local.y)).unwrap_or(&floor_height);
                             let original =
                                 terrain.get_height_unprocessed(x, y).unwrap_or(floor_height);
                             let new_height = original * (1.0 - s) + floor_height * s;
-                            heights.insert((local.x, local.y), new_height);
+                            if chunk_bbox.contains(Vec2::new(world.x as f32, world.y as f32)) {
+                                heights.insert((local.x, local.y), new_height);
+                            } else {
+                                continue;
+                            }
 
                             let pixels_per_tile = texture.width as i32 / terrain.chunk_size;
 
@@ -567,6 +552,8 @@ impl ShapeFX {
         let fade_start = half_path;
         let fade_end = half_path + fade_distance;
 
+        let chunk_bbox = chunk.bounds();
+
         let mut written_blends = FxHashMap::<(i32, i32), f32>::default();
 
         // 1. Collect all segments
@@ -629,7 +616,11 @@ impl ShapeFX {
                     .get_height_unprocessed(world_tile.x, world_tile.y)
                     .unwrap_or(height);
                 let new_height = original * (1.0 - blend) + height * blend;
-                heights.insert(key, new_height);
+                if chunk_bbox.contains(Vec2::new(world_tile.x as f32, world_tile.y as f32)) {
+                    heights.insert(key, new_height);
+                } else {
+                    continue;
+                }
 
                 for dy in 0..pixels_per_tile {
                     if local.x < 0 || local.y < 0 {

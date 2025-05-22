@@ -1,6 +1,5 @@
 use crate::{
-    Assets, BBox, Batch2D, Batch3D, Chunk, Map, Pixel, PixelSource, Ray, TerrainBlendMode,
-    TerrainChunk, Texture,
+    Assets, BBox, Chunk, Map, Pixel, PixelSource, Ray, TerrainBlendMode, TerrainChunk, Texture,
 };
 use rayon::prelude::*;
 use theframework::prelude::*;
@@ -153,40 +152,6 @@ impl Terrain {
         h0 * (1.0 - ty) + h1 * ty
     }
 
-    /// Sample the baked texture at the given world position
-    pub fn sample_baked(&self, world_pos: Vec2<f32>) -> Pixel {
-        let tile_x = (world_pos.x / self.scale.x).floor() as i32;
-        let tile_y = (world_pos.y / self.scale.y).floor() as i32;
-        let chunk_coords = self.get_chunk_coords(tile_x, tile_y);
-
-        if let Some(chunk) = self.chunks.get(&chunk_coords) {
-            if let Some(baked) = &chunk.baked_texture {
-                let local_tile_x = tile_x - chunk.origin.x;
-                let local_tile_y = tile_y - chunk.origin.y;
-
-                let pixels_per_tile = baked.width as i32 / self.chunk_size;
-
-                // let uv_x = ((world_pos.x / self.scale.x) - tile_x as f32).rem_euclid(1.0);
-                // let uv_y = ((world_pos.y / self.scale.y) - tile_y as f32).rem_euclid(1.0);
-
-                let uv_x = (world_pos.x / self.scale.x) - tile_x as f32;
-                let uv_y = (world_pos.y / self.scale.y) - tile_y as f32;
-
-                let pixel_x =
-                    (local_tile_x * pixels_per_tile) as f32 + uv_x * pixels_per_tile as f32;
-                let pixel_y =
-                    (local_tile_y * pixels_per_tile) as f32 + uv_y * pixels_per_tile as f32;
-
-                let px = pixel_x.floor().clamp(0.0, baked.width as f32 - 1.0) as u32;
-                let py = pixel_y.floor().clamp(0.0, baked.height as f32 - 1.0) as u32;
-
-                return baked.get_pixel(px, py);
-            }
-        }
-
-        [0, 0, 0, 0]
-    }
-
     /// Computes the bounding box of the heightmap
     pub fn compute_bounds(&self) -> Option<BBox> {
         let mut min = Vec2::new(i32::MAX, i32::MAX);
@@ -240,8 +205,8 @@ impl Terrain {
                     }
                 }
                 PixelSource::MaterialId(id) => {
-                    if let Some(material) = assets.materials.get(id) {
-                        if let Some(texture) = material.textures.first() {
+                    if let Some(index) = assets.tile_indices.get(id) {
+                        if let Some(texture) = assets.tile_list[*index as usize].textures.first() {
                             return (texture.sample_nearest(uv.x, uv.y), true);
                         }
                     }
@@ -376,7 +341,6 @@ impl Terrain {
                                 radius as f32,
                             ),
                     };
-
                     pixel.copy_from_slice(&color);
                 }
             });
@@ -384,56 +348,7 @@ impl Terrain {
         Texture::new(pixels, chunk_tex_width as usize, chunk_tex_height as usize)
     }
 
-    /*
-    /// Iterate over all chunks and rebuild if dirty
-    pub fn build_dirty_chunks(
-        &mut self,
-        assets: &Assets,
-        map: &Map,
-        pixels_per_tile: i32,
-        modifiers: bool,
-    ) {
-        let mut dirty_coords = Vec::new();
-
-        for ((cx, cy), chunk) in &self.chunks {
-            if chunk.dirty {
-                dirty_coords.push(Vec2::new(*cx, *cy));
-            }
-        }
-
-        for coords in &dirty_coords {
-            let chunk_ptr =
-                self.chunks.get_mut(&(coords.x, coords.y)).unwrap() as *mut TerrainChunk;
-
-            unsafe {
-                let chunk = &mut *chunk_ptr;
-
-                let mut baked = self.bake_chunk(coords, assets, pixels_per_tile);
-
-                if modifiers {
-                    chunk.process_batch_modifiers(self, map, assets, &mut baked);
-                } else {
-                    chunk.processed_heights = Some(chunk.heights.clone());
-                }
-                chunk.baked_texture = Some(baked);
-                // chunk.clear_dirty();
-            }
-        }
-
-        for coords in dirty_coords {
-            let chunk_ptr =
-                self.chunks.get_mut(&(coords.x, coords.y)).unwrap() as *mut TerrainChunk;
-
-            unsafe {
-                let chunk = &mut *chunk_ptr;
-
-                chunk.batch = Some(chunk.build_mesh(self));
-                chunk.batch_d2 = Some(chunk.build_mesh_d2(self));
-                chunk.clear_dirty();
-            }
-        }
-    }*/
-
+    /// Build the chunk at the given coordinate.
     pub fn build_chunk_at(
         &mut self,
         coord: (i32, i32),
@@ -443,143 +358,23 @@ impl Terrain {
         chunk: &mut Chunk,
         modifiers: bool,
     ) {
-        // Safety: we manually ensure mutable and shared accesses do not alias
-        let ptr_self = self as *mut Self;
+        let mut baked = self.bake_chunk(&Vec2::new(coord.0, coord.1), assets, pixels_per_tile);
 
-        // Ensure the terrain chunk exists
-        let chunk_ptr = match self.chunks.get_mut(&coord) {
-            Some(c) => c as *mut TerrainChunk,
-            None => return,
+        let processed_heights = if let Some(chunk_mut) = self.chunks.get(&coord) {
+            if modifiers {
+                chunk_mut.process_batch_modifiers(self, map, assets, &mut baked)
+            } else {
+                chunk_mut.heights.clone()
+            }
+        } else {
+            return;
         };
 
-        // SAFETY: self is not mutably accessed while shared references are active
-        unsafe {
-            let mut baked =
-                (*ptr_self).bake_chunk(&Vec2::new(coord.0, coord.1), assets, pixels_per_tile);
-
-            let chunk_mut = &mut *chunk_ptr;
-
-            let processed_heights = if modifiers {
-                Some(chunk_mut.process_batch_modifiers(&*ptr_self, map, assets, &mut baked))
-            } else {
-                Some(chunk_mut.heights.clone())
-            };
-
-            chunk_mut.processed_heights = processed_heights;
-
-            let batch2d = chunk_mut.build_mesh_d2(&*ptr_self);
-            let batch3d = chunk_mut.build_mesh(&*ptr_self);
-
+        if let Some(chunk_mut) = self.chunks.get_mut(&coord) {
+            chunk_mut.processed_heights = Some(processed_heights);
             chunk_mut.clear_dirty();
 
             chunk.terrain_texture = Some(baked);
-            chunk.terrain_batch2d = Some(batch2d);
-            chunk.terrain_batch3d = Some(batch3d);
-        }
-    }
-
-    pub fn build_dirty_chunks(
-        &mut self,
-        assets: &Assets,
-        map: &Map,
-        pixels_per_tile: i32,
-        modifiers: bool,
-    ) {
-        // First phase
-        // Bake textures and build chunk modifiers
-
-        struct ChunkJob {
-            coords: (i32, i32),
-            baked: Texture,
-            processed_heights: Option<FxHashMap<(i32, i32), f32>>,
-        }
-
-        // Collect dirty coords
-        let dirty: Vec<(i32, i32)> = self
-            .chunks
-            .iter()
-            .filter_map(|(&(cx, cy), c)| if c.dirty { Some((cx, cy)) } else { None })
-            .collect();
-
-        // Build each chunk in parallel
-        let jobs: Vec<ChunkJob> = dirty
-            .par_iter()
-            .map(|&(cx, cy)| {
-                let coords = (cx, cy);
-                let mut baked = self.bake_chunk(&Vec2::new(cx, cy), assets, pixels_per_tile);
-
-                let chunk = &self.chunks[&(cx, cy)];
-                let processed_heights = if modifiers {
-                    Some(chunk.process_batch_modifiers(self, map, assets, &mut baked))
-                } else {
-                    Some(chunk.heights.clone())
-                };
-
-                ChunkJob {
-                    coords,
-                    baked,
-                    processed_heights,
-                }
-            })
-            .collect();
-
-        // Write the results back
-        for job in jobs {
-            if let Some(chunk) = self.chunks.get_mut(&job.coords) {
-                chunk.baked_texture = Some(job.baked);
-                chunk.processed_heights = job.processed_heights;
-            }
-        }
-
-        // Second Phase
-        // Build the batches
-
-        struct BatchJob {
-            coords: (i32, i32),
-            batch_d2: Option<Batch2D>,
-            batch: Option<Batch3D>,
-        }
-
-        // Parallel process batch jobs
-        let mesh_jobs: Vec<BatchJob> = dirty
-            .par_iter()
-            .map(|&(cx, cy)| {
-                let chunk = &self.chunks[&(cx, cy)];
-                BatchJob {
-                    coords: (cx, cy),
-                    batch_d2: Some(chunk.build_mesh_d2(self)),
-                    batch: Some(chunk.build_mesh(self)),
-                }
-            })
-            .collect();
-
-        // Write back
-        for job in mesh_jobs {
-            if let Some(chunk) = self.chunks.get_mut(&job.coords) {
-                chunk.batch_d2 = job.batch_d2;
-                chunk.batch = job.batch;
-                chunk.clear_dirty();
-            }
-        }
-    }
-
-    /// Bake all individual chunks
-    pub fn bake_chunks(&mut self, assets: &Assets, pixels_per_tile: i32) {
-        let baked_chunks: Vec<_> = self
-            .chunks
-            .par_iter()
-            .map(|(coords, _)| {
-                let c = Vec2::new(coords.0, coords.1);
-                let baked_texture = self.bake_chunk(&c, assets, pixels_per_tile);
-                (*coords, baked_texture)
-            })
-            .collect();
-
-        for (coords, texture) in baked_chunks {
-            if let Some(chunk) = self.chunks.get_mut(&coords) {
-                chunk.baked_texture = Some(texture);
-                chunk.dirty = false;
-            }
         }
     }
 
@@ -686,28 +481,17 @@ impl Terrain {
     }
 
     /// Returns a cleaned clone of the chunks (used for undo / redo)
-    pub fn clone_chunks_clean(&self) -> FxHashMap<(i32, i32), TerrainChunk> {
-        let mut chunks = self.chunks.clone();
-        for chunk in chunks.values_mut() {
-            chunk.baked_texture = None;
-            chunk.batch = None;
-            chunk.batch_d2 = None;
-        }
-        chunks
+    pub fn clone_chunks(&self) -> FxHashMap<(i32, i32), TerrainChunk> {
+        self.chunks.clone()
     }
 
-    /// Clean all 3D batches
-    pub fn clean_d3(&mut self) {
-        for chunk in self.chunks.values_mut() {
-            chunk.batch = None;
-        }
-    }
-
-    /// Clean all 2D batches
-    pub fn clean_d2(&mut self) {
-        for chunk in self.chunks.values_mut() {
-            chunk.batch_d2 = None;
-        }
+    /// Returns a clone of all dirty chunks
+    pub fn clone_dirty_chunks(&self) -> Vec<TerrainChunk> {
+        self.chunks
+            .values()
+            .filter(|chunk| chunk.dirty)
+            .cloned()
+            .collect()
     }
 
     /// Iterator

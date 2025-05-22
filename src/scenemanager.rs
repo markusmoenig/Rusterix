@@ -1,5 +1,6 @@
 use crate::{
-    Assets, BBox, Batch3D, Chunk, ChunkBuilder, D2ChunkBuilder, D3ChunkBuilder, Map, Terrain, Tile,
+    Assets, BBox, Batch3D, Chunk, ChunkBuilder, D2ChunkBuilder, D3ChunkBuilder, Map, TerrainChunk,
+    Tile,
 };
 use crossbeam::channel::{self, Receiver, Sender};
 use std::thread::{self, JoinHandle};
@@ -12,6 +13,8 @@ pub enum SceneManagerCmd {
     SetPalette(ThePalette),
     SetMap(Map),
     SetBuilder2D(Option<Box<dyn ChunkBuilder>>),
+    AddDirty(Vec<(i32, i32)>),
+    SetDirtyTerrainChunks(Vec<TerrainChunk>),
     Quit,
 }
 
@@ -82,6 +85,14 @@ impl SceneManager {
         self.send(SceneManagerCmd::SetMap(map));
     }
 
+    pub fn add_dirty(&self, dirty: Vec<(i32, i32)>) {
+        self.send(SceneManagerCmd::AddDirty(dirty));
+    }
+
+    pub fn set_dirty_terrain_chunks(&self, dirty: Vec<TerrainChunk>) {
+        self.send(SceneManagerCmd::SetDirtyTerrainChunks(dirty));
+    }
+
     pub fn startup(&mut self) {
         let (tx, rx) = channel::unbounded::<SceneManagerCmd>();
         self.tx = Some(tx);
@@ -92,7 +103,7 @@ impl SceneManager {
 
         let mut assets = Assets::default();
         let mut map = Map::default();
-        let mut terrain = Terrain::default();
+        let mut map_geo = Map::default();
 
         let chunk_size = 16;
         let mut dirty: FxHashSet<(i32, i32)> = FxHashSet::default();
@@ -117,22 +128,26 @@ impl SceneManager {
                                         assets.tile_list = tiles;
                                         assets.tile_indices = indices;
                                         dirty = Self::generate_chunk_coords(&map.bbox(), chunk_size);
+                                        all = dirty.clone();
                                     }
                                     SceneManagerCmd::SetPalette(palette) => {
                                         println!("SceneManagerCmd::SetPalette()");
                                         assets.palette = palette;
+                                        dirty = Self::generate_chunk_coords(&map.bbox(), chunk_size);
+                                        all = dirty.clone();
                                     }
                                     SceneManagerCmd::SetBuilder2D(builder) => {
                                         println!("SceneManagerCmd::SetBuilder2D()");
                                         chunk_builder_d2 = builder;
                                         dirty = Self::generate_chunk_coords(&map.bbox(), chunk_size);
+                                        all = dirty.clone();
                                     }
                                     SceneManagerCmd::SetMap(new_map) => {
                                         map = new_map;
-                                        terrain = map.terrain.clone();
+                                        map_geo = map.geometry_clone();
                                         // map.terrain = Terrain::default();
                                         let mut bbox = map.bbox();
-                                        if let Some(tbbox) = terrain.compute_bounds() {
+                                        if let Some(tbbox) = map.terrain.compute_bounds() {
                                             bbox.expand_bbox(tbbox);
                                         }
                                         println!(
@@ -141,6 +156,20 @@ impl SceneManager {
                                         );
                                         dirty = Self::generate_chunk_coords(&bbox, chunk_size);
                                         all = dirty.clone();
+                                    }
+                                    SceneManagerCmd::AddDirty(dirty_chunks) => {
+                                        for d in dirty_chunks {
+                                            dirty.insert(d);
+                                            all.insert(d);
+                                        }
+                                    }
+                                    SceneManagerCmd::SetDirtyTerrainChunks(dirty_chunks) => {
+                                        for chunk in dirty_chunks {
+                                            let coord = (chunk.origin.x, chunk.origin.y);
+                                            map.terrain.chunks.insert((chunk.origin.x / chunk_size, chunk.origin.y / chunk_size), chunk);
+                                            dirty.insert(coord);
+                                            all.insert(coord);
+                                        }
                                     }
                                     SceneManagerCmd::Quit => {
                                         result_tx.send(SceneManagerResult::Quit).ok();
@@ -173,20 +202,29 @@ impl SceneManager {
                                 }
                             }
 
-                            terrain.build_chunk_at((coord.0 / chunk_size, coord.1 / chunk_size), &assets, &map, 64, &mut chunk, true);
-                            map.terrain = terrain.clone();
+                            let local = map.terrain.get_chunk_coords(coord.0, coord.1);
+                            if map.terrain.chunks.contains_key(&local) {
+                                map.terrain.build_chunk_at(local, &assets, &map_geo, 64, &mut chunk, true);
+                                if let Some(ch) = map.terrain.chunks.get_mut(&local).cloned() {
+                                    chunk.terrain_batch2d = Some(ch.build_mesh_d2(&map.terrain));
+                                    chunk.terrain_batch3d = Some(ch.build_mesh(&map.terrain));
+                                }
+                            }
+
+                            // Send the chunk
                             result_tx.send(SceneManagerResult::Chunk(chunk)).ok();
 
                             if dirty.is_empty() {
                                 // When finished we need to recompute all 3D terrain meshes
                                 // to correct cross boundary errors
                                 for coord in &all {
-                                    let local = terrain.get_chunk_coords(coord.0, coord.1);
-                                    if let Some(ch) = terrain.chunks.get_mut(&local).cloned() {
-                                        let batch = ch.build_mesh(&map.terrain);
-                                        // println!("{:?} {}", coord, batch.vertices.len());
-                                        if !batch.vertices.is_empty() {
-                                            result_tx.send(SceneManagerResult::UpdatedBatch3D(*coord, batch)).ok();
+                                    let local = map.terrain.get_chunk_coords(coord.0, coord.1);
+                                    if map.terrain.chunks.contains_key(&local) {
+                                        if let Some(ch) = map.terrain.chunks.get_mut(&local).cloned() {
+                                            let batch = ch.build_mesh(&map.terrain);
+                                            if !batch.vertices.is_empty() {
+                                                result_tx.send(SceneManagerResult::UpdatedBatch3D(*coord, batch)).ok();
+                                            }
                                         }
                                     }
                                 }

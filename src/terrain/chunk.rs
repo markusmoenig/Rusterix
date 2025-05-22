@@ -28,12 +28,6 @@ pub struct TerrainChunk {
     pub sources: FxHashMap<(i32, i32), PixelSource>,
     #[serde(with = "vectorize")]
     pub blend_modes: FxHashMap<(i32, i32), TerrainBlendMode>,
-    #[serde(skip, default)]
-    pub batch: Option<Batch3D>,
-    #[serde(skip, default)]
-    pub batch_d2: Option<Batch2D>,
-    #[serde(skip, default)]
-    pub baked_texture: Option<Texture>,
     pub dirty: bool,
 }
 
@@ -46,9 +40,6 @@ impl TerrainChunk {
             processed_heights: None,
             sources: FxHashMap::default(),
             blend_modes: FxHashMap::default(),
-            batch: None,
-            batch_d2: None,
-            baked_texture: None,
             dirty: true,
         }
     }
@@ -133,15 +124,10 @@ impl TerrainChunk {
         self.dirty = false;
     }
 
-    pub fn unload(&mut self) {
-        self.batch = None;
-        self.baked_texture = None;
-    }
-
     /// Returns the bounds in world coordinates
     pub fn bounds(&self) -> BBox {
         let origin_f = self.origin.map(|v| v as f32);
-        let size_f = Vec2::broadcast(self.size as f32);
+        let size_f = Vec2::broadcast(self.size as f32 - 1.0);
         BBox::from_pos_size(origin_f, size_f)
     }
 
@@ -152,7 +138,7 @@ impl TerrainChunk {
         self.heights.contains_key(&(local.x, local.y))
     }
 
-    /// Rebuilds the renderable mesh batch for this chunk
+    /// Processes the terrain modifiers for this chunk.
     pub fn process_batch_modifiers(
         &self,
         terrain: &Terrain,
@@ -161,11 +147,8 @@ impl TerrainChunk {
         baked_texture: &mut Texture,
     ) -> FxHashMap<(i32, i32), f32> {
         let mut processed_heights = self.heights.clone();
-        // let mut batch: Batch<[f32; 4]> = Batch::emptyd3();
 
         let bbox = self.bounds();
-
-        // let chunk_map = map.extract_chunk_geometry(bbox);
         for sector in &map.sectors {
             if bbox.intersects(&sector.bounding_box(map).expanded(Vec2::broadcast(2.0))) {
                 if let Some(Value::Source(PixelSource::ShapeFXGraphId(graph_id))) =
@@ -218,9 +201,9 @@ impl TerrainChunk {
         }
 
         processed_heights
-        //self.processed_heights = Some(processed_heights.clone());
     }
 
+    /// Build the 3D mesh for this chunk.
     pub fn build_mesh(&self, terrain: &Terrain) -> Batch3D {
         let mut vertices = Vec::new();
         let mut uvs = Vec::new();
@@ -267,7 +250,7 @@ impl TerrainChunk {
         batch
     }
 
-    /// Rebuilds a simple 2D rectangle batch mesh for this chunk
+    /// Builds a simple 2D rectangle batch mesh for this chunk
     pub fn build_mesh_d2(&self, terrain: &Terrain) -> Batch2D {
         let min = self.origin;
         let max = self.origin + Vec2::new(terrain.chunk_size, terrain.chunk_size) - Vec2::new(1, 1);
