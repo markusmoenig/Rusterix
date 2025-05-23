@@ -1,5 +1,7 @@
 use crate::Terrain;
-use crate::{Assets, BBox, Batch2D, Batch3D, Linedef, Map, PixelSource, Texture, Value};
+use crate::{
+    Assets, BBox, Batch2D, Batch3D, Linedef, Map, PixelSource, ShapeFXModifierPass, Texture, Value,
+};
 use theframework::prelude::*;
 use vek::Vec2;
 
@@ -149,7 +151,10 @@ impl TerrainChunk {
         let mut processed_heights = self.heights.clone();
 
         let bbox = self.bounds();
-        for sector in &map.sectors {
+        let sectors = map.sorted_sectors_by_area();
+
+        // 1, Pass: Modify Terrain
+        for sector in &sectors {
             if bbox.intersects(&sector.bounding_box(map).expanded(Vec2::broadcast(2.0))) {
                 if let Some(Value::Source(PixelSource::ShapeFXGraphId(graph_id))) =
                     sector.properties.get("region_graph")
@@ -164,6 +169,7 @@ impl TerrainChunk {
                             &mut processed_heights,
                             assets,
                             baked_texture,
+                            ShapeFXModifierPass::Height,
                         );
                     }
                 }
@@ -185,10 +191,10 @@ impl TerrainChunk {
             }
         }
 
-        for (graph_id, linedefs) in linedef_groups {
-            if let Some(graph) = map.shapefx_graphs.get(&graph_id) {
+        for (graph_id, linedefs) in &linedef_groups {
+            if let Some(graph) = map.shapefx_graphs.get(graph_id) {
                 graph.linedef_modify_heightmap(
-                    &linedefs,
+                    linedefs,
                     map,
                     terrain,
                     &bbox,
@@ -196,6 +202,46 @@ impl TerrainChunk {
                     &mut processed_heights,
                     assets,
                     baked_texture,
+                    ShapeFXModifierPass::Height,
+                );
+            }
+        }
+
+        // 2, Pass: Colorize Terrain
+        for sector in &sectors {
+            if bbox.intersects(&sector.bounding_box(map).expanded(Vec2::broadcast(2.0))) {
+                if let Some(Value::Source(PixelSource::ShapeFXGraphId(graph_id))) =
+                    sector.properties.get("region_graph")
+                {
+                    if let Some(graph) = map.shapefx_graphs.get(graph_id) {
+                        graph.sector_modify_heightmap(
+                            sector,
+                            map,
+                            terrain,
+                            &bbox,
+                            self,
+                            &mut processed_heights,
+                            assets,
+                            baked_texture,
+                            ShapeFXModifierPass::Colorize,
+                        );
+                    }
+                }
+            }
+        }
+
+        for (graph_id, linedefs) in &linedef_groups {
+            if let Some(graph) = map.shapefx_graphs.get(graph_id) {
+                graph.linedef_modify_heightmap(
+                    linedefs,
+                    map,
+                    terrain,
+                    &bbox,
+                    self,
+                    &mut processed_heights,
+                    assets,
+                    baked_texture,
+                    ShapeFXModifierPass::Colorize,
                 );
             }
         }

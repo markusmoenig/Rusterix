@@ -3,9 +3,19 @@ use vek::Vec2;
 
 pub struct D2ChunkBuilder {}
 
+impl Clone for D2ChunkBuilder {
+    fn clone(&self) -> Self {
+        D2ChunkBuilder {}
+    }
+}
+
 impl ChunkBuilder for D2ChunkBuilder {
     fn new() -> Self {
         Self {}
+    }
+
+    fn boxed_clone(&self) -> Box<dyn ChunkBuilder> {
+        Box::new(self.clone())
     }
 
     fn build(&mut self, map: &Map, assets: &Assets, chunk: &mut Chunk) {

@@ -123,7 +123,7 @@ pub use crate::{
         material::{Material, MaterialModifier, MaterialRole},
         shape::{Shape, ShapeType},
         shapecontext::ShapeContext,
-        shapefx::{ShapeFX, ShapeFXParam, ShapeFXRole},
+        shapefx::{ShapeFX, ShapeFXModifierPass, ShapeFXParam, ShapeFXRole},
         shapefxgraph::ShapeFXGraph,
     },
     terrain::{

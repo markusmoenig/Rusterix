@@ -58,6 +58,26 @@ impl Terrain {
             .and_then(|chunk| chunk.get_height_unprocessed(x, y))
     }
 
+    /// Smooth steepness estimate using bilinear sampling.
+    /// Returns normalized steepness in [0.0, 1.0], where
+    /// 0.0 = flat (0°), 1.0 = vertical (90°)
+    pub fn compute_steepness(&self, world_pos: Vec2<f32>) -> f32 {
+        const EPSILON: f32 = 0.5;
+
+        let h = self.sample_height_bilinear(world_pos.x, world_pos.y);
+        let h_x = self.sample_height_bilinear(world_pos.x + EPSILON, world_pos.y);
+        let h_y = self.sample_height_bilinear(world_pos.x, world_pos.y + EPSILON);
+
+        let dx = (h_x - h) / self.scale.x;
+        let dy = (h_y - h) / self.scale.y;
+
+        let normal = Vec3::new(-dx, 1.0, -dy).normalized();
+        let dot = normal.dot(Vec3::unit_y()).clamp(-1.0, 1.0);
+
+        let angle_degrees = dot.acos().to_degrees(); // 0° (flat) to 90° (vertical)
+        (angle_degrees / 90.0).clamp(0.0, 1.0)
+    }
+
     /// Get height at given cell
     pub fn get_height(&self, x: i32, y: i32) -> f32 {
         let chunk_coords = self.get_chunk_coords(x, y);
@@ -408,7 +428,7 @@ impl Terrain {
         let mut t = 0.0;
         let step_size = 0.1;
 
-        for _ in 0..500 {
+        for _ in 0..1500 {
             let point = ray.origin + ray.dir * t;
             let world_pos = Vec2::new(point.x, point.z);
             let terrain_height = self.sample_height(world_pos.x, world_pos.y);

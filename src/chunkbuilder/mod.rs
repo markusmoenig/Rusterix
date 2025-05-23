@@ -11,4 +11,6 @@ pub trait ChunkBuilder: Send + Sync {
         Self: Sized;
 
     fn build(&mut self, map: &Map, assets: &Assets, chunk: &mut Chunk) {}
+
+    fn boxed_clone(&self) -> Box<dyn ChunkBuilder>;
 }

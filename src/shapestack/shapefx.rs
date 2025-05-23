@@ -25,6 +25,12 @@ const BAYER_4X4: [[f32; 4]; 4] = [
     [15.0 / 16.0, 7.0 / 16.0, 13.0 / 16.0, 5.0 / 16.0],
 ];
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum ShapeFXModifierPass {
+    Height,
+    Colorize,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum ShapeFXParam {
     /// Id, Name, Status, Value, Range
@@ -57,6 +63,7 @@ pub enum ShapeFXRole {
     LinedefGeometry,
     SectorGeometry,
     Flatten,
+    Colorize,
     // Render Group
     Render, // Main Render Node
     Fog,
@@ -83,6 +90,7 @@ impl FromStr for ShapeFXRole {
             "Stone" => Ok(ShapeFXRole::Stone),
             "Sector Geometry" => Ok(ShapeFXRole::SectorGeometry),
             "Flatten" => Ok(ShapeFXRole::Flatten),
+            "Colorize" => Ok(ShapeFXRole::Colorize),
             "Render" => Ok(ShapeFXRole::Render),
             "Fog" => Ok(ShapeFXRole::Fog),
             "Sky" => Ok(ShapeFXRole::Sky),
@@ -127,6 +135,14 @@ impl ShapeFX {
         }
     }
 
+    pub fn supports_modifier_pass(&self, pass: ShapeFXModifierPass) -> bool {
+        match self.role {
+            Flatten => true,
+            Colorize => pass == ShapeFXModifierPass::Colorize,
+            _ => false,
+        }
+    }
+
     pub fn name(&self) -> String {
         match self.role {
             MaterialGeometry => "Geometry".into(),
@@ -139,7 +155,8 @@ impl ShapeFX {
             Stone => "Stone".into(),
             LinedefGeometry => "Linedef Geometry".into(),
             SectorGeometry => "Sector Geometry".into(),
-            Flatten => "Flatten".into(),
+            Flatten => "Terrain: Flatten".into(),
+            Colorize => "Terrain: Colorize".into(),
             Render => "Render".into(),
             Fog => "Fog".into(),
             Sky => "Sky".into(),
@@ -171,7 +188,7 @@ impl ShapeFX {
                     category_name: "Render".into(),
                 }]
             }
-            Flatten => {
+            Flatten | Colorize => {
                 vec![TheNodeTerminal {
                     name: "in".into(),
                     category_name: "Modifier".into(),
@@ -268,7 +285,7 @@ impl ShapeFX {
                     category_name: "Render".into(),
                 }]
             }
-            Flatten => {
+            Flatten | Colorize => {
                 vec![
                     TheNodeTerminal {
                         name: "out".into(),
@@ -308,10 +325,12 @@ impl ShapeFX {
         graph_node: (&ShapeFXGraph, usize),
         assets: &Assets,
         texture: &mut Texture,
+        pass: ShapeFXModifierPass,
     ) {
         #[allow(clippy::single_match)]
         match self.role {
-            Flatten => {
+            Flatten | Colorize => {
+                let is_colorize = matches!(self.role, Colorize);
                 let shapefx_nodes = graph_node.0.collect_nodes_from(graph_node.1, 1);
 
                 let bevel = self.values.get_float_default("bevel", 0.5);
@@ -347,13 +366,21 @@ impl ShapeFX {
                         if sd < bevel * 4.0 {
                             let world = Vec2::new(x, y);
                             let local = chunk.world_to_local(world);
-                            let s = Self::smoothstep(0.0, bevel, bevel - sd);
-                            let original =
-                                terrain.get_height_unprocessed(x, y).unwrap_or(floor_height);
-                            let new_height = original * (1.0 - s) + floor_height * s;
-                            if chunk_bbox.contains(Vec2::new(world.x as f32, world.y as f32)) {
-                                heights.insert((local.x, local.y), new_height);
-                            } else {
+
+                            if !is_colorize && pass == ShapeFXModifierPass::Height {
+                                // We modify heights only in Flatten mode
+                                let s = Self::smoothstep(0.0, bevel, bevel - sd);
+                                let original =
+                                    terrain.get_height_unprocessed(x, y).unwrap_or(floor_height);
+                                let new_height = original * (1.0 - s) + floor_height * s;
+                                if chunk_bbox.contains(Vec2::new(world.x as f32, world.y as f32)) {
+                                    heights.insert((local.x, local.y), new_height);
+                                } else {
+                                    continue;
+                                }
+                            }
+
+                            if pass == ShapeFXModifierPass::Height {
                                 continue;
                             }
 
@@ -427,8 +454,62 @@ impl ShapeFX {
                                             .or(pixel_color);
                                     }
 
+                                    // Combines Colorize-based fades with the boundary fade
+                                    let mut total_fade = 1.0;
+
+                                    if is_colorize {
+                                        let min_h =
+                                            self.values.get_float_default("min_height", 0.0);
+                                        let max_h =
+                                            self.values.get_float_default("max_height", 10.0);
+                                        let min_s =
+                                            self.values.get_float_default("min_steepness", 0.0);
+                                        let max_s =
+                                            self.values.get_float_default("max_steepness", 1.0);
+
+                                        fn fade_outside_range(
+                                            value: f32,
+                                            min: f32,
+                                            max: f32,
+                                            fade: f32,
+                                        ) -> f32 {
+                                            if value < min {
+                                                let t = ((min - value) / fade).clamp(0.0, 1.0);
+                                                1.0 - t * t * (3.0 - 2.0 * t) // smoothstep
+                                            } else if value > max {
+                                                let t = ((value - max) / fade).clamp(0.0, 1.0);
+                                                1.0 - t * t * (3.0 - 2.0 * t)
+                                            } else {
+                                                1.0
+                                            }
+                                        }
+
+                                        // Steepness
+                                        if min_s > 0.0 || max_s < 1.0 {
+                                            let steepness = terrain.compute_steepness(world_pos);
+                                            total_fade *= fade_outside_range(
+                                                steepness,
+                                                min_s,
+                                                max_s,
+                                                fade_distance,
+                                            );
+                                        }
+
+                                        // Height
+                                        if min_h != 0.0 || max_h != 10.0 {
+                                            let height = terrain
+                                                .sample_height_bilinear(world_pos.x, world_pos.y);
+                                            total_fade *= fade_outside_range(
+                                                height,
+                                                min_h,
+                                                max_h,
+                                                fade_distance,
+                                            );
+                                        }
+                                    }
+
                                     if let Some(mut color) = pixel_color {
-                                        let fade = if fade_distance == 0.0 {
+                                        let mut fade = if fade_distance == 0.0 {
                                             if sd_pixel <= 0.0 { 1.0 } else { 0.0 }
                                         } else {
                                             let fd = fade_distance.abs();
@@ -454,6 +535,8 @@ impl ShapeFX {
                                                 }
                                             }
                                         };
+
+                                        fade *= total_fade;
 
                                         if color.w < 0.99 {
                                             color *= fade;
@@ -497,8 +580,11 @@ impl ShapeFX {
         graph_node: (&ShapeFXGraph, usize),
         assets: &Assets,
         texture: &mut Texture,
+        pass: ShapeFXModifierPass,
     ) {
-        if self.role != ShapeFXRole::Flatten {
+        let is_flatten = matches!(self.role, ShapeFXRole::Flatten);
+        let is_colorize = matches!(self.role, ShapeFXRole::Colorize);
+        if !is_flatten && !is_colorize {
             return;
         }
 
@@ -612,13 +698,18 @@ impl ShapeFX {
                 let local = chunk.world_to_local(world_tile);
                 let key = (local.x, local.y);
 
-                let original = terrain
-                    .get_height_unprocessed(world_tile.x, world_tile.y)
-                    .unwrap_or(height);
-                let new_height = original * (1.0 - blend) + height * blend;
-                if chunk_bbox.contains(Vec2::new(world_tile.x as f32, world_tile.y as f32)) {
+                if is_flatten
+                    && pass == ShapeFXModifierPass::Height
+                    && chunk_bbox.contains(Vec2::new(world_tile.x as f32, world_tile.y as f32))
+                {
+                    let original = terrain
+                        .get_height_unprocessed(world_tile.x, world_tile.y)
+                        .unwrap_or(height);
+                    let new_height = original * (1.0 - blend) + height * blend;
                     heights.insert(key, new_height);
-                } else {
+                }
+
+                if pass == ShapeFXModifierPass::Height {
                     continue;
                 }
 
@@ -1635,6 +1726,69 @@ impl ShapeFX {
                     "Tiling scale for procedural textures.".into(),
                     self.values.get_float_default("uv_scale", 1.0),
                     0.01..=20.0,
+                ));
+            }
+            ShapeFXRole::Colorize => {
+                params.push(ShapeFXParam::Float(
+                    "fade_distance".into(),
+                    "Fade Distance".into(),
+                    "Fades the color outward from the shape boundary.".into(),
+                    self.values.get_float_default("fade_distance", 0.5),
+                    -10.0..=10.0,
+                ));
+                params.push(ShapeFXParam::Float(
+                    "fade_noise".into(),
+                    "Fade Noise".into(),
+                    "Adds noise distortion to the fade boundary.".into(),
+                    self.values.get_float_default("fade_noise", 0.0),
+                    0.0..=1.0,
+                ));
+                params.push(ShapeFXParam::Float(
+                    "path_width".into(),
+                    "Path Width".into(),
+                    "Width of the effect for linedefs.".into(),
+                    self.values.get_float_default("path_width", 2.0),
+                    0.0..=10.0,
+                ));
+                params.push(ShapeFXParam::Float(
+                    "uv_scale".into(),
+                    "UV Scale".into(),
+                    "Tiling scale for effects that use UVs.".into(),
+                    self.values.get_float_default("uv_scale", 1.0),
+                    0.01..=20.0,
+                ));
+
+                // Height-based filter
+                params.push(ShapeFXParam::Float(
+                    "min_height".into(),
+                    "Min Height".into(),
+                    "Only apply color if world height is above this value.".into(),
+                    self.values.get_float_default("min_height", 0.0),
+                    -100.0..=100.0,
+                ));
+                params.push(ShapeFXParam::Float(
+                    "max_height".into(),
+                    "Max Height".into(),
+                    "Only apply color if world height is below this value.".into(),
+                    self.values.get_float_default("max_height", 10.0),
+                    -100.0..=100.0,
+                ));
+
+                // Steepness-based filter
+                params.push(ShapeFXParam::Float(
+                    "min_steepness".into(),
+                    "Min Steepness".into(),
+                    "Only apply color if slope steepness is above this value (0 = flat).".into(),
+                    self.values.get_float_default("min_steepness", 0.0),
+                    0.0..=1.0,
+                ));
+                params.push(ShapeFXParam::Float(
+                    "max_steepness".into(),
+                    "Max Steepness".into(),
+                    "Only apply color if slope steepness is below this value (1 = vertical)."
+                        .into(),
+                    self.values.get_float_default("max_steepness", 1.0),
+                    0.0..=1.0,
                 ));
             }
             ShapeFXRole::Fog => {

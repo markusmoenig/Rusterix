@@ -3,6 +3,7 @@ use crate::{
     Tile,
 };
 use crossbeam::channel::{self, Receiver, Sender};
+// use rayon::prelude::*;
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 use theframework::prelude::*;
@@ -22,7 +23,7 @@ pub enum SceneManagerCmd {
 #[allow(clippy::large_enum_variant)]
 pub enum SceneManagerResult {
     Startup,
-    Chunk(Chunk),
+    Chunk(Chunk, i32, i32),
     UpdatedBatch3D((i32, i32), Batch3D),
     Quit,
 }
@@ -106,8 +107,11 @@ impl SceneManager {
         let mut map_geo = Map::default();
 
         let chunk_size = 16;
+
         let mut dirty: FxHashSet<(i32, i32)> = FxHashSet::default();
         let mut all: FxHashSet<(i32, i32)> = FxHashSet::default();
+
+        let mut total_chunks = 0;
 
         let mut chunk_builder_d2: Option<Box<dyn ChunkBuilder>> =
             Some(Box::new(D2ChunkBuilder::new()));
@@ -145,7 +149,6 @@ impl SceneManager {
                                     SceneManagerCmd::SetMap(new_map) => {
                                         map = new_map;
                                         map_geo = map.geometry_clone();
-                                        // map.terrain = Terrain::default();
                                         let mut bbox = map.bbox();
                                         if let Some(tbbox) = map.terrain.compute_bounds() {
                                             bbox.expand_bbox(tbbox);
@@ -156,6 +159,7 @@ impl SceneManager {
                                         );
                                         dirty = Self::generate_chunk_coords(&bbox, chunk_size);
                                         all = dirty.clone();
+                                        total_chunks = dirty.len() as i32;
                                     }
                                     SceneManagerCmd::AddDirty(dirty_chunks) => {
                                         for d in dirty_chunks {
@@ -166,7 +170,8 @@ impl SceneManager {
                                     SceneManagerCmd::SetDirtyTerrainChunks(dirty_chunks) => {
                                         for chunk in dirty_chunks {
                                             let coord = (chunk.origin.x, chunk.origin.y);
-                                            map.terrain.chunks.insert((chunk.origin.x / chunk_size, chunk.origin.y / chunk_size), chunk);
+                                            let local = map.terrain.get_chunk_coords(coord.0, coord.1);
+                                            map.terrain.chunks.insert(local, chunk);
                                             dirty.insert(coord);
                                             all.insert(coord);
                                         }
@@ -204,7 +209,7 @@ impl SceneManager {
 
                             let local = map.terrain.get_chunk_coords(coord.0, coord.1);
                             if map.terrain.chunks.contains_key(&local) {
-                                map.terrain.build_chunk_at(local, &assets, &map_geo, 64, &mut chunk, true);
+                                map.terrain.build_chunk_at(local, &assets, &map_geo, 32, &mut chunk, true);
                                 if let Some(ch) = map.terrain.chunks.get_mut(&local).cloned() {
                                     chunk.terrain_batch2d = Some(ch.build_mesh_d2(&map.terrain));
                                     chunk.terrain_batch3d = Some(ch.build_mesh(&map.terrain));
@@ -212,7 +217,10 @@ impl SceneManager {
                             }
 
                             // Send the chunk
-                            result_tx.send(SceneManagerResult::Chunk(chunk)).ok();
+                            result_tx.send(SceneManagerResult::Chunk(chunk, dirty.len() as i32, total_chunks)).ok();
+
+                            // Drain all queued up ticks to make sure messages are received first
+                            while tick.try_recv().is_ok() {}
 
                             if dirty.is_empty() {
                                 // When finished we need to recompute all 3D terrain meshes
