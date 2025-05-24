@@ -145,7 +145,7 @@ impl ShapeFXGraph {
         &self,
         ctx: &ShapeContext,
         mut incoming: Vec4<f32>,
-        palette: &ThePalette,
+        assets: &Assets,
     ) -> Option<Vec4<f32>> {
         if self.nodes.is_empty() {
             return None;
@@ -164,9 +164,12 @@ impl ShapeFXGraph {
             if let Some((next_node, next_terminal)) =
                 self.find_connected_input_node(curr_index, curr_terminal)
             {
-                if let Some(col) =
-                    self.nodes[next_node as usize].evaluate_pixel(ctx, Some(incoming), palette)
-                {
+                if let Some(col) = self.nodes[next_node as usize].evaluate_pixel(
+                    ctx,
+                    Some(incoming),
+                    assets,
+                    (self, next_node as usize),
+                ) {
                     color = Some(col);
                     incoming = col;
                 }
@@ -233,7 +236,7 @@ impl ShapeFXGraph {
     }
 
     /// Create a preview of the graph
-    pub fn material_preview(&self, buffer: &mut Texture, palette: &ThePalette) {
+    pub fn material_preview(&self, buffer: &mut Texture, assets: &Assets) {
         let width = buffer.width;
         let height = buffer.height;
 
@@ -279,7 +282,7 @@ impl ShapeFXGraph {
                     };
 
                     let color = if let Some(col) =
-                        self.evaluate_material(&ctx, Vec4::new(0.0, 0.0, 0.0, 1.0), palette)
+                        self.evaluate_material(&ctx, Vec4::new(0.0, 0.0, 0.0, 1.0), assets)
                     {
                         col
                     } else {

@@ -1,6 +1,6 @@
 use crate::{
-    Assets, Batch2D, Batch3D, Chunk, LightType, MapMini, Material, MaterialRole, Pixel,
-    PixelSource, PrimitiveMode, Ray, RenderMode, RepeatMode, Scene, Texture, pixel_to_vec4,
+    Assets, Batch2D, Batch3D, Chunk, LightType, MapMini, Material, MaterialModifier, MaterialRole,
+    Pixel, PixelSource, PrimitiveMode, Ray, RenderMode, RepeatMode, Scene, Texture, pixel_to_vec4,
     vec4_to_pixel,
 };
 use crate::{SampleMode, ShapeFXGraph};
@@ -62,6 +62,10 @@ pub struct Rasterizer {
 
     /// The hour of the day.Used for procedural sky and ambient.
     pub hour: f32,
+
+    /// Optional sun direction provided by the Sky node
+    pub sun_dir: Option<Vec3<f32>>,
+    pub day_factor: f32,
 }
 
 /// Rasterizes batches of 2D and 3D meshes (and lines).
@@ -121,6 +125,8 @@ impl Rasterizer {
             render_miss: vec![],
 
             hour: 12.0,
+            sun_dir: None,
+            day_factor: 0.0,
         }
     }
 
@@ -201,7 +207,12 @@ impl Rasterizer {
 
         // Precompute missed node values
         for node in &mut self.render_miss {
-            self.render_graph.nodes[*node as usize].render_setup(self.hour);
+            if let Some((sun_dir, day_factor)) =
+                self.render_graph.nodes[*node as usize].render_setup(self.hour)
+            {
+                self.sun_dir = Some(sun_dir);
+                self.day_factor = day_factor;
+            }
         }
 
         // Render a node based ambient color (procedural Sky) or if not
@@ -833,16 +844,22 @@ impl Rasterizer {
                                             let world = self.screen_to_world(p[0], p[1], z);
                                             let world_2d = Vec2::new(world.x, world.z);
 
-                                            let mut texel = match batch.source {
+                                            let (mut texel, material, is_terrain) = match batch
+                                                .source
+                                            {
                                                 PixelSource::StaticTileIndex(index) => {
                                                     let textile = &assets.tile_list[index as usize];
                                                     let index = scene.animation_frame
                                                         % textile.textures.len();
-                                                    textile.textures[index].sample(
-                                                        interpolated_u,
-                                                        interpolated_v,
-                                                        self.sample_mode,
-                                                        batch.repeat_mode,
+                                                    (
+                                                        textile.textures[index].sample(
+                                                            interpolated_u,
+                                                            interpolated_v,
+                                                            self.sample_mode,
+                                                            batch.repeat_mode,
+                                                        ),
+                                                        batch.material.clone(),
+                                                        false,
                                                     )
                                                 }
                                                 PixelSource::DynamicTileIndex(index) => {
@@ -850,14 +867,18 @@ impl Rasterizer {
                                                         &scene.dynamic_textures[index as usize];
                                                     let index = scene.animation_frame
                                                         % textile.textures.len();
-                                                    textile.textures[index].sample(
-                                                        interpolated_u,
-                                                        interpolated_v,
-                                                        self.sample_mode,
-                                                        batch.repeat_mode,
+                                                    (
+                                                        textile.textures[index].sample(
+                                                            interpolated_u,
+                                                            interpolated_v,
+                                                            self.sample_mode,
+                                                            batch.repeat_mode,
+                                                        ),
+                                                        batch.material.clone(),
+                                                        false,
                                                     )
                                                 }
-                                                PixelSource::Pixel(col) => col,
+                                                PixelSource::Pixel(col) => (col, None, false),
                                                 PixelSource::Terrain => {
                                                     if let Some(chunk) = chunk {
                                                         let mut texel = chunk
@@ -893,12 +914,21 @@ impl Rasterizer {
                                                                 }
                                                             }
                                                         }
-                                                        texel
+                                                        (
+                                                            texel,
+                                                            Some(Material::new(
+                                                                MaterialRole::Glossy,
+                                                                MaterialModifier::InvSaturation,
+                                                                1.0,
+                                                                0.0,
+                                                            )),
+                                                            true,
+                                                        )
                                                     } else {
-                                                        [255, 0, 0, 255]
+                                                        ([255, 0, 0, 255], None, false)
                                                     }
                                                 }
-                                                _ => [0, 0, 0, 0],
+                                                _ => ([0, 0, 0, 0], None, false),
                                             };
 
                                             let normal = if !batch.normals.is_empty() {
@@ -933,7 +963,7 @@ impl Rasterizer {
 
                                             let mut color = pixel_to_vec4(&texel);
                                             let mut specular_weight = 0.0;
-                                            if let Some(material) = &batch.material {
+                                            if let Some(material) = &material {
                                                 specular_weight = self.apply_material(
                                                     material, &mut color, &world_2d,
                                                 );
@@ -960,7 +990,52 @@ impl Rasterizer {
                                                 let base: Vec3<f32> =
                                                     Vec3::new(base_8[0], base_8[1], base_8[2]);
 
-                                                if let Some(ambient) = &self.ambient_color {
+                                                if is_terrain && self.sun_dir.is_some() {
+                                                    #[inline(always)]
+                                                    fn pow32_fast(x: f32) -> f32 {
+                                                        // Approximate x^32 using repeated squaring
+                                                        let x2 = x * x; // x^2
+                                                        let x4 = x2 * x2; // x^4
+                                                        let x8 = x4 * x4; // x^8
+                                                        let x16 = x8 * x8; // x^16
+                                                        x16 * x16 // x^32
+                                                    }
+
+                                                    if let Some(sun_dir) = self.sun_dir {
+                                                        if let Some(normal) = normal {
+                                                            let n_dot_l =
+                                                                normal.dot(-sun_dir).max(0.0);
+                                                            let sun_color = Vec3::broadcast(1.0);
+
+                                                            // Sky ambient
+                                                            if let Some(sky) = &self.ambient_color {
+                                                                let hemi = 0.5 * (normal.y + 1.0);
+                                                                lit += sky.xyz() * base * hemi;
+                                                            }
+                                                            if self.day_factor > 0.0 {
+                                                                // Above horizon
+                                                                lit += sun_color * base * n_dot_l;
+
+                                                                if specular_weight > 0.0 {
+                                                                    let view_dir =
+                                                                        (self.camera_pos - world)
+                                                                            .normalized();
+                                                                    let half_v = (view_dir
+                                                                        - sun_dir)
+                                                                        .normalized();
+                                                                    let n_dot_h =
+                                                                        normal.dot(half_v).max(0.0);
+
+                                                                    // only add specular if the angle is sane
+
+                                                                    let spec = specular_weight
+                                                                        * pow32_fast(n_dot_h);
+                                                                    lit += sun_color * spec;
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                } else if let Some(ambient) = &self.ambient_color {
                                                     let occ = self.mapmini.get_occlusion(world_2d);
                                                     lit += (ambient * occ) * base; // tint ambient by albedo
 

@@ -303,6 +303,50 @@ impl ShapeFX {
                     category_name: "FX".into(),
                 }]
             }
+            NoiseOverlay => {
+                vec![
+                    TheNodeTerminal {
+                        name: "out".into(),
+                        category_name: "ShapeFX".into(),
+                    },
+                    TheNodeTerminal {
+                        name: "color".into(),
+                        category_name: "ShapeFX".into(),
+                    },
+                ]
+            }
+            Stone => {
+                vec![
+                    TheNodeTerminal {
+                        name: "out".into(),
+                        category_name: "ShapeFX".into(),
+                    },
+                    TheNodeTerminal {
+                        name: "stone".into(),
+                        category_name: "ShapeFX".into(),
+                    },
+                    TheNodeTerminal {
+                        name: "mortar".into(),
+                        category_name: "ShapeFX".into(),
+                    },
+                ]
+            }
+            Wood => {
+                vec![
+                    TheNodeTerminal {
+                        name: "out".into(),
+                        category_name: "ShapeFX".into(),
+                    },
+                    TheNodeTerminal {
+                        name: "light".into(),
+                        category_name: "ShapeFX".into(),
+                    },
+                    TheNodeTerminal {
+                        name: "dark".into(),
+                        category_name: "ShapeFX".into(),
+                    },
+                ]
+            }
             _ => {
                 vec![TheNodeTerminal {
                     name: "out".into(),
@@ -411,11 +455,17 @@ impl ShapeFX {
                                         (dy as f32 + 0.5) / pixels_per_tile as f32,
                                     );
 
-                                    // Convert back to world position
                                     let world_pos = Vec2::new(
                                         (x as f32 + uv_in_tile.x) * terrain.scale.x,
                                         (y as f32 + uv_in_tile.y) * terrain.scale.y,
                                     );
+
+                                    // let world_pos = Vec2::new(
+                                    //     (x as f32 + dx as f32 / pixels_per_tile as f32)
+                                    //         * terrain.scale.x,
+                                    //     (y as f32 + dy as f32 / pixels_per_tile as f32)
+                                    //         * terrain.scale.y,
+                                    // );
 
                                     let Some(mut sd_pixel) = sector.signed_distance(map, world_pos)
                                     else {
@@ -429,6 +479,7 @@ impl ShapeFX {
                                     }
 
                                     let uv = world_pos / uv_scale;
+                                    //let uv = pixel_pos / (texture.width as f32); // Or based on world space
                                     let px = terrain.scale.x.max(terrain.scale.y);
 
                                     let ctx = ShapeContext {
@@ -450,7 +501,12 @@ impl ShapeFX {
                                     let mut pixel_color: Option<Vec4<f32>> = None;
                                     for node in &shapefx_nodes {
                                         pixel_color = graph_node.0.nodes[*node as usize]
-                                            .evaluate_pixel(&ctx, pixel_color, &assets.palette)
+                                            .evaluate_pixel(
+                                                &ctx,
+                                                pixel_color,
+                                                assets,
+                                                (graph_node.0, *node as usize),
+                                            )
                                             .or(pixel_color);
                                     }
 
@@ -795,7 +851,12 @@ impl ShapeFX {
                         let mut pixel_color: Option<Vec4<f32>> = None;
                         for node in &shapefx_nodes {
                             pixel_color = graph_node.0.nodes[*node as usize]
-                                .evaluate_pixel(&ctx, pixel_color, &assets.palette)
+                                .evaluate_pixel(
+                                    &ctx,
+                                    pixel_color,
+                                    assets,
+                                    (graph_node.0, *node as usize),
+                                )
                                 .or(pixel_color);
                         }
 
@@ -816,7 +877,7 @@ impl ShapeFX {
         }
     }
 
-    pub fn render_setup(&mut self, hour: f32) {
+    pub fn render_setup(&mut self, hour: f32) -> Option<(Vec3<f32>, f32)> {
         self.precomputed.clear();
         match &self.role {
             Fog => {
@@ -912,9 +973,13 @@ impl ShapeFX {
                     )
                     .to_vec4();
                 self.precomputed.push(night_zenith);
+
+                return Some((sun_dir, day_factor));
             }
             _ => {}
         }
+
+        None
     }
 
     pub fn render_hit_d3(
@@ -1136,7 +1201,8 @@ impl ShapeFX {
         &self,
         ctx: &ShapeContext,
         color: Option<Vec4<f32>>,
-        palette: &ThePalette,
+        assets: &Assets,
+        graph_node: (&ShapeFXGraph, usize),
     ) -> Option<Vec4<f32>> {
         match self.role {
             MaterialGeometry => None,
@@ -1203,7 +1269,8 @@ impl ShapeFX {
                 let from_index = self.values.get_int_default("edge", 0);
                 let to_index = self.values.get_int_default("interior", 1);
 
-                let mut from = palette
+                let mut from = assets
+                    .palette
                     .colors
                     .get(from_index as usize)
                     .and_then(|c| c.clone())
@@ -1213,7 +1280,8 @@ impl ShapeFX {
                     from = color.unwrap();
                 }
 
-                let to = palette
+                let to = assets
+                    .palette
                     .colors
                     .get(to_index as usize)
                     .and_then(|c| c.clone())
@@ -1268,7 +1336,7 @@ impl ShapeFX {
                 if alpha > 0.0 {
                     let mut color = Vec4::zero();
                     let index = self.values.get_int_default("color", 0);
-                    if let Some(Some(col)) = palette.colors.get(index as usize) {
+                    if let Some(Some(col)) = assets.palette.colors.get(index as usize) {
                         color = col.to_vec4();
                     }
                     color.w = alpha;
@@ -1280,7 +1348,7 @@ impl ShapeFX {
             Outline => {
                 let mut color = Vec4::zero();
                 let index = self.values.get_int_default("color", 0);
-                if let Some(Some(col)) = palette.colors.get(index as usize) {
+                if let Some(Some(col)) = assets.palette.colors.get(index as usize) {
                     color = col.to_vec4();
                 }
                 let thickness = self.values.get_float_default("thickness", 1.5);
@@ -1296,16 +1364,33 @@ impl ShapeFX {
                 let octaves = self.values.get_int_default("octaves", 3);
 
                 if let Some(mut color) = color {
-                    // Generate noise using UV and pixel snapping
+                    let mut other_color: Option<Vec4<f32>> = None;
+                    let shapefx_nodes = graph_node.0.collect_nodes_from(graph_node.1, 1);
+                    for node in &shapefx_nodes {
+                        other_color = graph_node.0.nodes[*node as usize]
+                            .evaluate_pixel(
+                                ctx,
+                                other_color,
+                                assets,
+                                (graph_node.0, *node as usize),
+                            )
+                            .or(other_color);
+                    }
+
                     let uv = ctx.uv;
                     let scale = Vec2::broadcast(1.0 / pixel_size);
-                    let noise_value = self.noise2d(&uv, scale, octaves); // [0.0, 1.0]
+                    let noise_value = self.noise2d(&uv, scale, octaves);
 
-                    let n = (noise_value * 2.0 - 1.0) * randomness; // remap to [-1, 1] and scale
+                    let n = (noise_value * 2.0 - 1.0) * randomness;
 
-                    color.x = (color.x + n).clamp(0.0, 1.0);
-                    color.y = (color.y + n).clamp(0.0, 1.0);
-                    color.z = (color.z + n).clamp(0.0, 1.0);
+                    if let Some(other) = other_color {
+                        let blend_factor = (noise_value * randomness).clamp(0.0, 1.0);
+                        color = Vec4::lerp(color, other, blend_factor);
+                    } else {
+                        color.x = (color.x + n).clamp(0.0, 1.0);
+                        color.y = (color.y + n).clamp(0.0, 1.0);
+                        color.z = (color.z + n).clamp(0.0, 1.0);
+                    }
                     Some(color)
                 } else {
                     None
@@ -1315,7 +1400,8 @@ impl ShapeFX {
                 let thickness = self.values.get_float_default("radius", 10.0);
                 if ctx.distance > 0.0 && ctx.distance <= thickness {
                     let index = self.values.get_int_default("color", 0);
-                    let mut color = palette
+                    let mut color = assets
+                        .palette
                         .colors
                         .get(index as usize)
                         .and_then(|c| c.clone())
@@ -1342,22 +1428,22 @@ impl ShapeFX {
                     return None;
                 }
 
-                let light_idx = self.values.get_int_default("light", 0);
-                let dark_idx = self.values.get_int_default("dark", 1);
+                let mut light = Vec4::one();
+                let mut dark = Vec4::zero();
 
-                let light = palette
-                    .colors
-                    .get(light_idx as usize)
-                    .and_then(|c| c.clone())
-                    .unwrap_or(TheColor::white())
-                    .to_vec4();
+                let light_nodes = graph_node.0.collect_nodes_from(graph_node.1, 1);
+                for node in &light_nodes {
+                    light = graph_node.0.nodes[*node as usize]
+                        .evaluate_pixel(ctx, Some(light), assets, (graph_node.0, *node as usize))
+                        .unwrap_or(light);
+                }
 
-                let dark = palette
-                    .colors
-                    .get(dark_idx as usize)
-                    .and_then(|c| c.clone())
-                    .unwrap_or(TheColor::black())
-                    .to_vec4();
+                let dark_nodes = graph_node.0.collect_nodes_from(graph_node.1, 2);
+                for node in &dark_nodes {
+                    dark = graph_node.0.nodes[*node as usize]
+                        .evaluate_pixel(ctx, Some(dark), assets, (graph_node.0, *node as usize))
+                        .unwrap_or(dark);
+                }
 
                 let direction_deg = self.values.get_float_default("direction", 0.0);
                 let scale = self.values.get_float_default("grain_scale", 4.0); // px between streaks
@@ -1402,22 +1488,22 @@ impl ShapeFX {
                 let rounding = self.values.get_float_default("rounding", 0.2); // edge rounding
                 let rotation = self.values.get_float_default("rotation", 3.0); // random twist strength
 
-                // choose colours
-                let stone_idx = self.values.get_int_default("stone_color", 0);
-                let mortar_idx = self.values.get_int_default("mortar_color", 1);
+                let mut stone = Vec4::one();
+                let mut mortar = Vec4::zero();
 
-                let stone = palette
-                    .colors
-                    .get(stone_idx as usize)
-                    .and_then(|c| c.clone())
-                    .unwrap_or(TheColor::white())
-                    .to_vec4();
-                let mortar = palette
-                    .colors
-                    .get(mortar_idx as usize)
-                    .and_then(|c| c.clone())
-                    .unwrap_or(TheColor::black())
-                    .to_vec4();
+                let stone_nodes = graph_node.0.collect_nodes_from(graph_node.1, 1);
+                for node in &stone_nodes {
+                    stone = graph_node.0.nodes[*node as usize]
+                        .evaluate_pixel(ctx, Some(stone), assets, (graph_node.0, *node as usize))
+                        .unwrap_or(stone);
+                }
+
+                let mortar_nodes = graph_node.0.collect_nodes_from(graph_node.1, 2);
+                for node in &mortar_nodes {
+                    mortar = graph_node.0.nodes[*node as usize]
+                        .evaluate_pixel(ctx, Some(mortar), assets, (graph_node.0, *node as usize))
+                        .unwrap_or(mortar);
+                }
 
                 // UVs – rotate with linedef if present
                 let uv = if let Some(dir) = ctx.line_dir {
@@ -1607,18 +1693,6 @@ impl ShapeFX {
                 ));
             }
             ShapeFXRole::Wood => {
-                params.push(ShapeFXParam::PaletteIndex(
-                    "light".into(),
-                    "Light Colour".into(),
-                    "Pale early-wood streaks.".into(),
-                    self.values.get_int_default("light", 0),
-                ));
-                params.push(ShapeFXParam::PaletteIndex(
-                    "dark".into(),
-                    "Dark Colour".into(),
-                    "Late-wood streaks / grain.".into(),
-                    self.values.get_int_default("dark", 1),
-                ));
                 params.push(ShapeFXParam::Float(
                     "grain_scale".into(),
                     "Streak Spacing".into(),
@@ -1656,18 +1730,6 @@ impl ShapeFX {
                 ));
             }
             ShapeFXRole::Stone => {
-                params.push(ShapeFXParam::PaletteIndex(
-                    "stone_color".into(),
-                    "Stone Color".into(),
-                    "Color of the pavers.".into(),
-                    self.values.get_int_default("stone_color", 0),
-                ));
-                params.push(ShapeFXParam::PaletteIndex(
-                    "mortar_color".into(),
-                    "Mortar Color".into(),
-                    "Color of the gaps.".into(),
-                    self.values.get_int_default("mortar_color", 1),
-                ));
                 params.push(ShapeFXParam::Float(
                     "gap".into(),
                     "Gap Width".into(),

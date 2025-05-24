@@ -35,29 +35,19 @@ use rust_embed::RustEmbed;
 pub struct Embedded;
 
 pub type Pixel = [u8; 4];
+const INV_255: f32 = 1.0 / 255.0;
 
 /// Convert from Pixel to Vec4<f32>
 #[inline(always)]
 pub fn pixel_to_vec4(pixel: &Pixel) -> vek::Vec4<f32> {
-    let inv_255 = 1.0 / 255.0;
-    vek::Vec4::new(
-        pixel[0] as f32 * inv_255,
-        pixel[1] as f32 * inv_255,
-        pixel[2] as f32 * inv_255,
-        pixel[3] as f32 * inv_255,
-    )
+    let v: vek::Vec4<u8> = vek::Vec4::from(*pixel);
+    v.map(|c| c as f32 * INV_255)
 }
 
 /// Convert from Vec4<f32> to Pixel
 #[inline(always)]
 pub fn vec4_to_pixel(vec: &vek::Vec4<f32>) -> Pixel {
-    let scale = 255.0;
-    [
-        (vec.x * scale) as u8,
-        (vec.y * scale) as u8,
-        (vec.z * scale) as u8,
-        (vec.w * scale) as u8,
-    ]
+    vec.map(|c| (c * 255.0) as u8).into_array()
 }
 
 /// Get time in ms

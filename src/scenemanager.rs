@@ -24,6 +24,7 @@ pub enum SceneManagerCmd {
 pub enum SceneManagerResult {
     Startup,
     Chunk(Chunk, i32, i32),
+    ProcessedHeights(Vec2<i32>, FxHashMap<(i32, i32), f32>),
     UpdatedBatch3D((i32, i32), Batch3D),
     Quit,
 }
@@ -213,6 +214,9 @@ impl SceneManager {
                                 if let Some(ch) = map.terrain.chunks.get_mut(&local).cloned() {
                                     chunk.terrain_batch2d = Some(ch.build_mesh_d2(&map.terrain));
                                     chunk.terrain_batch3d = Some(ch.build_mesh(&map.terrain));
+                                    if let Some(ph) = ch.processed_heights {
+                                        result_tx.send(SceneManagerResult::ProcessedHeights(Vec2::new(coord.0, coord.1), ph)).ok();
+                                    }
                                 }
                             }
 

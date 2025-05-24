@@ -4,7 +4,7 @@ pub mod shapecontext;
 pub mod shapefx;
 pub mod shapefxgraph;
 
-use crate::{Map, PixelSource, ShapeContext, Texture, Value};
+use crate::{Assets, Map, PixelSource, ShapeContext, Texture, Value};
 use rayon::prelude::*;
 use theframework::prelude::*;
 use vek::Vec2;
@@ -19,7 +19,7 @@ impl ShapeStack {
         Self { area_min, area_max }
     }
 
-    pub fn render(&mut self, buffer: &mut Texture, map: &Map, palette: &ThePalette) {
+    pub fn render(&mut self, buffer: &mut Texture, map: &Map, assets: &Assets) {
         let width = buffer.width;
         let height = buffer.height;
         let area_size = self.area_max - self.area_min;
@@ -102,7 +102,7 @@ impl ShapeStack {
                                 }
 
                                 if let Some(ctx) = best_ctx {
-                                    if let Some(col) = graph.evaluate_material(&ctx, color, palette)
+                                    if let Some(col) = graph.evaluate_material(&ctx, color, assets)
                                     {
                                         color = Vec4::lerp(color, col, col.w);
                                     }
@@ -180,7 +180,7 @@ impl ShapeStack {
                                             };
 
                                             if let Some(col) =
-                                                graph.evaluate_material(&ctx, color, palette)
+                                                graph.evaluate_material(&ctx, color, assets)
                                             {
                                                 color = Vec4::lerp(color, col, col.w);
                                             }
