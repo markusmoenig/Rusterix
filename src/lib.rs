@@ -79,11 +79,21 @@ pub use crate::{
     edge::Edges,
     intodata::IntoDataInput,
     map::{
-        Map, MapCamera, MapToolType, bbox::BBox, light::CompiledLight, light::Light,
-        light::LightType, linedef::CompiledLinedef, linedef::Linedef, meta::MapMeta, mini::MapMini,
-        pixelsource::NoiseTarget, pixelsource::PixelSource, sector::Sector,
-        state::AnimationVertexState, state::InterpolationType, state::VertexAnimationSystem,
-        state::VertexState, tile::Tile, vertex::Vertex,
+        Map, MapCamera, MapToolType,
+        bbox::BBox,
+        bones::{Bone, BonePose, Pose, SkeletalAnimation},
+        light::CompiledLight,
+        light::Light,
+        light::LightType,
+        linedef::CompiledLinedef,
+        linedef::Linedef,
+        meta::MapMeta,
+        mini::MapMini,
+        pixelsource::NoiseTarget,
+        pixelsource::PixelSource,
+        sector::Sector,
+        tile::Tile,
+        vertex::Vertex,
     },
     rasterizer::{BrushPreview, Rasterizer},
     rect::Rect,
@@ -138,15 +148,15 @@ pub mod prelude {
         d3builder::D3Builder,
     };
     pub use crate::{
-        AnimationVertexState, Light, LightType, Map, MapMeta, MapToolType, NoiseTarget,
-        PixelSource, Sector, Tile, Vertex, VertexAnimationSystem, VertexState,
-    };
-    pub use crate::{
         Assets, Currencies, Currency, Entity, EntityUpdate, Item, ItemUpdate, RegionInstance,
         RegionMessage, Server, Wallet,
     };
     pub use crate::{BLACK, Pixel, TRANSPARENT, WHITE};
     pub use crate::{Batch2D, Batch3D, CullMode, PrimitiveMode};
+    pub use crate::{
+        Bone, BonePose, Light, LightType, Map, MapMeta, MapToolType, NoiseTarget, PixelSource,
+        Pose, Sector, SkeletalAnimation, Tile, Vertex,
+    };
     pub use crate::{D3Camera, D3FirstPCamera, D3IsoCamera, D3OrbitCamera};
     pub use crate::{GridShader, Shader, VGrayGradientShader};
     pub use crate::{Material, MaterialModifier, MaterialRole};

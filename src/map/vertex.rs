@@ -6,6 +6,8 @@ pub struct Vertex {
     pub id: u32,
     pub x: f32,
     pub y: f32,
+    #[serde(default)]
+    pub z: f32,
 
     #[serde(default)]
     pub properties: ValueContainer,
@@ -17,6 +19,7 @@ impl Vertex {
             id,
             x,
             y,
+            z: 0.0,
             properties: ValueContainer::default(),
         }
     }

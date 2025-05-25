@@ -16,6 +16,11 @@ pub struct BrushPreview {
     pub falloff: f32,
 }
 
+fn pow32_fast(x: f32) -> f32 {
+    // Fit on [0,1]   (max abs error ≈ 1/512)
+    ((((1.004_4 * x - 1.032_7) * x + 0.508_9) * x + 0.007_8) * x).clamp(0.0, 1.0)
+}
+
 pub struct Rasterizer {
     pub render_mode: RenderMode,
 
@@ -991,16 +996,6 @@ impl Rasterizer {
                                                     Vec3::new(base_8[0], base_8[1], base_8[2]);
 
                                                 if is_terrain && self.sun_dir.is_some() {
-                                                    #[inline(always)]
-                                                    fn pow32_fast(x: f32) -> f32 {
-                                                        // Approximate x^32 using repeated squaring
-                                                        let x2 = x * x; // x^2
-                                                        let x4 = x2 * x2; // x^4
-                                                        let x8 = x4 * x4; // x^8
-                                                        let x16 = x8 * x8; // x^16
-                                                        x16 * x16 // x^32
-                                                    }
-
                                                     if let Some(sun_dir) = self.sun_dir {
                                                         if let Some(normal) = normal {
                                                             let n_dot_l =
@@ -1097,17 +1092,6 @@ impl Rasterizer {
                                                             + (light.position - world)
                                                                 .normalized())
                                                         .normalized();
-
-                                                        #[inline(always)]
-                                                        fn pow32_fast(x: f32) -> f32 {
-                                                            // Fit on [0,1]   (max abs error ≈ 1/512)
-                                                            ((((1.004_4 * x - 1.032_7) * x
-                                                                + 0.508_9)
-                                                                * x
-                                                                + 0.007_8)
-                                                                * x)
-                                                                .clamp(0.0, 1.0)
-                                                        }
 
                                                         if specular_weight > 0.0 {
                                                             let n_dot_h = n.dot(half_v).max(0.0);

@@ -1,4 +1,5 @@
 pub mod bbox;
+pub mod bones;
 pub mod geometry;
 pub mod light;
 pub mod linedef;
@@ -6,13 +7,13 @@ pub mod meta;
 pub mod mini;
 pub mod pixelsource;
 pub mod sector;
-pub mod state;
 pub mod tile;
 pub mod vertex;
 
 use crate::{
-    BBox, MapMini, PixelSource, ShapeFXGraph, Terrain, Value, ValueContainer, VertexAnimationSystem,
+    BBox, MapMini, PixelSource, ShapeFXGraph, SkeletalAnimation, Terrain, Value, ValueContainer,
 };
+use indexmap::IndexMap;
 use ordered_float::NotNan;
 use pathfinding::prelude::astar;
 use theframework::prelude::{FxHashMap, FxHashSet};
@@ -105,13 +106,17 @@ pub struct Map {
     pub selected_light: Option<u32>,
     pub selected_entity_item: Option<Uuid>,
 
-    // Animation
-    #[serde(default)]
-    pub animation: VertexAnimationSystem,
-
     // Meta Data
     #[serde(default)]
     pub properties: ValueContainer,
+
+    /// All skeletal animations in the map, accessible by name (e.g. "walk", "idle")
+    #[serde(default)]
+    pub skeletal_animations: IndexMap<String, SkeletalAnimation>,
+
+    /// Currently edited animation (name, pose index)
+    #[serde(skip)]
+    pub editing_anim_pose: Option<(String, usize)>,
 
     // Change counter, right now only used for materials
     // to indicate when to refresh live updates
@@ -164,9 +169,9 @@ impl Map {
             selected_light: None,
             selected_entity_item: None,
 
-            animation: VertexAnimationSystem::default(),
-
             properties: ValueContainer::default(),
+            skeletal_animations: IndexMap::default(),
+            editing_anim_pose: None,
 
             changed: 0,
         }
@@ -363,137 +368,25 @@ impl Map {
         Some(Vec4::new(min_x, min_y, width, height))
     }
 
-    /// Generate a bounding box for the sector, applying animation states
-    pub fn bounding_box_animated(&self, map: &Map) -> Option<(Vec2<f32>, Vec2<f32>)> {
-        let mut vertices = Vec::new();
-
-        for linedef in &self.linedefs {
-            if let Some(start_vertex) = map.get_vertex(linedef.start_vertex) {
-                vertices.push(start_vertex);
-            }
-            if let Some(end_vertex) = map.get_vertex(linedef.end_vertex) {
-                vertices.push(end_vertex);
-            }
-        }
-
-        if vertices.is_empty() {
-            return None;
-        }
-
-        // Calculate bounding box
-        let min_x = vertices.iter().map(|v| v.x).fold(f32::INFINITY, f32::min);
-        let max_x = vertices
-            .iter()
-            .map(|v| v.x)
-            .fold(f32::NEG_INFINITY, f32::max);
-        let min_y = vertices.iter().map(|v| v.y).fold(f32::INFINITY, f32::min);
-        let max_y = vertices
-            .iter()
-            .map(|v| v.y)
-            .fold(f32::NEG_INFINITY, f32::max);
-
-        Some((Vec2::new(min_x, min_y), Vec2::new(max_x, max_y)))
+    /// Update the skeletal animation (placeholder)
+    pub fn tick(&mut self, _delta_time: f32) {
+        // Future: advance animation time, interpolate poses, update transforms
     }
 
-    /// Update the animation system
-    pub fn tick(&mut self, delta_time: f32) {
-        self.animation.update(delta_time, &mut self.vertices);
-    }
-
-    /// Get the current position of a vertex, applying the animation state and interpolation if available
+    /// Get the current position of a vertex, with future support for animated transforms
     pub fn get_vertex(&self, vertex_id: u32) -> Option<Vec2<f32>> {
-        // If there is a next state but no current state, interpolate with the base map
-        if self.animation.current_state.is_none() {
-            if let Some(next_state) = self.animation.next_state {
-                let progress = self.animation.transition_progress;
-                let adjusted_progress = self.animation.states[next_state]
-                    .interpolation
-                    .adjust_progress(progress);
-
-                // Find the vertex in the base map
-                let base_position = self
-                    .vertices
-                    .iter()
-                    .find(|v| v.id == vertex_id)
-                    .map(|v| Vec2::new(v.x, v.y));
-
-                // Find the vertex in the next state
-                let next_position = self.animation.states[next_state]
-                    .vertices
-                    .iter()
-                    .find(|v| v.id == vertex_id)
-                    .map(|v| v.position);
-
-                // Interpolate between base and next state
-                if let (Some(base_pos), Some(next_pos)) = (base_position, next_position) {
-                    return Some(Vec2::lerp(base_pos, next_pos, adjusted_progress));
-                }
-
-                // Fallback to the next state if the vertex is not in the base map
-                return next_position;
-            }
-        }
-
-        // If both current and next states are set, interpolate between them
-        if let Some(current_state) = self.animation.current_state {
-            if let Some(next_state) = self.animation.next_state {
-                let progress = self.animation.transition_progress;
-                let adjusted_progress = self.animation.states[next_state]
-                    .interpolation
-                    .adjust_progress(progress);
-
-                // Find the vertex in the current state
-                let current_position = self.animation.states[current_state]
-                    .vertices
-                    .iter()
-                    .find(|v| v.id == vertex_id)
-                    .map(|v| v.position);
-
-                // Find the vertex in the next state
-                let next_position = self.animation.states[next_state]
-                    .vertices
-                    .iter()
-                    .find(|v| v.id == vertex_id)
-                    .map(|v| v.position);
-
-                // Interpolate between the current and next state
-                if let (Some(current_pos), Some(next_pos)) = (current_position, next_position) {
-                    return Some(Vec2::lerp(current_pos, next_pos, adjusted_progress));
-                }
-
-                // Fallback to the current or next state
-                return current_position.or(next_position);
-            }
-
-            // If only the current state is set, return its position
-            if let Some(animated_vertex) = self.animation.states[current_state]
-                .vertices
-                .iter()
-                .find(|v| v.id == vertex_id)
-            {
-                return Some(animated_vertex.position);
-            }
-        }
-
-        // Fallback to the base vertex position
+        // Future: check if vertex is bound to a bone and apply animation
         self.vertices
             .iter()
             .find(|v| v.id == vertex_id)
             .map(|v| Vec2::new(v.x, v.y))
     }
 
-    /// Update a vertex in the map, considering the animation state
+    /// Update a vertex in the map
     pub fn update_vertex(&mut self, vertex_id: u32, new_position: Vec2<f32>) {
-        if let Some(current_state_index) = self.animation.current_state {
-            // Update the vertex in the current animation state
-            let current_state = &mut self.animation.states[current_state_index];
-            current_state.update_or_add(vertex_id, new_position);
-        } else {
-            // Update the base vertex directly
-            if let Some(base_vertex) = self.vertices.iter_mut().find(|v| v.id == vertex_id) {
-                base_vertex.x = new_position.x;
-                base_vertex.y = new_position.y;
-            }
+        if let Some(base_vertex) = self.vertices.iter_mut().find(|v| v.id == vertex_id) {
+            base_vertex.x = new_position.x;
+            base_vertex.y = new_position.y;
         }
     }
 
@@ -1384,9 +1277,9 @@ impl Map {
             selected_light: None,
             selected_entity_item: None,
 
-            animation: VertexAnimationSystem::default(),
-
             properties: ValueContainer::default(),
+            skeletal_animations: IndexMap::default(),
+            editing_anim_pose: None,
 
             changed: 0,
         }

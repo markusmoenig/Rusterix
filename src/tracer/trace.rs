@@ -1,7 +1,7 @@
 use crate::SampleMode;
 use crate::{
-    AccumBuffer, Assets, Batch3D, D3Camera, HitInfo, MaterialRole, Pixel, PixelSource, Ray, Scene,
-    ShapeFXGraph, pixel_to_vec4,
+    AccumBuffer, Assets, Batch3D, Chunk, D3Camera, HitInfo, MaterialRole, Pixel, PixelSource, Ray,
+    Scene, ShapeFXGraph, pixel_to_vec4,
 };
 use SampleMode::*;
 use bvh::aabb::Aabb;
@@ -199,8 +199,31 @@ impl Tracer {
                                 for batch in &chunk.batches3d {
                                     if let Some(mut hit) = batch.intersect(&ray, false) {
                                         if hit.t < hitinfo.t
-                                            && self
-                                                .evaluate_hit(&ray, scene, batch, &mut hit, assets)
+                                            && self.evaluate_hit(
+                                                &ray,
+                                                scene,
+                                                batch,
+                                                &mut hit,
+                                                assets,
+                                                Some(chunk),
+                                            )
+                                        {
+                                            hitinfo = hit;
+                                        }
+                                    }
+                                }
+
+                                if let Some(batch) = &chunk.terrain_batch3d {
+                                    if let Some(mut hit) = batch.intersect(&ray, false) {
+                                        if hit.t < hitinfo.t
+                                            && self.evaluate_hit(
+                                                &ray,
+                                                scene,
+                                                batch,
+                                                &mut hit,
+                                                assets,
+                                                Some(chunk),
+                                            )
                                         {
                                             hitinfo = hit;
                                         }
@@ -218,7 +241,9 @@ impl Tracer {
 
                                 if let Some(mut hit) = batch.intersect(&ray, false) {
                                     if hit.t < hitinfo.t
-                                        && self.evaluate_hit(&ray, scene, batch, &mut hit, assets)
+                                        && self.evaluate_hit(
+                                            &ray, scene, batch, &mut hit, assets, None,
+                                        )
                                     {
                                         hitinfo = hit;
                                     }
@@ -235,7 +260,9 @@ impl Tracer {
 
                                 if let Some(mut hit) = batch.intersect(&ray, false) {
                                     if hit.t < hitinfo.t
-                                        && self.evaluate_hit(&ray, scene, batch, &mut hit, assets)
+                                        && self.evaluate_hit(
+                                            &ray, scene, batch, &mut hit, assets, None,
+                                        )
                                     {
                                         hitinfo = hit;
                                     }
@@ -349,11 +376,12 @@ impl Tracer {
 
     fn evaluate_hit(
         &self,
-        _ray: &Ray,
+        ray: &Ray,
         scene: &Scene,
         batch: &Batch3D,
         hit: &mut HitInfo,
         assets: &Assets,
+        chunk: Option<&Chunk>,
     ) -> bool {
         let mut texel = match batch.source {
             PixelSource::StaticTileIndex(index) => {
@@ -382,8 +410,13 @@ impl Tracer {
                 //     let w = ray.at(hit.t);
                 //     pixel_to_vec4(&terrain.sample_baked(Vec2::new(w.x, w.y)))
                 // } else {
-                Vec4::zero()
-                // }
+                if let Some(chunk) = chunk {
+                    let w = ray.at(hit.t);
+                    let texel = chunk.sample_terrain_texture(Vec2::new(w.x, w.z), Vec2::one());
+                    pixel_to_vec4(&texel)
+                } else {
+                    Vec4::zero()
+                }
             }
             _ => Vec4::zero(),
         };

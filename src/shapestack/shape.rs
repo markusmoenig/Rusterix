@@ -1,5 +1,6 @@
 use crate::{
-    Assets, BLACK, D2Builder, Map, PixelSource, Rasterizer, ShapeFXParam, Value, ValueContainer,
+    Assets, BLACK, D2PreviewBuilder, Map, PixelSource, Rasterizer, ShapeFXParam, Value,
+    ValueContainer,
 };
 // use rand::rngs::StdRng;
 // use rand::{Rng, SeedableRng};
@@ -292,16 +293,7 @@ impl Shape {
 
         let mut map = Map::default();
         let center = Vec2::new(width / 2.0, height / 2.0);
-        let size = Vec2::new(width / 2.0, height / 2.0);
-
-        /*
-        if self.shape_type == ShapeType::Bricks {
-            self.size = Vec2::new(width, height);
-        } else {
-            self.size = Vec2::new(width / 2.0, height / 2.0);
-        }*/
-        // let content_size = self.size / Vec2::new(3.0, 6.0);
-        // let spacing = Vec2::new(2.0, 2.0);
+        let size = Vec2::new(width / 2.2, height / 2.2);
 
         let ids = self.create(&mut map, Some(center), Some(size));
         for sector_id in &ids {
@@ -309,11 +301,18 @@ impl Shape {
                 sector.properties.set(
                     "floor_source",
                     Value::Source(PixelSource::Color(TheColor::white())),
-                )
+                );
             }
 
-            let mut builder = D2Builder::default();
-            let mut scene = builder.build(&map, &Assets::default(), Vec2::new(width, height));
+            let mut builder = D2PreviewBuilder::default();
+            let mut scene = builder.build(
+                &map,
+                assets,
+                Vec2::new(width, height),
+                &ValueContainer::default(),
+            );
+            builder.build_entities_items(&map, assets, &mut scene, Vec2::new(width, height));
+            scene.background = None;
 
             let mut rast = Rasterizer::setup(None, Mat4::identity(), Mat4::identity());
             rast.rasterize(
