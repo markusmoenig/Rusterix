@@ -81,7 +81,6 @@ pub use crate::{
     map::{
         Map, MapCamera, MapToolType,
         bbox::BBox,
-        bones::{Bone, BonePose, Pose, SkeletalAnimation},
         light::CompiledLight,
         light::Light,
         light::LightType,
@@ -92,6 +91,7 @@ pub use crate::{
         pixelsource::NoiseTarget,
         pixelsource::PixelSource,
         sector::Sector,
+        softrig::{Keyform, SoftRig, SoftRigAnimator},
         tile::Tile,
         vertex::Vertex,
     },
@@ -153,12 +153,12 @@ pub mod prelude {
     };
     pub use crate::{BLACK, Pixel, TRANSPARENT, WHITE};
     pub use crate::{Batch2D, Batch3D, CullMode, PrimitiveMode};
-    pub use crate::{
-        Bone, BonePose, Light, LightType, Map, MapMeta, MapToolType, NoiseTarget, PixelSource,
-        Pose, Sector, SkeletalAnimation, Tile, Vertex,
-    };
     pub use crate::{D3Camera, D3FirstPCamera, D3IsoCamera, D3OrbitCamera};
     pub use crate::{GridShader, Shader, VGrayGradientShader};
+    pub use crate::{
+        Keyform, Light, LightType, Map, MapMeta, MapToolType, NoiseTarget, PixelSource, Sector,
+        SoftRig, SoftRigAnimator, Tile, Vertex,
+    };
     pub use crate::{Material, MaterialModifier, MaterialRole};
     pub use crate::{
         Rect, Scene, SceneManager, SceneManagerCmd, SceneManagerResult, Value, ValueContainer,

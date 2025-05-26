@@ -1,5 +1,4 @@
 pub mod bbox;
-pub mod bones;
 pub mod geometry;
 pub mod light;
 pub mod linedef;
@@ -7,11 +6,13 @@ pub mod meta;
 pub mod mini;
 pub mod pixelsource;
 pub mod sector;
+pub mod softrig;
 pub mod tile;
 pub mod vertex;
 
 use crate::{
-    BBox, MapMini, PixelSource, ShapeFXGraph, SkeletalAnimation, Terrain, Value, ValueContainer,
+    BBox, Keyform, MapMini, PixelSource, ShapeFXGraph, SoftRig, SoftRigAnimator, Terrain, Value,
+    ValueContainer,
 };
 use indexmap::IndexMap;
 use ordered_float::NotNan;
@@ -110,13 +111,17 @@ pub struct Map {
     #[serde(default)]
     pub properties: ValueContainer,
 
-    /// All skeletal animations in the map, accessible by name (e.g. "walk", "idle")
+    /// All SoftRigs in the map, each defining vertex-based keyforms
     #[serde(default)]
-    pub skeletal_animations: IndexMap<String, SkeletalAnimation>,
+    pub softrigs: IndexMap<Uuid, SoftRig>,
 
-    /// Currently edited animation (name, pose index)
+    /// Currently edited SoftRig, or None for base geometry
     #[serde(skip)]
-    pub editing_anim_pose: Option<(String, usize)>,
+    pub editing_rig: Option<Uuid>,
+
+    /// Vertex animation
+    #[serde(skip)]
+    pub soft_animator: Option<SoftRigAnimator>,
 
     // Change counter, right now only used for materials
     // to indicate when to refresh live updates
@@ -170,8 +175,9 @@ impl Map {
             selected_entity_item: None,
 
             properties: ValueContainer::default(),
-            skeletal_animations: IndexMap::default(),
-            editing_anim_pose: None,
+            softrigs: IndexMap::default(),
+            editing_rig: None,
+            soft_animator: None,
 
             changed: 0,
         }
@@ -368,25 +374,86 @@ impl Map {
         Some(Vec4::new(min_x, min_y, width, height))
     }
 
-    /// Update the skeletal animation (placeholder)
-    pub fn tick(&mut self, _delta_time: f32) {
-        // Future: advance animation time, interpolate poses, update transforms
+    /// Tick the soft animator.
+    pub fn tick(&mut self, delta_time: f32) {
+        if let Some(anim) = &mut self.soft_animator {
+            anim.tick(delta_time);
+        }
     }
 
-    /// Get the current position of a vertex, with future support for animated transforms
+    /// Get the current position of a vertex, using any keyform override in the current SoftRig.
     pub fn get_vertex(&self, vertex_id: u32) -> Option<Vec2<f32>> {
-        // Future: check if vertex is bound to a bone and apply animation
-        self.vertices
-            .iter()
-            .find(|v| v.id == vertex_id)
-            .map(|v| Vec2::new(v.x, v.y))
+        // Base vertex lookup
+        let base = self.vertices.iter().find(|v| v.id == vertex_id)?;
+        let base_pos = Vec2::new(base.x, base.y);
+
+        // 1. Try runtime animation
+        if let Some(animator) = &self.soft_animator {
+            if let Some(rig) = animator.get_blended_rig(self) {
+                if let Some((_, pos)) = rig
+                    .keyforms
+                    .first()
+                    .and_then(|key| key.vertex_positions.iter().find(|(id, _)| *id == vertex_id))
+                {
+                    println!("here {} {:?}", pos, base_pos);
+                    return Some(*pos);
+                }
+            }
+        }
+
+        // 2. Try editing override (if not currently animating)
+        if self.soft_animator.is_none() {
+            if let Some(rig_id) = self.editing_rig {
+                if let Some(rig) = self.softrigs.get(&rig_id) {
+                    for keyform in &rig.keyforms {
+                        if let Some((_, pos)) = keyform
+                            .vertex_positions
+                            .iter()
+                            .find(|(id, _)| *id == vertex_id)
+                        {
+                            return Some(*pos);
+                        }
+                    }
+                }
+            }
+        }
+
+        // 3. Fallback to base
+        Some(base_pos)
     }
 
-    /// Update a vertex in the map
+    /// Update the vertex position. If a keyform in the selected rig contains this vertex, update it.
+    /// Otherwise, create a new keyform for this single vertex.
     pub fn update_vertex(&mut self, vertex_id: u32, new_position: Vec2<f32>) {
-        if let Some(base_vertex) = self.vertices.iter_mut().find(|v| v.id == vertex_id) {
-            base_vertex.x = new_position.x;
-            base_vertex.y = new_position.y;
+        // Update in active SoftRig
+        if let Some(rig_id) = self.editing_rig {
+            if let Some(rig) = self.softrigs.get_mut(&rig_id) {
+                // Try to find a keyform that already contains this vertex
+                for keyform in &mut rig.keyforms {
+                    if let Some(entry) = keyform
+                        .vertex_positions
+                        .iter_mut()
+                        .find(|(id, _)| *id == vertex_id)
+                    {
+                        entry.1 = new_position;
+                        return;
+                    }
+                }
+
+                // No existing keyform contains this vertex → create new keyform
+                let new_keyform = Keyform {
+                    vertex_positions: vec![(vertex_id, new_position)],
+                };
+
+                rig.keyforms.push(new_keyform);
+                return;
+            }
+        }
+
+        // Otherwise update base geometry
+        if let Some(v) = self.vertices.iter_mut().find(|v| v.id == vertex_id) {
+            v.x = new_position.x;
+            v.y = new_position.y;
         }
     }
 
@@ -1278,8 +1345,9 @@ impl Map {
             selected_entity_item: None,
 
             properties: ValueContainer::default(),
-            skeletal_animations: IndexMap::default(),
-            editing_anim_pose: None,
+            softrigs: IndexMap::default(),
+            editing_rig: None,
+            soft_animator: None,
 
             changed: 0,
         }
