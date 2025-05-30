@@ -5,7 +5,7 @@ use earcutr::earcut;
 // use rand::seq::SliceRandom;
 use theframework::prelude::*;
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct Sector {
     pub id: u32,
 

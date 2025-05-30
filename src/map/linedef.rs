@@ -1,7 +1,7 @@
 use crate::{BBox, Map, ValueContainer};
 use theframework::prelude::*;
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct Linedef {
     pub id: u32,
 

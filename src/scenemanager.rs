@@ -16,6 +16,7 @@ pub enum SceneManagerCmd {
     SetBuilder2D(Option<Box<dyn ChunkBuilder>>),
     AddDirty(Vec<(i32, i32)>),
     SetDirtyTerrainChunks(Vec<TerrainChunk>),
+    SetTerrainModifierState(bool),
     Quit,
 }
 
@@ -23,6 +24,7 @@ pub enum SceneManagerCmd {
 #[allow(clippy::large_enum_variant)]
 pub enum SceneManagerResult {
     Startup,
+    Clear,
     Chunk(Chunk, i32, i32),
     ProcessedHeights(Vec2<i32>, FxHashMap<(i32, i32), f32>),
     UpdatedBatch3D((i32, i32), Batch3D),
@@ -95,6 +97,10 @@ impl SceneManager {
         self.send(SceneManagerCmd::SetDirtyTerrainChunks(dirty));
     }
 
+    pub fn set_terrain_modifier_state(&self, state: bool) {
+        self.send(SceneManagerCmd::SetTerrainModifierState(state));
+    }
+
     pub fn startup(&mut self) {
         let (tx, rx) = channel::unbounded::<SceneManagerCmd>();
         self.tx = Some(tx);
@@ -106,11 +112,13 @@ impl SceneManager {
         let mut assets = Assets::default();
         let mut map = Map::default();
         let mut map_geo = Map::default();
+        let mut terrain_modifiers = true;
 
         let chunk_size = 16;
 
         let mut dirty: FxHashSet<(i32, i32)> = FxHashSet::default();
         let mut all: FxHashSet<(i32, i32)> = FxHashSet::default();
+        let mut terrain_modifiers_update: FxHashSet<(i32, i32)> = FxHashSet::default();
 
         let mut total_chunks = 0;
 
@@ -148,6 +156,9 @@ impl SceneManager {
                                         all = dirty.clone();
                                     }
                                     SceneManagerCmd::SetMap(new_map) => {
+                                        if map.id != new_map.id {
+                                            result_tx.send(SceneManagerResult::Clear).ok();
+                                        }
                                         map = new_map;
                                         map_geo = map.geometry_clone();
                                         let mut bbox = map.bbox();
@@ -175,7 +186,21 @@ impl SceneManager {
                                             map.terrain.chunks.insert(local, chunk);
                                             dirty.insert(coord);
                                             all.insert(coord);
+                                            if !terrain_modifiers {
+                                                terrain_modifiers_update.insert(coord);
+                                            }
                                         }
+                                    }
+                                    SceneManagerCmd::SetTerrainModifierState(state) => {
+                                        if state && !terrain_modifiers {
+                                            // Update all the chunks we created w/o modifiers
+                                            for d in &terrain_modifiers_update {
+                                                dirty.insert(*d);
+                                                all.insert(*d);
+                                            }
+                                        }
+                                        terrain_modifiers = state;
+                                        terrain_modifiers_update.clear();
                                     }
                                     SceneManagerCmd::Quit => {
                                         result_tx.send(SceneManagerResult::Quit).ok();
@@ -210,7 +235,7 @@ impl SceneManager {
 
                             let local = map.terrain.get_chunk_coords(coord.0, coord.1);
                             if map.terrain.chunks.contains_key(&local) {
-                                map.terrain.build_chunk_at(local, &assets, &map_geo, 32, &mut chunk, true);
+                                map.terrain.build_chunk_at(local, &assets, &map_geo, 32, &mut chunk, terrain_modifiers);
                                 if let Some(ch) = map.terrain.chunks.get_mut(&local).cloned() {
                                     chunk.terrain_batch2d = Some(ch.build_mesh_d2(&map.terrain));
                                     chunk.terrain_batch3d = Some(ch.build_mesh(&map.terrain));
