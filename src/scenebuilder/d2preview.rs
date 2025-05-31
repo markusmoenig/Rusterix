@@ -67,7 +67,7 @@ impl D2PreviewBuilder {
     }
 
     pub fn set_properties(&mut self, properties: &ValueContainer) {
-        self.no_rect_geo = true; //properties.get_bool_default("no_rect_geo", true);
+        self.no_rect_geo = properties.get_bool_default("no_rect_geo", true);
         self.tile_size = properties.get_int_default("tile_size", 128);
 
         self.textures.clear();
