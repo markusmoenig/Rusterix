@@ -71,6 +71,9 @@ pub enum ShapeFXRole {
     // FX Group
     Material,
     PointLight,
+    // Shape Group
+    Shape,
+    Circle,
 }
 
 use ShapeFXRole::*;
@@ -96,6 +99,8 @@ impl FromStr for ShapeFXRole {
             "Sky" => Ok(ShapeFXRole::Sky),
             "Material" => Ok(ShapeFXRole::Material),
             "Point Light" => Ok(ShapeFXRole::PointLight),
+            "Shape" => Ok(ShapeFXRole::Shape),
+            "Circle" => Ok(ShapeFXRole::Circle),
             _ => Err(()),
         }
     }
@@ -162,12 +167,14 @@ impl ShapeFX {
             Sky => "Sky".into(),
             Material => "Material".into(),
             PointLight => "Point Light".into(),
+            Shape => "Shape".into(),
+            Circle => "Circle".into(),
         }
     }
 
     pub fn inputs(&self) -> Vec<TheNodeTerminal> {
         match self.role {
-            MaterialGeometry | SectorGeometry | LinedefGeometry => {
+            MaterialGeometry | SectorGeometry | LinedefGeometry | Shape => {
                 vec![]
             }
             Render => {
@@ -198,6 +205,12 @@ impl ShapeFX {
                 vec![TheNodeTerminal {
                     name: "in".into(),
                     category_name: "FX".into(),
+                }]
+            }
+            Circle => {
+                vec![TheNodeTerminal {
+                    name: "in".into(),
+                    category_name: "Shape".into(),
                 }]
             }
             _ => {
@@ -343,6 +356,24 @@ impl ShapeFX {
                     },
                     TheNodeTerminal {
                         name: "dark".into(),
+                        category_name: "ShapeFX".into(),
+                    },
+                ]
+            }
+            Shape => {
+                vec![TheNodeTerminal {
+                    name: "out".into(),
+                    category_name: "Shape".into(),
+                }]
+            }
+            Circle => {
+                vec![
+                    TheNodeTerminal {
+                        name: "out".into(),
+                        category_name: "Shape".into(),
+                    },
+                    TheNodeTerminal {
+                        name: "color".into(),
                         category_name: "ShapeFX".into(),
                     },
                 ]
@@ -1197,6 +1228,16 @@ impl ShapeFX {
         }
     }
 
+    pub fn evaluate_distance(&self, pos: Vec2<f32>, vertices: &Vec<Vec2<f32>>) -> Option<f32> {
+        if vertices.is_empty() {
+            return None;
+        }
+        match self.role {
+            Circle => Some((pos - vertices[0]).magnitude() - 1.0),
+            _ => None,
+        }
+    }
+
     pub fn evaluate_pixel(
         &self,
         ctx: &ShapeContext,
@@ -1975,6 +2016,15 @@ impl ShapeFX {
                     "0 = steady, 1 = candles.".into(),
                     self.values.get_float_default("flicker", 0.0),
                     0.0..=1.0,
+                ));
+            }
+            ShapeFXRole::Circle => {
+                params.push(ShapeFXParam::Float(
+                    "radius".into(),
+                    "Radius".into(),
+                    "The radius of the circle.".into(),
+                    self.values.get_float_default("radius", 0.5),
+                    0.001..=3.0,
                 ));
             }
             _ => {}

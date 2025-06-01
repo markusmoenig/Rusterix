@@ -18,7 +18,7 @@ impl D2MaterialBuilder {
 
     pub fn build_texture(&self, map: &Map, assets: &Assets, texture: &mut Texture) {
         let mut stack = ShapeStack::new(Vec2::new(-5.0, -5.0), Vec2::new(5.0, 5.0));
-        stack.render(texture, map, assets);
+        stack.render_geometry(texture, map, assets);
 
         /*
         let mut textures = vec![];

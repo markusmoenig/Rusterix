@@ -140,6 +140,46 @@ impl ShapeFXGraph {
         }
     }
 
+    /// Evaluate a shape graph for its distance
+    pub fn evaluate_shape_distance(
+        &self,
+        world_pos: Vec2<f32>,
+        vertices: &Vec<Vec2<f32>>,
+    ) -> (f32, usize) {
+        let mut d = (f32::MAX, 0);
+
+        if self.nodes.is_empty() {
+            return d;
+        }
+        if self.nodes[0].role != ShapeFXRole::Shape {
+            return d;
+        }
+
+        let mut curr_index = 0_usize;
+        let mut curr_terminal = 0;
+
+        let mut steps = 0;
+        while steps < 16 {
+            if let Some((next_node, next_terminal)) =
+                self.find_connected_input_node(curr_index, curr_terminal)
+            {
+                if let Some(distance) =
+                    self.nodes[next_node as usize].evaluate_distance(world_pos, vertices)
+                {
+                    if distance < d.0 {
+                        d = (distance, next_node as usize);
+                    }
+                }
+                curr_index = next_node as usize;
+                curr_terminal = next_terminal as usize;
+                steps += 1;
+            } else {
+                break;
+            }
+        }
+        d
+    }
+
     /// Evaluate the material graph
     pub fn evaluate_material(
         &self,

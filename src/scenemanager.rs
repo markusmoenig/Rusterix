@@ -137,20 +137,20 @@ impl SceneManager {
                             Ok(cmd) => {
                                 match cmd {
                                     SceneManagerCmd::SetTileList(tiles, indices) => {
-                                        println!("SceneManagerCmd::SetTileList({})", tiles.len());
+                                        // println!("SceneManagerCmd::SetTileList({})", tiles.len());
                                         assets.tile_list = tiles;
                                         assets.tile_indices = indices;
                                         dirty = Self::generate_chunk_coords(&map.bbox(), chunk_size);
                                         all = dirty.clone();
                                     }
                                     SceneManagerCmd::SetPalette(palette) => {
-                                        println!("SceneManagerCmd::SetPalette()");
+                                        // println!("SceneManagerCmd::SetPalette()");
                                         assets.palette = palette;
                                         dirty = Self::generate_chunk_coords(&map.bbox(), chunk_size);
                                         all = dirty.clone();
                                     }
                                     SceneManagerCmd::SetBuilder2D(builder) => {
-                                        println!("SceneManagerCmd::SetBuilder2D()");
+                                        // println!("SceneManagerCmd::SetBuilder2D()");
                                         chunk_builder_d2 = builder;
                                         dirty = Self::generate_chunk_coords(&map.bbox(), chunk_size);
                                         all = dirty.clone();

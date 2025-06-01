@@ -19,7 +19,51 @@ impl ShapeStack {
         Self { area_min, area_max }
     }
 
-    pub fn render(&mut self, buffer: &mut Texture, map: &Map, assets: &Assets) {
+    /// Render the shapes into a character or item texture.
+    pub fn render_shape(&mut self, buffer: &mut Texture, map: &Map, assets: &Assets) {
+        let width = buffer.width;
+        let height = buffer.height;
+        let area_size = self.area_max - self.area_min;
+
+        let px = area_size.x / width as f32;
+
+        buffer
+            .data
+            .par_rchunks_exact_mut(width * 4)
+            .enumerate()
+            .for_each(|(j, line)| {
+                for (i, pixel) in line.chunks_exact_mut(4).enumerate() {
+                    let i = j * width + i;
+
+                    let x = (i % width) as f32;
+                    let y = (i / width) as f32;
+
+                    let uv = Vec2::new(x / width as f32, 1.0 - y / height as f32);
+                    let world = self.area_min + uv * area_size;
+
+                    let mut color = Vec4::new(0.0, 0.0, 0.0, 0.0);
+
+                    for vertex in map.vertices.iter() {
+                        if let Some(Value::Source(PixelSource::ShapeFXGraphId(graph_id))) =
+                            vertex.properties.get("shape_graph")
+                        {
+                            let v = vertex.as_vec2();
+                            if let Some(graph) = map.shapefx_graphs.get(graph_id) {
+                                let d = graph.evaluate_shape_distance(world, &vec![v]);
+                                if d.0 < 0.0 {
+                                    color = Vec4::one();
+                                }
+                            }
+                        }
+                    }
+
+                    pixel.copy_from_slice(&TheColor::from_vec4f(color).to_u8_array());
+                }
+            });
+    }
+
+    /// Render the geometry into a material texture
+    pub fn render_geometry(&mut self, buffer: &mut Texture, map: &Map, assets: &Assets) {
         let width = buffer.width;
         let height = buffer.height;
         let area_size = self.area_max - self.area_min;
