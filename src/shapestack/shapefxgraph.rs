@@ -144,7 +144,7 @@ impl ShapeFXGraph {
     pub fn evaluate_shape_distance(
         &self,
         world_pos: Vec2<f32>,
-        vertices: &Vec<Vec2<f32>>,
+        vertices: &[Vec2<f32>],
     ) -> (f32, usize) {
         let mut d = (f32::MAX, 0);
 

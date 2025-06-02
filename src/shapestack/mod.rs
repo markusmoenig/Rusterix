@@ -43,15 +43,38 @@ impl ShapeStack {
 
                     let mut color = Vec4::new(0.0, 0.0, 0.0, 0.0);
 
+                    // Vertices
                     for vertex in map.vertices.iter() {
                         if let Some(Value::Source(PixelSource::ShapeFXGraphId(graph_id))) =
                             vertex.properties.get("shape_graph")
                         {
                             let v = vertex.as_vec2();
                             if let Some(graph) = map.shapefx_graphs.get(graph_id) {
-                                let d = graph.evaluate_shape_distance(world, &vec![v]);
+                                let d = graph.evaluate_shape_distance(world, &[v]);
                                 if d.0 < 0.0 {
                                     color = Vec4::one();
+                                }
+                            }
+                        }
+                    }
+
+                    // And now the standalone linedefs
+                    for linedef in &map.linedefs {
+                        if linedef.front_sector.is_none() && linedef.back_sector.is_none() {
+                            if let Some(Value::Source(PixelSource::ShapeFXGraphId(graph_id))) =
+                                linedef.properties.get("shape_graph")
+                            {
+                                if let Some(graph) = map.shapefx_graphs.get(graph_id) {
+                                    if let Some(start) = map.find_vertex(linedef.start_vertex) {
+                                        if let Some(end) = map.find_vertex(linedef.end_vertex) {
+                                            let vertices = [start.as_vec2(), end.as_vec2()];
+
+                                            let d = graph.evaluate_shape_distance(world, &vertices);
+                                            if d.0 < 0.0 {
+                                                color = Vec4::one();
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }

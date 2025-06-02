@@ -74,6 +74,7 @@ pub enum ShapeFXRole {
     // Shape Group
     Shape,
     Circle,
+    Line,
 }
 
 use ShapeFXRole::*;
@@ -101,6 +102,7 @@ impl FromStr for ShapeFXRole {
             "Point Light" => Ok(ShapeFXRole::PointLight),
             "Shape" => Ok(ShapeFXRole::Shape),
             "Circle" => Ok(ShapeFXRole::Circle),
+            "Line" => Ok(ShapeFXRole::Line),
             _ => Err(()),
         }
     }
@@ -169,6 +171,7 @@ impl ShapeFX {
             PointLight => "Point Light".into(),
             Shape => "Shape".into(),
             Circle => "Circle".into(),
+            Line => "Line".into(),
         }
     }
 
@@ -207,7 +210,7 @@ impl ShapeFX {
                     category_name: "FX".into(),
                 }]
             }
-            Circle => {
+            Circle | Line => {
                 vec![TheNodeTerminal {
                     name: "in".into(),
                     category_name: "Shape".into(),
@@ -366,7 +369,7 @@ impl ShapeFX {
                     category_name: "Shape".into(),
                 }]
             }
-            Circle => {
+            Circle | Line => {
                 vec![
                     TheNodeTerminal {
                         name: "out".into(),
@@ -1228,12 +1231,31 @@ impl ShapeFX {
         }
     }
 
-    pub fn evaluate_distance(&self, pos: Vec2<f32>, vertices: &Vec<Vec2<f32>>) -> Option<f32> {
+    pub fn evaluate_distance(&self, pos: Vec2<f32>, vertices: &[Vec2<f32>]) -> Option<f32> {
         if vertices.is_empty() {
             return None;
         }
         match self.role {
-            Circle => Some((pos - vertices[0]).magnitude() - 1.0),
+            Circle => {
+                let radius = self.values.get_float_default("radius", 0.5);
+                Some((pos - vertices[0]).magnitude() - radius)
+            }
+            Line => {
+                #[inline(always)]
+                fn sd_segment(p: Vec2<f32>, a: Vec2<f32>, b: Vec2<f32>) -> f32 {
+                    let pa = p - a;
+                    let ba = b - a;
+                    let h = (pa.dot(ba) / ba.dot(ba)).clamp(0.0, 1.0);
+                    (pa - ba * h).magnitude()
+                }
+
+                if vertices.len() >= 2 {
+                    let radius = self.values.get_float_default("radius", 0.5);
+                    Some(sd_segment(pos, vertices[0], vertices[1]) - radius)
+                } else {
+                    None
+                }
+            }
             _ => None,
         }
     }
@@ -2018,11 +2040,11 @@ impl ShapeFX {
                     0.0..=1.0,
                 ));
             }
-            ShapeFXRole::Circle => {
+            ShapeFXRole::Circle | ShapeFXRole::Line => {
                 params.push(ShapeFXParam::Float(
                     "radius".into(),
                     "Radius".into(),
-                    "The radius of the circle.".into(),
+                    "The radius of the shape.".into(),
                     self.values.get_float_default("radius", 0.5),
                     0.001..=3.0,
                 ));
