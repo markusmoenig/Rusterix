@@ -1231,6 +1231,7 @@ impl ShapeFX {
         }
     }
 
+    /// Evaluate the distance to the given shape.
     pub fn evaluate_distance(&self, pos: Vec2<f32>, vertices: &[Vec2<f32>]) -> Option<f32> {
         if vertices.is_empty() {
             return None;
@@ -1241,6 +1242,11 @@ impl ShapeFX {
                 Some((pos - vertices[0]).magnitude() - radius)
             }
             Line => {
+                // Soft union of two SDFs
+                // fn smooth_union(d1: f32, d2: f32, k: f32) -> f32 {
+                //     let h = (0.5 + 0.5 * (d2 - d1) / k).clamp(0.0, 1.0);
+                //     d1.lerp(d2, h) - k * h * (1.0 - h)
+                // }
                 #[inline(always)]
                 fn sd_segment(p: Vec2<f32>, a: Vec2<f32>, b: Vec2<f32>) -> f32 {
                     let pa = p - a;

@@ -180,6 +180,43 @@ impl ShapeFXGraph {
         d
     }
 
+    /// Evaluate a shape node for its color.
+    pub fn evaluate_shape_color(
+        &self,
+        ctx: &ShapeContext,
+        node_index: usize,
+        assets: &Assets,
+    ) -> Option<Vec4<f32>> {
+        let mut curr_index = node_index;
+        let mut curr_terminal = 1;
+
+        let mut color = None;
+
+        let mut steps = 0;
+        while steps < 16 {
+            if let Some((next_node, next_terminal)) =
+                self.find_connected_input_node(curr_index, curr_terminal)
+            {
+                if let Some(col) = self.nodes[next_node as usize].evaluate_pixel(
+                    ctx,
+                    color,
+                    assets,
+                    (self, next_node as usize),
+                ) {
+                    color = Some(col);
+                }
+
+                curr_index = next_node as usize;
+                curr_terminal = next_terminal as usize;
+                steps += 1;
+            } else {
+                break;
+            }
+        }
+
+        color
+    }
+
     /// Evaluate the material graph
     pub fn evaluate_material(
         &self,

@@ -4,7 +4,7 @@ pub mod shapecontext;
 pub mod shapefx;
 pub mod shapefxgraph;
 
-use crate::{Assets, Map, PixelSource, ShapeContext, Texture, Value};
+use crate::{Assets, Map, PixelSource, ShapeContext, ShapeFXGraph, Texture, Value};
 use rayon::prelude::*;
 use theframework::prelude::*;
 use vek::Vec2;
@@ -42,6 +42,8 @@ impl ShapeStack {
                     let world = self.area_min + uv * area_size;
 
                     let mut color = Vec4::new(0.0, 0.0, 0.0, 0.0);
+                    let mut closest_distance = f32::MAX;
+                    let mut best_ctx: Option<(ShapeContext, ShapeFXGraph, usize)> = None;
 
                     // Vertices
                     for vertex in map.vertices.iter() {
@@ -50,9 +52,24 @@ impl ShapeStack {
                         {
                             let v = vertex.as_vec2();
                             if let Some(graph) = map.shapefx_graphs.get(graph_id) {
-                                let d = graph.evaluate_shape_distance(world, &[v]);
-                                if d.0 < 0.0 {
-                                    color = Vec4::one();
+                                let (dist, node_index) = graph.evaluate_shape_distance(world, &[v]);
+                                if dist < closest_distance {
+                                    closest_distance = dist;
+
+                                    let ctx = ShapeContext {
+                                        point_world: world,
+                                        point: world / px,
+                                        uv,
+                                        distance_world: dist * px,
+                                        distance: dist,
+                                        shape_id: vertex.id,
+                                        px,
+                                        anti_aliasing: 1.0,
+                                        t: None,
+                                        line_dir: None,
+                                    };
+
+                                    best_ctx = Some((ctx, graph.clone(), node_index));
                                 }
                             }
                         }
@@ -69,13 +86,62 @@ impl ShapeStack {
                                         if let Some(end) = map.find_vertex(linedef.end_vertex) {
                                             let vertices = [start.as_vec2(), end.as_vec2()];
 
-                                            let d = graph.evaluate_shape_distance(world, &vertices);
-                                            if d.0 < 0.0 {
-                                                color = Vec4::one();
+                                            let (dist, node_index) =
+                                                graph.evaluate_shape_distance(world, &vertices);
+                                            if dist < closest_distance {
+                                                closest_distance = dist;
+
+                                                let ab = vertices[1] - vertices[0];
+                                                let ab_len = ab.magnitude();
+                                                let ab_dir = ab / ab_len;
+
+                                                let ap = world - vertices[0];
+                                                let t = ap.dot(ab_dir) / ab_len;
+                                                let t_clamped = t.clamp(0.0, 1.0);
+                                                let closest_point =
+                                                    vertices[0] + ab_dir * (t_clamped * ab_len);
+
+                                                // Construct UV aligned to the line
+                                                let local = world - closest_point;
+                                                let mut local_uv =
+                                                    Vec2::new(t_clamped.fract(), 0.5 + dist);
+
+                                                // Optional: rotate local_uv into a line-aligned frame if needed
+                                                // For pattern alignment, you may want:
+                                                local_uv = Vec2::new(
+                                                    local.dot(ab_dir),
+                                                    local.dot(Vec2::new(-ab_dir.y, ab_dir.x)),
+                                                );
+
+                                                let ctx = ShapeContext {
+                                                    point_world: world,
+                                                    point: world / px,
+                                                    uv: local_uv,
+                                                    distance_world: dist * px,
+                                                    distance: dist,
+                                                    shape_id: linedef.id,
+                                                    px,
+                                                    anti_aliasing: linedef
+                                                        .properties
+                                                        .get_float_default("material_a_a", 1.0),
+                                                    t: Some(t),
+                                                    line_dir: Some(ab_dir),
+                                                };
+
+                                                best_ctx = Some((ctx, graph.clone(), node_index));
                                             }
                                         }
                                     }
                                 }
+                            }
+                        }
+                    }
+
+                    if let Some((ctx, graph, node_index)) = best_ctx {
+                        if ctx.distance <= 0.0 {
+                            if let Some(col) = graph.evaluate_shape_color(&ctx, node_index, assets)
+                            {
+                                color = col;
                             }
                         }
                     }
