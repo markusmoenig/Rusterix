@@ -395,7 +395,6 @@ impl Map {
                     .first()
                     .and_then(|key| key.vertex_positions.iter().find(|(id, _)| *id == vertex_id))
                 {
-                    println!("here {} {:?}", pos, base_pos);
                     return Some(*pos);
                 }
             }

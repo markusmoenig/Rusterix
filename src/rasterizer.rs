@@ -464,10 +464,12 @@ impl Rasterizer {
         chunk: Option<&Chunk>,
     ) {
         if let Some(bbox) = batch.bounding_box {
-            if bbox.x < (tile.x + tile.width) as f32
-                && (bbox.x + bbox.width) > tile.x as f32
-                && bbox.y < (tile.y + tile.height) as f32
-                && (bbox.y + bbox.height) > tile.y as f32
+            // Without padding horizontal lines may not be insde the BBox.
+            let pad = 0.5;
+            if bbox.x < (tile.x + tile.width) as f32 + pad
+                && (bbox.x + bbox.width) > tile.x as f32 - pad
+                && bbox.y < (tile.y + tile.height) as f32 + pad
+                && (bbox.y + bbox.height) > tile.y as f32 - pad
             {
                 match batch.mode {
                     PrimitiveMode::Triangles => {

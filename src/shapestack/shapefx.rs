@@ -75,6 +75,7 @@ pub enum ShapeFXRole {
     Shape,
     Circle,
     Line,
+    Box,
 }
 
 use ShapeFXRole::*;
@@ -103,6 +104,7 @@ impl FromStr for ShapeFXRole {
             "Shape" => Ok(ShapeFXRole::Shape),
             "Circle" => Ok(ShapeFXRole::Circle),
             "Line" => Ok(ShapeFXRole::Line),
+            "Box" => Ok(ShapeFXRole::Box),
             _ => Err(()),
         }
     }
@@ -172,6 +174,7 @@ impl ShapeFX {
             Shape => "Shape".into(),
             Circle => "Circle".into(),
             Line => "Line".into(),
+            Box => "Box".into(),
         }
     }
 
@@ -210,7 +213,7 @@ impl ShapeFX {
                     category_name: "FX".into(),
                 }]
             }
-            Circle | Line => {
+            Circle | Line | Box => {
                 vec![TheNodeTerminal {
                     name: "in".into(),
                     category_name: "Shape".into(),
@@ -369,7 +372,7 @@ impl ShapeFX {
                     category_name: "Shape".into(),
                 }]
             }
-            Circle | Line => {
+            Circle | Line | Box => {
                 vec![
                     TheNodeTerminal {
                         name: "out".into(),
@@ -1242,11 +1245,6 @@ impl ShapeFX {
                 Some((pos - vertices[0]).magnitude() - radius)
             }
             Line => {
-                // Soft union of two SDFs
-                // fn smooth_union(d1: f32, d2: f32, k: f32) -> f32 {
-                //     let h = (0.5 + 0.5 * (d2 - d1) / k).clamp(0.0, 1.0);
-                //     d1.lerp(d2, h) - k * h * (1.0 - h)
-                // }
                 #[inline(always)]
                 fn sd_segment(p: Vec2<f32>, a: Vec2<f32>, b: Vec2<f32>) -> f32 {
                     let pa = p - a;
@@ -1255,9 +1253,88 @@ impl ShapeFX {
                     (pa - ba * h).magnitude()
                 }
 
+                #[inline(always)]
+                fn sd_segment_asymmetric(
+                    p: Vec2<f32>,
+                    a: Vec2<f32>,
+                    b: Vec2<f32>,
+                    r0: f32,
+                    r1: f32,
+                ) -> f32 {
+                    let pa = p - a;
+                    let ba = b - a;
+                    let ba_dot = ba.dot(ba);
+                    if ba_dot == 0.0 {
+                        return (p - a).magnitude() - r0.max(r1);
+                    }
+
+                    let h = (pa.dot(ba) / ba_dot).clamp(0.0, 1.0);
+                    let interp_radius = r0 * (1.0 - h) + r1 * h;
+                    (pa - ba * h).magnitude() - interp_radius
+                }
+
                 if vertices.len() >= 2 {
                     let radius = self.values.get_float_default("radius", 0.5);
-                    Some(sd_segment(pos, vertices[0], vertices[1]) - radius)
+                    let radius2 = self.values.get_float_default("radius2", 0.0);
+                    if radius2 == 0.0 {
+                        Some(sd_segment(pos, vertices[0], vertices[1]) - radius)
+                    } else {
+                        Some(sd_segment_asymmetric(
+                            pos,
+                            vertices[0],
+                            vertices[1],
+                            radius,
+                            radius2,
+                        ))
+                    }
+                } else {
+                    None
+                }
+            }
+            Box => {
+                /// Signed distance to an oriented box defined by line segment `a` to `b` and thickness `th`.
+                pub fn sd_oriented_box(
+                    p: Vec2<f32>,
+                    a: Vec2<f32>,
+                    b: Vec2<f32>,
+                    th: f32,
+                    rounding: f32,
+                ) -> f32 {
+                    let ba = b - a;
+                    let l = ba.magnitude();
+                    if l == 0.0 {
+                        return f32::MAX;
+                    }
+
+                    let d = ba / l;
+                    let center = (a + b) * 0.5;
+                    let mut q = p - center;
+
+                    // Rotate into box frame
+                    let rotated_x = d.x * q.x + d.y * q.y;
+                    let rotated_y = -d.y * q.x + d.x * q.y;
+                    q = Vec2::new(rotated_x.abs(), rotated_y.abs());
+
+                    let half_size = Vec2::new(l * 0.5, th * 0.5);
+                    let q_minus = q - half_size + Vec2::broadcast(rounding);
+
+                    let max_q = Vec2::new(q_minus.x.max(0.0), q_minus.y.max(0.0));
+                    let outside_dist = max_q.magnitude();
+                    let inside_dist = q_minus.x.max(q_minus.y).min(0.0);
+
+                    outside_dist + inside_dist - rounding
+                }
+
+                if vertices.len() >= 2 {
+                    let thickness = self.values.get_float_default("thickness", 0.5);
+                    let rounding = self.values.get_float_default("rounding", 0.0);
+                    Some(sd_oriented_box(
+                        pos,
+                        vertices[0],
+                        vertices[1],
+                        thickness,
+                        rounding,
+                    ))
                 } else {
                     None
                 }
@@ -2053,6 +2130,49 @@ impl ShapeFX {
                     "The radius of the shape.".into(),
                     self.values.get_float_default("radius", 0.5),
                     0.001..=3.0,
+                ));
+
+                if let ShapeFXRole::Line = self.role {
+                    params.push(ShapeFXParam::Float(
+                        "radius2".into(),
+                        "End Radius".into(),
+                        "The radius at the end of the line segment. If set to 0, the same radius is used at both ends.".into(),
+                        self.values.get_float_default("radius2", 0.0),
+                        0.001..=3.0,
+                    ));
+                }
+
+                params.push(ShapeFXParam::Float(
+                    "blend_k".into(),
+                    "Smooth Blend".into(),
+                    "Blending smoothness for combining this shape with others. 0 = hard edge, higher = smoother union."
+                        .into(),
+                    self.values.get_float_default("blend_k", 0.0),
+                    0.0..=1.0,
+                ));
+            }
+            ShapeFXRole::Box => {
+                params.push(ShapeFXParam::Float(
+                    "thickness".into(),
+                    "Thickness".into(),
+                    "The thickness of the box.".into(),
+                    self.values.get_float_default("thickness", 0.5),
+                    0.001..=10.0,
+                ));
+                params.push(ShapeFXParam::Float(
+                    "rounding".into(),
+                    "Rounding".into(),
+                    "The rounding of the box.".into(),
+                    self.values.get_float_default("rounding", 0.0),
+                    0.001..=3.0,
+                ));
+                params.push(ShapeFXParam::Float(
+                    "blend_k".into(),
+                    "Smooth Blend".into(),
+                    "Blending smoothness for combining this shape with others. 0 = hard edge, higher = smoother union."
+                        .into(),
+                    self.values.get_float_default("blend_k", 0.0),
+                    0.0..=1.0,
                 ));
             }
             _ => {}
