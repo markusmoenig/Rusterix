@@ -12,6 +12,8 @@ use MapToolType::*;
 
 pub struct D2PreviewBuilder {
     selection_color: Pixel,
+    unselected_with_same_geometry: Pixel,
+
     map_tool_type: MapToolType,
     /// Hover geometry info
     pub hover: (Option<u32>, Option<u32>, Option<u32>),
@@ -47,6 +49,8 @@ impl D2PreviewBuilder {
     pub fn new() -> Self {
         Self {
             selection_color: [187, 122, 208, 255],
+            unselected_with_same_geometry: [122, 208, 187, 255],
+
             map_tool_type: Linedef,
 
             hover: (None, None, None),
@@ -622,6 +626,22 @@ impl D2PreviewBuilder {
         {
             let mut selected_lines = vec![];
             let mut non_selected_lines = vec![];
+            let mut non_selected_lines_with_selected_graph = vec![];
+
+            // Find the selected graph
+            let mut selected_graph: Option<Uuid> = None;
+            if self.clip_rect.is_some() {
+                for linedef in &map.linedefs {
+                    if map.selected_linedefs.contains(&linedef.id) {
+                        if let Some(Value::Source(PixelSource::ShapeFXGraphId(id))) =
+                            linedef.properties.get("shape_graph")
+                        {
+                            selected_graph = Some(*id);
+                            break;
+                        }
+                    }
+                }
+            }
 
             for linedef in &map.linedefs {
                 let mut draw = true;
@@ -706,7 +726,19 @@ impl D2PreviewBuilder {
                             if selected {
                                 selected_lines.push((start_pos, end_pos));
                             } else {
-                                non_selected_lines.push((start_pos, end_pos));
+                                let mut added_it = false;
+                                if let Some(Value::Source(PixelSource::ShapeFXGraphId(id))) =
+                                    linedef.properties.get("shape_graph")
+                                {
+                                    if selected_graph == Some(*id) {
+                                        non_selected_lines_with_selected_graph
+                                            .push((start_pos, end_pos));
+                                        added_it = true;
+                                    }
+                                }
+                                if !added_it {
+                                    non_selected_lines.push((start_pos, end_pos));
+                                }
                             }
                         }
                     }
@@ -721,6 +753,16 @@ impl D2PreviewBuilder {
                 batch.add_line(start_pos, end_pos, 0.05);
             }
             scene.d2_dynamic.push(batch);
+
+            if !non_selected_lines_with_selected_graph.is_empty() {
+                let mut batch = Batch2D::empty()
+                    .source(PixelSource::Pixel(self.unselected_with_same_geometry))
+                    .mode(crate::PrimitiveMode::Lines);
+                for (start_pos, end_pos) in non_selected_lines_with_selected_graph {
+                    batch.add_line(start_pos, end_pos, 0.05);
+                }
+                scene.d2_dynamic.push(batch);
+            }
 
             // Draw selected lines last
             let mut batch = Batch2D::empty()

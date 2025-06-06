@@ -79,7 +79,7 @@ pub struct Map {
     pub sectors: Vec<Sector>,
 
     #[serde(default)]
-    pub shapefx_graphs: FxHashMap<Uuid, ShapeFXGraph>,
+    pub shapefx_graphs: IndexMap<Uuid, ShapeFXGraph>,
 
     pub sky_texture: Option<Uuid>,
 
@@ -156,7 +156,7 @@ impl Map {
             linedefs: vec![],
             sectors: vec![],
 
-            shapefx_graphs: FxHashMap::default(),
+            shapefx_graphs: IndexMap::default(),
             sky_texture: None,
 
             camera: MapCamera::TwoD,
