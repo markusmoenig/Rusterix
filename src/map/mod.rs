@@ -1429,3 +1429,26 @@ impl Map {
         result
     }
 }
+
+use std::cmp::PartialEq;
+
+impl PartialEq for Map {
+    fn eq(&self, other: &Self) -> bool {
+        let mut v1 = self.vertices.clone();
+        let mut v2 = other.vertices.clone();
+        v1.sort_by_key(|v| v.id);
+        v2.sort_by_key(|v| v.id);
+
+        let mut l1 = self.linedefs.clone();
+        let mut l2 = other.linedefs.clone();
+        l1.sort_by_key(|l| l.id);
+        l2.sort_by_key(|l| l.id);
+
+        let mut s1 = self.sectors.clone();
+        let mut s2 = other.sectors.clone();
+        s1.sort_by_key(|s| s.id);
+        s2.sort_by_key(|s| s.id);
+
+        v1 == v2 && l1 == l2 && s1 == s2
+    }
+}
