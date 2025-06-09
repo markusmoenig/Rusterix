@@ -162,6 +162,12 @@ impl RegionInstance {
                 vm,
             );
 
+            let _ = scope.globals.set_item(
+                "set_rig_sequence",
+                vm.new_function("set_rig_sequence", set_rig_sequence).into(),
+                vm,
+            );
+
             let _ = scope
                 .globals
                 .set_item("take", vm.new_function("take", take).into(), vm);
@@ -394,6 +400,11 @@ impl RegionInstance {
         // Set an entity id and mark all fields dirty for the first transmission to the server.
         for e in MAP.borrow_mut().entities.iter_mut() {
             e.id = *ID_GEN.borrow();
+            // By default we set the sequence to idle.
+            e.attributes.set(
+                "source",
+                Value::Source(PixelSource::Sequence("idle".into())),
+            );
             *ID_GEN.borrow_mut() += 1;
             e.mark_all_dirty();
         }
@@ -1465,6 +1476,22 @@ fn set_tile(id: String) {
             }
         }
     }
+}
+
+/// Set rigging sequence
+pub fn set_rig_sequence(
+    args: rustpython_vm::function::FuncArgs,
+    vm: &VirtualMachine,
+) -> PyResult<()> {
+    let mut sequence = vec![];
+
+    for arg in args.args.iter() {
+        if let Some(Value::Str(v)) = Value::from_pyobject(arg.clone(), vm) {
+            sequence.push(v);
+        }
+    }
+
+    Ok(())
 }
 
 /// Take the given item.

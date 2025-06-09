@@ -125,6 +125,7 @@ pub use crate::{
         shapecontext::ShapeContext,
         shapefx::{ShapeFX, ShapeFXModifierPass, ShapeFXParam, ShapeFXRole},
         shapefxgraph::ShapeFXGraph,
+        tilebuilder::tile_builder,
     },
     terrain::{
         Terrain, TerrainHit,

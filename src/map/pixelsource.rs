@@ -25,6 +25,8 @@ pub enum PixelSource {
     Off,
     TileId(Uuid),
     MaterialId(Uuid),
+    Sequence(String),
+    EntityTile(u32, u32),
     Color(TheColor),
     ShapeFXGraphId(Uuid),
     StaticTileIndex(u16),
@@ -122,6 +124,22 @@ impl PixelSource {
             TileId(id) | MaterialId(id) => {
                 if let Some(index) = assets.tile_indices.get(id) {
                     assets.tile_list.get(*index as usize).cloned()
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        }
+    }
+
+    /// Generate a tile from the entities sequence
+    pub fn entity_tile_id(&self, id: u32, assets: &Assets) -> Option<PixelSource> {
+        match self {
+            Sequence(name) => {
+                if let Some(sequences) = assets.entity_tiles.get(&id) {
+                    sequences
+                        .get_index_of(name)
+                        .map(|index| PixelSource::EntityTile(id, index as u32))
                 } else {
                     None
                 }

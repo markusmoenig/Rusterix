@@ -3,6 +3,7 @@ pub mod shape;
 pub mod shapecontext;
 pub mod shapefx;
 pub mod shapefxgraph;
+pub mod tilebuilder;
 
 use crate::{Assets, Map, PixelSource, ShapeContext, Texture, Value};
 use rayon::prelude::*;

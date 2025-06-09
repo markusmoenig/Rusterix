@@ -23,7 +23,7 @@ pub struct Entity {
     /// The vertical camera tilt, 0.0 means flat, no tilt.
     pub tilt: f32,
 
-    /// The current action
+    /// The current action, server side.
     #[serde(skip)]
     pub action: EntityAction,
 
@@ -55,7 +55,7 @@ pub struct Entity {
     pub inventory_updates: FxHashMap<u32, ItemUpdate>,
 
     /// Equipped items: Slot to item ID mapping
-    pub equipped: FxHashMap<String, u32>, // "main_hand" -> Item ID
+    pub equipped: FxHashMap<String, u32>,
 
     /// Wallet
     pub wallet: Wallet,

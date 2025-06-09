@@ -1,4 +1,5 @@
 use crate::prelude::*;
+use indexmap::IndexMap;
 use std::path::Path;
 use theframework::prelude::*;
 
@@ -18,6 +19,18 @@ pub struct Assets {
     pub tile_indices: FxHashMap<Uuid, u16>,
 
     pub screens: FxHashMap<String, Map>,
+
+    /// Maps which build character tiles.
+    pub character_maps: FxHashMap<String, Map>,
+
+    /// The rendered tiles for a given entity.
+    pub entity_tiles: FxHashMap<u32, IndexMap<String, Tile>>,
+
+    /// Maps which build item tiles.
+    pub item_maps: FxHashMap<String, Map>,
+
+    /// The rendered tiles for a given item.
+    pub item_tiles: FxHashMap<u32, FxHashMap<String, Tile>>,
 
     pub config: String,
     pub atlas: Texture,
@@ -45,6 +58,10 @@ impl Assets {
             tile_indices: FxHashMap::default(),
             materials: FxHashMap::default(),
             screens: FxHashMap::default(),
+            character_maps: FxHashMap::default(),
+            entity_tiles: FxHashMap::default(),
+            item_maps: FxHashMap::default(),
+            item_tiles: FxHashMap::default(),
             config: String::new(),
             atlas: Texture::default(),
             fonts: FxHashMap::default(),
