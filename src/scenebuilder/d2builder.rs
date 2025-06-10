@@ -278,6 +278,15 @@ impl D2Builder {
                         }
                     }
                 }
+            } else if let Some(Value::Source(source)) = entity.attributes.get("_source_seq") {
+                if entity.attributes.get_bool_default("visible", false) {
+                    if let Some(entity_tile) = source.entity_tile_id(entity.id, assets) {
+                        let batch =
+                            Batch2D::from_rectangle(pos.x - hsize, pos.y - hsize, size, size)
+                                .source(entity_tile);
+                        scene.d2_dynamic.push(batch);
+                    }
+                }
             }
         }
 

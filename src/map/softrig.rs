@@ -1,5 +1,6 @@
 use crate::{Map, ValueContainer};
 use serde::{Deserialize, Serialize};
+use theframework::prelude::{FxHashMap, FxHashSet};
 use uuid::Uuid;
 use vek::Vec2;
 
@@ -98,38 +99,37 @@ impl SoftRigAnimator {
         Some(Self::blend_softrigs(rig_a, rig_b, frac, map))
     }
 
-    fn blend_softrigs(a: &SoftRig, b: &SoftRig, t: f32, map: &Map) -> SoftRig {
-        let key_a = a.keyforms.first();
-        let key_b = b.keyforms.first();
+    pub fn blend_softrigs(a: &SoftRig, b: &SoftRig, t: f32, map: &Map) -> SoftRig {
+        let positions_a: FxHashMap<u32, Vec2<f32>> = a
+            .keyforms
+            .iter()
+            .flat_map(|k| k.vertex_positions.iter().copied())
+            .collect();
+
+        let positions_b: FxHashMap<u32, Vec2<f32>> = b
+            .keyforms
+            .iter()
+            .flat_map(|k| k.vertex_positions.iter().copied())
+            .collect();
+
+        let all_ids: FxHashSet<u32> = positions_a
+            .keys()
+            .chain(positions_b.keys())
+            .copied()
+            .collect();
 
         let mut blended_keyform = Keyform {
             vertex_positions: Vec::new(),
         };
 
-        // Collect all unique vertex IDs
-        let mut ids = std::collections::HashSet::new();
-        if let Some(k) = key_a {
-            for (id, _) in &k.vertex_positions {
-                ids.insert(*id);
-            }
-        }
-        if let Some(k) = key_b {
-            for (id, _) in &k.vertex_positions {
-                ids.insert(*id);
-            }
-        }
-
-        for id in ids {
-            // Try rig A
-            let pa = key_a
-                .and_then(|k| k.vertex_positions.iter().find(|(i, _)| *i == id))
-                .map(|(_, p)| *p)
+        for id in all_ids {
+            let pa = positions_a
+                .get(&id)
+                .copied()
                 .or_else(|| map.find_vertex(id).map(|v| Vec2::new(v.x, v.y)));
-
-            // Try rig B
-            let pb = key_b
-                .and_then(|k| k.vertex_positions.iter().find(|(i, _)| *i == id))
-                .map(|(_, p)| *p)
+            let pb = positions_b
+                .get(&id)
+                .copied()
                 .or_else(|| map.find_vertex(id).map(|v| Vec2::new(v.x, v.y)));
 
             let blended = match (pa, pb) {

@@ -205,7 +205,7 @@ impl Sector {
         let mut polygon = Vec::new();
         for &linedef_id in &self.linedefs {
             if let Some(linedef) = map.find_linedef(linedef_id) {
-                if let Some(start_vertex) = map.find_vertex(linedef.start_vertex) {
+                if let Some(start_vertex) = map.get_vertex(linedef.start_vertex) {
                     polygon.push(Vec2::new(start_vertex.x, start_vertex.y));
                 }
             }

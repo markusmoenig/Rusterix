@@ -402,7 +402,7 @@ impl RegionInstance {
             e.id = *ID_GEN.borrow();
             // By default we set the sequence to idle.
             e.attributes.set(
-                "source",
+                "_source_seq",
                 Value::Source(PixelSource::Sequence("idle".into())),
             );
             *ID_GEN.borrow_mut() += 1;

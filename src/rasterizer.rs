@@ -908,6 +908,36 @@ impl Rasterizer {
                                                     )
                                                 }
                                                 PixelSource::Pixel(col) => (col, None, false),
+                                                PixelSource::EntityTile(id, index) => {
+                                                    println!("here1");
+
+                                                    if let Some(entity_sequences) =
+                                                        assets.entity_tiles.get(&id)
+                                                    {
+                                                        if let Some(textile) = entity_sequences
+                                                            .get_index(index as usize)
+                                                        {
+                                                            println!("here2");
+
+                                                            let index = scene.animation_frame
+                                                                % textile.1.textures.len();
+                                                            (
+                                                                textile.1.textures[index].sample(
+                                                                    interpolated_u,
+                                                                    interpolated_v,
+                                                                    self.sample_mode,
+                                                                    batch.repeat_mode,
+                                                                ),
+                                                                batch.material.clone(),
+                                                                false,
+                                                            )
+                                                        } else {
+                                                            ([0, 0, 0, 0], None, false)
+                                                        }
+                                                    } else {
+                                                        ([0, 0, 0, 0], None, false)
+                                                    }
+                                                }
                                                 PixelSource::Terrain => {
                                                     if let Some(chunk) = chunk {
                                                         let mut texel = chunk

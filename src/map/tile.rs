@@ -25,6 +25,17 @@ impl Tile {
         }
     }
 
+    /// Create a tile from a vector of textures.
+    pub fn from_textures(textures: Vec<Texture>) -> Self {
+        Self {
+            id: Uuid::new_v4(),
+            textures,
+            blocking: false,
+            scale: 1.0,
+            render_mode: 0,
+        }
+    }
+
     /// Create an empty tile.
     pub fn empty() -> Self {
         Self {

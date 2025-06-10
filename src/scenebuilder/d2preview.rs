@@ -802,12 +802,7 @@ impl D2PreviewBuilder {
 
                 if let Some(Value::Source(source)) = entity.attributes.get("source") {
                     if entity.attributes.get_bool_default("visible", false) {
-                        if let Some(entity_tile) = source.entity_tile_id(entity.id, assets) {
-                            let batch =
-                                Batch2D::from_rectangle(pos.x - hsize, pos.y - hsize, size, size)
-                                    .source(entity_tile);
-                            scene.d2_dynamic.push(batch);
-                        } else if let Some(tile) = source.tile_from_tile_list(assets) {
+                        if let Some(tile) = source.tile_from_tile_list(assets) {
                             if let Some(texture_index) = assets.tile_index(&tile.id) {
                                 let batch = Batch2D::from_rectangle(
                                     pos.x - hsize,
@@ -818,6 +813,15 @@ impl D2PreviewBuilder {
                                 .source(PixelSource::StaticTileIndex(texture_index));
                                 scene.d2_dynamic.push(batch);
                             }
+                        }
+                    }
+                } else if let Some(Value::Source(source)) = entity.attributes.get("_source_seq") {
+                    if entity.attributes.get_bool_default("visible", false) {
+                        if let Some(entity_tile) = source.entity_tile_id(entity.id, assets) {
+                            let batch =
+                                Batch2D::from_rectangle(pos.x - hsize, pos.y - hsize, size, size)
+                                    .source(entity_tile);
+                            scene.d2_dynamic.push(batch);
                         }
                     }
                 } else if Some(entity.creator_id) == map.selected_entity_item {

@@ -476,6 +476,27 @@ impl D3Builder {
                             }
                         }
                     }
+                } else if let Some(Value::Source(source)) = entity.attributes.get("_source_seq") {
+                    if entity.attributes.get_bool_default("visible", false) {
+                        let entity_pos = Vec2::new(entity.position.x, entity.position.z);
+                        let direction_to_camera = (camera_pos - entity_pos).normalized();
+
+                        // Calculate perpendicular vector on the XZ plane
+                        let perpendicular =
+                            Vec2::new(-direction_to_camera.y, direction_to_camera.x);
+                        let start = entity_pos + perpendicular * 0.5;
+                        let end = entity_pos - perpendicular * 0.5;
+
+                        if let Some(entity_tile) = source.entity_tile_id(entity.id, assets) {
+                            println!("{:?}, {}, {}", entity_tile, start, end);
+                            let mut batch = Batch3D::empty()
+                                .repeat_mode(crate::RepeatMode::RepeatXY)
+                                .source(entity_tile);
+
+                            add_billboard(&start, &end, 2.0, &mut batch);
+                            batches.push(batch);
+                        }
+                    }
                 }
             }
         }
