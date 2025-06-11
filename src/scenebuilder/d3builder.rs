@@ -446,7 +446,7 @@ impl D3Builder {
                 }
 
                 // Find light on entity items
-                for item in entity.iter_inventory() {
+                for (_, item) in entity.iter_inventory() {
                     if let Some(Value::Light(light)) = item.attributes.get("light") {
                         let mut light = light.clone();
                         light.set_position(entity.position);

@@ -1,6 +1,5 @@
 use indexmap::IndexMap;
 use rand::Rng;
-use std::collections::VecDeque;
 use theframework::prelude::*;
 use vek::{Vec2, Vec3};
 
@@ -45,14 +44,15 @@ pub struct Entity {
     pub dirty_attributes: FxHashSet<String>,
 
     /// Inventory: A container for the entity's items
-    pub inventory: IndexMap<u32, Item>,
+    #[serde(skip_deserializing)]
+    pub inventory: Vec<Option<Item>>,
 
     /// Track added items
-    pub inventory_additions: FxHashMap<u32, Item>,
+    pub inventory_additions: FxHashMap<usize, Item>,
     /// Track removed items
-    pub inventory_removals: FxHashSet<u32>,
+    pub inventory_removals: FxHashSet<usize>,
     /// Track updated items
-    pub inventory_updates: FxHashMap<u32, ItemUpdate>,
+    pub inventory_updates: FxHashMap<usize, ItemUpdate>,
 
     /// Equipped items
     pub equipped: IndexMap<String, Item>,
@@ -84,7 +84,7 @@ impl Entity {
             dirty_flags: 0,
             dirty_attributes: FxHashSet::default(),
 
-            inventory: IndexMap::default(),
+            inventory: vec![],
             inventory_additions: FxHashMap::default(),
             inventory_removals: FxHashSet::default(),
             inventory_updates: FxHashMap::default(),
@@ -209,46 +209,94 @@ impl Entity {
     }
 
     /// Add an item to the entity's inventory and track additions
-    pub fn add_item(&mut self, item: Item) {
-        self.inventory.insert(item.id, item.clone());
-        self.inventory_removals.remove(&item.id); // If it was previously removed, undo that
-        self.inventory_additions.insert(item.id, item);
-        self.mark_dirty_field(0b1000);
+    pub fn add_item(&mut self, item: Item) -> Result<usize, String> {
+        if let Some(slot) = self.inventory.iter_mut().position(|i| i.is_none()) {
+            self.inventory[slot] = Some(item.clone());
+            self.inventory_additions.insert(slot, item);
+            self.inventory_removals.remove(&slot);
+            self.mark_dirty_field(0b1000);
+            Ok(slot)
+        } else {
+            Err("Inventory full".into())
+        }
+    }
+
+    /// Remove an item from the given slot.
+    pub fn remove_item_from_slot(&mut self, slot: usize) -> Option<Item> {
+        if slot < self.inventory.len() {
+            if let Some(item) = self.inventory[slot].take() {
+                self.inventory_removals.insert(slot);
+                self.inventory_additions.remove(&slot);
+                self.mark_dirty_field(0b1000);
+                return Some(item);
+            }
+        }
+        None
     }
 
     /// Remove an item from the entity's inventory and track removals
-    pub fn remove_item(&mut self, item_id: u32) -> Option<Item> {
-        if let Some(item) = self.inventory.shift_remove(&item_id) {
-            self.inventory_removals.insert(item_id);
-            self.inventory_additions.remove(&item_id); // If it was previously added, undo that
-            self.mark_dirty_field(0b1000);
+    pub fn remove_item(&mut self, id: u32) -> Option<Item> {
+        for (slot, opt_item) in self.inventory.iter_mut().enumerate() {
+            if let Some(item) = opt_item {
+                if item.id == id {
+                    return self.remove_item_from_slot(slot);
+                }
+            }
+        }
+        None
+    }
+
+    /// Get a reference to an item in a given slot.
+    pub fn get_item_in_slot(&self, slot: usize) -> Option<&Item> {
+        self.inventory.get(slot)?.as_ref()
+    }
+
+    /// Get a mutable reference to an item in a given slot.
+    pub fn get_item_in_slot_mut(&mut self, slot: usize) -> Option<&mut Item> {
+        if let Some(Some(item)) = self.inventory.get_mut(slot) {
+            self.inventory_updates.insert(slot, item.get_update());
             Some(item)
         } else {
             None
         }
     }
 
-    /// Get a reference to an item by ID
+    /// Get a reference to an item by its ID
     pub fn get_item(&self, item_id: u32) -> Option<&Item> {
-        self.inventory.get(&item_id)
+        self.inventory
+            .iter()
+            .filter_map(|opt_item| opt_item.as_ref())
+            .find(|item| item.id == item_id)
     }
 
-    /// Get a mutable reference to an item by ID
+    /// Get a mutable reference to an item by its ID
     pub fn get_item_mut(&mut self, item_id: u32) -> Option<&mut Item> {
-        if let Some(item) = self.inventory.get_mut(&item_id) {
-            // Mark the item as updated
-            self.inventory_updates.insert(item_id, item.get_update());
-            Some(item)
-        } else {
-            None
+        for (slot, opt_item) in self.inventory.iter_mut().enumerate() {
+            if let Some(item) = opt_item {
+                if item.id == item_id {
+                    self.inventory_updates.insert(slot, item.get_update());
+                    return Some(item);
+                }
+            }
         }
+        None
+    }
+
+    /// Get the slot index of an item by its ID
+    pub fn get_item_slot(&self, item_id: u32) -> Option<usize> {
+        self.inventory.iter().position(|opt_item| {
+            opt_item
+                .as_ref()
+                .map(|item| item.id == item_id)
+                .unwrap_or(false)
+        })
     }
 
     /// Equip an item into a specific slot
     pub fn equip_item(&mut self, item_id: u32, slot: &str) -> Result<(), String> {
         if let Some(item) = self.remove_item(item_id) {
             if let Some(old_item) = self.equipped.shift_remove(slot) {
-                self.add_item(old_item);
+                _ = self.add_item(old_item);
             }
             self.equipped.insert(slot.to_string(), item);
             self.dirty_flags |= 0b10000;
@@ -457,25 +505,29 @@ impl Entity {
             self.mark_dirty_attribute(&key);
         }
 
-        // Apply inventory additions
         if let Some(inventory_additions) = update.inventory_additions {
-            for (item_id, item) in inventory_additions {
-                self.inventory.insert(item_id, item);
+            let required_len = inventory_additions.keys().copied().max().unwrap_or(0) + 1;
+            if self.inventory.len() < required_len {
+                self.inventory.resize(required_len, None);
+            }
+
+            for (slot, item) in inventory_additions {
+                self.inventory[slot] = Some(item);
             }
         }
 
-        // Apply inventory removals
         if let Some(inventory_removals) = update.inventory_removals {
-            for item_id in inventory_removals {
-                self.inventory.shift_remove(&item_id);
+            for slot in inventory_removals {
+                if slot < self.inventory.len() {
+                    self.inventory[slot] = None;
+                }
             }
         }
 
-        // Apply inventory updates
         if let Some(inventory_updates) = update.inventory_updates {
-            for (item_id, item_update) in inventory_updates {
-                if let Some(item) = self.inventory.get_mut(&item_id) {
-                    item.apply_update(item_update);
+            for (slot, update) in inventory_updates {
+                if let Some(Some(item)) = self.inventory.get_mut(slot) {
+                    item.apply_update(update);
                 }
             }
         }
@@ -533,13 +585,24 @@ impl Entity {
     }
 
     /// Create an iterator over the inventory.
-    pub fn iter_inventory(&self) -> InventoryIterator {
-        InventoryIterator::new(self)
+    pub fn iter_inventory(&self) -> impl Iterator<Item = (usize, &Item)> {
+        self.inventory
+            .iter()
+            .enumerate()
+            .filter_map(|(slot, item)| item.as_ref().map(|i| (slot, i)))
     }
 
     /// Create a mutable iterator over the inventory.
-    pub fn iter_inventory_mut(&mut self) -> InventoryIteratorMut {
-        InventoryIteratorMut::new(self)
+    pub fn iter_inventory_mut(&mut self) -> impl Iterator<Item = (usize, &mut Item)> {
+        self.inventory
+            .iter_mut()
+            .enumerate()
+            .filter_map(|(slot, item)| {
+                item.as_mut().map(|i| {
+                    self.inventory_updates.insert(slot, i.get_update());
+                    (slot, i)
+                })
+            })
     }
 }
 
@@ -552,9 +615,9 @@ pub struct EntityUpdate {
     pub orientation: Option<Vec2<f32>>,
     pub tilt: Option<f32>,
     pub attributes: FxHashMap<String, Value>,
-    pub inventory_additions: Option<FxHashMap<u32, Item>>,
-    pub inventory_removals: Option<FxHashSet<u32>>,
-    pub inventory_updates: Option<FxHashMap<u32, ItemUpdate>>,
+    pub inventory_additions: Option<FxHashMap<usize, Item>>,
+    pub inventory_removals: Option<FxHashSet<usize>>,
+    pub inventory_updates: Option<FxHashMap<usize, ItemUpdate>>,
     pub equipped_updates: Option<IndexMap<String, Item>>,
     pub wallet_updates: Option<FxHashMap<String, i64>>,
 }
@@ -580,79 +643,5 @@ impl EntityUpdate {
             equipped_updates: None,
             wallet_updates: None,
         })
-    }
-}
-
-/// Iterator over inventory
-pub struct InventoryIterator<'a> {
-    stack: VecDeque<Box<dyn Iterator<Item = &'a Item> + 'a>>,
-}
-
-impl<'a> InventoryIterator<'a> {
-    pub fn new(entity: &'a Entity) -> Self {
-        let iter: Box<dyn Iterator<Item = &'a Item> + 'a> = Box::new(entity.inventory.values());
-        let mut stack = VecDeque::new();
-        stack.push_back(iter); // Push the boxed iterator
-        InventoryIterator { stack }
-    }
-}
-
-impl<'a> Iterator for InventoryIterator<'a> {
-    type Item = &'a Item;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        while let Some(iter) = self.stack.back_mut() {
-            if let Some(item) = iter.next() {
-                if let Some(container) = &item.container {
-                    let child_iter: Box<dyn Iterator<Item = &'a Item> + 'a> =
-                        Box::new(container.iter());
-                    self.stack.push_back(child_iter);
-                }
-                return Some(item);
-            } else {
-                self.stack.pop_back();
-            }
-        }
-        None
-    }
-}
-
-/// Mut iterator over inventory
-pub struct InventoryIteratorMut<'a> {
-    stack: VecDeque<Box<dyn Iterator<Item = &'a mut Item> + 'a>>,
-}
-
-impl<'a> InventoryIteratorMut<'a> {
-    pub fn new(entity: &'a mut Entity) -> Self {
-        let iter: Box<dyn Iterator<Item = &'a mut Item> + 'a> =
-            Box::new(entity.inventory.values_mut());
-        let mut stack = VecDeque::new();
-        stack.push_back(iter);
-        InventoryIteratorMut { stack }
-    }
-}
-
-impl<'a> Iterator for InventoryIteratorMut<'a> {
-    type Item = &'a mut Item;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        while let Some(iter) = self.stack.back_mut() {
-            if let Some(item) = iter.next() {
-                // Use a raw pointer to bypass the borrow checker
-                let container_ptr = item.container.as_mut().map(|c| c as *mut Vec<Item>);
-
-                if let Some(ptr) = container_ptr {
-                    let container = unsafe { &mut *ptr };
-                    let child_iter: Box<dyn Iterator<Item = &'a mut Item> + 'a> =
-                        Box::new(container.iter_mut());
-                    self.stack.push_back(child_iter);
-                }
-
-                return Some(item);
-            } else {
-                self.stack.pop_back();
-            }
-        }
-        None
     }
 }

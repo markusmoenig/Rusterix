@@ -488,8 +488,33 @@ impl RegionInstance {
                 send_log_message(l);
             }
 
-            // Send "startup" event to all entities.
             let entities = MAP.borrow().entities.clone();
+
+            // Setting the data for the entities.
+            for entity in entities.iter() {
+                if let Some(class_name) = entity.get_attr_string("class_name") {
+                    if let Some(data) = ENTITY_CLASS_DATA.borrow().get(&class_name) {
+                        let mut map = MAP.borrow_mut();
+                        for e in map.entities.iter_mut() {
+                            if e.id == entity.id {
+                                apply_entity_data(e, data);
+
+                                // Fill up the inventory slots
+                                if let Some(Value::Int(inv_slots)) =
+                                    e.attributes.get("inventory_slots")
+                                {
+                                    e.inventory = vec![];
+                                    for _ in 0..*inv_slots {
+                                        e.inventory.push(None);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Send "startup" event to all entities.
             for entity in entities.iter() {
                 if let Some(class_name) = entity.get_attr_string("class_name") {
                     let cmd = format!("{}.event(\"startup\", \"\")", class_name);
@@ -557,6 +582,7 @@ impl RegionInstance {
                         *ERROR_COUNT.borrow_mut() += 1;
                     }
 
+                    /*
                     // Setting the data for the entity.
                     if let Some(class_name) = entity.get_attr_string("class_name") {
                         if let Some(data) = ENTITY_CLASS_DATA.borrow().get(&class_name) {
@@ -564,10 +590,14 @@ impl RegionInstance {
                             for e in map.entities.iter_mut() {
                                 if e.id == entity.id {
                                     apply_entity_data(e, data);
+
+                                    if let Some(inv_slots) = e.attributes.get("inventory_slots") {
+                                        println!("{} {}", class_name, inv_slots);
+                                    }
                                 }
                             }
                         }
-                    }
+                    }*/
                 }
             }
 
@@ -1540,8 +1570,9 @@ fn take(item_id: u32) {
                     currencies.base_currency = "G".to_string();
                     _ = entity.add_base_currency(amount as i64, &currencies);
                 }
-            } else {
-                entity.add_item(item);
+            } else if entity.add_item(item).is_err() {
+                // TODO: Send message.
+                println!("Take: Too many items");
             }
             FROM_SENDER
                 .borrow()
@@ -1741,16 +1772,9 @@ fn inventory_items_of(
 
     let map = MAP.borrow();
     if let Some(entity) = map.entities.iter().find(|entity| entity.id == entity_id) {
-        for (_, item) in entity.inventory.iter() {
-            let mut name = "".to_string();
-            let mut class_name = "".to_string();
-
-            if let Some(n) = item.attributes.get_str("name") {
-                name = n.to_string();
-            }
-            if let Some(cn) = item.attributes.get_str("class_name") {
-                class_name = cn.to_string();
-            }
+        for (_, item) in entity.iter_inventory() {
+            let name = item.attributes.get_str("name").unwrap_or_default();
+            let class_name = item.attributes.get_str("class_name").unwrap_or_default();
 
             if filter.is_empty() || name.contains(&filter) || class_name.contains(&filter) {
                 items.push(item.id);
@@ -1773,19 +1797,12 @@ fn inventory_items(filter: String, vm: &VirtualMachine) -> PyResult<PyObjectRef>
     let mut items = Vec::new();
 
     let map = MAP.borrow();
-
     let entity_id = *CURR_ENTITYID.borrow();
-    if let Some(entity) = map.entities.iter().find(|entity| entity.id == entity_id) {
-        for (_, item) in entity.inventory.iter() {
-            let mut name = "".to_string();
-            let mut class_name = "".to_string();
 
-            if let Some(n) = item.attributes.get_str("name") {
-                name = n.to_string();
-            }
-            if let Some(cn) = item.attributes.get_str("class_name") {
-                class_name = cn.to_string();
-            }
+    if let Some(entity) = map.entities.iter().find(|entity| entity.id == entity_id) {
+        for (_, item) in entity.iter_inventory() {
+            let name = item.attributes.get_str("name").unwrap_or_default();
+            let class_name = item.attributes.get_str("class_name").unwrap_or_default();
 
             if filter.is_empty() || name.contains(&filter) || class_name.contains(&filter) {
                 items.push(item.id);
@@ -1813,26 +1830,25 @@ fn drop_items(filter: String) {
         .iter_mut()
         .find(|entity| entity.id == entity_id)
     {
-        let mut items = Vec::new();
-        for (_, item) in entity.inventory.iter() {
-            let mut name = "".to_string();
-            let mut class_name = "".to_string();
+        // Collect matching slot indices
+        let matching_slots: Vec<usize> = entity
+            .iter_inventory()
+            .filter_map(|(slot, item)| {
+                let name = item.attributes.get_str("name").unwrap_or_default();
+                let class_name = item.attributes.get_str("class_name").unwrap_or_default();
 
-            if let Some(n) = item.attributes.get_str("name") {
-                name = n.to_string();
-            }
-            if let Some(cn) = item.attributes.get_str("class_name") {
-                class_name = cn.to_string();
-            }
+                if filter.is_empty() || name.contains(&filter) || class_name.contains(&filter) {
+                    Some(slot)
+                } else {
+                    None
+                }
+            })
+            .collect();
 
-            if filter.is_empty() || name.contains(&filter) || class_name.contains(&filter) {
-                items.push(item.id);
-            }
-        }
-
+        // Remove matching items from slots
         let mut removed_items = Vec::new();
-        for item_id in items {
-            if let Some(mut item) = entity.inventory.shift_remove(&item_id) {
+        for slot in matching_slots {
+            if let Some(mut item) = entity.remove_item_from_slot(slot) {
                 item.position = entity.position;
                 item.mark_all_dirty();
                 removed_items.push(item);
@@ -1952,7 +1968,7 @@ fn entities_in_radius(vm: &VirtualMachine) -> PyResult<PyObjectRef> {
 
 /// Add an item to the characters inventory
 fn add_item(class_name: String) -> i32 {
-    if let Some(item) = create_item(class_name) {
+    if let Some(item) = create_item(class_name.clone()) {
         let id = *CURR_ENTITYID.borrow();
         if let Some(entity) = MAP
             .borrow_mut()
@@ -1961,8 +1977,12 @@ fn add_item(class_name: String) -> i32 {
             .find(|entity| entity.id == id)
         {
             let item_id = item.id;
-            entity.add_item(item);
-            item_id as i32
+            if entity.add_item(item).is_ok() {
+                item_id as i32
+            } else {
+                println!("add_item ({}): Inventory is full", class_name);
+                -1
+            }
         } else {
             -1
         }
@@ -2324,6 +2344,24 @@ pub fn create_entity_instance(mut entity: Entity) {
 
     // Send "startup" event
     if let Some(class_name) = entity.get_attr_string("class_name") {
+        // Setting the data for the entity
+        if let Some(data) = ENTITY_CLASS_DATA.borrow().get(&class_name) {
+            let mut map = MAP.borrow_mut();
+            for e in map.entities.iter_mut() {
+                if e.id == entity.id {
+                    apply_entity_data(e, data);
+
+                    // Fill up the inventory slots
+                    if let Some(Value::Int(inv_slots)) = e.attributes.get("inventory_slots") {
+                        e.inventory = vec![];
+                        for _ in 0..*inv_slots {
+                            e.inventory.push(None);
+                        }
+                    }
+                }
+            }
+        }
+
         *CURR_ENTITYID.borrow_mut() = entity.id;
 
         // Register player
@@ -2371,18 +2409,6 @@ pub fn create_entity_instance(mut entity: Entity) {
                 err,
             ));
             *ERROR_COUNT.borrow_mut() += 1;
-        }
-
-        // Setting the data for the entity.
-        if let Some(class_name) = entity.get_attr_string("class_name") {
-            if let Some(data) = ENTITY_CLASS_DATA.borrow().get(&class_name) {
-                let mut map = MAP.borrow_mut();
-                for e in map.entities.iter_mut() {
-                    if e.id == entity.id {
-                        apply_entity_data(e, data);
-                    }
-                }
-            }
         }
     }
 
