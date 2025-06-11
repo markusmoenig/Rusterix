@@ -51,7 +51,13 @@ pub fn apply_item_data(item: &mut Item, toml: &str) {
                 if attr == "attributes" {
                     if let Some(values) = v.as_table() {
                         for (key, value) in values {
-                            if let Some(value) = value.as_float() {
+                            if let Some(value) = value.as_array() {
+                                let mut values = vec![];
+                                for v in value {
+                                    values.push(v.to_string());
+                                }
+                                item.set_attribute(key, crate::Value::StrArray(values));
+                            } else if let Some(value) = value.as_float() {
                                 item.set_attribute(key, crate::Value::Float(value as f32));
                             } else if let Some(value) = value.as_integer() {
                                 item.set_attribute(key, crate::Value::Int(value as i32));
@@ -63,6 +69,12 @@ pub fn apply_item_data(item: &mut Item, toml: &str) {
                                             Value::Source(PixelSource::TileId(uuid)),
                                         );
                                     }
+                                } else if key == "color" {
+                                    let color = hex_to_rgb_f32(value);
+                                    item.set_attribute(
+                                        "color",
+                                        Value::Color(TheColor::from(color)),
+                                    );
                                 } else {
                                     item.set_attribute(key, crate::Value::Str(value.to_string()));
                                 }

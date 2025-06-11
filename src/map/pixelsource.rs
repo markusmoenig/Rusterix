@@ -27,6 +27,7 @@ pub enum PixelSource {
     MaterialId(Uuid),
     Sequence(String),
     EntityTile(u32, u32),
+    ItemTile(u32, u32),
     Color(TheColor),
     ShapeFXGraphId(Uuid),
     StaticTileIndex(u16),
@@ -140,6 +141,22 @@ impl PixelSource {
                     sequences
                         .get_index_of(name)
                         .map(|index| PixelSource::EntityTile(id, index as u32))
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        }
+    }
+
+    /// Generate a tile from the items sequence
+    pub fn item_tile_id(&self, id: u32, assets: &Assets) -> Option<PixelSource> {
+        match self {
+            Sequence(name) => {
+                if let Some(sequences) = assets.item_tiles.get(&id) {
+                    sequences
+                        .get_index_of(name)
+                        .map(|index| PixelSource::ItemTile(id, index as u32))
                 } else {
                     None
                 }

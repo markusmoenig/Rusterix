@@ -172,6 +172,10 @@ impl RegionInstance {
                 .globals
                 .set_item("take", vm.new_function("take", take).into(), vm);
 
+            let _ = scope
+                .globals
+                .set_item("equip", vm.new_function("equip", equip).into(), vm);
+
             let _ = scope.globals.set_item(
                 "get_entity_attr",
                 vm.new_function("get_entity_attr", get_entity_attr).into(),
@@ -401,7 +405,7 @@ impl RegionInstance {
         for e in MAP.borrow_mut().entities.iter_mut() {
             e.id = *ID_GEN.borrow();
             // By default we set the sequence to idle.
-            e.attributes.set(
+            e.set_attribute(
                 "_source_seq",
                 Value::Source(PixelSource::Sequence("idle".into())),
             );
@@ -412,6 +416,11 @@ impl RegionInstance {
         // Set an item id and mark all fields dirty for the first transmission to the server.
         for i in MAP.borrow_mut().items.iter_mut() {
             i.id = *ID_GEN.borrow();
+            // By default we set the sequence to idle.
+            i.attributes.set(
+                "_source_seq",
+                Value::Source(PixelSource::Sequence("_".into())),
+            );
             *ID_GEN.borrow_mut() += 1;
             i.mark_all_dirty();
         }
@@ -1383,7 +1392,6 @@ fn register_player() {
         .iter_mut()
         .find(|entity| entity.id == entity_id)
     {
-        entity.set_attribute("is_player", Value::Bool(true));
         entity.set_attribute("player_camera", Value::PlayerCamera(PlayerCamera::D2));
     }
 
@@ -1943,7 +1951,7 @@ fn entities_in_radius(vm: &VirtualMachine) -> PyResult<PyObjectRef> {
 }
 
 /// Add an item to the characters inventory
-fn add_item(class_name: String) {
+fn add_item(class_name: String) -> i32 {
     if let Some(item) = create_item(class_name) {
         let id = *CURR_ENTITYID.borrow();
         if let Some(entity) = MAP
@@ -1952,7 +1960,37 @@ fn add_item(class_name: String) {
             .iter_mut()
             .find(|entity| entity.id == id)
         {
+            let item_id = item.id;
             entity.add_item(item);
+            item_id as i32
+        } else {
+            -1
+        }
+    } else {
+        -1
+    }
+}
+
+/// Equip the item with the given item id.
+fn equip(item_id: u32) {
+    let id = *CURR_ENTITYID.borrow();
+    if let Some(entity) = MAP
+        .borrow_mut()
+        .entities
+        .iter_mut()
+        .find(|entity| entity.id == id)
+    {
+        let mut slot: Option<String> = None;
+        if let Some(item) = entity.get_item(item_id) {
+            if let Some(sl) = item.attributes.get_str("slot") {
+                slot = Some(sl.to_string());
+            }
+        }
+
+        if let Some(slot) = slot {
+            if entity.equip_item(item_id, &slot).is_err() {
+                println!("Equipped failure");
+            }
         }
     }
 }
@@ -2275,7 +2313,10 @@ fn create_item(class_name: String) -> Option<Item> {
 pub fn create_entity_instance(mut entity: Entity) {
     entity.id = *ID_GEN.borrow();
     *ID_GEN.borrow_mut() += 1;
-
+    entity.set_attribute(
+        "_source_seq",
+        Value::Source(PixelSource::Sequence("idle".into())),
+    );
     entity.mark_all_dirty();
     MAP.borrow_mut().entities.push(entity.clone());
 

@@ -54,8 +54,8 @@ pub struct Entity {
     /// Track updated items
     pub inventory_updates: FxHashMap<u32, ItemUpdate>,
 
-    /// Equipped items: Slot to item ID mapping
-    pub equipped: FxHashMap<String, u32>,
+    /// Equipped items
+    pub equipped: IndexMap<String, Item>,
 
     /// Wallet
     pub wallet: Wallet,
@@ -89,7 +89,7 @@ impl Entity {
             inventory_removals: FxHashSet::default(),
             inventory_updates: FxHashMap::default(),
 
-            equipped: FxHashMap::default(),
+            equipped: IndexMap::default(),
 
             wallet: Wallet::default(),
         }
@@ -244,12 +244,14 @@ impl Entity {
         }
     }
 
-    /// Equip an item in a specific slot
+    /// Equip an item into a specific slot
     pub fn equip_item(&mut self, item_id: u32, slot: &str) -> Result<(), String> {
-        // Check if the item exists in the inventory
-        if self.inventory.contains_key(&item_id) {
-            self.equipped.insert(slot.to_string(), item_id);
-            self.dirty_flags |= 0b10000; // Mark equipped slots as dirty
+        if let Some(item) = self.remove_item(item_id) {
+            if let Some(old_item) = self.equipped.shift_remove(slot) {
+                self.add_item(old_item);
+            }
+            self.equipped.insert(slot.to_string(), item);
+            self.dirty_flags |= 0b10000;
             Ok(())
         } else {
             Err("Item not found in inventory.".to_string())
@@ -257,18 +259,23 @@ impl Entity {
     }
 
     /// Unequip an item from a specific slot
-    pub fn unequip_item(&mut self, slot: &str) -> Result<(), String> {
-        if self.equipped.remove(slot).is_some() {
+    pub fn unequip_item(&mut self, slot: &str) -> Result<Item, String> {
+        if let Some(item) = self.equipped.shift_remove(slot) {
             self.dirty_flags |= 0b10000; // Mark equipped slots as dirty
-            Ok(())
+            Ok(item)
         } else {
             Err("No item equipped in the given slot.".to_string())
         }
     }
 
-    /// Get the item ID equipped in a specific slot
-    pub fn get_equipped_item(&self, slot: &str) -> Option<u32> {
-        self.equipped.get(slot).copied()
+    /// Get a reference of an item equipped in a specific slot
+    pub fn get_equipped_item(&self, slot: &str) -> Option<&Item> {
+        self.equipped.get(slot)
+    }
+
+    /// Get the mutable reference of an item equipped in a specific slot
+    pub fn get_equipped_item_mut(&mut self, slot: &str) -> Option<&mut Item> {
+        self.equipped.get_mut(slot)
     }
 
     /// Add the given currency to the wallet.
@@ -327,7 +334,7 @@ impl Entity {
 
     /// Returns true if this entity is a player
     pub fn is_player(&self) -> bool {
-        if let Some(Value::Bool(value)) = self.attributes.get("is_player") {
+        if let Some(Value::Bool(value)) = self.attributes.get("player") {
             *value
         } else {
             false
@@ -548,7 +555,7 @@ pub struct EntityUpdate {
     pub inventory_additions: Option<FxHashMap<u32, Item>>,
     pub inventory_removals: Option<FxHashSet<u32>>,
     pub inventory_updates: Option<FxHashMap<u32, ItemUpdate>>,
-    pub equipped_updates: Option<FxHashMap<String, u32>>,
+    pub equipped_updates: Option<IndexMap<String, Item>>,
     pub wallet_updates: Option<FxHashMap<String, i64>>,
 }
 

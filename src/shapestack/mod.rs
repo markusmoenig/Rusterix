@@ -92,6 +92,9 @@ impl ShapeStack {
                                 let mut best_ctx = None;
                                 let mut min_sdf = f32::MAX;
 
+                                let rounding =
+                                    graph.nodes[0].values.get_float_default("rounding", 0.0);
+
                                 for &offset_i in offsets {
                                     let offset = Vec2::new(
                                         offset_i.x as f32 * area_size.x,
@@ -108,10 +111,7 @@ impl ShapeStack {
                                     if let Some(distance) =
                                         sector.signed_distance(map, shifted_point)
                                     {
-                                        let sdf = distance / px
-                                            - sector
-                                                .properties
-                                                .get_float_default("material_rounding", 0.0);
+                                        let sdf = distance / px - rounding;
 
                                         if sdf < min_sdf {
                                             min_sdf = sdf;
@@ -150,6 +150,9 @@ impl ShapeStack {
                                 linedef.properties.get(linedef_graph_name)
                             {
                                 if let Some(graph) = map.shapefx_graphs.get(graph_id) {
+                                    let line_width_px =
+                                        graph.nodes[0].values.get_float_default("line_width", 1.0);
+
                                     if let Some(start) = map.find_vertex(linedef.start_vertex) {
                                         if let Some(end) = map.find_vertex(linedef.end_vertex) {
                                             let a = start.as_vec2();
@@ -157,9 +160,6 @@ impl ShapeStack {
 
                                             let tile_size = Vec2::new(10.0, 10.0); // or store in graph
                                             let px = tile_size.x / width as f32;
-                                            let line_width_px = linedef
-                                                .properties
-                                                .get_float_default("material_width", 1.0);
 
                                             let ab = b - a;
                                             let ab_len = ab.magnitude();

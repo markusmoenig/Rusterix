@@ -623,6 +623,7 @@ impl D2PreviewBuilder {
             || self.map_tool_type == MapToolType::Sector
             || self.map_tool_type == MapToolType::Effects
             || self.map_tool_type == MapToolType::MiniMap
+            || self.map_tool_type == MapToolType::General
         {
             let mut selected_lines = vec![];
             let mut non_selected_lines = vec![];
@@ -862,6 +863,15 @@ impl D2PreviewBuilder {
                                 .source(PixelSource::StaticTileIndex(texture_index));
                                 scene.d2_dynamic.push(batch);
                             }
+                        }
+                    }
+                } else if let Some(Value::Source(source)) = item.attributes.get("_source_seq") {
+                    if item.attributes.get_bool_default("visible", false) {
+                        if let Some(entity_tile) = source.item_tile_id(item.id, assets) {
+                            let batch =
+                                Batch2D::from_rectangle(pos.x - hsize, pos.y - hsize, size, size)
+                                    .source(entity_tile);
+                            scene.d2_dynamic.push(batch);
                         }
                     }
                 } else if Some(item.creator_id) == map.selected_entity_item {

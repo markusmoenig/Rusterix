@@ -30,7 +30,7 @@ pub struct Assets {
     pub item_maps: FxHashMap<String, Map>,
 
     /// The rendered tiles for a given item.
-    pub item_tiles: FxHashMap<u32, FxHashMap<String, Tile>>,
+    pub item_tiles: FxHashMap<u32, IndexMap<String, Tile>>,
 
     pub config: String,
     pub atlas: Texture,

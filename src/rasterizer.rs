@@ -596,6 +596,28 @@ impl Rasterizer {
                                                     [0, 0, 0, 0]
                                                 }
                                             }
+                                            PixelSource::ItemTile(id, index) => {
+                                                if let Some(item_sequences) =
+                                                    assets.item_tiles.get(&id)
+                                                {
+                                                    if let Some(textile) =
+                                                        item_sequences.get_index(index as usize)
+                                                    {
+                                                        let index = scene.animation_frame
+                                                            % textile.1.textures.len();
+                                                        textile.1.textures[index].sample(
+                                                            u,
+                                                            v,
+                                                            self.sample_mode,
+                                                            batch.repeat_mode,
+                                                        )
+                                                    } else {
+                                                        [0, 0, 0, 0]
+                                                    }
+                                                } else {
+                                                    [0, 0, 0, 0]
+                                                }
+                                            }
                                             PixelSource::Terrain => {
                                                 if let Some(chunk) = chunk {
                                                     chunk.sample_terrain_texture(world, Vec2::one())

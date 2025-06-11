@@ -236,10 +236,10 @@ impl ShapeFX {
                         name: "inside".into(),
                         category_name: "ShapeFX".into(),
                     },
-                    TheNodeTerminal {
-                        name: "outside".into(),
-                        category_name: "ShapeFX".into(),
-                    },
+                    // TheNodeTerminal {
+                    //     name: "outside".into(),
+                    //     category_name: "ShapeFX".into(),
+                    // },
                 ]
             }
             LinedefGeometry => {
@@ -1724,6 +1724,22 @@ impl ShapeFX {
                     self.values.get_int_default("to", 1),
                 ))
             }*/
+            ShapeFXRole::MaterialGeometry => {
+                params.push(ShapeFXParam::Float(
+                    "rounding".into(),
+                    "Rounding".into(),
+                    "Optional rounding of the sector shape.".into(),
+                    self.values.get_float_default("rounding", 0.0),
+                    0.0..=10.0,
+                ));
+                params.push(ShapeFXParam::Float(
+                    "line_width".into(),
+                    "Line Width".into(),
+                    "Width of linedefs.".into(),
+                    self.values.get_float_default("line_width", 1.0),
+                    1.0..=10.0,
+                ));
+            }
             Gradient => {
                 params.push(ShapeFXParam::PaletteIndex(
                     "edge".into(),

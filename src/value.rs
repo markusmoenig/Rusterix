@@ -14,6 +14,7 @@ pub enum Value {
     Vec3([f32; 3]),
     Vec4([f32; 4]),
     Str(String),
+    StrArray(Vec<String>),
     Id(Uuid),
     Source(PixelSource),
     Texture(Texture),
@@ -132,6 +133,7 @@ impl fmt::Display for Value {
             Value::Vec3(val) => write!(f, "[{}, {}, {}]", val[0], val[1], val[2]),
             Value::Vec4(val) => write!(f, "[{}, {}, {}, {}]", val[0], val[1], val[2], val[3]),
             Value::Str(val) => write!(f, "{}", val),
+            Value::StrArray(val) => write!(f, "{:?}", val),
             Value::Id(val) => write!(f, "{}", val),
             Value::Source(val) => write!(f, "{:?}", val),
             Value::Texture(val) => {
@@ -355,6 +357,7 @@ impl ValueContainer {
     fn get_type_order(&self, key: &String) -> usize {
         match self.values.get(key) {
             Some(Value::Str(_)) => 0, // Strings come first
+            Some(Value::StrArray(_)) => 0,
             Some(Value::Bool(_)) => 1,
             Some(Value::Int(_)) => 2,
             Some(Value::Int64(_)) => 2,

@@ -9,6 +9,10 @@ pub fn tile_builder(map: &mut Map, assets: &mut Assets) {
     let size = 64;
 
     for entity in map.entities.iter() {
+        if entity.attributes.contains("source") {
+            continue;
+        }
+
         // Check if we have a sequence to build / check
         if let Some(PixelSource::Sequence(name)) = entity.attributes.get_source("_source_seq") {
             if let Some(entity_tiles) = assets.entity_tiles.get(&entity.id) {
@@ -19,6 +23,15 @@ pub fn tile_builder(map: &mut Map, assets: &mut Assets) {
                         name,
                         entity.attributes.get_str_default("name", "unknown".into())
                     );
+
+                    if let Some(Value::Str(class_name)) = entity.attributes.get("class_name") {
+                        if let Some(character_map) = assets.character_maps.get(class_name) {
+                            let tile = build_tile(character_map, assets, name, size);
+                            if let Some(entity_tiles) = assets.entity_tiles.get_mut(&entity.id) {
+                                entity_tiles.insert(name.clone(), tile);
+                            }
+                        }
+                    }
                 }
             } else {
                 // No sequences for this character at all, build the sequence
@@ -30,17 +43,57 @@ pub fn tile_builder(map: &mut Map, assets: &mut Assets) {
 
                 if let Some(Value::Str(class_name)) = entity.attributes.get("class_name") {
                     if let Some(character_map) = assets.character_maps.get(class_name) {
-                        // let mut texture = Texture::alloc(size as usize, size as usize);
-                        // let mut stack = ShapeStack::new(Vec2::new(-5.0, -5.0), Vec2::new(5.0, 5.0));
-                        // stack.render_geometry(&mut texture, character_map, assets, false);
-
-                        // let tile = Tile::from_texture(texture);
-
                         let tile = build_tile(character_map, assets, name, size);
                         let mut states: IndexMap<String, Tile> = IndexMap::default();
                         states.insert(name.clone(), tile);
 
                         assets.entity_tiles.insert(entity.id, states);
+                    }
+                }
+            }
+        }
+    }
+
+    for item in map.items.iter() {
+        if item.attributes.contains("source") {
+            continue;
+        }
+
+        // Check if we have a sequence to build / check
+        if let Some(PixelSource::Sequence(name)) = item.attributes.get_source("_source_seq") {
+            if let Some(item_tiles) = assets.item_tiles.get(&item.id) {
+                if !item_tiles.contains_key(name) {
+                    // No sequence of this name for the entity, build the sequence
+                    println!(
+                        "No sequences ({}) for {}",
+                        name,
+                        item.attributes.get_str_default("name", "unknown".into())
+                    );
+
+                    if let Some(Value::Str(class_name)) = item.attributes.get("class_name") {
+                        if let Some(item_map) = assets.item_maps.get(class_name) {
+                            let tile = build_tile(item_map, assets, name, size);
+                            if let Some(item_tiles) = assets.entity_tiles.get_mut(&item.id) {
+                                item_tiles.insert(name.clone(), tile);
+                            }
+                        }
+                    }
+                }
+            } else {
+                // No sequences for this character at all, build the sequence
+                println!(
+                    "No sequences at all ({}) for {}",
+                    name,
+                    item.attributes.get_str_default("name", "unknown".into())
+                );
+
+                if let Some(Value::Str(class_name)) = item.attributes.get("class_name") {
+                    if let Some(item_map) = assets.item_maps.get(class_name) {
+                        let tile = build_tile(item_map, assets, name, size);
+                        let mut states: IndexMap<String, Tile> = IndexMap::default();
+                        states.insert(name.clone(), tile);
+
+                        assets.item_tiles.insert(item.id, states);
                     }
                 }
             }
