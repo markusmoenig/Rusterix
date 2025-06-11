@@ -533,6 +533,7 @@ impl ShapeFX {
                                         anti_aliasing: 1.0,
                                         t: None,
                                         line_dir: None,
+                                        override_color: None,
                                     };
 
                                     let mut pixel_color: Option<Vec4<f32>> = None;
@@ -883,6 +884,7 @@ impl ShapeFX {
                             anti_aliasing: 1.0,
                             t: Some(t_px),
                             line_dir: Some(seg.dir),
+                            override_color: None,
                         };
 
                         let mut pixel_color: Option<Vec4<f32>> = None;
@@ -1426,13 +1428,17 @@ impl ShapeFX {
                     from = color.unwrap();
                 }
 
-                let to = assets
-                    .palette
-                    .colors
-                    .get(to_index as usize)
-                    .and_then(|c| c.clone())
-                    .unwrap_or(TheColor::white())
-                    .to_vec4();
+                let to = if let Some(color) = ctx.override_color {
+                    color
+                } else {
+                    assets
+                        .palette
+                        .colors
+                        .get(to_index as usize)
+                        .and_then(|c| c.clone())
+                        .unwrap_or(TheColor::white())
+                        .to_vec4()
+                };
 
                 let thickness = self.values.get_float_default("thickness", 40.0);
                 let offset = self.values.get_float_default("distance_offset", 0.0);

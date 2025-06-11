@@ -356,6 +356,7 @@ impl ShapeFXGraph {
                         anti_aliasing: 1.0,
                         t: None,
                         line_dir: None,
+                        override_color: None,
                     };
 
                     let color = if let Some(col) =

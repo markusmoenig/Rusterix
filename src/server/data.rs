@@ -54,7 +54,7 @@ pub fn apply_item_data(item: &mut Item, toml: &str) {
                             if let Some(value) = value.as_array() {
                                 let mut values = vec![];
                                 for v in value {
-                                    values.push(v.to_string());
+                                    values.push(v.to_string().replace("\"", ""));
                                 }
                                 item.set_attribute(key, crate::Value::StrArray(values));
                             } else if let Some(value) = value.as_float() {

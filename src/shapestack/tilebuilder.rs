@@ -2,7 +2,8 @@ use crate::ShapeStack;
 use crate::prelude::*;
 
 use indexmap::IndexMap;
-use vek::Vec2;
+use theframework::prelude::FxHashMap;
+use vek::{Vec2, Vec4};
 
 /// Builds tiles for entities and items
 pub fn tile_builder(map: &mut Map, assets: &mut Assets) {
@@ -26,7 +27,9 @@ pub fn tile_builder(map: &mut Map, assets: &mut Assets) {
 
                     if let Some(Value::Str(class_name)) = entity.attributes.get("class_name") {
                         if let Some(character_map) = assets.character_maps.get(class_name) {
-                            let tile = build_tile(character_map, assets, name, size);
+                            let sector_overrides = compute_sector_overrides(character_map, entity);
+                            let tile =
+                                build_tile(character_map, assets, name, size, &sector_overrides);
                             if let Some(entity_tiles) = assets.entity_tiles.get_mut(&entity.id) {
                                 entity_tiles.insert(name.clone(), tile);
                             }
@@ -43,7 +46,8 @@ pub fn tile_builder(map: &mut Map, assets: &mut Assets) {
 
                 if let Some(Value::Str(class_name)) = entity.attributes.get("class_name") {
                     if let Some(character_map) = assets.character_maps.get(class_name) {
-                        let tile = build_tile(character_map, assets, name, size);
+                        let sector_overrides = compute_sector_overrides(character_map, entity);
+                        let tile = build_tile(character_map, assets, name, size, &sector_overrides);
                         let mut states: IndexMap<String, Tile> = IndexMap::default();
                         states.insert(name.clone(), tile);
 
@@ -72,7 +76,8 @@ pub fn tile_builder(map: &mut Map, assets: &mut Assets) {
 
                     if let Some(Value::Str(class_name)) = item.attributes.get("class_name") {
                         if let Some(item_map) = assets.item_maps.get(class_name) {
-                            let tile = build_tile(item_map, assets, name, size);
+                            let tile =
+                                build_tile(item_map, assets, name, size, &FxHashMap::default());
                             if let Some(item_tiles) = assets.entity_tiles.get_mut(&item.id) {
                                 item_tiles.insert(name.clone(), tile);
                             }
@@ -89,7 +94,7 @@ pub fn tile_builder(map: &mut Map, assets: &mut Assets) {
 
                 if let Some(Value::Str(class_name)) = item.attributes.get("class_name") {
                     if let Some(item_map) = assets.item_maps.get(class_name) {
-                        let tile = build_tile(item_map, assets, name, size);
+                        let tile = build_tile(item_map, assets, name, size, &FxHashMap::default());
                         let mut states: IndexMap<String, Tile> = IndexMap::default();
                         states.insert(name.clone(), tile);
 
@@ -101,7 +106,13 @@ pub fn tile_builder(map: &mut Map, assets: &mut Assets) {
     }
 }
 
-fn build_tile(map: &Map, assets: &Assets, base_sequence: &str, size: i32) -> Tile {
+fn build_tile(
+    map: &Map,
+    assets: &Assets,
+    base_sequence: &str,
+    size: i32,
+    sector_overrides: &FxHashMap<u32, Vec4<f32>>,
+) -> Tile {
     let mut matched_rigs: Vec<(&SoftRig, usize)> = map
         .softrigs
         .values()
@@ -136,7 +147,7 @@ fn build_tile(map: &Map, assets: &Assets, base_sequence: &str, size: i32) -> Til
             // Nothing matched
             let mut texture = Texture::alloc(size as usize, size as usize);
             let mut stack = ShapeStack::new(Vec2::new(-5.0, -5.0), Vec2::new(5.0, 5.0));
-            stack.render_geometry(&mut texture, map, assets, false);
+            stack.render_geometry(&mut texture, map, assets, false, sector_overrides);
             forward_textures.push(texture);
         }
         1 => {
@@ -148,7 +159,7 @@ fn build_tile(map: &Map, assets: &Assets, base_sequence: &str, size: i32) -> Til
 
             let mut texture = Texture::alloc(size as usize, size as usize);
             let mut stack = ShapeStack::new(Vec2::new(-5.0, -5.0), Vec2::new(5.0, 5.0));
-            stack.render_geometry(&mut texture, &temp_map, assets, false);
+            stack.render_geometry(&mut texture, &temp_map, assets, false, sector_overrides);
             forward_textures.push(texture);
         }
         _ => {
@@ -168,7 +179,7 @@ fn build_tile(map: &Map, assets: &Assets, base_sequence: &str, size: i32) -> Til
 
                     let mut texture = Texture::alloc(size as usize, size as usize);
                     let mut stack = ShapeStack::new(Vec2::new(-5.0, -5.0), Vec2::new(5.0, 5.0));
-                    stack.render_geometry(&mut texture, &temp_map, assets, false);
+                    stack.render_geometry(&mut texture, &temp_map, assets, false, sector_overrides);
                     forward_textures.push(texture);
                 }
             }
@@ -192,4 +203,22 @@ fn build_tile(map: &Map, assets: &Assets, base_sequence: &str, size: i32) -> Til
     };
 
     Tile::from_textures(textures)
+}
+
+fn compute_sector_overrides(map: &Map, entity: &Entity) -> FxHashMap<u32, Vec4<f32>> {
+    let mut sector_overrides: FxHashMap<u32, Vec4<f32>> = FxHashMap::default();
+
+    for (_, item) in entity.equipped.iter() {
+        if let Some(Value::Color(color)) = item.attributes.get("color") {
+            if let Some(Value::StrArray(sectors)) = item.attributes.get("sectors") {
+                for sector in &map.sectors {
+                    if sectors.contains(&sector.name) {
+                        sector_overrides.insert(sector.id, color.to_vec4());
+                    }
+                }
+            }
+        }
+    }
+
+    sector_overrides
 }

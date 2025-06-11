@@ -1,5 +1,6 @@
 use crate::Texture;
 use crate::{Assets, Map, ShapeStack};
+use theframework::thetime::FxHashMap;
 // use theframework::prelude::*;
 use vek::Vec2;
 
@@ -18,7 +19,7 @@ impl D2MaterialBuilder {
 
     pub fn build_texture(&self, map: &Map, assets: &Assets, texture: &mut Texture) {
         let mut stack = ShapeStack::new(Vec2::new(-5.0, -5.0), Vec2::new(5.0, 5.0));
-        stack.render_geometry(texture, map, assets, true);
+        stack.render_geometry(texture, map, assets, true, &FxHashMap::default());
 
         /*
         let mut textures = vec![];

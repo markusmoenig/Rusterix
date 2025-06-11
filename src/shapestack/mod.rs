@@ -8,7 +8,7 @@ pub mod tilebuilder;
 use crate::{Assets, Map, PixelSource, ShapeContext, Texture, Value};
 use rayon::prelude::*;
 use theframework::prelude::*;
-use vek::Vec2;
+use vek::{Vec2, Vec4};
 
 pub struct ShapeStack {
     area_min: Vec2<f32>,
@@ -27,6 +27,7 @@ impl ShapeStack {
         map: &Map,
         assets: &Assets,
         material_mode: bool,
+        sector_overrides: &FxHashMap<u32, Vec4<f32>>,
     ) {
         let width = buffer.width;
         let height = buffer.height;
@@ -128,12 +129,17 @@ impl ShapeStack {
                                                     .get_float_default("material_a_a", 1.0),
                                                 t: None,
                                                 line_dir: None,
+                                                override_color: None,
                                             });
                                         }
                                     }
                                 }
 
-                                if let Some(ctx) = best_ctx {
+                                if let Some(mut ctx) = best_ctx {
+                                    if let Some(color) = sector_overrides.get(&ctx.shape_id) {
+                                        ctx.override_color = Some(*color);
+                                    }
+
                                     if let Some(col) = graph.evaluate_material(&ctx, color, assets)
                                     {
                                         color = Vec4::lerp(color, col, col.w);
@@ -207,6 +213,7 @@ impl ShapeStack {
                                                     .get_float_default("material_a_a", 1.0),
                                                 t: Some(final_t),
                                                 line_dir: Some(final_dir),
+                                                override_color: None,
                                             };
 
                                             if let Some(col) =

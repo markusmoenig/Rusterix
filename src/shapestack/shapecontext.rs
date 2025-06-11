@@ -1,4 +1,4 @@
-use vek::Vec2;
+use vek::{Vec2, Vec4};
 
 #[derive(Clone, Copy, Debug)]
 pub struct ShapeContext {
@@ -29,4 +29,6 @@ pub struct ShapeContext {
     // For linedefs
     pub t: Option<f32>,              // 0..1 along the line
     pub line_dir: Option<Vec2<f32>>, // direction of line (normalized)
+
+    pub override_color: Option<Vec4<f32>>,
 }
