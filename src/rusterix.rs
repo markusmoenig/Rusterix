@@ -217,4 +217,9 @@ impl Rusterix {
     pub fn draw_game(&mut self, map: &Map, messages: Vec<crate::server::Message>) {
         self.client.draw_game(map, &self.assets, messages);
     }
+
+    /// Update the server messages.
+    pub fn update_server(&mut self) {
+        self.server.update(&mut self.assets);
+    }
 }

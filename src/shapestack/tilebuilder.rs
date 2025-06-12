@@ -28,8 +28,14 @@ pub fn tile_builder(map: &mut Map, assets: &mut Assets) {
                     if let Some(Value::Str(class_name)) = entity.attributes.get("class_name") {
                         if let Some(character_map) = assets.character_maps.get(class_name) {
                             let sector_overrides = compute_sector_overrides(character_map, entity);
-                            let tile =
-                                build_tile(character_map, assets, name, size, &sector_overrides);
+                            let tile = build_tile(
+                                character_map,
+                                assets,
+                                name,
+                                size,
+                                &sector_overrides,
+                                Some(entity),
+                            );
                             if let Some(entity_tiles) = assets.entity_tiles.get_mut(&entity.id) {
                                 entity_tiles.insert(name.clone(), tile);
                             }
@@ -47,7 +53,14 @@ pub fn tile_builder(map: &mut Map, assets: &mut Assets) {
                 if let Some(Value::Str(class_name)) = entity.attributes.get("class_name") {
                     if let Some(character_map) = assets.character_maps.get(class_name) {
                         let sector_overrides = compute_sector_overrides(character_map, entity);
-                        let tile = build_tile(character_map, assets, name, size, &sector_overrides);
+                        let tile = build_tile(
+                            character_map,
+                            assets,
+                            name,
+                            size,
+                            &sector_overrides,
+                            Some(entity),
+                        );
                         let mut states: IndexMap<String, Tile> = IndexMap::default();
                         states.insert(name.clone(), tile);
 
@@ -76,8 +89,14 @@ pub fn tile_builder(map: &mut Map, assets: &mut Assets) {
 
                     if let Some(Value::Str(class_name)) = item.attributes.get("class_name") {
                         if let Some(item_map) = assets.item_maps.get(class_name) {
-                            let tile =
-                                build_tile(item_map, assets, name, size, &FxHashMap::default());
+                            let tile = build_tile(
+                                item_map,
+                                assets,
+                                name,
+                                size,
+                                &FxHashMap::default(),
+                                None,
+                            );
                             if let Some(item_tiles) = assets.entity_tiles.get_mut(&item.id) {
                                 item_tiles.insert(name.clone(), tile);
                             }
@@ -94,7 +113,8 @@ pub fn tile_builder(map: &mut Map, assets: &mut Assets) {
 
                 if let Some(Value::Str(class_name)) = item.attributes.get("class_name") {
                     if let Some(item_map) = assets.item_maps.get(class_name) {
-                        let tile = build_tile(item_map, assets, name, size, &FxHashMap::default());
+                        let tile =
+                            build_tile(item_map, assets, name, size, &FxHashMap::default(), None);
                         let mut states: IndexMap<String, Tile> = IndexMap::default();
                         states.insert(name.clone(), tile);
 
@@ -112,6 +132,7 @@ fn build_tile(
     base_sequence: &str,
     size: i32,
     sector_overrides: &FxHashMap<u32, Vec4<f32>>,
+    entity: Option<&Entity>,
 ) -> Tile {
     let mut matched_rigs: Vec<(&SoftRig, usize)> = map
         .softrigs
@@ -140,7 +161,7 @@ fn build_tile(
     // }
 
     let mut forward_textures = Vec::new();
-    let frames_per_transition = 4;
+    let frames_per_transition = 3;
 
     match matched_rigs.len() {
         0 => {
@@ -148,6 +169,13 @@ fn build_tile(
             let mut texture = Texture::alloc(size as usize, size as usize);
             let mut stack = ShapeStack::new(Vec2::new(-5.0, -5.0), Vec2::new(5.0, 5.0));
             stack.render_geometry(&mut texture, map, assets, false, sector_overrides);
+
+            if let Some(entity) = entity {
+                let map = extract_anchored_geometry(entity, map, assets);
+                if !map.vertices.is_empty() {
+                    stack.render_geometry(&mut texture, &map, assets, false, &FxHashMap::default());
+                }
+            }
             forward_textures.push(texture);
         }
         1 => {
@@ -160,15 +188,41 @@ fn build_tile(
             let mut texture = Texture::alloc(size as usize, size as usize);
             let mut stack = ShapeStack::new(Vec2::new(-5.0, -5.0), Vec2::new(5.0, 5.0));
             stack.render_geometry(&mut texture, &temp_map, assets, false, sector_overrides);
+
+            if let Some(entity) = entity {
+                let map = extract_anchored_geometry(entity, &temp_map, assets);
+                if !map.vertices.is_empty() {
+                    stack.render_geometry(&mut texture, &map, assets, false, &FxHashMap::default());
+                }
+            }
             forward_textures.push(texture);
         }
         _ => {
-            // Interpolate between rig pairs
-            for i in 0..(matched_rigs.len() - 1) {
-                let rig_a = matched_rigs[i].0;
-                let rig_b = matched_rigs[i + 1].0;
+            let skip_last_frame_each = true;
+            let skip_last_frame_final = true;
+            let loop_back_to_start = true;
 
-                for f in 0..frames_per_transition {
+            let rig_count = matched_rigs.len();
+            let transition_count = if loop_back_to_start {
+                rig_count
+            } else {
+                rig_count.saturating_sub(1)
+            };
+
+            for i in 0..transition_count {
+                let rig_a = matched_rigs[i].0;
+                let rig_b = matched_rigs[(i + 1) % rig_count].0;
+
+                let is_final = i == transition_count - 1;
+
+                let skip = skip_last_frame_each || (is_final && skip_last_frame_final);
+                let max_f = if skip {
+                    frames_per_transition - 1
+                } else {
+                    frames_per_transition
+                };
+
+                for f in 0..max_f {
                     let t = f as f32 / (frames_per_transition - 1) as f32;
 
                     let blended = SoftRigAnimator::blend_softrigs(rig_a, rig_b, t, map);
@@ -180,31 +234,118 @@ fn build_tile(
                     let mut texture = Texture::alloc(size as usize, size as usize);
                     let mut stack = ShapeStack::new(Vec2::new(-5.0, -5.0), Vec2::new(5.0, 5.0));
                     stack.render_geometry(&mut texture, &temp_map, assets, false, sector_overrides);
+
+                    if let Some(entity) = entity {
+                        let map = extract_anchored_geometry(entity, &temp_map, assets);
+                        if !map.vertices.is_empty() {
+                            stack.render_geometry(
+                                &mut texture,
+                                &map,
+                                assets,
+                                false,
+                                &FxHashMap::default(),
+                            );
+                        }
+                    }
                     forward_textures.push(texture);
                 }
             }
         }
     }
 
-    let ping_pong = true;
-
-    let textures = if ping_pong && forward_textures.len() > 1 {
-        let mut all = forward_textures.clone();
-        // Skip last frame to avoid duplicate
-        let mut reversed: Vec<_> = forward_textures[..forward_textures.len() - 1]
-            .iter()
-            .rev()
-            .cloned()
-            .collect();
-        all.append(&mut reversed);
-        all
-    } else {
-        forward_textures
-    };
-
-    Tile::from_textures(textures)
+    Tile::from_textures(forward_textures)
 }
 
+/// Creates a new map with the extracted and transformed item geometries which are anchored to slots in the character_map.
+fn extract_anchored_geometry(entity: &Entity, character_map: &Map, assets: &Assets) -> Map {
+    let mut new_map = Map::default();
+
+    for (_, item) in entity.equipped.iter() {
+        let Some(Value::Str(slot_name)) = item.attributes.get("slot") else {
+            continue;
+        };
+        let Some(Value::Str(class_name)) = item.attributes.get("class_name") else {
+            continue;
+        };
+        let Some(item_map) = assets.item_maps.get(class_name) else {
+            continue;
+        };
+
+        for (id, graph) in &item_map.shapefx_graphs {
+            new_map.shapefx_graphs.insert(*id, graph.clone());
+        }
+
+        // Find linedef in character map with name == slot
+        let Some(target_linedef) = character_map.linedefs.iter().find(|l| l.name == *slot_name)
+        else {
+            continue;
+        };
+
+        let Some(v0) = character_map.get_vertex(target_linedef.start_vertex) else {
+            continue;
+        };
+        let Some(v1) = character_map.get_vertex(target_linedef.end_vertex) else {
+            continue;
+        };
+
+        let target_mid = (v0 + v1) * 0.5;
+
+        // Find origin (0,0) in item map
+        let item_origin = Vec2::zero(); // You may later allow item-origin markup if needed
+
+        let offset = target_mid - item_origin;
+
+        // Create vertex ID mapping
+        let mut id_map = FxHashMap::default();
+
+        for v in &item_map.vertices {
+            let new_id = new_map.vertices.len() as u32;
+            id_map.insert(v.id, new_id);
+
+            let mut new_v = v.clone();
+            new_v.id = new_id;
+            new_v.x += offset.x;
+            new_v.y += offset.y;
+
+            new_map.vertices.push(new_v);
+        }
+
+        for l in &item_map.linedefs {
+            let mut new_l = l.clone();
+            new_l.id = new_map.linedefs.len() as u32;
+            new_l.start_vertex = *id_map.get(&l.start_vertex).unwrap();
+            new_l.end_vertex = *id_map.get(&l.end_vertex).unwrap();
+            new_map.linedefs.push(new_l);
+        }
+
+        for s in &item_map.sectors {
+            let mut new_s = s.clone();
+
+            new_s.id = new_map.sectors.len() as u32;
+            new_s.linedefs = s
+                .linedefs
+                .iter()
+                .map(|id| {
+                    let orig = item_map.linedefs.iter().find(|l| l.id == *id).unwrap();
+                    new_map
+                        .linedefs
+                        .iter()
+                        .find(|l2| {
+                            l2.name == orig.name
+                                && l2.start_vertex == *id_map.get(&orig.start_vertex).unwrap()
+                        })
+                        .map(|l2| l2.id)
+                        .unwrap_or(0)
+                })
+                .collect();
+            new_map.sectors.push(new_s);
+        }
+    }
+
+    new_map
+}
+
+/// Get the color overrides of items for the geometry.
 fn compute_sector_overrides(map: &Map, entity: &Entity) -> FxHashMap<u32, Vec4<f32>> {
     let mut sector_overrides: FxHashMap<u32, Vec4<f32>> = FxHashMap::default();
 

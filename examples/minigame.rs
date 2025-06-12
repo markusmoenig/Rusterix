@@ -60,7 +60,7 @@ impl TheTrait for MiniGame {
         let _start = get_time();
 
         // Update the entities on the server.
-        self.rusterix.server.update();
+        self.rusterix.server.update(&mut self.rusterix.assets);
 
         if let Some(mut map) = self.rusterix.assets.get_map("world").cloned() {
             self.rusterix.server.apply_entities_items(&mut map);

@@ -1533,9 +1533,10 @@ pub fn set_rig_sequence(
 }
 
 /// Take the given item.
-fn take(item_id: u32) {
+fn take(item_id: u32) -> bool {
     let entity_id = *CURR_ENTITYID.borrow();
     let mut map = MAP.borrow_mut();
+    let mut rc = true;
 
     if let Some(pos) = map
         .items
@@ -1553,7 +1554,32 @@ fn take(item_id: u32) {
             if let Some(name) = item.attributes.get_str("name") {
                 item_name = name.to_string();
             }
-            let mut message = format!("You take a {}", item_name.to_lowercase());
+
+            fn article_for(item_name: &str) -> (&'static str, String) {
+                let name = item_name.to_ascii_lowercase();
+
+                let pair_items = ["trousers", "pants", "gloves", "boots", "scissors"];
+                let mass_items = ["armor", "cloth", "water", "meat"];
+
+                if pair_items.contains(&name.as_str()) {
+                    ("a pair of", item_name.to_string())
+                } else if mass_items.contains(&name.as_str()) {
+                    ("some", item_name.to_string())
+                } else {
+                    let first = name.chars().next().unwrap_or('x');
+                    let article = match first {
+                        'a' | 'e' | 'i' | 'o' | 'u' => "an",
+                        _ => "a",
+                    };
+                    (article, item_name.to_string())
+                }
+            }
+
+            let mut message = format!(
+                "You take {} {}",
+                article_for(&item_name.to_lowercase()).0,
+                item_name.to_lowercase()
+            );
 
             if item.attributes.get_bool_default("monetary", false) {
                 // This is not a standalone item but money
@@ -1573,6 +1599,7 @@ fn take(item_id: u32) {
             } else if entity.add_item(item).is_err() {
                 // TODO: Send message.
                 println!("Take: Too many items");
+                rc = false;
             }
             FROM_SENDER
                 .borrow()
@@ -1592,6 +1619,7 @@ fn take(item_id: u32) {
             FROM_SENDER.borrow().get().unwrap().send(msg).unwrap();
         }
     }
+    rc
 }
 
 /// Block the events for the entity / item for the given amount of minutes.

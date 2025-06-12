@@ -214,7 +214,7 @@ impl Server {
     }
 
     /// Retrieves all messages from the regions.
-    pub fn update(&mut self) {
+    pub fn update(&mut self, assets: &mut Assets) {
         for receiver in &self.from_region {
             while let Ok(message) = receiver.try_recv() {
                 match message {
@@ -231,10 +231,10 @@ impl Server {
                             .collect();
 
                         if let Some(entities) = self.entities.get_mut(&id) {
-                            Self::process_entity_updates(entities, updates);
+                            Self::process_entity_updates(entities, updates, assets);
                         } else {
                             let mut entities = vec![];
-                            Self::process_entity_updates(&mut entities, updates);
+                            Self::process_entity_updates(&mut entities, updates, assets);
                             self.entities.insert(id, entities);
                         }
                     }
@@ -304,7 +304,11 @@ impl Server {
     }
 
     /// Update existing entities (or create new ones if they do not exist).
-    pub fn process_entity_updates(entities: &mut Vec<Entity>, updates: Vec<EntityUpdate>) {
+    pub fn process_entity_updates(
+        entities: &mut Vec<Entity>,
+        updates: Vec<EntityUpdate>,
+        assets: &mut Assets,
+    ) {
         // Create a mapping from entity ID to index for efficient lookup
         let mut entity_map: FxHashMap<u32, usize> = entities
             .iter()
@@ -315,7 +319,9 @@ impl Server {
         for update in updates {
             if let Some(&index) = entity_map.get(&update.id) {
                 // Entity exists, apply the update
-                entities[index].apply_update(update);
+                if entities[index].apply_update(update) {
+                    assets.entity_tiles.remove(&entities[index].id);
+                }
             } else {
                 // Entity does not exist, create a new one
                 let mut new_entity = Entity {

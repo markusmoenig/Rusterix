@@ -478,13 +478,15 @@ impl Entity {
         }
     }
 
-    /// Apply an update to the entity
-    pub fn apply_update(&mut self, update: EntityUpdate) {
+    /// Apply an update to the entity. Returns true if the entities appearance has changed and needs to be updated.
+    pub fn apply_update(&mut self, update: EntityUpdate) -> bool {
         // Validate ID matches
         if self.id != update.id {
             eprintln!("Update ID does not match Entity ID!");
-            return;
+            return false;
         }
+
+        let mut rc = false;
 
         self.creator_id = update.creator_id;
 
@@ -534,6 +536,7 @@ impl Entity {
 
         // Apply equipped slot updates
         if let Some(equipped_updates) = update.equipped_updates {
+            rc = true;
             self.equipped = equipped_updates;
         }
 
@@ -543,6 +546,8 @@ impl Entity {
                 self.wallet.balances.insert(symbol, balance);
             }
         }
+
+        rc
     }
 
     /// Sets the orientation to face east.
