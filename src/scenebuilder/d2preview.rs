@@ -632,13 +632,36 @@ impl D2PreviewBuilder {
             // Find the selected graph
             let mut selected_graph: Option<Uuid> = None;
             if self.clip_rect.is_some() {
-                for linedef in &map.linedefs {
-                    if map.selected_linedefs.contains(&linedef.id) {
+                for sector in &map.sectors {
+                    if map.selected_sectors.contains(&sector.id) {
                         if let Some(Value::Source(PixelSource::ShapeFXGraphId(id))) =
-                            linedef.properties.get("shape_graph")
+                            sector.properties.get("shape_graph")
                         {
                             selected_graph = Some(*id);
                             break;
+                        } else if let Some(Value::Source(PixelSource::ShapeFXGraphId(id))) =
+                            sector.properties.get("floor_source")
+                        {
+                            selected_graph = Some(*id);
+                            break;
+                        }
+                    }
+                }
+
+                if selected_graph.is_none() {
+                    for linedef in &map.linedefs {
+                        if map.selected_linedefs.contains(&linedef.id) {
+                            if let Some(Value::Source(PixelSource::ShapeFXGraphId(id))) =
+                                linedef.properties.get("shape_graph")
+                            {
+                                selected_graph = Some(*id);
+                                break;
+                            } else if let Some(Value::Source(PixelSource::ShapeFXGraphId(id))) =
+                                linedef.properties.get("row1_source")
+                            {
+                                selected_graph = Some(*id);
+                                break;
+                            }
                         }
                     }
                 }
@@ -736,7 +759,38 @@ impl D2PreviewBuilder {
                                             .push((start_pos, end_pos));
                                         added_it = true;
                                     }
+                                } else if let Some(Value::Source(PixelSource::ShapeFXGraphId(id))) =
+                                    linedef.properties.get("row1_source")
+                                {
+                                    if selected_graph == Some(*id) {
+                                        non_selected_lines_with_selected_graph
+                                            .push((start_pos, end_pos));
+                                        added_it = true;
+                                    }
+                                } else if let Some(sector_id) = linedef.front_sector {
+                                    if let Some(sector) = map.find_sector(sector_id) {
+                                        if let Some(Value::Source(PixelSource::ShapeFXGraphId(
+                                            id,
+                                        ))) = sector.properties.get("shape_graph")
+                                        {
+                                            if selected_graph == Some(*id) {
+                                                non_selected_lines_with_selected_graph
+                                                    .push((start_pos, end_pos));
+                                                added_it = true;
+                                            }
+                                        } else if let Some(Value::Source(
+                                            PixelSource::ShapeFXGraphId(id),
+                                        )) = sector.properties.get("floor_source")
+                                        {
+                                            if selected_graph == Some(*id) {
+                                                non_selected_lines_with_selected_graph
+                                                    .push((start_pos, end_pos));
+                                                added_it = true;
+                                            }
+                                        }
+                                    }
                                 }
+
                                 if !added_it {
                                     non_selected_lines.push((start_pos, end_pos));
                                 }

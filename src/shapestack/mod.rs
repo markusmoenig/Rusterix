@@ -5,7 +5,7 @@ pub mod shapefx;
 pub mod shapefxgraph;
 pub mod tilebuilder;
 
-use crate::{Assets, Map, PixelSource, ShapeContext, Texture, Value};
+use crate::{Assets, BBox, Map, PixelSource, Sector, ShapeContext, ShapeFXGraph, Texture, Value};
 use rayon::prelude::*;
 use theframework::prelude::*;
 use vek::{Vec2, Vec4};
@@ -65,6 +65,62 @@ impl ShapeStack {
 
         let px = area_size.x / width as f32;
 
+        struct ResolvedSector<'a> {
+            sector: &'a Sector,
+            bbox: BBox,
+            graph: &'a ShapeFXGraph,
+            rounding: f32,
+            aa: f32,
+            edges: Vec<(Vec2<f32>, Vec2<f32>)>,
+        }
+
+        let mut map = map.clone();
+        for graph in map.shapefx_graphs.values_mut() {
+            for node in graph.nodes.iter_mut() {
+                node.render_setup(0.0);
+            }
+        }
+
+        let resolved_sectors: Vec<ResolvedSector> = map
+            .sorted_sectors_by_area()
+            .into_iter()
+            .filter_map(|sector| {
+                let bbox = sector.bounding_box(&map);
+                let mut edges = Vec::new();
+
+                for &linedef_id in &sector.linedefs {
+                    if let Some(ld) = map.find_linedef(linedef_id) {
+                        if let (Some(v0), Some(v1)) = (
+                            map.get_vertex(ld.start_vertex),
+                            map.get_vertex(ld.end_vertex),
+                        ) {
+                            edges.push((v0, v1));
+                        }
+                    }
+                }
+
+                if let Some(Value::Source(PixelSource::ShapeFXGraphId(graph_id))) =
+                    sector.properties.get(sector_graph_name)
+                {
+                    if let Some(graph) = map.shapefx_graphs.get(graph_id) {
+                        let rounding = graph.nodes[0].values.get_float_default("rounding", 0.0);
+                        let aa = sector.properties.get_float_default("material_a_a", 1.0);
+
+                        return Some(ResolvedSector {
+                            sector,
+                            bbox,
+                            graph,
+                            rounding,
+                            aa,
+                            edges,
+                        });
+                    }
+                }
+
+                None
+            })
+            .collect();
+
         buffer
             .data
             .par_rchunks_exact_mut(width * 4)
@@ -87,69 +143,69 @@ impl ShapeStack {
                     );
 
                     // Do the sectors
-                    let sorted_sectors = map.sorted_sectors_by_area();
-                    for sector in sorted_sectors {
-                        let bbox = sector.bounding_box(map);
+                    for resolved in &resolved_sectors {
+                        let bbox = resolved.bbox;
 
-                        if let Some(Value::Source(PixelSource::ShapeFXGraphId(graph_id))) =
-                            sector.properties.get(sector_graph_name)
-                        {
-                            if let Some(graph) = map.shapefx_graphs.get(graph_id) {
-                                let mut best_ctx = None;
-                                let mut min_sdf = f32::MAX;
+                        let mut best_ctx = None;
+                        let mut min_sdf = f32::MAX;
 
-                                let rounding =
-                                    graph.nodes[0].values.get_float_default("rounding", 0.0);
+                        for &offset_i in offsets {
+                            let offset = Vec2::new(
+                                offset_i.x as f32 * area_size.x,
+                                offset_i.y as f32 * area_size.y,
+                            );
 
-                                for &offset_i in offsets {
-                                    let offset = Vec2::new(
-                                        offset_i.x as f32 * area_size.x,
-                                        offset_i.y as f32 * area_size.y,
-                                    );
+                            let shifted_point = world - offset;
 
-                                    let shifted_point = world - offset;
+                            let uv = Vec2::new(
+                                (shifted_point.x - bbox.min.x) / (bbox.max.x - bbox.min.x),
+                                (shifted_point.y - bbox.min.y) / (bbox.max.y - bbox.min.y),
+                            );
 
-                                    let uv = Vec2::new(
-                                        (shifted_point.x - bbox.min.x) / (bbox.max.x - bbox.min.x),
-                                        (shifted_point.y - bbox.min.y) / (bbox.max.y - bbox.min.y),
-                                    );
+                            // Get the distance using the precomputed sector edges
+                            let mut min_dist = f32::MAX;
+                            for &(v0, v1) in &resolved.edges {
+                                let edge = v1 - v0;
+                                let to_point = shifted_point - v0;
 
-                                    if let Some(distance) =
-                                        sector.signed_distance(map, shifted_point)
-                                    {
-                                        let sdf = distance / px - rounding;
+                                let t = to_point.dot(edge) / edge.dot(edge);
+                                let t_clamped = t.clamp(0.0, 1.0);
+                                let closest = v0 + edge * t_clamped;
 
-                                        if sdf < min_sdf {
-                                            min_sdf = sdf;
-                                            best_ctx = Some(ShapeContext {
-                                                point_world: shifted_point,
-                                                point: shifted_point / px,
-                                                uv,
-                                                distance_world: distance,
-                                                distance: sdf,
-                                                shape_id: sector.id,
-                                                px,
-                                                anti_aliasing: sector
-                                                    .properties
-                                                    .get_float_default("material_a_a", 1.0),
-                                                t: None,
-                                                line_dir: None,
-                                                override_color: None,
-                                            });
-                                        }
-                                    }
-                                }
+                                let dist = (shifted_point - closest).magnitude();
+                                min_dist = min_dist.min(dist);
+                            }
 
-                                if let Some(mut ctx) = best_ctx {
-                                    if let Some(color) = sector_overrides.get(&ctx.shape_id) {
-                                        ctx.override_color = Some(*color);
-                                    }
+                            let inside = resolved.sector.is_inside(&map, shifted_point);
+                            let distance = if inside { -min_dist } else { min_dist };
+                            let sdf = distance / px - resolved.rounding;
 
-                                    if let Some(col) = graph.evaluate_material(&ctx, color, assets)
-                                    {
-                                        color = Vec4::lerp(color, col, col.w);
-                                    }
-                                }
+                            if sdf < min_sdf {
+                                min_sdf = sdf;
+                                best_ctx = Some(ShapeContext {
+                                    point_world: shifted_point,
+                                    point: shifted_point / px,
+                                    uv,
+                                    distance_world: distance,
+                                    distance: sdf,
+                                    shape_id: resolved.sector.id,
+                                    px,
+                                    anti_aliasing: resolved.aa,
+                                    t: None,
+                                    line_dir: None,
+                                    override_color: None,
+                                });
+                            }
+                        }
+
+                        if let Some(mut ctx) = best_ctx {
+                            if let Some(color) = sector_overrides.get(&ctx.shape_id) {
+                                ctx.override_color = Some(*color);
+                            }
+
+                            if let Some(col) = resolved.graph.evaluate_material(&ctx, color, assets)
+                            {
+                                color = Vec4::lerp(color, col, col.w);
                             }
                         }
                     }

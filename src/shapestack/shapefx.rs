@@ -919,6 +919,27 @@ impl ShapeFX {
     pub fn render_setup(&mut self, hour: f32) -> Option<(Vec3<f32>, f32)> {
         self.precomputed.clear();
         match &self.role {
+            Gradient => {
+                let steps = self.values.get_int_default("steps", 4).max(1);
+                let blend_mode = self.values.get_int_default("blend_mode", 0);
+
+                let from_index = self.values.get_int_default("edge", 0);
+                let to_index = self.values.get_int_default("interior", 1);
+
+                self.precomputed.push(Vec4::new(
+                    steps as f32,
+                    blend_mode as f32,
+                    from_index as f32,
+                    to_index as f32,
+                ));
+
+                let thickness = self.values.get_float_default("thickness", 1.0);
+                let offset = self.values.get_float_default("distance_offset", 0.0);
+                let line_mode = self.values.get_int_default("line_mode", 0);
+
+                self.precomputed
+                    .push(Vec4::new(thickness, offset, line_mode as f32, 0.0));
+            }
             Fog => {
                 let fog_color = self
                     .values
@@ -1411,11 +1432,16 @@ impl ShapeFX {
             }*/
             Gradient => {
                 let pixel_size = 0.05;
-                let steps = self.values.get_int_default("steps", 4).max(1);
-                let blend_mode = self.values.get_int_default("blend_mode", 0);
+                // let steps = self.values.get_int_default("steps", 4).max(1);
+                // let blend_mode = self.values.get_int_default("blend_mode", 0);
 
-                let from_index = self.values.get_int_default("edge", 0);
-                let to_index = self.values.get_int_default("interior", 1);
+                // let from_index = self.values.get_int_default("edge", 0);
+                // let to_index = self.values.get_int_default("interior", 1);
+
+                let steps = self.precomputed[0].x as i32;
+                let blend_mode = self.precomputed[0].y as i32;
+                let from_index = self.precomputed[0].z as i32;
+                let to_index = self.precomputed[0].w as i32;
 
                 let mut from = assets
                     .palette
@@ -1440,15 +1466,19 @@ impl ShapeFX {
                         .to_vec4()
                 };
 
-                let thickness = self.values.get_float_default("thickness", 40.0);
-                let offset = self.values.get_float_default("distance_offset", 0.0);
+                // let thickness = self.values.get_float_default("thickness", 40.0);
+                // let offset = self.values.get_float_default("distance_offset", 0.0);
+
+                let thickness = self.precomputed[1].x / ctx.px;
+                let offset = self.precomputed[1].y / ctx.px;
                 let depth = (-(ctx.distance + offset)).clamp(0.0, thickness);
 
                 let snapped_depth = (depth / pixel_size).floor() * pixel_size;
                 let mut t = (snapped_depth / thickness).clamp(0.0, 1.0);
 
                 if let Some(line_t) = ctx.t {
-                    let line_mode = self.values.get_int_default("line_mode", 0);
+                    // let line_mode = self.values.get_int_default("line_mode", 0);
+                    let line_mode = self.precomputed[1].z as i32;
                     if line_mode == 1 {
                         let line_factor = line_t.clamp(0.0, 1.0);
                         let radial_factor = (depth / thickness).clamp(0.0, 1.0);
@@ -1765,8 +1795,8 @@ impl ShapeFX {
                     "thickness".into(),
                     "Thickness".into(),
                     "How far the gradient extends inward.".into(),
-                    self.values.get_float_default("thickness", 40.0),
-                    0.0..=100.0,
+                    self.values.get_float_default("thickness", 1.0),
+                    0.0..=10.0,
                 ));
                 params.push(ShapeFXParam::Int(
                     "steps".into(),
@@ -1796,7 +1826,7 @@ impl ShapeFX {
                     "Distance Offset".into(),
                     "Shift the start of the gradient inward or outward from the shape edge.".into(),
                     self.values.get_float_default("distance_offset", 0.0),
-                    -100.0..=100.0,
+                    -10.0..=10.0,
                 ));
             }
             Color => {
