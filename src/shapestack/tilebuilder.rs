@@ -261,9 +261,15 @@ fn extract_anchored_geometry(entity: &Entity, character_map: &Map, assets: &Asse
     let mut new_map = Map::default();
 
     for (_, item) in entity.equipped.iter() {
-        let Some(Value::Str(slot_name)) = item.attributes.get("slot") else {
-            continue;
-        };
+        let targets: Vec<&str> =
+            if let Some(Value::StrArray(geo_mods)) = item.attributes.get("geo_targets") {
+                geo_mods.iter().map(|s| s.as_str()).collect()
+            } else if let Some(Value::Str(slot_name)) = item.attributes.get("slot") {
+                vec![slot_name.as_str()]
+            } else {
+                continue;
+            };
+
         let Some(Value::Str(class_name)) = item.attributes.get("class_name") else {
             continue;
         };
@@ -275,70 +281,75 @@ fn extract_anchored_geometry(entity: &Entity, character_map: &Map, assets: &Asse
             new_map.shapefx_graphs.insert(*id, graph.clone());
         }
 
-        // Find linedef in character map with name == slot
-        let Some(target_linedef) = character_map.linedefs.iter().find(|l| l.name == *slot_name)
-        else {
-            continue;
-        };
-
-        let Some(v0) = character_map.get_vertex(target_linedef.start_vertex) else {
-            continue;
-        };
-        let Some(v1) = character_map.get_vertex(target_linedef.end_vertex) else {
-            continue;
-        };
-
-        let target_mid = (v0 + v1) * 0.5;
-
-        // Find origin (0,0) in item map
-        let item_origin = Vec2::zero(); // You may later allow item-origin markup if needed
-
-        let offset = target_mid - item_origin;
-
-        // Create vertex ID mapping
-        let mut id_map = FxHashMap::default();
-
-        for v in &item_map.vertices {
-            let new_id = new_map.vertices.len() as u32;
-            id_map.insert(v.id, new_id);
-
-            let mut new_v = v.clone();
-            new_v.id = new_id;
-            new_v.x += offset.x;
-            new_v.y += offset.y;
-
-            new_map.vertices.push(new_v);
-        }
-
-        for l in &item_map.linedefs {
-            let mut new_l = l.clone();
-            new_l.id = new_map.linedefs.len() as u32;
-            new_l.start_vertex = *id_map.get(&l.start_vertex).unwrap();
-            new_l.end_vertex = *id_map.get(&l.end_vertex).unwrap();
-            new_map.linedefs.push(new_l);
-        }
-
-        for s in &item_map.sectors {
-            let mut new_s = s.clone();
-
-            new_s.id = new_map.sectors.len() as u32;
-            new_s.linedefs = s
+        // Find linedef in character map with name == target_name
+        for target_name in targets {
+            let Some(target_linedef) = character_map
                 .linedefs
                 .iter()
-                .map(|id| {
-                    let orig = item_map.linedefs.iter().find(|l| l.id == *id).unwrap();
-                    new_map
-                        .linedefs
-                        .iter()
-                        .find(|l2| {
-                            l2.name == orig.name
-                                && l2.start_vertex == *id_map.get(&orig.start_vertex).unwrap()
-                        })
-                        .map(|l2| l2.id)
-                        .unwrap_or(0)
-                })
-                .collect();
-            new_map.sectors.push(new_s);
+                .find(|l| l.name == target_name)
+            else {
+                continue;
+            };
+
+            let Some(v0) = character_map.get_vertex(target_linedef.start_vertex) else {
+                continue;
+            };
+            let Some(v1) = character_map.get_vertex(target_linedef.end_vertex) else {
+                continue;
+            };
+
+            let target_mid = (v0 + v1) * 0.5;
+
+            // Find origin (0,0) in item map
+            let item_origin = Vec2::zero(); // You may later allow item-origin markup if needed
+
+            let offset = target_mid - item_origin;
+
+            // Create vertex ID mapping
+            let mut id_map = FxHashMap::default();
+
+            for v in &item_map.vertices {
+                let new_id = new_map.vertices.len() as u32;
+                id_map.insert(v.id, new_id);
+
+                let mut new_v = v.clone();
+                new_v.id = new_id;
+                new_v.x += offset.x;
+                new_v.y += offset.y;
+
+                new_map.vertices.push(new_v);
+            }
+
+            for l in &item_map.linedefs {
+                let mut new_l = l.clone();
+                new_l.id = new_map.linedefs.len() as u32;
+                new_l.start_vertex = *id_map.get(&l.start_vertex).unwrap();
+                new_l.end_vertex = *id_map.get(&l.end_vertex).unwrap();
+                new_map.linedefs.push(new_l);
+            }
+
+            for s in &item_map.sectors {
+                let mut new_s = s.clone();
+
+                new_s.id = new_map.sectors.len() as u32;
+                new_s.linedefs = s
+                    .linedefs
+                    .iter()
+                    .map(|id| {
+                        let orig = item_map.linedefs.iter().find(|l| l.id == *id).unwrap();
+                        new_map
+                            .linedefs
+                            .iter()
+                            .find(|l2| {
+                                l2.name == orig.name
+                                    && l2.start_vertex == *id_map.get(&orig.start_vertex).unwrap()
+                            })
+                            .map(|l2| l2.id)
+                            .unwrap_or(0)
+                    })
+                    .collect();
+                new_map.sectors.push(new_s);
+            }
         }
     }
 
@@ -351,9 +362,9 @@ fn compute_sector_overrides(map: &Map, entity: &Entity) -> FxHashMap<u32, Vec4<f
 
     for (_, item) in entity.equipped.iter() {
         if let Some(Value::Color(color)) = item.attributes.get("color") {
-            if let Some(Value::StrArray(sectors)) = item.attributes.get("sectors") {
+            if let Some(Value::StrArray(color_targets)) = item.attributes.get("color_targets") {
                 for sector in &map.sectors {
-                    if sectors.contains(&sector.name) {
+                    if color_targets.contains(&sector.name) {
                         sector_overrides.insert(sector.id, color.to_vec4());
                     }
                 }

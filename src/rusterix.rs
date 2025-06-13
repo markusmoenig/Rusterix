@@ -163,7 +163,7 @@ impl Rusterix {
             map,
             self.client.camera_d3.as_ref(),
             &self.assets,
-            &mut self.client.scene_d3,
+            &mut self.client.scene,
         );
     }
 

@@ -488,7 +488,6 @@ impl D3Builder {
                         let end = entity_pos - perpendicular * 0.5;
 
                         if let Some(entity_tile) = source.entity_tile_id(entity.id, assets) {
-                            println!("{:?}, {}, {}", entity_tile, start, end);
                             let mut batch = Batch3D::empty()
                                 .repeat_mode(crate::RepeatMode::RepeatXY)
                                 .source(entity_tile);

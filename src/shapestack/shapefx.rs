@@ -236,10 +236,10 @@ impl ShapeFX {
                         name: "inside".into(),
                         category_name: "ShapeFX".into(),
                     },
-                    // TheNodeTerminal {
-                    //     name: "outside".into(),
-                    //     category_name: "ShapeFX".into(),
-                    // },
+                    TheNodeTerminal {
+                        name: "outside".into(),
+                        category_name: "ShapeFX".into(),
+                    },
                 ]
             }
             LinedefGeometry => {
@@ -1561,7 +1561,8 @@ impl ShapeFX {
 
                     let uv = ctx.uv;
                     let scale = Vec2::broadcast(1.0 / pixel_size);
-                    let noise_value = self.noise2d(&uv, scale, octaves);
+                    let noise_value =
+                        self.noise2d_tileable(&uv, scale, octaves, Vec2::new(-5.0, 5.0));
 
                     let n = (noise_value * 2.0 - 1.0) * randomness;
 
@@ -2278,6 +2279,53 @@ impl ShapeFX {
             x = rot * x * 2.0 + shift;
             a *= 0.5;
         }
+        v
+    }
+
+    fn noise2d_tileable(
+        &self,
+        p: &Vec2<f32>,
+        scale: Vec2<f32>,
+        octaves: i32,
+        tile_size: Vec2<f32>,
+    ) -> f32 {
+        fn hash(p: Vec2<f32>, tile_size: Vec2<f32>) -> f32 {
+            let p = (p % tile_size + tile_size) % tile_size; // wrap into positive range
+            let mut p3 = Vec3::new(p.x, p.y, p.x).map(|v| (v * 0.13).fract());
+            p3 += p3.dot(Vec3::new(p3.y, p3.z, p3.x) + 3.333);
+            ((p3.x + p3.y) * p3.z).fract()
+        }
+
+        fn noise(x: Vec2<f32>, tile_size: Vec2<f32>) -> f32 {
+            let i = x.map(|v| v.floor());
+            let f = x.map(|v| v.fract());
+
+            let a = hash(i, tile_size);
+            let b = hash(i + Vec2::new(1.0, 0.0), tile_size);
+            let c = hash(i + Vec2::new(0.0, 1.0), tile_size);
+            let d = hash(i + Vec2::new(1.0, 1.0), tile_size);
+
+            let u = f * f * f.map(|v| 3.0 - 2.0 * v);
+            f32::lerp(a, b, u.x) + (c - a) * u.y * (1.0 - u.x) + (d - b) * u.x * u.y
+        }
+
+        let mut x = p * 8.0 * scale;
+        let mut current_tile_size = tile_size * 8.0 * scale;
+
+        if octaves == 0 {
+            return noise(x, current_tile_size);
+        }
+
+        let mut v = 0.0;
+        let mut a = 0.5;
+
+        for _ in 0..octaves {
+            v += a * noise(x, current_tile_size);
+            x *= 2.0;
+            current_tile_size *= 2.0; // maintain tiling across octaves
+            a *= 0.5;
+        }
+
         v
     }
 

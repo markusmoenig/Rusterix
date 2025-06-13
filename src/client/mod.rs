@@ -219,12 +219,8 @@ impl Client {
                 entity.apply_to_camera(&mut self.camera_d3);
             }
         }
-        self.builder_d3.build_entities_items(
-            map,
-            self.camera_d3.as_ref(),
-            assets,
-            &mut self.scene_d3,
-        );
+        self.builder_d3
+            .build_entities_items(map, self.camera_d3.as_ref(), assets, &mut self.scene);
     }
 
     /// Process messages from the server to be displayed after drawing.
