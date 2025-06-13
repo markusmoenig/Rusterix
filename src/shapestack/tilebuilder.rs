@@ -45,7 +45,7 @@ pub fn tile_builder(map: &mut Map, assets: &mut Assets) {
             } else {
                 // No sequences for this character at all, build the sequence
                 println!(
-                    "No sequences at all ({}) for {}",
+                    "No sequences at all ({}) for character {}",
                     name,
                     entity.attributes.get_str_default("name", "unknown".into())
                 );
@@ -104,9 +104,9 @@ pub fn tile_builder(map: &mut Map, assets: &mut Assets) {
                     }
                 }
             } else {
-                // No sequences for this character at all, build the sequence
+                // No sequences for this item at all, build the sequence
                 println!(
-                    "No sequences at all ({}) for {}",
+                    "No sequences at all ({}) for item {}",
                     name,
                     item.attributes.get_str_default("name", "unknown".into())
                 );
