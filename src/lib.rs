@@ -27,6 +27,12 @@ pub mod utils;
 pub mod value;
 pub mod wavefront;
 
+#[cfg(feature = "single_thread")]
+pub const IS_THREADED: bool = false;
+
+#[cfg(not(feature = "single_thread"))]
+pub const IS_THREADED: bool = true;
+
 use rust_embed::RustEmbed;
 #[derive(RustEmbed)]
 #[folder = "embedded/"]
@@ -116,6 +122,8 @@ pub use crate::{
         message::PlayerCamera,
         message::RegionMessage,
         region::RegionInstance,
+        regiondata::RegionData,
+        regionpool::RegionPool,
     },
     shader::{Shader, grid::GridShader, vgradient::VGrayGradientShader},
     shapestack::{
@@ -149,8 +157,8 @@ pub mod prelude {
         d3builder::D3Builder,
     };
     pub use crate::{
-        Assets, Currencies, Currency, Entity, EntityUpdate, Item, ItemUpdate, RegionInstance,
-        RegionMessage, Server, Wallet,
+        Assets, Currencies, Currency, Entity, EntityUpdate, Item, ItemUpdate, RegionData,
+        RegionInstance, RegionMessage, RegionPool, Server, Wallet,
     };
     pub use crate::{BLACK, Pixel, TRANSPARENT, WHITE};
     pub use crate::{Batch2D, Batch3D, CullMode, PrimitiveMode};

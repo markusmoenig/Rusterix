@@ -11,11 +11,20 @@ keywords = ["software", "rendering", "graphics", "game", "engine"]
 members = [".", "rusteria"]
 
 [dependencies]
-rustpython = { version = "0.4.0", features = [
+# rustpython = { version = "0.4.0", features = [
+#     "stdlib",
+#     "threading",
+#     "freeze-stdlib",
+# ], default-features = false }
+
+rustpython = { features = [
     "stdlib",
     "threading",
     "freeze-stdlib",
-], default-features = false }
+], default-features = false, git = "https://github.com/RustPython/RustPython" }
+
+rustpython-vm = { git = "https://github.com/RustPython/RustPython" }
+
 theframework = { version = "0.1.40", git = "https://github.com/markusmoenig/theframework" }
 # theframework = "0.1.33"
 # theframework = { path = "../TheFramework", default-features = true }
@@ -26,7 +35,6 @@ earcutr = "0.4"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 image = "0.25.5"
-rustpython-vm = { version = "0.4.0" }
 walkdir = "2.5.0"
 crossbeam-channel = "0.5.14"
 ref_thread_local = "0.1.1"
@@ -64,3 +72,7 @@ criterion = { version = "0.5.1", features = ["html_reports"] }
 [[bench]]
 name = "rasterize_map"
 harness = false
+
+[features]
+single_thread = []
+default = []
