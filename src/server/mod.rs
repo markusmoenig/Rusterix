@@ -6,8 +6,8 @@ pub mod item;
 pub mod message;
 pub mod py_fn;
 pub mod region;
-pub mod regiondata;
-pub mod regionpool;
+// pub mod regiondata;
+// pub mod regionpool;
 
 use crossbeam_channel::{Receiver, Sender};
 

@@ -8,7 +8,7 @@ repository = "https://github.com/markusmoenig/Rusterix"
 keywords = ["software", "rendering", "graphics", "game", "engine"]
 
 [workspace]
-members = [".", "rusteria"]
+members = ["."]
 
 [dependencies]
 # rustpython = { version = "0.4.0", features = [
@@ -23,7 +23,7 @@ rustpython = { features = [
     "freeze-stdlib",
 ], default-features = false, git = "https://github.com/RustPython/RustPython" }
 
-rustpython-vm = { git = "https://github.com/RustPython/RustPython" }
+rustpython-vm = { git = "https://github.com/RustPython/RustPython", default-features = false }
 
 theframework = { version = "0.1.40", git = "https://github.com/markusmoenig/theframework" }
 # theframework = "0.1.33"
