@@ -1088,7 +1088,7 @@ impl RegionInstance {
                 Err(error) => {
                     let mut err_line: Option<u32> = None;
 
-                    if let Some(tb) = error.traceback() {
+                    if let Some(tb) = error.__traceback__() {
                         // let file_name = tb.frame.code.source_path.as_str();
                         let instruction_index =
                             tb.frame.lasti.load(std::sync::atomic::Ordering::Relaxed);
