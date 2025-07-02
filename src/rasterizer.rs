@@ -551,27 +551,36 @@ impl Rasterizer {
 
                                         let mut texel = match batch.source {
                                             PixelSource::StaticTileIndex(index) => {
-                                                let textile = &assets.tile_list[index as usize];
-                                                let index =
-                                                    scene.animation_frame % textile.textures.len();
-                                                textile.textures[index].sample(
-                                                    u,
-                                                    v,
-                                                    self.sample_mode,
-                                                    batch.repeat_mode,
-                                                )
+                                                if let Some(textile) =
+                                                    &assets.tile_list.get(index as usize)
+                                                {
+                                                    let index = scene.animation_frame
+                                                        % textile.textures.len();
+                                                    textile.textures[index].sample(
+                                                        u,
+                                                        v,
+                                                        self.sample_mode,
+                                                        batch.repeat_mode,
+                                                    )
+                                                } else {
+                                                    [0, 0, 0, 0]
+                                                }
                                             }
                                             PixelSource::DynamicTileIndex(index) => {
-                                                let textile =
-                                                    &scene.dynamic_textures[index as usize];
-                                                let index =
-                                                    scene.animation_frame % textile.textures.len();
-                                                textile.textures[index].sample(
-                                                    u,
-                                                    v,
-                                                    self.sample_mode,
-                                                    batch.repeat_mode,
-                                                )
+                                                if let Some(textile) =
+                                                    &scene.dynamic_textures.get(index as usize)
+                                                {
+                                                    let index = scene.animation_frame
+                                                        % textile.textures.len();
+                                                    textile.textures[index].sample(
+                                                        u,
+                                                        v,
+                                                        self.sample_mode,
+                                                        batch.repeat_mode,
+                                                    )
+                                                } else {
+                                                    [0, 0, 0, 0]
+                                                }
                                             }
                                             PixelSource::Pixel(col) => col,
                                             PixelSource::EntityTile(id, index) => {
