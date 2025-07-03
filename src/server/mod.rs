@@ -39,8 +39,12 @@ pub enum ServerState {
 pub struct Server {
     pub id_gen: u32,
 
+    /// Maps region uuids to the region id
     pub region_id_map: FxHashMap<Uuid, u32>,
     from_region: Vec<Receiver<RegionMessage>>,
+
+    /// Maps region names to the region id
+    pub region_name_id_map: FxHashMap<String, u32>,
 
     // By region
     pub entities: FxHashMap<u32, Vec<Entity>>,
@@ -66,6 +70,7 @@ impl Server {
             id_gen: 0,
 
             region_id_map: FxHashMap::default(),
+            region_name_id_map: FxHashMap::default(),
             from_region: vec![],
 
             entities: FxHashMap::default(),
@@ -108,6 +113,8 @@ impl Server {
         region_instance.id = self.get_next_id();
 
         self.region_id_map.insert(map.id, region_instance.id);
+        self.region_name_id_map
+            .insert(name.clone(), region_instance.id);
 
         if let Ok(mut pipes) = REGIONPIPE.write() {
             pipes.insert(region_instance.id, region_instance.to_sender.clone());
@@ -299,6 +306,43 @@ impl Server {
                     RegionMessage::Time(id, time) => {
                         self.times.insert(id, time);
                     }
+                    RegionMessage::TransferEntity(
+                        from_region_id,
+                        entity,
+                        dest_region_name,
+                        dest_sector_name,
+                    ) => {
+                        // If we cannot find the destination region, send the entity back from where it came
+                        let mut dest_id = from_region_id;
+                        if let Some(region_id) = self.region_name_id_map.get(&dest_region_name) {
+                            dest_id = *region_id;
+                        }
+
+                        if let Ok(mut players) = LOCAL_PLAYERS.write() {
+                            for item in &mut *players {
+                                if item.1 == entity.id {
+                                    println!("{} -> {}", item.0, dest_id);
+                                    item.0 = dest_id;
+                                }
+                            }
+                        }
+
+                        if let Ok(pipe) = REGIONPIPE.read() {
+                            if let Some(sender) = pipe.get(&dest_id) {
+                                match sender.send(RegionMessage::TransferEntity(
+                                    dest_id,
+                                    entity.clone(),
+                                    dest_region_name.clone(),
+                                    dest_sector_name.clone(),
+                                )) {
+                                    Ok(_) => {}
+                                    Err(err) => {
+                                        println!("{:?}", err.to_string());
+                                    }
+                                }
+                            }
+                        }
+                    }
                     _ => {}
                 }
             }
@@ -436,6 +480,7 @@ impl Server {
         self.messages.clear();
         self.id_gen = 0;
         self.region_id_map.clear();
+        self.region_name_id_map.clear();
         self.state = ServerState::Off;
         self.from_region.clear();
         self.times.clear();

@@ -1,7 +1,7 @@
 use crate::{Entity, Value};
 use theframework::prelude::*;
 
-/// Messages to the Region
+/// Messages to / from the Region to the server or client
 #[derive(Debug)]
 #[allow(clippy::large_enum_variant)]
 pub enum RegionMessage {
@@ -28,6 +28,8 @@ pub enum RegionMessage {
     Time(u32, TheTime),
     /// Tell: RegionId, SenderId_entity, SenderId_item, ReceiverId, Message
     Message(u32, Option<u32>, Option<u32>, u32, String, String),
+    /// TransferEntity: Move the Entity from the region to a new region (name) in sector (name)
+    TransferEntity(u32, Entity, String, String),
     /// Stop processing and quit
     Quit,
 }

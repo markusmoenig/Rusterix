@@ -893,6 +893,9 @@ impl RegionInstance {
                                 CreateEntity(_id, entity) => {
                                     create_entity_instance(entity)
                                 }
+                                TransferEntity(_region_id, entity, _dest_region_name, dest_sector_name) => {
+                                    receive_entity(entity, dest_sector_name);
+                                }
                                 Time(_id, time) => {
                                     // User manually set the server time
                                     *TICKS.borrow_mut() = time.to_ticks( *TICKS_PER_MINUTE.borrow());
@@ -2303,6 +2306,25 @@ pub fn teleport(args: rustpython_vm::function::FuncArgs, vm: &VirtualMachine) ->
             }
             map.entities = entities;
         }
+    } else {
+        // Remove the entity from this region and send it to the server to be moved
+        // into a new region.
+
+        let mut map = MAP.borrow_mut();
+        let entity_id = *CURR_ENTITYID.borrow();
+        if let Some(pos) = map.entities.iter().position(|e| e.id == entity_id) {
+            let removed = map.entities.remove(pos);
+
+            ENTITY_CLASSES.borrow_mut().remove(&removed.id);
+
+            let msg = RegionMessage::TransferEntity(
+                *REGIONID.borrow(),
+                removed,
+                region_name,
+                sector_name,
+            );
+            FROM_SENDER.borrow().get().unwrap().send(msg).unwrap();
+        }
     }
 
     Ok(())
@@ -2584,4 +2606,33 @@ pub fn create_entity_instance(mut entity: Entity) {
         name,
         get_entity_name(entity.id),
     ));
+}
+
+/// Received an entity from another region
+pub fn receive_entity(mut entity: Entity, dest_sector_name: String) {
+    entity.action = EntityAction::Off;
+
+    let mut map = MAP.borrow_mut();
+    let mut entities = map.entities.clone();
+
+    let mut new_pos: Option<vek::Vec2<f32>> = None;
+    for sector in &map.sectors {
+        if sector.name == dest_sector_name {
+            new_pos = sector.center(&*map);
+        }
+    }
+
+    if let Some(new_pos) = new_pos {
+        entity.set_pos_xz(new_pos);
+        check_player_for_section_change(&*map, &mut entity);
+    }
+
+    if let Some(class_name) = entity.get_attr_string("class_name") {
+        ENTITY_CLASSES
+            .borrow_mut()
+            .insert(entity.id, class_name.clone());
+    }
+
+    entities.push(entity);
+    map.entities = entities;
 }
