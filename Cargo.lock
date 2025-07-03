@@ -3449,6 +3449,7 @@ version = "0.2.8"
 dependencies = [
  "bincode",
  "bvh",
+ "console_error_panic_hook",
  "criterion",
  "crossbeam",
  "crossbeam-channel",
@@ -3477,6 +3478,8 @@ dependencies = [
  "vectorize",
  "vek",
  "walkdir",
+ "wasm-bindgen",
+ "web-sys",
 ]
 
 [[package]]
@@ -4284,14 +4287,13 @@ checksum = "c13547615a44dc9c452a8a534638acdf07120d4b6847c8178705da06306a3057"
 [[package]]
 name = "theframework"
 version = "0.1.40"
-source = "git+https://github.com/markusmoenig/theframework#0e303f85735235f072e79825ef38f485c2cae3e3"
+source = "git+https://github.com/markusmoenig/theframework#762b3b1f758d4e56d56046ba040f950b5590967a"
 dependencies = [
  "aict",
  "arboard",
  "bytemuck",
  "console_error_panic_hook",
  "console_log",
- "env_logger",
  "flags",
  "flate2",
  "fontdue",
@@ -4303,7 +4305,6 @@ dependencies = [
  "log",
  "maths-rs",
  "png",
- "rand 0.8.5",
  "rust-embed",
  "rustc-hash 1.1.0",
  "serde",

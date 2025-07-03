@@ -296,6 +296,12 @@ impl RegionInstance {
                 vm.new_function("drop_items", drop_items).into(),
                 vm,
             );
+
+            let _ = scope.globals.set_item(
+                "teleport",
+                vm.new_function("teleport", teleport).into(),
+                vm,
+            );
         });
 
         let (to_sender, to_receiver) = unbounded::<RegionMessage>();
@@ -518,7 +524,9 @@ impl RegionInstance {
             for entity in entities.iter() {
                 if let Some(class_name) = entity.get_attr_string("class_name") {
                     let cmd = format!("{}.event(\"startup\", \"\")", class_name);
-                    ENTITY_CLASSES.borrow_mut().insert(entity.id, class_name);
+                    ENTITY_CLASSES
+                        .borrow_mut()
+                        .insert(entity.id, class_name.clone());
                     *CURR_ENTITYID.borrow_mut() = entity.id;
                     if let Err(err) = REGION.borrow_mut().execute(&cmd) {
                         send_log_message(format!(
@@ -528,6 +536,24 @@ impl RegionInstance {
                             get_entity_name(entity.id),
                             err,
                         ));
+                    }
+
+                    // Determine, set and notify the entity about the sector it is in.
+                    let mut sector_name = String::new();
+                    if let Some(sector) = MAP.borrow().find_sector_at(entity.get_pos_xz()) {
+                        sector_name = sector.name.clone();
+                    }
+                    {
+                        let mut map = MAP.borrow_mut();
+                        for e in map.entities.iter_mut() {
+                            if e.id == entity.id {
+                                e.attributes.set("sector", Value::Str(sector_name.clone()));
+                            }
+                        }
+                    }
+                    if !sector_name.is_empty() {
+                        let cmd = format!("{}.event(\"entered\", \"{}\")", class_name, sector_name);
+                        _ = REGION.borrow_mut().execute(&cmd);
                     }
                 }
             }
@@ -833,7 +859,6 @@ impl RegionInstance {
                                     }
                                 }
                                 UserAction(entity_id, action) => {
-
                                     match action {
                                         ItemClicked(item_id, distance) => {
                                             if let Some(class_name) = ITEM_CLASSES.borrow().get(&item_id) {
@@ -1407,7 +1432,59 @@ impl RegionInstance {
         // Move the entity after geometry
         entity.set_pos_xz(end_position);
 
+        check_player_for_section_change(map, entity);
+
         geometry_blocked
+    }
+}
+
+/// Check if the player moved to a different section and if yes send "enter" and "left" events
+fn check_player_for_section_change(map: &Map, entity: &mut Entity) {
+    // Determine, set and notify the entity about the sector it is in.
+    if let Some(sector) = map.find_sector_at(entity.get_pos_xz()) {
+        if let Some(Value::Str(old_sector_name)) = entity.attributes.get("sector") {
+            if sector.name != *old_sector_name {
+                if let Some(class_name) = ENTITY_CLASSES.borrow().get(&entity.id) {
+                    // Send entered event
+                    if !sector.name.is_empty() {
+                        let cmd = format!("{}.event(\"entered\", \"{}\")", class_name, sector.name);
+                        println!("{cmd}");
+                        TO_EXECUTE_ENTITY.borrow_mut().push((
+                            entity.id,
+                            "bumped_into_item".into(),
+                            cmd,
+                        ));
+                    }
+                    // Send left event
+                    if !old_sector_name.is_empty() {
+                        let cmd =
+                            format!("{}.event(\"left\", \"{}\")", class_name, old_sector_name);
+                        println!("{cmd}");
+                        TO_EXECUTE_ENTITY.borrow_mut().push((
+                            entity.id,
+                            "bumped_into_item".into(),
+                            cmd,
+                        ));
+                    }
+                }
+
+                entity
+                    .attributes
+                    .set("sector", Value::Str(sector.name.clone()));
+            }
+        }
+    } else if let Some(Value::Str(old_sector_name)) = entity.attributes.get("sector") {
+        // Send left event
+        if !old_sector_name.is_empty() {
+            if let Some(class_name) = ENTITY_CLASSES.borrow().get(&entity.id) {
+                let cmd = format!("{}.event(\"left\", \"{}\")", class_name, old_sector_name);
+                println!("{cmd}");
+                TO_EXECUTE_ENTITY
+                    .borrow_mut()
+                    .push((entity.id, "bumped_into_item".into(), cmd));
+            }
+        }
+        entity.attributes.set("sector", Value::Str(String::new()));
     }
 }
 
@@ -2189,6 +2266,48 @@ pub fn set_proximity_tracking(
     Ok(())
 }
 
+/// Teleport
+pub fn teleport(args: rustpython_vm::function::FuncArgs, vm: &VirtualMachine) -> PyResult<()> {
+    let mut sector_name = String::new();
+    let mut region_name = String::new();
+
+    for (i, arg) in args.args.iter().enumerate() {
+        if i == 0 {
+            if let Some(Value::Str(v)) = Value::from_pyobject(arg.clone(), vm) {
+                sector_name = v.clone();
+            }
+        } else if i == 1 {
+            if let Some(Value::Str(v)) = Value::from_pyobject(arg.clone(), vm) {
+                region_name = v.clone();
+            }
+        }
+    }
+
+    if region_name.is_empty() {
+        // Teleport entity in this region to the given sector.
+
+        let mut new_pos: Option<vek::Vec2<f32>> = None;
+        let mut map = MAP.borrow_mut();
+        for sector in &map.sectors {
+            if sector.name == sector_name {
+                new_pos = sector.center(&*map);
+            }
+        }
+
+        if let Some(new_pos) = new_pos {
+            let entity_id = *CURR_ENTITYID.borrow();
+            let mut entities = map.entities.clone();
+            if let Some(entity) = entities.iter_mut().find(|entity| entity.id == entity_id) {
+                entity.set_pos_xz(new_pos);
+                check_player_for_section_change(&*map, entity);
+            }
+            map.entities = entities;
+        }
+    }
+
+    Ok(())
+}
+
 /// Message
 pub fn message(args: rustpython_vm::function::FuncArgs, vm: &VirtualMachine) -> PyResult<()> {
     let mut receiver = None;
@@ -2398,7 +2517,9 @@ pub fn create_entity_instance(mut entity: Entity) {
         }
 
         let cmd = format!("{}.event(\"startup\", \"\")", class_name);
-        ENTITY_CLASSES.borrow_mut().insert(entity.id, class_name);
+        ENTITY_CLASSES
+            .borrow_mut()
+            .insert(entity.id, class_name.clone());
         if let Err(err) = REGION.borrow_mut().execute(&cmd) {
             send_log_message(format!(
                 "{}: Event Error ({}) for '{}': {}",
@@ -2407,6 +2528,24 @@ pub fn create_entity_instance(mut entity: Entity) {
                 get_entity_name(entity.id),
                 err,
             ));
+        }
+
+        // Determine, set and notify the entity about the sector it is in.
+        let mut sector_name = String::new();
+        if let Some(sector) = MAP.borrow().find_sector_at(entity.get_pos_xz()) {
+            sector_name = sector.name.clone();
+        }
+        {
+            let mut map = MAP.borrow_mut();
+            for e in map.entities.iter_mut() {
+                if e.id == entity.id {
+                    e.attributes.set("sector", Value::Str(sector_name.clone()));
+                }
+            }
+        }
+        if !sector_name.is_empty() {
+            let cmd = format!("{}.event(\"entered\", \"{}\")", class_name, sector_name);
+            _ = REGION.borrow_mut().execute(&cmd);
         }
     }
 
