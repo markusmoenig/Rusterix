@@ -27,6 +27,9 @@ pub struct GameWidget {
     pub table: toml::Table,
 
     pub camera: PlayerCamera,
+
+    // Used to detect region changes (have to rebuild the geometry)
+    pub build_region_name: String,
 }
 
 impl Default for GameWidget {
@@ -61,6 +64,8 @@ impl GameWidget {
             table: toml::Table::default(),
 
             camera: PlayerCamera::D2,
+
+            build_region_name: String::new(),
         }
     }
 
@@ -93,6 +98,7 @@ impl GameWidget {
                 &ValueContainer::default(),
             );
         }
+        self.build_region_name = map.name.clone();
     }
 
     pub fn apply_entities(&mut self, map: &Map, assets: &Assets) {
@@ -133,6 +139,10 @@ impl GameWidget {
     }
 
     pub fn draw(&mut self, map: &Map, time: &TheTime, assets: &Assets) {
+        if map.name != self.build_region_name {
+            self.build(map, assets);
+        }
+
         if self.camera == PlayerCamera::D2 {
             self.draw_d2(map, time, assets);
         } else {

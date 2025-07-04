@@ -8,6 +8,7 @@ pub enum Value {
     NoValue,
     Bool(bool),
     Int(i32),
+    UInt(u32),
     Int64(i64),
     Float(f32),
     Vec2([f32; 2]),
@@ -47,8 +48,18 @@ impl Value {
             let val: bool = value.try_into_value(vm).ok()?;
             Some(Value::Bool(val))
         } else if value.class().is(vm.ctx.types.int_type) {
-            let val: i32 = value.try_into_value(vm).ok()?;
-            Some(Value::Int(val))
+            // let val: i32 = value.try_into_value(vm).ok()?;
+            // Some(Value::Int(val))
+            // Try signed first
+            if let Ok(val) = i32::try_from_object(vm, value.clone()) {
+                Some(Value::Int(val))
+            }
+            // Then try unsigned if it doesn't fit as i32
+            else if let Ok(val) = u32::try_from_object(vm, value) {
+                Some(Value::UInt(val))
+            } else {
+                None // Doesn't fit in either
+            }
         } else if value.class().is(vm.ctx.types.float_type) {
             let val: f32 = value.try_into_value(vm).ok()?;
             Some(Value::Float(val))
@@ -127,6 +138,7 @@ impl fmt::Display for Value {
             Value::NoValue => write!(f, "NoValue"),
             Value::Bool(val) => write!(f, "{}", val),
             Value::Int(val) => write!(f, "{}", val),
+            Value::UInt(val) => write!(f, "{}", val),
             Value::Int64(val) => write!(f, "{}", val),
             Value::Float(val) => write!(f, "{:.2}", val),
             Value::Vec2(val) => write!(f, "[{}, {}]", val[0], val[1]),
@@ -360,6 +372,7 @@ impl ValueContainer {
             Some(Value::StrArray(_)) => 0,
             Some(Value::Bool(_)) => 1,
             Some(Value::Int(_)) => 2,
+            Some(Value::UInt(_)) => 2,
             Some(Value::Int64(_)) => 2,
             Some(Value::Float(_)) => 3,
             Some(Value::Vec2(_)) => 4,
@@ -393,6 +406,7 @@ impl ValueContainer {
                 Value::NoValue => "None".to_string(),
                 Value::Bool(b) => b.to_string(),
                 Value::Int(i) => i.to_string(),
+                Value::UInt(i) => i.to_string(),
                 Value::Int64(i) => i.to_string(),
                 Value::Float(f) => f.to_string(),
                 Value::Vec2(v) => format!("[{}, {}]", v[0], v[1]),

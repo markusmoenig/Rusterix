@@ -219,7 +219,7 @@ impl Rusterix {
     }
 
     /// Update the server messages.
-    pub fn update_server(&mut self) {
-        self.server.update(&mut self.assets);
+    pub fn update_server(&mut self) -> Option<String> {
+        self.server.update(&mut self.assets)
     }
 }

@@ -6,8 +6,6 @@ pub mod item;
 pub mod message;
 pub mod py_fn;
 pub mod region;
-// pub mod regiondata;
-// pub mod regionpool;
 
 use crossbeam_channel::{Receiver, Sender};
 
@@ -222,8 +220,11 @@ impl Server {
         TheTime::default()
     }
 
-    /// Retrieves all messages from the regions.
-    pub fn update(&mut self, assets: &mut Assets) {
+    /// Retrieves all messages from the regions. Returns the name of the new region should the
+    /// players region change.
+    pub fn update(&mut self, assets: &mut Assets) -> Option<String> {
+        let mut rc: Option<String> = None;
+
         for receiver in &self.from_region {
             while let Ok(message) = receiver.try_recv() {
                 match message {
@@ -318,10 +319,28 @@ impl Server {
                             dest_id = *region_id;
                         }
 
+                        let mut removed_local: Option<Entity> = None;
+                        // Remove entity from the old region
+                        if let Some(entities) = self.entities.get_mut(&from_region_id) {
+                            if let Some(pos) = entities.iter().position(|e| e.id == entity.id) {
+                                removed_local = Some(entities.remove(pos));
+                            }
+                        }
+
+                        // Add entity to the dest region
+                        if let Some(removed_local) = removed_local {
+                            if let Some(entities) = self.entities.get_mut(&dest_id) {
+                                entities.push(removed_local);
+                            } else {
+                                self.entities.insert(dest_id, vec![removed_local]);
+                            }
+                            rc = Some(dest_region_name.clone());
+                        }
+
+                        // Change the local player reference to the new region
                         if let Ok(mut players) = LOCAL_PLAYERS.write() {
                             for item in &mut *players {
                                 if item.1 == entity.id {
-                                    println!("{} -> {}", item.0, dest_id);
                                     item.0 = dest_id;
                                 }
                             }
@@ -347,6 +366,8 @@ impl Server {
                 }
             }
         }
+
+        rc
     }
 
     /// Update existing entities (or create new ones if they do not exist).

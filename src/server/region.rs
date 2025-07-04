@@ -12,6 +12,15 @@ use std::sync::{Arc, Mutex, OnceLock};
 use theframework::prelude::{FxHashMap, FxHashSet, TheTime, Uuid};
 use vek::num_traits::zero;
 
+use std::sync::atomic::{AtomicU32, Ordering};
+
+// Global Id Generator over all threads and regions
+static GLOBAL_ID_GEN: AtomicU32 = AtomicU32::new(0);
+
+pub fn get_global_id() -> u32 {
+    GLOBAL_ID_GEN.fetch_add(1, Ordering::Relaxed)
+}
+
 use EntityAction::*;
 
 // Local thread global data for the Region
@@ -28,9 +37,6 @@ ref_thread_local! {
 
     /// RegionID
     pub static managed REGIONID: u32 = 0;
-
-    /// Id counter.
-    pub static managed ID_GEN: u32 = 0;
 
     /// A list of notifications to send to the given entity at the specified tick.
     pub static managed NOTIFICATIONS_ENTITIES: Vec<(u32, i64, String)> = vec![];
@@ -330,7 +336,6 @@ impl RegionInstance {
             *CONFIG.borrow_mut() = toml;
         }
 
-        *ID_GEN.borrow_mut() = 0;
         *MAP.borrow_mut() = map;
         *NOTIFICATIONS_ENTITIES.borrow_mut() = vec![];
         *NOTIFICATIONS_ITEMS.borrow_mut() = vec![];
@@ -409,25 +414,23 @@ impl RegionInstance {
 
         // Set an entity id and mark all fields dirty for the first transmission to the server.
         for e in MAP.borrow_mut().entities.iter_mut() {
-            e.id = *ID_GEN.borrow();
+            e.id = get_global_id();
             // By default we set the sequence to idle.
             e.set_attribute(
                 "_source_seq",
                 Value::Source(PixelSource::Sequence("idle".into())),
             );
-            *ID_GEN.borrow_mut() += 1;
             e.mark_all_dirty();
         }
 
         // Set an item id and mark all fields dirty for the first transmission to the server.
         for i in MAP.borrow_mut().items.iter_mut() {
-            i.id = *ID_GEN.borrow();
+            i.id = get_global_id();
             // By default we set the sequence to idle.
             i.attributes.set(
                 "_source_seq",
                 Value::Source(PixelSource::Sequence("_".into())),
             );
-            *ID_GEN.borrow_mut() += 1;
             i.mark_all_dirty();
         }
     }
@@ -444,7 +447,6 @@ impl RegionInstance {
         let blocking_tiles = BLOCKING_TILES.borrow().clone();
         let config = CONFIG.borrow().clone();
         let assets = ASSETS.borrow().clone();
-        let id_gen = *ID_GEN.borrow();
 
         std::thread::spawn(move || {
             // Initialize the local thread global storage
@@ -468,7 +470,6 @@ impl RegionInstance {
             *BLOCKING_TILES.borrow_mut() = blocking_tiles;
             *CONFIG.borrow_mut() = config;
             *ASSETS.borrow_mut() = assets;
-            *ID_GEN.borrow_mut() = id_gen;
 
             *TICKS_PER_MINUTE.borrow_mut() =
                 get_config_i32_default("game", "ticks_per_minute", 4) as u32;
@@ -864,7 +865,7 @@ impl RegionInstance {
                                             if let Some(class_name) = ITEM_CLASSES.borrow().get(&item_id) {
                                                 let mut cont = ValueContainer::default();
                                                 cont.set("distance", Value::Float(distance));
-                                                cont.set("entity_id", Value::Int(entity_id as i32));
+                                                cont.set("entity_id", Value::UInt(entity_id));
                                                 let cmd = format!("{}.event('{}', {})", class_name, "clicked", cont.to_python_dict_string());
                                                 *CURR_ENTITYID.borrow_mut() = entity_id;
                                                 *CURR_ITEMID.borrow_mut() = Some(item_id);
@@ -1451,7 +1452,7 @@ fn check_player_for_section_change(map: &Map, entity: &mut Entity) {
                     // Send entered event
                     if !sector.name.is_empty() {
                         let cmd = format!("{}.event(\"entered\", \"{}\")", class_name, sector.name);
-                        println!("{cmd}");
+                        // println!("{cmd}");
                         TO_EXECUTE_ENTITY.borrow_mut().push((
                             entity.id,
                             "bumped_into_item".into(),
@@ -1462,7 +1463,7 @@ fn check_player_for_section_change(map: &Map, entity: &mut Entity) {
                     if !old_sector_name.is_empty() {
                         let cmd =
                             format!("{}.event(\"left\", \"{}\")", class_name, old_sector_name);
-                        println!("{cmd}");
+                        // println!("{cmd}");
                         TO_EXECUTE_ENTITY.borrow_mut().push((
                             entity.id,
                             "bumped_into_item".into(),
@@ -1481,7 +1482,7 @@ fn check_player_for_section_change(map: &Map, entity: &mut Entity) {
         if !old_sector_name.is_empty() {
             if let Some(class_name) = ENTITY_CLASSES.borrow().get(&entity.id) {
                 let cmd = format!("{}.event(\"left\", \"{}\")", class_name, old_sector_name);
-                println!("{cmd}");
+                // println!("{cmd}");
                 TO_EXECUTE_ENTITY
                     .borrow_mut()
                     .push((entity.id, "bumped_into_item".into(), cmd));
@@ -2338,8 +2339,10 @@ pub fn message(args: rustpython_vm::function::FuncArgs, vm: &VirtualMachine) -> 
 
     for (i, arg) in args.args.iter().enumerate() {
         if i == 0 {
-            if let Some(Value::Int(v)) = Value::from_pyobject(arg.clone(), vm) {
+            if let Some(Value::UInt(v)) = Value::from_pyobject(arg.clone(), vm) {
                 receiver = Some(v);
+            } else if let Some(Value::Int(v)) = Value::from_pyobject(arg.clone(), vm) {
+                receiver = Some(v as u32);
             }
         } else if i == 1 {
             if let Some(Value::Str(v)) = Value::from_pyobject(arg.clone(), vm) {
@@ -2478,10 +2481,7 @@ fn create_item(class_name: String) -> Option<Item> {
         return None;
     }
 
-    let id = *ID_GEN.borrow();
-    // println!("Creating item with ID {}", id);
-    *ID_GEN.borrow_mut() += 1;
-
+    let id = get_global_id();
     let mut item = Item {
         id,
         ..Default::default()
@@ -2500,8 +2500,7 @@ fn create_item(class_name: String) -> Option<Item> {
 
 /// Create a new entity instance.
 pub fn create_entity_instance(mut entity: Entity) {
-    entity.id = *ID_GEN.borrow();
-    *ID_GEN.borrow_mut() += 1;
+    entity.id = get_global_id();
     entity.set_attribute(
         "_source_seq",
         Value::Source(PixelSource::Sequence("idle".into())),
