@@ -82,3 +82,6 @@ harness = false
 [features]
 single_thread = []
 default = []
+
+[patch.crates-io]
+radium = { version = "1.1.0", git = "https://github.com/youknowone/ferrilab", branch = "fix-nightly" }

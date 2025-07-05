@@ -395,7 +395,7 @@ impl Entity {
     }
 
     /// Mark a dynamic attribute as dirty
-    fn mark_dirty_attribute(&mut self, key: &str) {
+    pub fn mark_dirty_attribute(&mut self, key: &str) {
         self.dirty_attributes.insert(key.to_string());
     }
 

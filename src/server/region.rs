@@ -213,6 +213,12 @@ impl RegionInstance {
             );
 
             let _ = scope.globals.set_item(
+                "toggle_attr",
+                vm.new_function("toggle_attr", toggle_attr).into(),
+                vm,
+            );
+
+            let _ = scope.globals.set_item(
                 "random",
                 vm.new_function("random", random_in_range).into(),
                 vm,
@@ -1602,6 +1608,7 @@ fn set_emit_light(value: bool) {
         {
             if let Some(Value::Light(light)) = item.attributes.get_mut("light") {
                 light.active = value;
+                item.mark_dirty_attribute("light");
             }
         }
     } else {
@@ -1614,6 +1621,7 @@ fn set_emit_light(value: bool) {
         {
             if let Some(Value::Light(light)) = entity.attributes.get_mut("light") {
                 light.active = value;
+                entity.mark_dirty_attribute("light");
             }
         }
     }
@@ -1889,6 +1897,47 @@ fn get_attr(key: String, vm: &VirtualMachine) -> PyResult<PyObjectRef> {
     }
 
     Ok(value.to_pyobject(vm))
+}
+
+/// Toggles a boolean attribute of the current entity or item.
+fn toggle_attr(key: String) {
+    if let Some(item_id) = *CURR_ITEMID.borrow() {
+        if let Some(item) = MAP
+            .borrow_mut()
+            .items
+            .iter_mut()
+            .find(|item| item.id == item_id)
+        {
+            item.attributes.toggle(&key);
+            if key == "active" {
+                // Send active state
+                if let Some(class_name) = item.attributes.get_str("class_name") {
+                    let cmd = format!(
+                        "{}.event(\"active\", {})",
+                        class_name,
+                        if item.attributes.get_bool_default("active", false) {
+                            "True"
+                        } else {
+                            "False"
+                        }
+                    );
+                    TO_EXECUTE_ITEM
+                        .borrow_mut()
+                        .push((item.id, "active".into(), cmd));
+                }
+            }
+        } else {
+            let entity_id = *CURR_ENTITYID.borrow();
+            if let Some(entity) = MAP
+                .borrow_mut()
+                .entities
+                .iter_mut()
+                .find(|entity| entity.id == entity_id)
+            {
+                entity.attributes.toggle(&key);
+            }
+        }
+    }
 }
 
 /// Set the attribute of the current entity or item.

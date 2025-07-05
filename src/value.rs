@@ -189,6 +189,13 @@ impl ValueContainer {
         self.values.get(key)
     }
 
+    // Toggle a boolean value
+    pub fn toggle(&mut self, key: &str) {
+        if let Some(Value::Bool(current)) = self.values.get_mut(key) {
+            *current = !*current;
+        }
+    }
+
     // Get a mutable reference to a value by key
     pub fn get_mut(&mut self, key: &str) -> Option<&mut Value> {
         self.values.get_mut(key)

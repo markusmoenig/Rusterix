@@ -162,6 +162,9 @@ impl GameWidget {
                     .projection_matrix(width as f32, height as f32),
             );
             rast.mapmini = self.scene.mapmini.clone();
+            rast.render_graph = assets.global.clone();
+            rast.hour = time.to_f32();
+            rast.render_graph = assets.global.clone();
             // rast.background_color = Some(vec4_to_pixel(&Vec4::new(ac.x, ac.y, ac.z, 1.0)));
             rast.rasterize(
                 &mut self.scene,
@@ -175,7 +178,7 @@ impl GameWidget {
     }
 
     /// Draw the 2D scene.
-    pub fn draw_d2(&mut self, _map: &Map, _time: &TheTime, assets: &Assets) {
+    pub fn draw_d2(&mut self, _map: &Map, time: &TheTime, assets: &Assets) {
         let width = self.buffer.dim().width as usize;
         let height = self.buffer.dim().height as usize;
 
@@ -256,9 +259,11 @@ impl GameWidget {
         );
         let transform = translation_matrix * scale_matrix;
 
-        let mut rast = Rasterizer::setup(Some(transform), Mat4::identity(), Mat4::identity());
+        let mut rast = Rasterizer::setup(Some(transform), Mat4::identity(), Mat4::identity())
+            .render_mode(RenderMode::render_2d());
         rast.mapmini = self.scene.mapmini.clone();
-
+        rast.render_graph = assets.global.clone();
+        rast.hour = time.to_f32();
         rast.rasterize(
             &mut self.scene,
             self.buffer.pixels_mut(),

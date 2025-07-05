@@ -1,4 +1,4 @@
-use crate::prelude::*;
+use crate::{ShapeFXGraph, prelude::*};
 use indexmap::IndexMap;
 use std::path::Path;
 use theframework::prelude::*;
@@ -37,6 +37,9 @@ pub struct Assets {
 
     pub fonts: FxHashMap<String, fontdue::Font>,
     pub palette: ThePalette,
+
+    // The global render graph
+    pub global: ShapeFXGraph,
 }
 
 impl Default for Assets {
@@ -66,6 +69,7 @@ impl Assets {
             atlas: Texture::default(),
             fonts: FxHashMap::default(),
             palette: ThePalette::default(),
+            global: ShapeFXGraph::default(),
         }
     }
 
