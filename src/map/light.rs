@@ -31,6 +31,7 @@ impl LightType {
 pub struct Light {
     pub light_type: LightType,
     pub properties: ValueContainer,
+    pub active: bool,
 }
 
 impl Light {
@@ -38,6 +39,7 @@ impl Light {
         Self {
             light_type,
             properties: ValueContainer::default(),
+            active: true,
         }
     }
 

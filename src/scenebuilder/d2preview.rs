@@ -841,17 +841,21 @@ impl D2PreviewBuilder {
 
                 // Find light on entity
                 if let Some(Value::Light(light)) = entity.attributes.get("light") {
-                    let mut light = light.clone();
-                    light.set_position(entity.position);
-                    scene.dynamic_lights.push(light.compile());
+                    if light.active {
+                        let mut light = light.clone();
+                        light.set_position(entity.position);
+                        scene.dynamic_lights.push(light.compile());
+                    }
                 }
 
                 // Find light on entity items
                 for (_, item) in entity.iter_inventory() {
                     if let Some(Value::Light(light)) = item.attributes.get("light") {
-                        let mut light = light.clone();
-                        light.set_position(entity.position);
-                        scene.dynamic_lights.push(light.compile());
+                        if light.active {
+                            let mut light = light.clone();
+                            light.set_position(entity.position);
+                            scene.dynamic_lights.push(light.compile());
+                        }
                     }
                 }
 
@@ -899,9 +903,11 @@ impl D2PreviewBuilder {
                 let hsize = 0.5;
 
                 if let Some(Value::Light(light)) = item.attributes.get("light") {
-                    let mut light = light.clone();
-                    light.set_position(item.position);
-                    scene.dynamic_lights.push(light.compile());
+                    if light.active {
+                        let mut light = light.clone();
+                        light.set_position(item.position);
+                        scene.dynamic_lights.push(light.compile());
+                    }
                 }
 
                 if let Some(Value::Source(source)) = item.attributes.get("source") {

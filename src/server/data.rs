@@ -101,14 +101,12 @@ pub fn read_light(light: &mut Light, values: &toml::Value) {
     if let Some(toml::Value::Float(flicker)) = values.get("flicker") {
         light.set_flicker(*flicker as f32);
     }
-    if let Some(toml::Value::Float(dist)) = values.get("start_distance") {
-        light.set_start_distance(*dist as f32);
+    light.set_start_distance(0.0);
+    if let Some(toml::Value::Float(range)) = values.get("range") {
+        light.set_end_distance(*range as f32);
     }
-    if let Some(toml::Value::Float(dist)) = values.get("end_distance") {
-        light.set_end_distance(*dist as f32);
-    }
-    if let Some(toml::Value::Float(dist)) = values.get("intensity") {
-        light.set_intensity(*dist as f32);
+    if let Some(toml::Value::Float(strength)) = values.get("strength") {
+        light.set_intensity(*strength as f32);
     }
     if let Some(toml::Value::String(hex)) = values.get("color") {
         light.set_color(hex_to_rgb_f32(hex));

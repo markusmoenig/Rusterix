@@ -169,6 +169,12 @@ impl RegionInstance {
             );
 
             let _ = scope.globals.set_item(
+                "set_emit_light",
+                vm.new_function("set_emit_light", set_emit_light).into(),
+                vm,
+            );
+
+            let _ = scope.globals.set_item(
                 "set_rig_sequence",
                 vm.new_function("set_rig_sequence", set_rig_sequence).into(),
                 vm,
@@ -564,7 +570,9 @@ impl RegionInstance {
             for item in items.iter() {
                 if let Some(class_name) = item.get_attr_string("class_name") {
                     let cmd = format!("{}.event(\"startup\", \"\")", class_name);
-                    ITEM_CLASSES.borrow_mut().insert(item.id, class_name);
+                    ITEM_CLASSES
+                        .borrow_mut()
+                        .insert(item.id, class_name.clone());
                     *CURR_ITEMID.borrow_mut() = Some(item.id);
                     if let Err(err) = REGION.borrow_mut().execute(&cmd) {
                         send_log_message(format!(
@@ -629,8 +637,8 @@ impl RegionInstance {
             }
 
             // Running the item setup scripts for the class instances
-            let items = MAP.borrow().items.clone();
-            for item in items.iter() {
+            let mut items = MAP.borrow().items.clone();
+            for item in items.iter_mut() {
                 if let Some(setup) = item.get_attr_string("setup") {
                     if let Err(err) = REGION.borrow_mut().execute(&setup) {
                         send_log_message(format!(
@@ -664,9 +672,21 @@ impl RegionInstance {
                         for i in map.items.iter_mut() {
                             if i.id == item.id {
                                 apply_item_data(i, data);
+                                *item = i.clone();
                             }
                         }
                     }
+                    // Send active state
+                    let cmd = format!(
+                        "{}.event(\"active\", {})",
+                        class_name,
+                        if item.attributes.get_bool_default("active", false) {
+                            "True"
+                        } else {
+                            "False"
+                        }
+                    );
+                    _ = REGION.borrow_mut().execute(&cmd);
                 }
             }
             *CURR_ITEMID.borrow_mut() = None;
@@ -1571,6 +1591,34 @@ fn player_action(action: String) {
     }
 }
 
+/// Sets light emission to on / off
+fn set_emit_light(value: bool) {
+    if let Some(item_id) = *CURR_ITEMID.borrow() {
+        if let Some(item) = MAP
+            .borrow_mut()
+            .items
+            .iter_mut()
+            .find(|item| item.id == item_id)
+        {
+            if let Some(Value::Light(light)) = item.attributes.get_mut("light") {
+                light.active = value;
+            }
+        }
+    } else {
+        let entity_id = *CURR_ENTITYID.borrow();
+        if let Some(entity) = MAP
+            .borrow_mut()
+            .entities
+            .iter_mut()
+            .find(|entity| entity.id == entity_id)
+        {
+            if let Some(Value::Light(light)) = entity.attributes.get_mut("light") {
+                light.active = value;
+            }
+        }
+    }
+}
+
 /// Set the tile_id of the current entity or item.
 fn set_tile(id: String) {
     if let Ok(uuid) = Uuid::try_parse(&id) {
@@ -1855,6 +1903,24 @@ fn set_attr(key: PyObjectRef, value: PyObjectRef, vm: &VirtualMachine) {
                     .find(|item| item.id == item_id)
                 {
                     item.set_attribute(&key, value);
+
+                    if key == "active" {
+                        // Send active state
+                        if let Some(class_name) = item.attributes.get_str("class_name") {
+                            let cmd = format!(
+                                "{}.event(\"active\", {})",
+                                class_name,
+                                if item.attributes.get_bool_default("active", false) {
+                                    "True"
+                                } else {
+                                    "False"
+                                }
+                            );
+                            TO_EXECUTE_ITEM
+                                .borrow_mut()
+                                .push((item.id, "active".into(), cmd));
+                        }
+                    }
                 }
             } else {
                 let entity_id = *CURR_ENTITYID.borrow();
@@ -2494,6 +2560,20 @@ fn create_item(class_name: String) -> Option<Item> {
     if let Some(data) = ITEM_CLASS_DATA.borrow().get(&class_name) {
         apply_item_data(&mut item, data);
     }
+
+    // Send active state
+    let cmd = format!(
+        "{}.event(\"active\", {})",
+        class_name,
+        if item.attributes.get_bool_default("active", false) {
+            "True"
+        } else {
+            "False"
+        }
+    );
+    TO_EXECUTE_ITEM
+        .borrow_mut()
+        .push((item.id, "active".into(), cmd));
 
     Some(item)
 }
