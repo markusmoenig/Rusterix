@@ -1,3 +1,4 @@
+pub mod deco;
 pub mod game;
 pub mod messages;
 pub mod screen;
@@ -9,6 +10,7 @@ use crate::prelude::Rect;
 pub struct Widget {
     pub rect: Rect,
     pub action: String,
+    pub intent: Option<String>,
 }
 
 impl Default for Widget {
@@ -22,6 +24,7 @@ impl Widget {
         Self {
             rect: Rect::default(),
             action: String::new(),
+            intent: None,
         }
     }
 }

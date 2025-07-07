@@ -94,6 +94,7 @@ pub use crate::{
         linedef::Linedef,
         meta::MapMeta,
         mini::MapMini,
+        particle::{Particle, ParticleEmitter},
         pixelsource::NoiseTarget,
         pixelsource::PixelSource,
         sector::Sector,
@@ -112,8 +113,7 @@ pub use crate::{
     scenemanager::*,
     script::mapscript::MapScript,
     server::{
-        Server,
-        ServerState,
+        Server, ServerState,
         assets::Assets,
         currency::{Currencies, Currency, Wallet},
         entity::Entity,
@@ -123,8 +123,6 @@ pub use crate::{
         message::PlayerCamera,
         message::RegionMessage,
         region::RegionInstance,
-        // regiondata::RegionData,
-        // regionpool::RegionPool,
     },
     shader::{Shader, grid::GridShader, vgradient::VGrayGradientShader},
     shapestack::{
@@ -166,8 +164,8 @@ pub mod prelude {
     pub use crate::{D3Camera, D3FirstPCamera, D3IsoCamera, D3OrbitCamera};
     pub use crate::{GridShader, Shader, VGrayGradientShader};
     pub use crate::{
-        Keyform, Light, LightType, Map, MapMeta, MapToolType, NoiseTarget, PixelSource, Sector,
-        SoftRig, SoftRigAnimator, Tile, Vertex,
+        Keyform, Light, LightType, Map, MapMeta, MapToolType, NoiseTarget, Particle,
+        ParticleEmitter, PixelSource, Sector, SoftRig, SoftRigAnimator, Tile, Vertex,
     };
     pub use crate::{Material, MaterialModifier, MaterialRole};
     pub use crate::{

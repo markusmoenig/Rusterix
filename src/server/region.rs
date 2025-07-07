@@ -13,6 +13,7 @@ use theframework::prelude::{FxHashMap, FxHashSet, TheTime, Uuid};
 use vek::num_traits::zero;
 
 use std::sync::atomic::{AtomicU32, Ordering};
+use vek::Vec2;
 
 // Global Id Generator over all threads and regions
 static GLOBAL_ID_GEN: AtomicU32 = AtomicU32::new(0);
@@ -887,12 +888,32 @@ impl RegionInstance {
                                 }
                                 UserAction(entity_id, action) => {
                                     match action {
+                                        Intent(intent) => {
+                                            if let Some(entity) = MAP
+                                                .borrow_mut()
+                                                .entities
+                                                .iter_mut()
+                                                .find(|entity| entity.id == entity_id)
+                                            {
+                                                entity.set_attribute("intent", Value::Str(intent));
+                                            }
+                                        },
                                         ItemClicked(item_id, distance) => {
                                             if let Some(class_name) = ITEM_CLASSES.borrow().get(&item_id) {
                                                 let mut cont = ValueContainer::default();
                                                 cont.set("distance", Value::Float(distance));
                                                 cont.set("entity_id", Value::UInt(entity_id));
-                                                let cmd = format!("{}.event('{}', {})", class_name, "clicked", cont.to_python_dict_string());
+                                                let mut intent = String::new();
+                                                if let Some(entity) = MAP
+                                                .borrow_mut()
+                                                .entities
+                                                .iter_mut()
+                                                .find(|entity| entity.id == entity_id)
+                                                {
+                                                    intent = entity.get_attr_string("intent").unwrap_or_default();
+                                                }
+                                                cont.set("intent", Value::Str(intent));
+                                                let cmd = format!("{}.event('{}', {})", class_name, "intent", cont.to_python_dict_string());
                                                 *CURR_ENTITYID.borrow_mut() = entity_id;
                                                 *CURR_ITEMID.borrow_mut() = Some(item_id);
                                                 if let Err(err) = REGION.borrow().execute(&cmd) {
@@ -950,13 +971,21 @@ impl RegionInstance {
             match &entity.action {
                 EntityAction::Forward => {
                     if entity.is_player() {
-                        if let Some(Value::PlayerCamera(player_camera)) =
-                            entity.attributes.get("player_camera")
-                        {
-                            if *player_camera != PlayerCamera::D3FirstP {
-                                entity.face_north();
+                        let intent = entity.attributes.get_str_default("intent", "".into());
+                        if intent.is_empty() {
+                            if let Some(Value::PlayerCamera(player_camera)) =
+                                entity.attributes.get("player_camera")
+                            {
+                                if *player_camera != PlayerCamera::D3FirstP {
+                                    entity.face_north();
+                                }
+                                self.move_entity(entity, 1.0, entity_block_mode);
                             }
-                            self.move_entity(entity, 1.0, entity_block_mode);
+                        } else {
+                            // If intent is set we send "intent" events
+                            entity.face_north();
+                            let position = entity.get_forward_pos(1.0);
+                            send_entity_intent_events(entity, position);
                         }
                     } else {
                         self.move_entity(entity, 1.0, entity_block_mode);
@@ -964,15 +993,23 @@ impl RegionInstance {
                 }
                 EntityAction::Left => {
                     if entity.is_player() {
-                        if let Some(Value::PlayerCamera(player_camera)) =
-                            entity.attributes.get("player_camera")
-                        {
-                            if *player_camera != PlayerCamera::D3FirstP {
-                                entity.face_west();
-                                self.move_entity(entity, 1.0, entity_block_mode);
-                            } else {
-                                entity.turn_left(4.0);
+                        let intent = entity.attributes.get_str_default("intent", "".into());
+                        if intent.is_empty() {
+                            if let Some(Value::PlayerCamera(player_camera)) =
+                                entity.attributes.get("player_camera")
+                            {
+                                if *player_camera != PlayerCamera::D3FirstP {
+                                    entity.face_west();
+                                    self.move_entity(entity, 1.0, entity_block_mode);
+                                } else {
+                                    entity.turn_left(4.0);
+                                }
                             }
+                        } else {
+                            // If intent is set we send "intent" events
+                            entity.face_west();
+                            let position = entity.get_forward_pos(1.0);
+                            send_entity_intent_events(entity, position);
                         }
                     } else {
                         entity.turn_left(4.0);
@@ -980,15 +1017,24 @@ impl RegionInstance {
                 }
                 EntityAction::Right => {
                     if entity.is_player() {
-                        if let Some(Value::PlayerCamera(player_camera)) =
-                            entity.attributes.get("player_camera")
-                        {
-                            if *player_camera != PlayerCamera::D3FirstP {
-                                entity.face_east();
-                                self.move_entity(entity, 1.0, entity_block_mode);
-                            } else {
-                                entity.turn_right(4.0);
+                        let intent = entity.attributes.get_str_default("intent", "".into());
+                        if intent.is_empty() {
+                            // If no intent we walk
+                            if let Some(Value::PlayerCamera(player_camera)) =
+                                entity.attributes.get("player_camera")
+                            {
+                                if *player_camera != PlayerCamera::D3FirstP {
+                                    entity.face_east();
+                                    self.move_entity(entity, 1.0, entity_block_mode);
+                                } else {
+                                    entity.turn_right(4.0);
+                                }
                             }
+                        } else {
+                            // If intent is set we send "intent" events
+                            entity.face_east();
+                            let position = entity.get_forward_pos(1.0);
+                            send_entity_intent_events(entity, position);
                         }
                     } else {
                         entity.turn_right(4.0);
@@ -996,15 +1042,23 @@ impl RegionInstance {
                 }
                 EntityAction::Backward => {
                     if entity.is_player() {
-                        if let Some(Value::PlayerCamera(player_camera)) =
-                            entity.attributes.get("player_camera")
-                        {
-                            if *player_camera != PlayerCamera::D3FirstP {
-                                entity.face_south();
-                                self.move_entity(entity, 1.0, entity_block_mode);
-                            } else {
-                                self.move_entity(entity, -1.0, entity_block_mode);
+                        let intent = entity.attributes.get_str_default("intent", "".into());
+                        if intent.is_empty() {
+                            if let Some(Value::PlayerCamera(player_camera)) =
+                                entity.attributes.get("player_camera")
+                            {
+                                if *player_camera != PlayerCamera::D3FirstP {
+                                    entity.face_south();
+                                    self.move_entity(entity, 1.0, entity_block_mode);
+                                } else {
+                                    self.move_entity(entity, -1.0, entity_block_mode);
+                                }
                             }
+                        } else {
+                            // If intent is set we send "intent" events
+                            entity.face_south();
+                            let position = entity.get_forward_pos(1.0);
+                            send_entity_intent_events(entity, position);
                         }
                     } else {
                         self.move_entity(entity, -1.0, entity_block_mode);
@@ -1468,7 +1522,61 @@ impl RegionInstance {
     }
 }
 
-/// Check if the player moved to a different section and if yes send "enter" and "left" events
+/// Send "intent" events for the entity or item at the given position.
+fn send_entity_intent_events(entity: &mut Entity, position: Vec2<f32>) {
+    if let Some(class_name) = ENTITY_CLASSES.borrow().get(&entity.id) {
+        // Send "intent" event for the entity
+        let mut cont = ValueContainer::default();
+        cont.set("distance", Value::Float(1.0));
+
+        let mut item_id = None;
+
+        let mut found_target = false;
+        if let Some(entity_id) = get_entity_at(position) {
+            if entity_id != entity.id {
+                cont.set("entity_id", Value::UInt(entity_id));
+                found_target = true;
+            }
+        }
+        if let Some(i_id) = get_item_at(position) {
+            cont.set("item_id", Value::UInt(i_id));
+            item_id = Some(i_id);
+            found_target = true;
+        }
+
+        if !found_target {
+            return;
+        }
+
+        cont.set(
+            "intent",
+            Value::Str(entity.attributes.get_str_default("intent", "".into())),
+        );
+        let cmd = format!(
+            "{}.event('intent', {})",
+            class_name,
+            cont.to_python_dict_string()
+        );
+        TO_EXECUTE_ENTITY
+            .borrow_mut()
+            .push((entity.id, "intent".into(), cmd.clone()));
+
+        if let Some(item_id) = item_id {
+            if let Some(class_name) = ITEM_CLASSES.borrow().get(&item_id) {
+                let cmd = format!(
+                    "{}.event('intent', {})",
+                    class_name,
+                    cont.to_python_dict_string()
+                );
+                TO_EXECUTE_ITEM
+                    .borrow_mut()
+                    .push((item_id, "intent".into(), cmd));
+            }
+        }
+    }
+}
+
+/// Check if the player moved to a different sector and if yes send "enter" and "left" events
 fn check_player_for_section_change(map: &Map, entity: &mut Entity) {
     // Determine, set and notify the entity about the sector it is in.
     if let Some(sector) = map.find_sector_at(entity.get_pos_xz()) {
@@ -2132,6 +2240,48 @@ fn entities_in_radius_internal(
     }
 
     entities
+}
+
+/// Returns the entity at the given position (if any)
+fn get_entity_at(position: Vec2<f32>) -> Option<u32> {
+    let map = MAP.borrow();
+
+    let mut entity = None;
+
+    for other in map.entities.iter() {
+        let other_position = other.get_pos_xz();
+
+        let distance = position.distance(other_position);
+
+        // Item is inside the radius
+        if distance < 1.0 {
+            entity = Some(other.id);
+            break; // We only need the first item found
+        }
+    }
+
+    entity
+}
+
+/// Returns the item at the given position (if any)
+fn get_item_at(position: Vec2<f32>) -> Option<u32> {
+    let map = MAP.borrow();
+
+    let mut item = None;
+
+    for other in map.items.iter() {
+        let other_position = other.get_pos_xz();
+
+        let distance = position.distance(other_position);
+
+        // Item is inside the radius
+        if distance < 1.0 {
+            item = Some(other.id);
+            break; // We only need the first item found
+        }
+    }
+
+    item
 }
 
 /// Returns the entities in the radius of the character or item.

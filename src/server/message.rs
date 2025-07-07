@@ -52,6 +52,8 @@ pub enum EntityAction {
     RandomWalk(f32, f32, i32, i32, Vec2<f32>),
     /// User: Distance, Speed, Max Min Sleep. System: State, Target
     RandomWalkInSector(f32, f32, i32, i32, Vec2<f32>),
+    /// Intent: A string that represents an intent, e.g. "attack", "talk", etc.
+    Intent(String),
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]

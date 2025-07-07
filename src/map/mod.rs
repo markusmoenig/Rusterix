@@ -4,6 +4,7 @@ pub mod light;
 pub mod linedef;
 pub mod meta;
 pub mod mini;
+pub mod particle;
 pub mod pixelsource;
 pub mod sector;
 pub mod softrig;

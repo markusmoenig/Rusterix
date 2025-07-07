@@ -143,6 +143,14 @@ impl Entity {
         self.mark_dirty_field(0b0001);
     }
 
+    /// Gets the position in the direction of the entity's orientation by a given distance.
+    pub fn get_forward_pos(&mut self, distance: f32) -> Vec2<f32> {
+        Vec2::new(
+            self.position.x + self.orientation.x * distance,
+            self.position.z + self.orientation.y * distance,
+        )
+    }
+
     /// Helper method to rotate the orientation vector by a given angle in radians.
     fn rotate_orientation(&mut self, radians: f32) {
         let cos_angle = radians.cos();

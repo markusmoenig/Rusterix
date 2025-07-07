@@ -13,7 +13,8 @@ use crate::{
     ShapeFXGraph, Tracer, Value,
     client::action::ClientAction,
     client::widget::{
-        Widget, game::GameWidget, messages::MessagesWidget, screen::ScreenWidget, text::TextWidget,
+        Widget, deco::DecoWidget, game::GameWidget, messages::MessagesWidget, screen::ScreenWidget,
+        text::TextWidget,
     },
 };
 use draw2d::Draw2D;
@@ -77,6 +78,7 @@ pub struct Client {
     game_widgets: FxHashMap<Uuid, GameWidget>,
     button_widgets: FxHashMap<u32, Widget>,
     text_widgets: FxHashMap<Uuid, TextWidget>,
+    deco_widgets: FxHashMap<Uuid, DecoWidget>,
 
     messages_widget: Option<MessagesWidget>,
 
@@ -85,6 +87,9 @@ pub struct Client {
 
     // Client Action
     client_action: Arc<Mutex<ClientAction>>,
+
+    // Intent
+    intent: String,
 
     currencies: Currencies,
 
@@ -145,12 +150,14 @@ impl Client {
             game_widgets: FxHashMap::default(),
             button_widgets: FxHashMap::default(),
             text_widgets: FxHashMap::default(),
+            deco_widgets: FxHashMap::default(),
             messages_widget: None,
 
             activated_widgets: vec![],
 
             client_action: Arc::new(Mutex::new(ClientAction::default())),
             currencies: Currencies::default(),
+            intent: String::new(),
 
             first_game_draw: false,
         }
@@ -484,6 +491,7 @@ impl Client {
     pub fn setup(&mut self, assets: &Assets) -> Vec<Command> {
         let mut commands = vec![];
         self.first_game_draw = true;
+        self.intent = String::new();
 
         // Init config
         match assets.config.parse::<Table>() {
@@ -569,6 +577,7 @@ impl Client {
         self.game_widgets.clear();
         self.button_widgets.clear();
         self.text_widgets.clear();
+        self.deco_widgets.clear();
         self.messages_widget = None;
         if let Some(screen) = assets.screens.get(&self.current_screen) {
             for widget in screen.sectors.iter() {
@@ -617,6 +626,9 @@ impl Client {
                             self.game_widgets.insert(widget.creator_id, game_widget);
                         } else if role == "button" {
                             let mut action = "";
+                            let mut intent = None;
+
+                            // Check for action
                             if let Some(ui) = table.get("ui").and_then(toml::Value::as_table) {
                                 if let Some(value) = ui.get("action") {
                                     if let Some(v) = value.as_str() {
@@ -624,9 +636,20 @@ impl Client {
                                     }
                                 }
                             }
+
+                            // Check for intent
+                            if let Some(ui) = table.get("ui").and_then(toml::Value::as_table) {
+                                if let Some(value) = ui.get("intent") {
+                                    if let Some(v) = value.as_str() {
+                                        intent = Some(v.to_string());
+                                    }
+                                }
+                            }
+
                             let button_widget = Widget {
                                 rect: Rect::new(x, y, width, height),
                                 action: action.into(),
+                                intent,
                             };
 
                             self.button_widgets.insert(widget.id, button_widget);
@@ -654,6 +677,18 @@ impl Client {
                             };
                             text_widget.init(assets);
                             self.text_widgets.insert(widget.creator_id, text_widget);
+                        } else if role == "deco" {
+                            let mut deco_widget = DecoWidget {
+                                rect: Rect::new(x, y, width, height),
+                                toml_str: data.clone(),
+                                buffer: TheRGBABuffer::new(TheDim::sized(
+                                    width as i32,
+                                    height as i32,
+                                )),
+                                ..Default::default()
+                            };
+                            deco_widget.init(assets);
+                            self.deco_widgets.insert(widget.creator_id, deco_widget);
                         }
                     }
                 }
@@ -690,12 +725,27 @@ impl Client {
             );
 
             widget.builder_d2.activated_widgets = self.activated_widgets.clone();
+
+            // Add the current intent to the activated widgets
+            for w in self.button_widgets.iter() {
+                if w.1.intent.is_some() && w.1.intent.as_ref().unwrap() == &self.intent {
+                    widget.builder_d2.activated_widgets.push(w.0.clone());
+                }
+            }
+
             widget.offset = Vec2::new(start_x, start_y);
 
             widget.build(screen, assets);
             widget.draw(screen, &self.server_time, assets);
 
             self.target.blend_into(0, 0, &widget.buffer);
+        }
+
+        // Draw the deco widgets on top
+        for widget in self.deco_widgets.values_mut() {
+            widget.update_draw(&mut self.target, map, &self.currencies, assets);
+            self.target
+                .blend_into(widget.rect.x as i32, widget.rect.y as i32, &widget.buffer);
         }
 
         // Draw the messages on top
@@ -738,7 +788,12 @@ impl Client {
         for (id, widget) in self.button_widgets.iter() {
             if widget.rect.contains(Vec2::new(p.x as f32, p.y as f32)) {
                 self.activated_widgets.push(*id);
-                if let Ok(act) = EntityAction::from_str(&widget.action) {
+
+                if let Some(intent) = &widget.intent {
+                    self.intent = intent.clone();
+                    action = Some(EntityAction::Intent(intent.clone()));
+                    break;
+                } else if let Ok(act) = EntityAction::from_str(&widget.action) {
                     action = Some(act);
                     break;
                 }

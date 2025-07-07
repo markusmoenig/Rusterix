@@ -1,7 +1,7 @@
+use fontdue::Font;
 use fontdue::layout::{
     CoordinateSystem, HorizontalAlign, Layout, LayoutSettings, TextStyle, VerticalAlign,
 };
-use fontdue::Font;
 use vek::*;
 
 #[derive(PartialEq, Clone, Eq)]
@@ -171,6 +171,57 @@ impl Draw2D {
 
             i = (x + rect.2 - 1) * 4 + y * stride * 4;
             frame[i..i + 4].copy_from_slice(color);
+        }
+    }
+
+    /// Draws the outline of a given rectangle with a given thickness
+    pub fn rect_outline_thickness(
+        &self,
+        frame: &mut [u8],
+        rect: &(usize, usize, usize, usize),
+        stride: usize,
+        color: &[u8; 4],
+        thickness: usize,
+    ) {
+        let (x0, y0, w, h) = *rect;
+        let x1 = x0 + w;
+        let y1 = y0 + h;
+
+        // Clamp thickness to not exceed half width/height
+        let thickness = thickness.min(w / 2).min(h / 2).max(1);
+
+        // Top and Bottom
+        for y in y0..(y0 + thickness) {
+            for x in x0..x1 {
+                let i = x * 4 + y * stride * 4;
+                if i + 4 <= frame.len() {
+                    frame[i..i + 4].copy_from_slice(color);
+                }
+            }
+        }
+        for y in (y1 - thickness)..y1 {
+            for x in x0..x1 {
+                let i = x * 4 + y * stride * 4;
+                if i + 4 <= frame.len() {
+                    frame[i..i + 4].copy_from_slice(color);
+                }
+            }
+        }
+
+        // Left and Right
+        for y in y0..y1 {
+            for x in x0..(x0 + thickness) {
+                let i = x * 4 + y * stride * 4;
+                if i + 4 <= frame.len() {
+                    frame[i..i + 4].copy_from_slice(color);
+                }
+            }
+            for x in (x1 - thickness)..x1 {
+                let i = x * 4 + y * stride * 4;
+                if i + 4 <= frame.len() {
+                    frame[i..i + 4].copy_from_slice(color);
+                }
+            }
         }
     }
 
