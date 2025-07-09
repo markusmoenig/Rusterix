@@ -1,7 +1,8 @@
-use crate::{ShapeFXGraph, prelude::*};
+use crate::{ShapeFXGraph, Value, prelude::*};
 use indexmap::IndexMap;
 use std::path::Path;
 use theframework::prelude::*;
+use toml::*;
 
 #[derive(Clone)]
 pub struct Assets {
@@ -40,6 +41,9 @@ pub struct Assets {
 
     // The global render graph
     pub global: ShapeFXGraph,
+
+    /// A map of locale names to their translations.
+    pub locales: FxHashMap<String, FxHashMap<String, String>>,
 }
 
 impl Default for Assets {
@@ -70,6 +74,28 @@ impl Assets {
             fonts: FxHashMap::default(),
             palette: ThePalette::default(),
             global: ShapeFXGraph::default(),
+            locales: FxHashMap::default(),
+        }
+    }
+
+    /// Reads all locale tables (locale_*) from the config file.
+    pub fn read_locales(&mut self) {
+        self.locales.clear();
+        if let Ok(table) = self.config.parse::<Table>() {
+            for (key, value) in table.iter() {
+                if let Some(locale_name) = key.strip_prefix("locale_") {
+                    if let Some(locales) = value.as_table() {
+                        let mut translations = FxHashMap::default();
+                        for (name, value) in locales.iter() {
+                            if let Some(locale_map) = value.as_str() {
+                                translations.insert(name.clone(), locale_map.to_string());
+                            }
+                        }
+                        // println!("Found locale: {} {:?}", locale_name, translations);
+                        self.locales.insert(locale_name.to_string(), translations);
+                    }
+                }
+            }
         }
     }
 
