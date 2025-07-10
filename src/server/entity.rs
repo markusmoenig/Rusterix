@@ -95,6 +95,11 @@ impl Entity {
         }
     }
 
+    /// Get the entity mode.
+    pub fn get_mode(&self) -> String {
+        self.attributes.get_str_default("mode", "active".into())
+    }
+
     /// Get the XZ position.
     pub fn get_pos_xz(&self) -> Vec2<f32> {
         Vec2::new(self.position.x, self.position.z)

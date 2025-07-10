@@ -102,6 +102,9 @@ ref_thread_local! {
     pub static managed FROM_SENDER: OnceLock<Sender<RegionMessage>> = OnceLock::new();
 
 
+    // The name of the health & death arribute
+    pub static managed HEALTH_ATTR: String = "HP".into();
+
 }
 
 use super::RegionMessage;
@@ -433,6 +436,7 @@ impl RegionInstance {
                 "_source_seq",
                 Value::Source(PixelSource::Sequence("idle".into())),
             );
+            e.set_attribute("mode", Value::Str("active".into()));
             e.mark_all_dirty();
         }
 
@@ -496,6 +500,9 @@ impl RegionInstance {
             ));
 
             *DELTA_TIME.borrow_mut() = 1.0 / target_fps;
+
+            *HEALTH_ATTR.borrow_mut() =
+                get_config_string_default("game", "health", "HP").to_string();
 
             let entity_block_mode = {
                 let mode = get_config_string_default("game", "entity_block_mode", "always");
@@ -968,6 +975,21 @@ impl RegionInstance {
         let mut entities = MAP.borrow().entities.clone();
 
         for entity in &mut entities {
+            // Check for death
+            if let Some(health) = entity.attributes.get_int(&HEALTH_ATTR.borrow()) {
+                let mode = entity.attributes.get_str_default("mode", "".into());
+                if health <= 0 && mode != "dead" {
+                    if let Some(class_name) = entity.attributes.get_str("class_name") {
+                        let cmd = format!("{}.event(\"death\", \"\")", class_name);
+                        TO_EXECUTE_ENTITY
+                            .borrow_mut()
+                            .push((entity.id, "death".into(), cmd));
+                        entity.set_attribute("mode", Value::Str("dead".into()));
+                        entity.action = EntityAction::Off;
+                    }
+                }
+            }
+
             match &entity.action {
                 EntityAction::Forward => {
                     if entity.is_player() {
@@ -1362,7 +1384,7 @@ impl RegionInstance {
 
             // 1) Check collisions with ENTITIES
             for other in map.entities.iter() {
-                if other.id == entity.id || !other.attributes.get_bool_default("visible", false) {
+                if other.id == entity.id || other.get_mode() == "dead" {
                     continue;
                 }
 
@@ -2784,6 +2806,7 @@ pub fn create_entity_instance(mut entity: Entity) {
         "_source_seq",
         Value::Source(PixelSource::Sequence("idle".into())),
     );
+    entity.set_attribute("mode", Value::Str("active".into()));
     entity.mark_all_dirty();
     MAP.borrow_mut().entities.push(entity.clone());
 
