@@ -80,7 +80,7 @@ impl MessagesWidget {
     pub fn update_draw(
         &mut self,
         buffer: &mut TheRGBABuffer,
-        _assets: &Assets,
+        assets: &Assets,
         messages: Vec<crate::server::Message>,
     ) {
         let width = buffer.dim().width;
@@ -96,6 +96,15 @@ impl MessagesWidget {
                     }
                 }
             }
+
+            if let Some(en) = assets.locales.get("en") {
+                if let Some(translated) = en.get(message) {
+                    // Use the translated message if available
+                    self.messages.push((translated.clone(), color));
+                    continue;
+                }
+            }
+
             self.messages.push((message.clone(), color));
         }
 

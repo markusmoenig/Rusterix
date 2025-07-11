@@ -702,6 +702,13 @@ impl Client {
 
     /// Draw the game into the internal buffer
     pub fn draw_game(&mut self, map: &Map, assets: &Assets, messages: Vec<crate::server::Message>) {
+        // Reset the intent to the server value
+        for entity in map.entities.iter() {
+            if entity.is_player() {
+                self.intent = entity.get_attr_string("intent").unwrap_or_default();
+            }
+        }
+
         self.target.fill([0, 0, 0, 255]);
         // First process the game widgets
         for widget in self.game_widgets.values_mut() {
@@ -833,6 +840,8 @@ impl Client {
                             return Some(EntityAction::ItemClicked(item.id, distance));
                         }
                     }
+
+                    return Some(EntityAction::TerrainClicked(pos));
                 }
             }
         }

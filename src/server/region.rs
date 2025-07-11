@@ -302,6 +302,12 @@ impl RegionInstance {
             );
 
             let _ = scope.globals.set_item(
+                "took_damage",
+                vm.new_function("took_damage", took_damage).into(),
+                vm,
+            );
+
+            let _ = scope.globals.set_item(
                 "block_events",
                 vm.new_function("block_events", block_events).into(),
                 vm,
@@ -324,6 +330,10 @@ impl RegionInstance {
                 vm.new_function("teleport", teleport).into(),
                 vm,
             );
+
+            let _ = scope
+                .globals
+                .set_item("id", vm.new_function("id", id).into(), vm);
         });
 
         let (to_sender, to_receiver) = unbounded::<RegionMessage>();
@@ -805,6 +815,9 @@ impl RegionInstance {
                                     // Check if we have already executed this script in this tick
                                     if let Some(Value::Int64(tick)) = state_data.get(&todo.1) {
                                         if *tick >= *TICKS.borrow() {
+                                            if todo.1 =="intent" {
+                                                send_message(todo.0, "cant_do_that_yet".into(), "warning");
+                                            }
                                             continue;
                                         }
                                     }
@@ -905,33 +918,25 @@ impl RegionInstance {
                                                 entity.set_attribute("intent", Value::Str(intent));
                                             }
                                         },
-                                        ItemClicked(item_id, distance) => {
-                                            if let Some(class_name) = ITEM_CLASSES.borrow().get(&item_id) {
-                                                let mut cont = ValueContainer::default();
-                                                cont.set("distance", Value::Float(distance));
-                                                cont.set("entity_id", Value::UInt(entity_id));
-                                                let mut intent = String::new();
-                                                if let Some(entity) = MAP
+                                        EntityClicked(clicked_entity_id, distance) => {
+                                            if let Some(entity) = MAP
                                                 .borrow_mut()
                                                 .entities
                                                 .iter_mut()
                                                 .find(|entity| entity.id == entity_id)
                                                 {
-                                                    intent = entity.get_attr_string("intent").unwrap_or_default();
+                                                    send_entity_intent_events_clicked(entity, clicked_entity_id, distance);
                                                 }
-                                                cont.set("intent", Value::Str(intent));
-                                                let cmd = format!("{}.event('{}', {})", class_name, "intent", cont.to_python_dict_string());
-                                                *CURR_ENTITYID.borrow_mut() = entity_id;
-                                                *CURR_ITEMID.borrow_mut() = Some(item_id);
-                                                if let Err(err) = REGION.borrow().execute(&cmd) {
-                                                    send_log_message(format!(
-                                                        "{}: Event Error for '{}': {}",
-                                                        name,
-                                                        get_entity_name(item_id),
-                                                        err,
-                                                    ));
+                                        }
+                                        ItemClicked(clicked_item_id, distance) => {
+                                            if let Some(entity) = MAP
+                                                .borrow_mut()
+                                                .entities
+                                                .iter_mut()
+                                                .find(|entity| entity.id == entity_id)
+                                                {
+                                                    send_item_intent_events_clicked(entity, clicked_item_id, distance);
                                                 }
-                                            }
                                         }
                                         _ => {
                                             if let Some(entity) = MAP
@@ -975,21 +980,6 @@ impl RegionInstance {
         let mut entities = MAP.borrow().entities.clone();
 
         for entity in &mut entities {
-            // Check for death
-            if let Some(health) = entity.attributes.get_int(&HEALTH_ATTR.borrow()) {
-                let mode = entity.attributes.get_str_default("mode", "".into());
-                if health <= 0 && mode != "dead" {
-                    if let Some(class_name) = entity.attributes.get_str("class_name") {
-                        let cmd = format!("{}.event(\"death\", \"\")", class_name);
-                        TO_EXECUTE_ENTITY
-                            .borrow_mut()
-                            .push((entity.id, "death".into(), cmd));
-                        entity.set_attribute("mode", Value::Str("dead".into()));
-                        entity.action = EntityAction::Off;
-                    }
-                }
-            }
-
             match &entity.action {
                 EntityAction::Forward => {
                     if entity.is_player() {
@@ -1566,14 +1556,16 @@ fn send_entity_intent_events(entity: &mut Entity, position: Vec2<f32>) {
             found_target = true;
         }
 
+        let intent = entity.attributes.get_str_default("intent", "".into());
+
         if !found_target {
+            let message = format!("nothing_to_{}", intent);
+            entity.set_attribute("intent", Value::Str(String::new()));
+            send_message(entity.id, message, "system");
             return;
         }
 
-        cont.set(
-            "intent",
-            Value::Str(entity.attributes.get_str_default("intent", "".into())),
-        );
+        cont.set("intent", Value::Str(intent));
         let cmd = format!(
             "{}.event('intent', {})",
             class_name,
@@ -1595,6 +1587,67 @@ fn send_entity_intent_events(entity: &mut Entity, position: Vec2<f32>) {
                     .push((item_id, "intent".into(), cmd));
             }
         }
+
+        entity.set_attribute("intent", Value::Str(String::new()));
+    }
+}
+
+/// Player clicked on an entity.
+fn send_entity_intent_events_clicked(entity: &mut Entity, target: u32, distance: f32) {
+    if let Some(class_name) = ENTITY_CLASSES.borrow().get(&entity.id) {
+        // Send "intent" event for the entity
+        let mut cont = ValueContainer::default();
+        cont.set("distance", Value::Float(distance));
+        cont.set("entity_id", Value::UInt(target));
+
+        let intent = entity.attributes.get_str_default("intent", "".into());
+
+        cont.set("intent", Value::Str(intent));
+        let cmd = format!(
+            "{}.event('intent', {})",
+            class_name,
+            cont.to_python_dict_string()
+        );
+        TO_EXECUTE_ENTITY
+            .borrow_mut()
+            .push((entity.id, "intent".into(), cmd.clone()));
+
+        entity.set_attribute("intent", Value::Str(String::new()));
+    }
+}
+
+/// Player clicked on an item.
+fn send_item_intent_events_clicked(entity: &mut Entity, target: u32, distance: f32) {
+    if let Some(class_name) = ENTITY_CLASSES.borrow().get(&entity.id) {
+        // Send "intent" event for the entity
+        let mut cont = ValueContainer::default();
+        cont.set("distance", Value::Float(distance));
+        cont.set("item_id", Value::UInt(target));
+
+        let intent = entity.attributes.get_str_default("intent", "".into());
+
+        cont.set("intent", Value::Str(intent));
+        let cmd = format!(
+            "{}.event('intent', {})",
+            class_name,
+            cont.to_python_dict_string()
+        );
+        TO_EXECUTE_ENTITY
+            .borrow_mut()
+            .push((entity.id, "intent".into(), cmd.clone()));
+
+        if let Some(class_name) = ITEM_CLASSES.borrow().get(&target) {
+            let cmd = format!(
+                "{}.event('intent', {})",
+                class_name,
+                cont.to_python_dict_string()
+            );
+            TO_EXECUTE_ITEM
+                .borrow_mut()
+                .push((target, "intent".into(), cmd));
+        }
+
+        entity.set_attribute("intent", Value::Str(String::new()));
     }
 }
 
@@ -1961,6 +2014,54 @@ fn deal_damage(id: u32, dict: PyObjectRef, vm: &VirtualMachine) {
     }
 }
 
+/// Send a message to the entity.
+fn send_message(id: u32, message: String, role: &str) {
+    // Kill message
+    let msg = RegionMessage::Message(
+        *REGIONID.borrow(),
+        Some(id),
+        None,
+        id,
+        message,
+        role.to_string(),
+    );
+    FROM_SENDER.borrow().get().unwrap().send(msg).unwrap();
+}
+
+/// An entity took damage. Send out messages and check for death.
+fn took_damage(id: u32, _from: u32, amount: u32, _dict: PyObjectRef) {
+    let to_name = get_entity_name(id);
+
+    let message = format!("You hit the {} for {} damage", to_name, amount);
+    send_message(id, message, "system");
+
+    // Check for death
+    if let Some(entity) = MAP
+        .borrow_mut()
+        .entities
+        .iter_mut()
+        .find(|entity| entity.id == id)
+    {
+        if let Some(health) = entity.attributes.get_int(&HEALTH_ATTR.borrow()) {
+            let mode = entity.attributes.get_str_default("mode", "".into());
+            if health <= 0 && mode != "dead" {
+                if let Some(class_name) = entity.attributes.get_str("class_name") {
+                    let cmd = format!("{}.event(\"death\", \"\")", class_name);
+                    TO_EXECUTE_ENTITY
+                        .borrow_mut()
+                        .push((entity.id, "death".into(), cmd));
+                    entity.set_attribute("mode", Value::Str("dead".into()));
+                    entity.action = EntityAction::Off;
+
+                    // Kill message
+                    let message = format!("You kill the {}", to_name);
+                    send_message(id, message, "system");
+                }
+            }
+        }
+    }
+}
+
 /// Get an attribute from the given entity.
 fn get_entity_attr(entity_id: u32, key: String, vm: &VirtualMachine) -> PyResult<PyObjectRef> {
     let mut value = Value::NoValue;
@@ -1977,6 +2078,20 @@ fn get_entity_attr(entity_id: u32, key: String, vm: &VirtualMachine) -> PyResult
     }
 
     Ok(value.to_pyobject(vm))
+}
+
+/// Get an attribute from the given entity for internal use.
+fn _get_entity_attr_internal(entity_id: u32, key: String) -> Option<Value> {
+    if let Some(entity) = MAP
+        .borrow_mut()
+        .entities
+        .iter()
+        .find(|entity| entity.id == entity_id)
+    {
+        entity.attributes.get(&key).cloned()
+    } else {
+        None
+    }
 }
 
 /// Get an attribute from the given item.
@@ -2753,12 +2868,6 @@ fn get_attr_internal(key: &str) -> Option<Value> {
         }
     };
 
-    println!(
-        "None {:?}, {:?}",
-        *CURR_ITEMID.borrow(),
-        CURR_ENTITYID.borrow(),
-    );
-
     None
 }
 
@@ -2936,4 +3045,8 @@ pub fn receive_entity(mut entity: Entity, dest_sector_name: String) {
 
     entities.push(entity);
     map.entities = entities;
+}
+
+fn id() -> u32 {
+    *CURR_ENTITYID.borrow()
 }

@@ -8,10 +8,16 @@ use std::{
 pub static ACTIONCMD: LazyLock<RwLock<EntityAction>> =
     LazyLock::new(|| RwLock::new(EntityAction::Off));
 
+pub static INTENTCMD: LazyLock<RwLock<String>> = LazyLock::new(|| RwLock::new(String::new()));
+
 fn action(action_str: String) {
     if let Ok(action) = EntityAction::from_str(&action_str) {
         *ACTIONCMD.write().unwrap() = action;
     }
+}
+
+fn intent(intent: String) {
+    *ACTIONCMD.write().unwrap() = EntityAction::Intent(intent.clone());
 }
 
 pub struct ClientAction {
@@ -40,6 +46,10 @@ impl ClientAction {
             let _ = scope
                 .globals
                 .set_item("action", vm.new_function("action", action).into(), vm);
+
+            let _ = scope
+                .globals
+                .set_item("intent", vm.new_function("intent", intent).into(), vm);
         });
 
         Self {

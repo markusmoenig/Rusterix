@@ -42,10 +42,12 @@ pub enum EntityAction {
     Forward,
     Right,
     Backward,
-    // Item clicked, item id and click distance,
+    // Item clicked, item id and click distance
     ItemClicked(u32, f32),
-    // Entity clicked, entity id and click distance,
+    // Entity clicked, entity id and click distance
     EntityClicked(u32, f32),
+    // Terrain clicked
+    TerrainClicked(Vec2<f32>),
     /// Sleep until the given tick and switch back to the given action
     SleepAndSwitch(i64, Box<EntityAction>),
     /// User: Distance, Speed, Max Min Sleep. System: State, Target
