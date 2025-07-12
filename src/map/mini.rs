@@ -1,4 +1,6 @@
 use crate::{BBox, CompiledLinedef};
+use pathfinding::prelude::astar;
+use theframework::prelude::FxHashSet;
 use vek::Vec2;
 
 /// A miniature version of the Map used for client side lighting calculations during the rasterization process and server side collision detection etc.
@@ -14,6 +16,8 @@ pub struct MapMini {
     pub dynamic_linedefs: Vec<CompiledLinedef>,
 
     occluded_sectors: Vec<(BBox, f32)>,
+
+    pub blocked_tiles: FxHashSet<Vec2<i32>>,
 }
 
 impl Default for MapMini {
@@ -30,6 +34,7 @@ impl MapMini {
             linedefs: vec![],
             dynamic_linedefs: vec![],
             occluded_sectors: vec![],
+            blocked_tiles: FxHashSet::default(),
         }
     }
 
@@ -45,6 +50,7 @@ impl MapMini {
             linedefs,
             dynamic_linedefs: vec![],
             occluded_sectors,
+            blocked_tiles: FxHashSet::default(),
         }
     }
 
@@ -378,5 +384,75 @@ impl MapMini {
         };
 
         Some((dist, normal))
+    }
+
+    /// Moves towards the target using A* pathfinding on a tile grid.
+    /// Returns the next position to move to, and whether the destination was reached.
+    pub fn move_towards(
+        &self,
+        from: Vec2<f32>,
+        to: Vec2<f32>,
+        speed: f32,
+        radius: f32,
+        tile_size: f32,
+    ) -> (Vec2<f32>, bool) {
+        let blocked = &self.blocked_tiles;
+
+        let from_tile = (from / tile_size).floor().as_::<i32>();
+        let to_tile = (to / tile_size).floor().as_::<i32>();
+
+        // A* neighbors: 4-directional
+        let successors = |pos: &Vec2<i32>| {
+            let directions = [
+                Vec2::new(-1, 0),
+                Vec2::new(1, 0),
+                Vec2::new(0, -1),
+                Vec2::new(0, 1),
+            ];
+            // let directions = [
+            //     Vec2::new(-1, 0),
+            //     Vec2::new(1, 0),
+            //     Vec2::new(0, -1),
+            //     Vec2::new(0, 1),
+            //     Vec2::new(-1, -1),
+            //     Vec2::new(-1, 1),
+            //     Vec2::new(1, -1),
+            //     Vec2::new(1, 1),
+            // ];
+            directions
+                .iter()
+                .map(|d| *pos + *d)
+                .filter(|p| !blocked.contains(p))
+                .map(|p| (p, 1))
+                .collect::<Vec<_>>()
+        };
+
+        let heuristic = |a: &Vec2<i32>| (to_tile - *a).map(|x| x.abs()).sum(); // Manhattan
+
+        let result = astar(&from_tile, successors, heuristic, |p| *p == to_tile);
+
+        if let Some((path, _)) = result {
+            let next_tile = if path.len() >= 2 { path[1] } else { to_tile };
+
+            let target_pos = (next_tile.map(|x| x as f32) + Vec2::new(0.5, 0.5)) * tile_size;
+
+            let to_vector = target_pos - from;
+            let max_distance = speed;
+
+            // println!("from_tile = {:?}, to_tile = {:?}", from_tile, to_tile);
+            // println!("Path: {:?}", path);
+
+            // If within reach
+            if to_vector.magnitude() <= max_distance {
+                return (target_pos, true);
+            }
+
+            let move_vector = to_vector.normalized() * max_distance;
+            let (new_pos, _) = self.move_distance(from, move_vector, radius);
+            (new_pos, false)
+        } else {
+            // No path found; return unchanged
+            (from, false)
+        }
     }
 }

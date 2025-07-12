@@ -206,6 +206,8 @@ impl Map {
         let mut linedefs: Vec<CompiledLinedef> = vec![];
         let mut occluded_sectors: Vec<(BBox, f32)> = vec![];
 
+        let mut blocked_tiles = FxHashSet::default();
+
         for sector in self.sectors.iter() {
             let mut casts_shadows = true;
             let mut add_it = true;
@@ -229,6 +231,9 @@ impl Map {
                     Some(Value::Source(PixelSource::TileId(id))) => {
                         if blocking_tiles.contains(id) {
                             add_it = true;
+                            if let Some(center) = sector.center(self) {
+                                blocked_tiles.insert(center.map(|c| (c.floor()) as i32));
+                            }
                         }
                     }
                     Some(Value::Source(PixelSource::MaterialId(id))) => {
@@ -307,7 +312,9 @@ impl Map {
             }
         }
 
-        MapMini::new(self.offset, self.grid_size, linedefs, occluded_sectors)
+        let mut mini = MapMini::new(self.offset, self.grid_size, linedefs, occluded_sectors);
+        mini.blocked_tiles = blocked_tiles;
+        mini
     }
 
     /// Generate a bounding box for all vertices in the map

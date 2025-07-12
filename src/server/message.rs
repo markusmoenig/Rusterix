@@ -56,6 +56,8 @@ pub enum EntityAction {
     RandomWalkInSector(f32, f32, i32, i32, Vec2<f32>),
     /// Intent: A string that represents an intent, e.g. "attack", "talk", etc.
     Intent(String),
+    /// Goto: Move to a specific position with a given speed
+    Goto(Vec2<f32>, f32),
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]

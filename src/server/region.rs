@@ -333,6 +333,10 @@ impl RegionInstance {
 
             let _ = scope
                 .globals
+                .set_item("goto", vm.new_function("goto", goto).into(), vm);
+
+            let _ = scope
+                .globals
                 .set_item("id", vm.new_function("id", id).into(), vm);
         });
 
@@ -1076,6 +1080,22 @@ impl RegionInstance {
                         self.move_entity(entity, -1.0, entity_block_mode);
                     }
                 }
+                EntityAction::Goto(coord, speed) => {
+                    let speed = 4.0 * speed * *DELTA_TIME.borrow();
+                    let position = entity.get_pos_xz();
+                    let radius = entity.attributes.get_float_default("radius", 0.5) - 0.01;
+                    let (new_position, arrived) = MAPMINI
+                        .borrow()
+                        .move_towards(position, *coord, speed, radius, 1.0);
+
+                    entity.set_pos_xz(new_position);
+                    if arrived {
+                        entity.action = EntityAction::Off;
+                    };
+
+                    let map: ref_thread_local::Ref<'_, Map> = MAP.borrow();
+                    check_player_for_section_change(&map, entity);
+                }
                 EntityAction::RandomWalk(distance, speed, max_sleep, state, target) => {
                     if *state == 0 {
                         // State 0: Uninitialized, find a target location.
@@ -1108,7 +1128,7 @@ impl RegionInstance {
                 EntityAction::RandomWalkInSector(distance, speed, max_sleep, state, target) => {
                     if *state == 0 {
                         // State 0: Uninitialized, find a target location.
-                        let map = MAP.borrow();
+                        let map: ref_thread_local::Ref<'_, Map> = MAP.borrow();
                         let curr_pos = entity.get_pos_xz();
                         if let Some(sector) = map.find_sector_at(curr_pos) {
                             let mut new_pos = find_random_position(curr_pos, *distance);
@@ -2588,6 +2608,32 @@ fn face_random() {
     }
 }
 
+/// Goto a destination sector with the given speed.
+fn goto(destination: String, speed: f32) {
+    let mut coord: Option<vek::Vec2<f32>> = None;
+
+    {
+        let map = MAP.borrow();
+        for sector in &map.sectors {
+            if sector.name == destination {
+                coord = sector.center(&*map);
+            }
+        }
+    }
+
+    if let Some(coord) = coord {
+        let entity_id = *CURR_ENTITYID.borrow();
+        if let Some(entity) = MAP
+            .borrow_mut()
+            .entities
+            .iter_mut()
+            .find(|entity| entity.id == entity_id)
+        {
+            entity.action = Goto(coord, speed);
+        }
+    }
+}
+
 /// Randomly walks
 fn random_walk(
     distance: PyObjectRef,
@@ -2693,7 +2739,7 @@ pub fn teleport(args: rustpython_vm::function::FuncArgs, vm: &VirtualMachine) ->
         // Teleport entity in this region to the given sector.
 
         let mut new_pos: Option<vek::Vec2<f32>> = None;
-        let mut map = MAP.borrow_mut();
+        let mut map: ref_thread_local::RefMut<'_, Map> = MAP.borrow_mut();
         for sector in &map.sectors {
             if sector.name == sector_name {
                 new_pos = sector.center(&*map);
