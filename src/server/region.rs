@@ -335,6 +335,12 @@ impl RegionInstance {
                 .globals
                 .set_item("goto", vm.new_function("goto", goto).into(), vm);
 
+            let _ = scope.globals.set_item(
+                "close_in",
+                vm.new_function("close_in", close_in).into(),
+                vm,
+            );
+
             let _ = scope
                 .globals
                 .set_item("id", vm.new_function("id", id).into(), vm);
@@ -758,11 +764,13 @@ impl RegionInstance {
                                     .collect::<Vec<_>>() // Store them in a new list
                             };
                             for (id, _tick, notification) in &to_process {
-                                if let Some(class_name) = ENTITY_CLASSES.borrow().get(id) {
-                                    let cmd = format!("{}.event(\"{}\", \"\")", class_name, notification);
-                                    *CURR_ENTITYID.borrow_mut() = *id;
-                                    *CURR_ITEMID.borrow_mut() = None;
-                                    let _ = REGION.borrow_mut().execute(&cmd);
+                                if !is_entity_dead(*id) {
+                                    if let Some(class_name) = ENTITY_CLASSES.borrow().get(id) {
+                                        let cmd = format!("{}.event(\"{}\", \"\")", class_name, notification);
+                                        *CURR_ENTITYID.borrow_mut() = *id;
+                                        *CURR_ITEMID.borrow_mut() = None;
+                                        let _ = REGION.borrow_mut().execute(&cmd);
+                                    }
                                 }
                             }
                             NOTIFICATIONS_ENTITIES.borrow_mut().retain(|(id, tick, _)| !to_process.iter().any(|(pid, _, _)| pid == id && *tick <= ticks));
@@ -1078,6 +1086,59 @@ impl RegionInstance {
                         }
                     } else {
                         self.move_entity(entity, -1.0, entity_block_mode);
+                    }
+                }
+                EntityAction::CloseIn(target, target_radius, speed) => {
+                    if is_entity_dead(*target) {
+                        continue;
+                    }
+
+                    let speed = 4.0 * speed * *DELTA_TIME.borrow();
+                    let position = entity.get_pos_xz();
+                    let radius = entity.attributes.get_float_default("radius", 0.5) - 0.01;
+                    let target_id = *target;
+
+                    let mut coord: Option<vek::Vec2<f32>> = None;
+
+                    {
+                        if let Some(entity) = MAP
+                            .borrow()
+                            .entities
+                            .iter()
+                            .find(|entity| entity.id == *target)
+                        {
+                            coord = Some(entity.get_pos_xz());
+                        }
+                    }
+
+                    if let Some(coord) = coord {
+                        let (new_position, arrived) = MAPMINI.borrow().close_in(
+                            position,
+                            coord,
+                            *target_radius,
+                            speed,
+                            radius,
+                            1.0,
+                        );
+
+                        entity.set_pos_xz(new_position);
+                        if arrived {
+                            entity.action = EntityAction::Off;
+
+                            // Send closed in event
+                            if let Some(class_name) = ENTITY_CLASSES.borrow().get(&entity.id) {
+                                let cmd =
+                                    format!("{}.event(\"closed_in\", {})", class_name, target_id);
+                                TO_EXECUTE_ENTITY.borrow_mut().push((
+                                    entity.id,
+                                    "closed_in".into(),
+                                    cmd,
+                                ));
+                            }
+                        }
+
+                        let map: ref_thread_local::Ref<'_, Map> = MAP.borrow();
+                        check_player_for_section_change(&map, entity);
                     }
                 }
                 EntityAction::Goto(coord, speed) => {
@@ -1775,6 +1836,26 @@ pub fn get_entity_name(id: u32) -> String {
     "Unknown".into()
 }
 
+/// Is the given entity a player.
+pub fn is_entity_player(id: u32) -> bool {
+    for entity in &MAP.borrow().entities {
+        if entity.id == id {
+            return entity.is_player();
+        }
+    }
+    false
+}
+
+/// Is the given entity dead.
+pub fn is_entity_dead(id: u32) -> bool {
+    for entity in &MAP.borrow().entities {
+        if entity.id == id {
+            return entity.attributes.get_str_default("mode", "active".into()) == "dead";
+        }
+    }
+    false
+}
+
 /// Send a log message.
 pub fn send_log_message(message: String) {
     FROM_SENDER
@@ -2049,11 +2130,8 @@ fn send_message(id: u32, message: String, role: &str) {
 }
 
 /// An entity took damage. Send out messages and check for death.
-fn took_damage(id: u32, _from: u32, amount: u32, _dict: PyObjectRef) {
-    let to_name = get_entity_name(id);
-
-    let message = format!("You hit the {} for {} damage", to_name, amount);
-    send_message(id, message, "system");
+fn took_damage(id: u32, from: u32) {
+    let mut killed = false;
 
     // Check for death
     if let Some(entity) = MAP
@@ -2065,18 +2143,37 @@ fn took_damage(id: u32, _from: u32, amount: u32, _dict: PyObjectRef) {
         if let Some(health) = entity.attributes.get_int(&HEALTH_ATTR.borrow()) {
             let mode = entity.attributes.get_str_default("mode", "".into());
             if health <= 0 && mode != "dead" {
+                // Send "death" event
                 if let Some(class_name) = entity.attributes.get_str("class_name") {
                     let cmd = format!("{}.event(\"death\", \"\")", class_name);
                     TO_EXECUTE_ENTITY
                         .borrow_mut()
                         .push((entity.id, "death".into(), cmd));
+
                     entity.set_attribute("mode", Value::Str("dead".into()));
                     entity.action = EntityAction::Off;
+                    ENTITY_PROXIMITY_ALERTS.borrow_mut().remove(&entity.id);
 
-                    // Kill message
-                    let message = format!("You kill the {}", to_name);
-                    send_message(id, message, "system");
+                    killed = true;
                 }
+            }
+        }
+    }
+
+    // if receiver got killed, send a "killed" event to the attacker
+    if killed {
+        if let Some(entity) = MAP
+            .borrow_mut()
+            .entities
+            .iter_mut()
+            .find(|entity| from == entity.id)
+        {
+            // Send "killed" event
+            if let Some(class_name) = entity.attributes.get_str("class_name") {
+                let cmd = format!("{}.event(\"killed\", {})", class_name, id);
+                TO_EXECUTE_ENTITY
+                    .borrow_mut()
+                    .push((from, "killed".into(), cmd));
             }
         }
     }
@@ -2554,9 +2651,11 @@ fn notify_in(minutes: i32, notification: String) {
             .borrow_mut()
             .push((item_id, tick, notification));
     } else {
-        NOTIFICATIONS_ENTITIES
-            .borrow_mut()
-            .push((*CURR_ENTITYID.borrow(), tick, notification));
+        if !is_entity_dead(*CURR_ENTITYID.borrow()) {
+            NOTIFICATIONS_ENTITIES
+                .borrow_mut()
+                .push((*CURR_ENTITYID.borrow(), tick, notification));
+        }
     }
 }
 
@@ -2631,6 +2730,19 @@ fn goto(destination: String, speed: f32) {
         {
             entity.action = Goto(coord, speed);
         }
+    }
+}
+
+/// CloseIn: Move within a radius of a target entity with a given speed
+fn close_in(target: u32, target_radius: f32, speed: f32) {
+    let entity_id = *CURR_ENTITYID.borrow();
+    if let Some(entity) = MAP
+        .borrow_mut()
+        .entities
+        .iter_mut()
+        .find(|entity| entity.id == entity_id)
+    {
+        entity.action = CloseIn(target, target_radius, speed);
     }
 }
 

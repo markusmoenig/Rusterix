@@ -455,4 +455,85 @@ impl MapMini {
             (from, false)
         }
     }
+
+    /// Move toward `target` until the entity is within `dest_radius` world-units of it.
+    /// Returns `(new_position, arrived)` just like `move_towards`.
+    pub fn close_in(
+        &self,
+        from: Vec2<f32>,
+        target: Vec2<f32>,
+        dest_radius: f32, // how close is “close enough”
+        speed: f32,
+        agent_radius: f32,
+        tile_size: f32,
+    ) -> (Vec2<f32>, bool) {
+        // --- 1 · already close enough? ------------------------------------------
+        if (target - from).magnitude() <= dest_radius {
+            return (from, true);
+        }
+
+        let blocked = &self.blocked_tiles;
+
+        let start_cell = (from / tile_size).floor().as_::<i32>();
+        // let goal_cell = (target / tile_size).floor().as_::<i32>();
+
+        // --- 2 · A* with early-exit radius test ----------------------------------
+        let successors = |pos: &Vec2<i32>| {
+            // const DIRS: [Vec2<i32>; 8] = [
+            //     // 8-way
+            //     Vec2::new(-1, 0),
+            //     Vec2::new(1, 0),
+            //     Vec2::new(0, -1),
+            //     Vec2::new(0, 1),
+            //     Vec2::new(-1, -1),
+            //     Vec2::new(-1, 1),
+            //     Vec2::new(1, -1),
+            //     Vec2::new(1, 1),
+            // ];
+            let directions = [
+                Vec2::new(-1, 0),
+                Vec2::new(1, 0),
+                Vec2::new(0, -1),
+                Vec2::new(0, 1),
+            ];
+            directions
+                .iter()
+                .map(|d| *pos + *d)
+                .filter(|p| !blocked.contains(p))
+                .map(|p| (p, 1)) // uniform cost
+                .collect::<Vec<_>>()
+        };
+
+        // Manhattan is fine; subtract dest_radius so heuristic is admissible
+        let heuristic = |cell: &Vec2<i32>| {
+            let center = (cell.map(|i| i as f32) + Vec2::new(0.5, 0.5)) * tile_size;
+            let d = (target - center).magnitude() - dest_radius;
+            d.max(0.0) as i32 // cast to int for admissibility
+        };
+
+        // Goal when cell centre is within dest_radius
+        let is_goal = |cell: &Vec2<i32>| {
+            let centre = (cell.map(|i| i as f32) + Vec2::new(0.5, 0.5)) * tile_size;
+            (centre - target).magnitude() <= dest_radius
+        };
+
+        match astar(&start_cell, successors, heuristic, is_goal) {
+            Some((path, _)) => {
+                // Next step along path (skip [0] == start)
+                let next_cell = if path.len() >= 2 { path[1] } else { path[0] };
+                let step_target = (next_cell.map(|i| i as f32) + Vec2::new(0.5, 0.5)) * tile_size;
+
+                // --- 3 · move toward that step ----------------------------------
+                let to_vec = step_target - from;
+                let max_step = speed;
+                let arrived_now = (target - from).magnitude() <= dest_radius + max_step;
+
+                let move_vec = to_vec.normalized() * max_step;
+                let (new_pos, _) = self.move_distance(from, move_vec, agent_radius);
+
+                (new_pos, arrived_now)
+            }
+            None => (from, false), // no path
+        }
+    }
 }

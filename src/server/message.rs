@@ -58,6 +58,8 @@ pub enum EntityAction {
     Intent(String),
     /// Goto: Move to a specific position with a given speed
     Goto(Vec2<f32>, f32),
+    /// CloseIn: Move within a radius of a target entity with a given speed
+    CloseIn(u32, f32, f32),
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]
