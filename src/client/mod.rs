@@ -90,6 +90,7 @@ pub struct Client {
 
     // Intent
     intent: String,
+    key_down_intent: Option<String>,
 
     currencies: Currencies,
 
@@ -158,6 +159,7 @@ impl Client {
             client_action: Arc::new(Mutex::new(ClientAction::default())),
             currencies: Currencies::default(),
             intent: String::new(),
+            key_down_intent: None,
 
             first_game_draw: false,
         }
@@ -855,6 +857,26 @@ impl Client {
     }
 
     pub fn user_event(&mut self, event: String, value: Value) -> EntityAction {
+        // Make sure we do not send action events after a key down intent was handled
+        // Otherwise the character would move a bit because "intent" is already cleared
+        if event == "key_up" {
+            self.key_down_intent = None;
+        }
+
+        if event == "key_down" {
+            if let Some(key_down_intent) = &self.key_down_intent {
+                if !key_down_intent.is_empty() {
+                    return EntityAction::Off;
+                }
+            }
+        }
+
+        if self.key_down_intent.is_none() && event == "key_down" {
+            self.key_down_intent = Some(self.intent.clone());
+        }
+
+        // ---
+
         let action = self.client_action.lock().unwrap().user_event(event, value);
 
         let action_str: String = action.to_string();

@@ -1010,6 +1010,7 @@ impl RegionInstance {
                             entity.face_north();
                             let position = entity.get_forward_pos(1.0);
                             send_entity_intent_events(entity, position);
+                            entity.action = EntityAction::Off;
                         }
                     } else {
                         self.move_entity(entity, 1.0, entity_block_mode);
@@ -1034,6 +1035,7 @@ impl RegionInstance {
                             entity.face_west();
                             let position = entity.get_forward_pos(1.0);
                             send_entity_intent_events(entity, position);
+                            entity.action = EntityAction::Off;
                         }
                     } else {
                         entity.turn_left(4.0);
@@ -1059,6 +1061,7 @@ impl RegionInstance {
                             entity.face_east();
                             let position = entity.get_forward_pos(1.0);
                             send_entity_intent_events(entity, position);
+                            entity.action = EntityAction::Off;
                         }
                     } else {
                         entity.turn_right(4.0);
@@ -1083,6 +1086,7 @@ impl RegionInstance {
                             entity.face_south();
                             let position = entity.get_forward_pos(1.0);
                             send_entity_intent_events(entity, position);
+                            entity.action = EntityAction::Off;
                         }
                     } else {
                         self.move_entity(entity, -1.0, entity_block_mode);
@@ -1632,6 +1636,7 @@ fn send_entity_intent_events(entity: &mut Entity, position: Vec2<f32>) {
             }
         }
         if let Some(i_id) = get_item_at(position) {
+            cont.set("entity_id", Value::UInt(entity.id));
             cont.set("item_id", Value::UInt(i_id));
             item_id = Some(i_id);
             found_target = true;
@@ -1704,6 +1709,7 @@ fn send_item_intent_events_clicked(entity: &mut Entity, target: u32, distance: f
         let mut cont = ValueContainer::default();
         cont.set("distance", Value::Float(distance));
         cont.set("item_id", Value::UInt(target));
+        cont.set("entity_id", Value::UInt(entity.id));
 
         let intent = entity.attributes.get_str_default("intent", "".into());
 
@@ -2131,7 +2137,7 @@ fn send_message(id: u32, message: String, role: &str) {
 
 /// An entity took damage. Send out messages and check for death.
 fn took_damage(id: u32, from: u32) {
-    let mut killed = false;
+    let mut kill = false;
 
     // Check for death
     if let Some(entity) = MAP
@@ -2154,26 +2160,26 @@ fn took_damage(id: u32, from: u32) {
                     entity.action = EntityAction::Off;
                     ENTITY_PROXIMITY_ALERTS.borrow_mut().remove(&entity.id);
 
-                    killed = true;
+                    kill = true;
                 }
             }
         }
     }
 
-    // if receiver got killed, send a "killed" event to the attacker
-    if killed {
+    // if receiver got killed, send a "kill" event to the attacker
+    if kill {
         if let Some(entity) = MAP
             .borrow_mut()
             .entities
             .iter_mut()
             .find(|entity| from == entity.id)
         {
-            // Send "killed" event
+            // Send "kill" event
             if let Some(class_name) = entity.attributes.get_str("class_name") {
-                let cmd = format!("{}.event(\"killed\", {})", class_name, id);
+                let cmd = format!("{}.event(\"kill\", {})", class_name, id);
                 TO_EXECUTE_ENTITY
                     .borrow_mut()
-                    .push((from, "killed".into(), cmd));
+                    .push((from, "kill".into(), cmd));
             }
         }
     }
