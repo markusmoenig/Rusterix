@@ -1156,6 +1156,25 @@ impl RegionInstance {
                     entity.set_pos_xz(new_position);
                     if arrived {
                         entity.action = EntityAction::Off;
+
+                        let mut sector_name: String = String::new();
+                        {
+                            let map = MAP.borrow();
+                            if let Some(s) = map.find_sector_at(new_position) {
+                                sector_name = s.name.clone();
+                            }
+                        }
+
+                        // Send arrived event
+                        if let Some(class_name) = ENTITY_CLASSES.borrow().get(&entity.id) {
+                            let cmd =
+                                format!("{}.event('arrived', \"{}\")", class_name, sector_name);
+                            TO_EXECUTE_ENTITY.borrow_mut().push((
+                                entity.id,
+                                "arrived".into(),
+                                cmd.clone(),
+                            ));
+                        }
                     };
 
                     let map: ref_thread_local::Ref<'_, Map> = MAP.borrow();
@@ -2136,8 +2155,15 @@ fn send_message(id: u32, message: String, role: &str) {
 }
 
 /// An entity took damage. Send out messages and check for death.
-fn took_damage(id: u32, from: u32) {
+fn took_damage(from: u32, mut amount: i32) {
     let mut kill = false;
+    let id = *CURR_ENTITYID.borrow();
+
+    // Make sure we don't heal by accident
+    amount = amount.max(0);
+    if amount == 0 {
+        return;
+    }
 
     // Check for death
     if let Some(entity) = MAP
@@ -2146,7 +2172,14 @@ fn took_damage(id: u32, from: u32) {
         .iter_mut()
         .find(|entity| entity.id == id)
     {
-        if let Some(health) = entity.attributes.get_int(&HEALTH_ATTR.borrow()) {
+        let health_attr = HEALTH_ATTR.borrow();
+        if let Some(mut health) = entity.attributes.get_int(&health_attr) {
+            // Reduce the health of the target
+            health -= amount;
+            health = health.max(0);
+            // Set the new health
+            entity.set_attribute(&health_attr, Value::Int(health));
+
             let mode = entity.attributes.get_str_default("mode", "".into());
             if health <= 0 && mode != "dead" {
                 // Send "death" event
