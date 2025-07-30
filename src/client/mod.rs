@@ -583,187 +583,8 @@ impl Client {
             eprintln!("Did not find start map");
         }
 
-        // Init the meta data for widgets
-        self.game_widgets.clear();
-        self.button_widgets.clear();
-        self.text_widgets.clear();
-        self.deco_widgets.clear();
-        self.messages_widget = None;
         if let Some(screen) = assets.screens.get(&self.current_screen) {
-            for widget in screen.sectors.iter() {
-                let bb = widget.bounding_box(screen);
-
-                let (start_x, start_y) = crate::utils::align_screen_to_grid(
-                    self.viewport.x as f32,
-                    self.viewport.y as f32,
-                    self.grid_size,
-                );
-
-                let x = (bb.min.x - start_x) * self.grid_size;
-                let y = (bb.min.y - start_y) * self.grid_size;
-                let width = bb.size().x * self.grid_size;
-                let height = bb.size().y * self.grid_size;
-
-                if let Some(crate::Value::Str(data)) = widget.properties.get("data") {
-                    if let Ok(table) = data.parse::<Table>() {
-                        let grid_size = self.grid_size;
-
-                        let mut role = "none";
-                        if let Some(ui) = table.get("ui").and_then(toml::Value::as_table) {
-                            if let Some(value) = ui.get("role") {
-                                if let Some(v) = value.as_str() {
-                                    role = v;
-                                }
-                            }
-                        }
-
-                        if role == "game" {
-                            let mut game_widget = GameWidget {
-                                rect: Rect::new(x, y, width, height),
-                                toml_str: data.clone(),
-                                buffer: TheRGBABuffer::new(TheDim::sized(
-                                    width as i32,
-                                    height as i32,
-                                )),
-                                grid_size,
-                                ..Default::default()
-                            };
-
-                            if let Some(map) = assets.maps.get(&self.current_map) {
-                                game_widget.build(map, assets);
-                            }
-                            game_widget.init();
-                            self.game_widgets.insert(widget.creator_id, game_widget);
-                        } else if role == "button" {
-                            let mut action = "";
-                            let mut intent = None;
-                            let mut show: Option<Vec<String>> = None;
-                            let mut hide: Option<Vec<String>> = None;
-                            let mut deactivate: Vec<String> = vec![];
-
-                            if let Some(ui) = table.get("ui").and_then(toml::Value::as_table) {
-                                // Check for action
-                                if let Some(value) = ui.get("action") {
-                                    if let Some(v) = value.as_str() {
-                                        action = v;
-                                    }
-                                }
-
-                                // Check for intent
-                                if let Some(value) = ui.get("intent") {
-                                    if let Some(v) = value.as_str() {
-                                        intent = Some(v.to_string());
-                                    }
-                                }
-
-                                // Check for show
-                                if let Some(value) = ui.get("show") {
-                                    if let Some(va) = value.as_array() {
-                                        let mut c = vec![];
-                                        for v in va {
-                                            if let Some(v) = v.as_str() {
-                                                c.push(v.to_string());
-                                            }
-                                        }
-                                        if !c.is_empty() {
-                                            show = Some(c);
-                                        }
-                                    }
-                                }
-
-                                // Check for hide
-                                if let Some(value) = ui.get("hide") {
-                                    if let Some(va) = value.as_array() {
-                                        let mut c = vec![];
-                                        for v in va {
-                                            if let Some(v) = v.as_str() {
-                                                c.push(v.to_string());
-                                            }
-                                        }
-                                        if !c.is_empty() {
-                                            hide = Some(c);
-                                        }
-                                    }
-                                }
-
-                                // Check for deactivate
-                                if let Some(value) = ui.get("deactivate") {
-                                    if let Some(va) = value.as_array() {
-                                        let mut c = vec![];
-                                        for v in va {
-                                            if let Some(v) = v.as_str() {
-                                                c.push(v.to_string());
-                                            }
-                                        }
-                                        deactivate = c;
-                                    }
-                                }
-
-                                // Check for active
-                                if let Some(value) = ui.get("active") {
-                                    if let Some(v) = value.as_bool()
-                                        && v
-                                    {
-                                        self.activated_widgets.push(widget.id);
-                                        self.permanently_activated_widgets.push(widget.id);
-                                    }
-                                }
-                            }
-
-                            let button_widget = Widget {
-                                name: widget.name.clone(),
-                                id: widget.id,
-                                rect: Rect::new(x, y, width, height),
-                                action: action.into(),
-                                intent,
-                                show,
-                                hide,
-                                deactivate,
-                            };
-
-                            self.button_widgets.insert(widget.id, button_widget);
-                        } else if role == "messages" {
-                            let mut widget = MessagesWidget {
-                                name: widget.name.clone(),
-                                rect: Rect::new(x, y, width, height),
-                                toml_str: data.clone(),
-                                buffer: TheRGBABuffer::new(TheDim::sized(
-                                    width as i32,
-                                    height as i32,
-                                )),
-                                ..Default::default()
-                            };
-                            widget.init(assets);
-                            self.messages_widget = Some(widget);
-                        } else if role == "text" {
-                            let mut text_widget = TextWidget {
-                                name: widget.name.clone(),
-                                rect: Rect::new(x, y, width, height),
-                                toml_str: data.clone(),
-                                buffer: TheRGBABuffer::new(TheDim::sized(
-                                    width as i32,
-                                    height as i32,
-                                )),
-                                ..Default::default()
-                            };
-                            text_widget.init(assets);
-                            self.text_widgets.insert(widget.creator_id, text_widget);
-                        } else if role == "deco" {
-                            let mut deco_widget = DecoWidget {
-                                rect: Rect::new(x, y, width, height),
-                                toml_str: data.clone(),
-                                buffer: TheRGBABuffer::new(TheDim::sized(
-                                    width as i32,
-                                    height as i32,
-                                )),
-                                ..Default::default()
-                            };
-                            deco_widget.init(assets);
-                            self.deco_widgets.insert(widget.creator_id, deco_widget);
-                        }
-                    }
-                }
-            }
+            self.init_screen(screen, assets);
         } else {
             eprintln!("Did not find start screen");
         }
@@ -989,5 +810,177 @@ impl Client {
         }
 
         action
+    }
+
+    // Init the screen
+    pub fn init_screen(&mut self, screen: &Map, assets: &Assets) {
+        self.game_widgets.clear();
+        self.button_widgets.clear();
+        self.text_widgets.clear();
+        self.deco_widgets.clear();
+        self.messages_widget = None;
+
+        for widget in screen.sectors.iter() {
+            let bb = widget.bounding_box(screen);
+
+            let (start_x, start_y) = crate::utils::align_screen_to_grid(
+                self.viewport.x as f32,
+                self.viewport.y as f32,
+                self.grid_size,
+            );
+
+            let x = (bb.min.x - start_x) * self.grid_size;
+            let y = (bb.min.y - start_y) * self.grid_size;
+            let width = bb.size().x * self.grid_size;
+            let height = bb.size().y * self.grid_size;
+
+            if let Some(crate::Value::Str(data)) = widget.properties.get("data") {
+                if let Ok(table) = data.parse::<Table>() {
+                    let grid_size = self.grid_size;
+
+                    let mut role = "none";
+                    if let Some(ui) = table.get("ui").and_then(toml::Value::as_table) {
+                        if let Some(value) = ui.get("role") {
+                            if let Some(v) = value.as_str() {
+                                role = v;
+                            }
+                        }
+                    }
+
+                    if role == "game" {
+                        let mut game_widget = GameWidget {
+                            rect: Rect::new(x, y, width, height),
+                            toml_str: data.clone(),
+                            buffer: TheRGBABuffer::new(TheDim::sized(width as i32, height as i32)),
+                            grid_size,
+                            ..Default::default()
+                        };
+
+                        if let Some(map) = assets.maps.get(&self.current_map) {
+                            game_widget.build(map, assets);
+                        }
+                        game_widget.init();
+                        self.game_widgets.insert(widget.creator_id, game_widget);
+                    } else if role == "button" {
+                        let mut action = "";
+                        let mut intent = None;
+                        let mut show: Option<Vec<String>> = None;
+                        let mut hide: Option<Vec<String>> = None;
+                        let mut deactivate: Vec<String> = vec![];
+
+                        if let Some(ui) = table.get("ui").and_then(toml::Value::as_table) {
+                            // Check for action
+                            if let Some(value) = ui.get("action") {
+                                if let Some(v) = value.as_str() {
+                                    action = v;
+                                }
+                            }
+
+                            // Check for intent
+                            if let Some(value) = ui.get("intent") {
+                                if let Some(v) = value.as_str() {
+                                    intent = Some(v.to_string());
+                                }
+                            }
+
+                            // Check for show
+                            if let Some(value) = ui.get("show") {
+                                if let Some(va) = value.as_array() {
+                                    let mut c = vec![];
+                                    for v in va {
+                                        if let Some(v) = v.as_str() {
+                                            c.push(v.to_string());
+                                        }
+                                    }
+                                    if !c.is_empty() {
+                                        show = Some(c);
+                                    }
+                                }
+                            }
+
+                            // Check for hide
+                            if let Some(value) = ui.get("hide") {
+                                if let Some(va) = value.as_array() {
+                                    let mut c = vec![];
+                                    for v in va {
+                                        if let Some(v) = v.as_str() {
+                                            c.push(v.to_string());
+                                        }
+                                    }
+                                    if !c.is_empty() {
+                                        hide = Some(c);
+                                    }
+                                }
+                            }
+
+                            // Check for deactivate
+                            if let Some(value) = ui.get("deactivate") {
+                                if let Some(va) = value.as_array() {
+                                    let mut c = vec![];
+                                    for v in va {
+                                        if let Some(v) = v.as_str() {
+                                            c.push(v.to_string());
+                                        }
+                                    }
+                                    deactivate = c;
+                                }
+                            }
+
+                            // Check for active
+                            if let Some(value) = ui.get("active") {
+                                if let Some(v) = value.as_bool()
+                                    && v
+                                {
+                                    self.activated_widgets.push(widget.id);
+                                    self.permanently_activated_widgets.push(widget.id);
+                                }
+                            }
+                        }
+
+                        let button_widget = Widget {
+                            name: widget.name.clone(),
+                            id: widget.id,
+                            rect: Rect::new(x, y, width, height),
+                            action: action.into(),
+                            intent,
+                            show,
+                            hide,
+                            deactivate,
+                        };
+
+                        self.button_widgets.insert(widget.id, button_widget);
+                    } else if role == "messages" {
+                        let mut widget = MessagesWidget {
+                            name: widget.name.clone(),
+                            rect: Rect::new(x, y, width, height),
+                            toml_str: data.clone(),
+                            buffer: TheRGBABuffer::new(TheDim::sized(width as i32, height as i32)),
+                            ..Default::default()
+                        };
+                        widget.init(assets);
+                        self.messages_widget = Some(widget);
+                    } else if role == "text" {
+                        let mut text_widget = TextWidget {
+                            name: widget.name.clone(),
+                            rect: Rect::new(x, y, width, height),
+                            toml_str: data.clone(),
+                            buffer: TheRGBABuffer::new(TheDim::sized(width as i32, height as i32)),
+                            ..Default::default()
+                        };
+                        text_widget.init(assets);
+                        self.text_widgets.insert(widget.creator_id, text_widget);
+                    } else if role == "deco" {
+                        let mut deco_widget = DecoWidget {
+                            rect: Rect::new(x, y, width, height),
+                            toml_str: data.clone(),
+                            buffer: TheRGBABuffer::new(TheDim::sized(width as i32, height as i32)),
+                            ..Default::default()
+                        };
+                        deco_widget.init(assets);
+                        self.deco_widgets.insert(widget.creator_id, deco_widget);
+                    }
+                }
+            }
+        }
     }
 }
