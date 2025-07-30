@@ -3,6 +3,7 @@ use draw2d::Draw2D;
 use theframework::prelude::*;
 
 pub struct MessagesWidget {
+    pub name: String,
     pub rect: Rect,
     pub toml_str: String,
     pub buffer: TheRGBABuffer,
@@ -25,6 +26,7 @@ impl Default for MessagesWidget {
 impl MessagesWidget {
     pub fn new() -> Self {
         Self {
+            name: String::new(),
             rect: Rect::default(),
             toml_str: String::new(),
             buffer: TheRGBABuffer::default(),

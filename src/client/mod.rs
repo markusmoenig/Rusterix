@@ -85,8 +85,14 @@ pub struct Client {
     // Button widgets which are active (clicked)
     activated_widgets: Vec<u32>,
 
-    // Client Action
+    // Button widgets which are permanently active
+    permanently_activated_widgets: Vec<u32>,
+
+    /// Client Action
     client_action: Arc<Mutex<ClientAction>>,
+
+    /// Hidden widgets,
+    widgets_to_hide: Vec<String>,
 
     // Intent
     intent: String,
@@ -155,6 +161,8 @@ impl Client {
             messages_widget: None,
 
             activated_widgets: vec![],
+            permanently_activated_widgets: vec![],
+            widgets_to_hide: vec![],
 
             client_action: Arc::new(Mutex::new(ClientAction::default())),
             currencies: Currencies::default(),
@@ -629,34 +637,94 @@ impl Client {
                         } else if role == "button" {
                             let mut action = "";
                             let mut intent = None;
+                            let mut show: Option<Vec<String>> = None;
+                            let mut hide: Option<Vec<String>> = None;
+                            let mut deactivate: Vec<String> = vec![];
 
-                            // Check for action
                             if let Some(ui) = table.get("ui").and_then(toml::Value::as_table) {
+                                // Check for action
                                 if let Some(value) = ui.get("action") {
                                     if let Some(v) = value.as_str() {
                                         action = v;
                                     }
                                 }
-                            }
 
-                            // Check for intent
-                            if let Some(ui) = table.get("ui").and_then(toml::Value::as_table) {
+                                // Check for intent
                                 if let Some(value) = ui.get("intent") {
                                     if let Some(v) = value.as_str() {
                                         intent = Some(v.to_string());
                                     }
                                 }
+
+                                // Check for show
+                                if let Some(value) = ui.get("show") {
+                                    if let Some(va) = value.as_array() {
+                                        let mut c = vec![];
+                                        for v in va {
+                                            if let Some(v) = v.as_str() {
+                                                c.push(v.to_string());
+                                            }
+                                        }
+                                        if !c.is_empty() {
+                                            show = Some(c);
+                                        }
+                                    }
+                                }
+
+                                // Check for hide
+                                if let Some(value) = ui.get("hide") {
+                                    if let Some(va) = value.as_array() {
+                                        let mut c = vec![];
+                                        for v in va {
+                                            if let Some(v) = v.as_str() {
+                                                c.push(v.to_string());
+                                            }
+                                        }
+                                        if !c.is_empty() {
+                                            hide = Some(c);
+                                        }
+                                    }
+                                }
+
+                                // Check for deactivate
+                                if let Some(value) = ui.get("deactivate") {
+                                    if let Some(va) = value.as_array() {
+                                        let mut c = vec![];
+                                        for v in va {
+                                            if let Some(v) = v.as_str() {
+                                                c.push(v.to_string());
+                                            }
+                                        }
+                                        deactivate = c;
+                                    }
+                                }
+
+                                // Check for active
+                                if let Some(value) = ui.get("active") {
+                                    if let Some(v) = value.as_bool()
+                                        && v
+                                    {
+                                        self.activated_widgets.push(widget.id);
+                                        self.permanently_activated_widgets.push(widget.id);
+                                    }
+                                }
                             }
 
                             let button_widget = Widget {
+                                name: widget.name.clone(),
+                                id: widget.id,
                                 rect: Rect::new(x, y, width, height),
                                 action: action.into(),
                                 intent,
+                                show,
+                                hide,
+                                deactivate,
                             };
 
                             self.button_widgets.insert(widget.id, button_widget);
                         } else if role == "messages" {
                             let mut widget = MessagesWidget {
+                                name: widget.name.clone(),
                                 rect: Rect::new(x, y, width, height),
                                 toml_str: data.clone(),
                                 buffer: TheRGBABuffer::new(TheDim::sized(
@@ -669,6 +737,7 @@ impl Client {
                             self.messages_widget = Some(widget);
                         } else if role == "text" {
                             let mut text_widget = TextWidget {
+                                name: widget.name.clone(),
                                 rect: Rect::new(x, y, width, height),
                                 toml_str: data.clone(),
                                 buffer: TheRGBABuffer::new(TheDim::sized(
@@ -759,16 +828,20 @@ impl Client {
 
         // Draw the messages on top
         if let Some(widget) = &mut self.messages_widget {
-            widget.update_draw(&mut self.target, assets, messages);
-            self.target
-                .blend_into(widget.rect.x as i32, widget.rect.y as i32, &widget.buffer);
+            if !self.widgets_to_hide.contains(&widget.name) {
+                widget.update_draw(&mut self.target, assets, messages);
+                self.target
+                    .blend_into(widget.rect.x as i32, widget.rect.y as i32, &widget.buffer);
+            }
         }
 
         // Draw the text widgets on top
         for widget in self.text_widgets.values_mut() {
-            widget.update_draw(&mut self.target, map, &self.currencies, assets);
-            self.target
-                .blend_into(widget.rect.x as i32, widget.rect.y as i32, &widget.buffer);
+            if !self.widgets_to_hide.contains(&widget.name) {
+                widget.update_draw(&mut self.target, map, &self.currencies, assets);
+                self.target
+                    .blend_into(widget.rect.x as i32, widget.rect.y as i32, &widget.buffer);
+            }
         }
     }
 
@@ -805,6 +878,31 @@ impl Client {
                 } else if let Ok(act) = EntityAction::from_str(&widget.action) {
                     action = Some(act);
                     break;
+                }
+
+                if let Some(hide) = &widget.hide {
+                    for h in hide {
+                        self.widgets_to_hide.push(h.clone());
+                    }
+                }
+                if let Some(show) = &widget.show {
+                    for s in show {
+                        self.widgets_to_hide.retain(|x| x != s);
+                    }
+                }
+
+                // Deactivate the widgets and activate this widget
+                if !widget.deactivate.is_empty() {
+                    for widget_to_deactivate in &widget.deactivate {
+                        for (id, widget) in self.button_widgets.iter() {
+                            if *widget_to_deactivate == widget.name {
+                                self.activated_widgets.retain(|x| x != id);
+                                self.permanently_activated_widgets.retain(|x| x != id);
+                            }
+                        }
+                    }
+                    self.activated_widgets.push(widget.id);
+                    self.permanently_activated_widgets.push(widget.id);
                 }
             }
         }
@@ -853,7 +951,7 @@ impl Client {
 
     /// Click / touch up event
     pub fn touch_up(&mut self, _coord: Vec2<i32>, _map: &Map) {
-        self.activated_widgets = vec![];
+        self.activated_widgets = self.permanently_activated_widgets.clone();
     }
 
     pub fn user_event(&mut self, event: String, value: Value) -> EntityAction {

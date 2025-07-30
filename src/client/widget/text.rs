@@ -18,6 +18,7 @@ where
 }
 
 pub struct TextWidget {
+    pub name: String,
     pub rect: Rect,
     pub toml_str: String,
     pub buffer: TheRGBABuffer,
@@ -40,6 +41,7 @@ impl Default for TextWidget {
 impl TextWidget {
     pub fn new() -> Self {
         Self {
+            name: String::new(),
             rect: Rect::default(),
             toml_str: String::new(),
             buffer: TheRGBABuffer::default(),
