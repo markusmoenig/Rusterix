@@ -418,9 +418,20 @@ impl Entity {
         self.dirty_attributes = self.attributes.keys().cloned().collect();
     }
 
-    /// Check if the entity is dirty
-    pub fn is_dirty(&self) -> bool {
-        self.dirty_flags != 0 || !self.dirty_attributes.is_empty()
+    /// Check if the entity is dirty and generate item updates as needed.
+    pub fn is_dirty(&mut self) -> bool {
+        let mut is_dirty = self.dirty_flags != 0 || !self.dirty_attributes.is_empty();
+
+        for (slot, item) in self.inventory.iter_mut().enumerate() {
+            if let Some(item) = item {
+                if item.is_dirty() {
+                    self.inventory_updates.insert(slot, item.get_update());
+                    is_dirty = true;
+                }
+            }
+        }
+
+        is_dirty
     }
 
     /// Mark all static fields as dirty
@@ -436,6 +447,11 @@ impl Entity {
         self.inventory_additions.clear();
         self.inventory_removals.clear();
         self.inventory_updates.clear();
+        for item in self.inventory.iter_mut() {
+            if let Some(item) = item {
+                item.clear_dirty();
+            }
+        }
     }
 
     /// Get a partial update containing only dirty fields and attributes

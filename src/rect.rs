@@ -44,4 +44,18 @@ impl Rect {
     pub fn size(&self) -> Vec2<f32> {
         Vec2::new(self.width, self.height)
     }
+
+    pub fn with_border(&self, border: f32) -> Self {
+        let double = border * 2.0;
+        if double <= self.width && double <= self.height {
+            Self {
+                x: self.x + border,
+                y: self.y + border,
+                width: self.width - double,
+                height: self.height - double,
+            }
+        } else {
+            *self
+        }
+    }
 }

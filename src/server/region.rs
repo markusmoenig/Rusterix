@@ -325,6 +325,10 @@ impl RegionInstance {
                 vm,
             );
 
+            let _ = scope
+                .globals
+                .set_item("drop", vm.new_function("drop", drop).into(), vm);
+
             let _ = scope.globals.set_item(
                 "teleport",
                 vm.new_function("teleport", teleport).into(),
@@ -1812,12 +1816,7 @@ fn register_player() {
     let region_id = *REGIONID.borrow();
     let entity_id = *CURR_ENTITYID.borrow();
 
-    if let Some(entity) = MAP
-        .borrow_mut()
-        .entities
-        .iter_mut()
-        .find(|entity| entity.id == entity_id)
-    {
+    if let Some(entity) = get_entity_mut(&mut MAP.borrow_mut(), entity_id) {
         entity.set_attribute("player_camera", Value::PlayerCamera(PlayerCamera::D2));
     }
 
@@ -1839,12 +1838,7 @@ fn set_player_camera(camera: String) {
 
     let entity_id = *CURR_ENTITYID.borrow();
 
-    if let Some(entity) = MAP
-        .borrow_mut()
-        .entities
-        .iter_mut()
-        .find(|entity| entity.id == entity_id)
-    {
+    if let Some(entity) = get_entity_mut(&mut MAP.borrow_mut(), entity_id) {
         entity.set_attribute("player_camera", Value::PlayerCamera(player_camera));
     }
 }
@@ -1895,26 +1889,48 @@ pub fn send_log_message(message: String) {
 fn player_action(action: String) {
     if let Ok(parsed_action) = action.parse::<EntityAction>() {
         let entity_id = *CURR_ENTITYID.borrow();
-        if let Some(entity) = MAP
-            .borrow_mut()
-            .entities
-            .iter_mut()
-            .find(|entity| entity.id == entity_id)
-        {
+        if let Some(entity) = get_entity_mut(&mut MAP.borrow_mut(), entity_id) {
             entity.action = parsed_action;
         }
     }
 }
 
+/// Search for a mutable reference to an item with the given ID. Checks the map and on each entity.
+fn get_item_mut<'a>(map: &'a mut Map, item_id: u32) -> Option<&'a mut Item> {
+    // Look in the top-level items
+    if let Some(item) = map.items.iter_mut().find(|item| item.id == item_id) {
+        return Some(item);
+    }
+    // Look in each entity’s inventory
+    for entity in map.entities.iter_mut() {
+        for item in entity.inventory.iter_mut() {
+            if let Some(item) = item {
+                if item.id == item_id {
+                    return Some(item);
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Search for a mutable reference to an entity with the given ID.
+fn get_entity_mut<'a>(map: &'a mut Map, entity_id: u32) -> Option<&'a mut Entity> {
+    // Look in the top-level items
+    if let Some(entity) = map
+        .entities
+        .iter_mut()
+        .find(|entity| entity.id == entity_id)
+    {
+        return Some(entity);
+    }
+    None
+}
+
 /// Sets light emission to on / off
 fn set_emit_light(value: bool) {
     if let Some(item_id) = *CURR_ITEMID.borrow() {
-        if let Some(item) = MAP
-            .borrow_mut()
-            .items
-            .iter_mut()
-            .find(|item| item.id == item_id)
-        {
+        if let Some(item) = get_item_mut(&mut MAP.borrow_mut(), item_id) {
             if let Some(Value::Light(light)) = item.attributes.get_mut("light") {
                 light.active = value;
                 item.mark_dirty_attribute("light");
@@ -1922,12 +1938,7 @@ fn set_emit_light(value: bool) {
         }
     } else {
         let entity_id = *CURR_ENTITYID.borrow();
-        if let Some(entity) = MAP
-            .borrow_mut()
-            .entities
-            .iter_mut()
-            .find(|entity| entity.id == entity_id)
-        {
+        if let Some(entity) = get_entity_mut(&mut MAP.borrow_mut(), entity_id) {
             if let Some(Value::Light(light)) = entity.attributes.get_mut("light") {
                 light.active = value;
                 entity.mark_dirty_attribute("light");
@@ -1940,22 +1951,12 @@ fn set_emit_light(value: bool) {
 fn set_tile(id: String) {
     if let Ok(uuid) = Uuid::try_parse(&id) {
         if let Some(item_id) = *CURR_ITEMID.borrow() {
-            if let Some(item) = MAP
-                .borrow_mut()
-                .items
-                .iter_mut()
-                .find(|item| item.id == item_id)
-            {
+            if let Some(item) = get_item_mut(&mut MAP.borrow_mut(), item_id) {
                 item.set_attribute("source", Value::Source(PixelSource::TileId(uuid)));
             }
         } else {
             let entity_id = *CURR_ENTITYID.borrow();
-            if let Some(entity) = MAP
-                .borrow_mut()
-                .entities
-                .iter_mut()
-                .find(|entity| entity.id == entity_id)
-            {
+            if let Some(entity) = get_entity_mut(&mut MAP.borrow_mut(), entity_id) {
                 entity.set_attribute("source", Value::Source(PixelSource::TileId(uuid)));
             }
         }
@@ -2166,12 +2167,7 @@ fn took_damage(from: u32, mut amount: i32) {
     }
 
     // Check for death
-    if let Some(entity) = MAP
-        .borrow_mut()
-        .entities
-        .iter_mut()
-        .find(|entity| entity.id == id)
-    {
+    if let Some(entity) = get_entity_mut(&mut MAP.borrow_mut(), id) {
         let health_attr = HEALTH_ATTR.borrow();
         if let Some(mut health) = entity.attributes.get_int(&health_attr) {
             // Reduce the health of the target
@@ -2201,12 +2197,7 @@ fn took_damage(from: u32, mut amount: i32) {
 
     // if receiver got killed, send a "kill" event to the attacker
     if kill {
-        if let Some(entity) = MAP
-            .borrow_mut()
-            .entities
-            .iter_mut()
-            .find(|entity| from == entity.id)
-        {
+        if let Some(entity) = get_entity_mut(&mut MAP.borrow_mut(), from) {
             // Send "kill" event
             if let Some(class_name) = entity.attributes.get_str("class_name") {
                 let cmd = format!("{}.event(\"kill\", {})", class_name, id);
@@ -2222,12 +2213,7 @@ fn took_damage(from: u32, mut amount: i32) {
 fn get_entity_attr(entity_id: u32, key: String, vm: &VirtualMachine) -> PyResult<PyObjectRef> {
     let mut value = Value::NoValue;
 
-    if let Some(entity) = MAP
-        .borrow_mut()
-        .entities
-        .iter_mut()
-        .find(|entity| entity.id == entity_id)
-    {
+    if let Some(entity) = get_entity_mut(&mut MAP.borrow_mut(), entity_id) {
         if let Some(v) = entity.attributes.get(&key) {
             value = v.clone();
         }
@@ -2238,12 +2224,7 @@ fn get_entity_attr(entity_id: u32, key: String, vm: &VirtualMachine) -> PyResult
 
 /// Get an attribute from the given entity for internal use.
 fn _get_entity_attr_internal(entity_id: u32, key: String) -> Option<Value> {
-    if let Some(entity) = MAP
-        .borrow_mut()
-        .entities
-        .iter()
-        .find(|entity| entity.id == entity_id)
-    {
+    if let Some(entity) = get_entity_mut(&mut MAP.borrow_mut(), entity_id) {
         entity.attributes.get(&key).cloned()
     } else {
         None
@@ -2254,12 +2235,7 @@ fn _get_entity_attr_internal(entity_id: u32, key: String) -> Option<Value> {
 fn get_item_attr(item_id: u32, key: String, vm: &VirtualMachine) -> PyResult<PyObjectRef> {
     let mut value = Value::NoValue;
 
-    if let Some(item) = MAP
-        .borrow_mut()
-        .items
-        .iter_mut()
-        .find(|item| item.id == item_id)
-    {
+    if let Some(item) = get_item_mut(&mut MAP.borrow_mut(), item_id) {
         if let Some(v) = item.get_attribute(&key) {
             value = v.clone();
         }
@@ -2273,24 +2249,14 @@ fn get_attr(key: String, vm: &VirtualMachine) -> PyResult<PyObjectRef> {
     let mut value = Value::NoValue;
 
     if let Some(item_id) = *CURR_ITEMID.borrow() {
-        if let Some(item) = MAP
-            .borrow_mut()
-            .items
-            .iter_mut()
-            .find(|item| item.id == item_id)
-        {
+        if let Some(item) = get_item_mut(&mut MAP.borrow_mut(), item_id) {
             if let Some(v) = item.get_attribute(&key) {
                 value = v.clone();
             }
         }
     } else {
         let entity_id = *CURR_ENTITYID.borrow();
-        if let Some(entity) = MAP
-            .borrow_mut()
-            .entities
-            .iter_mut()
-            .find(|entity| entity.id == entity_id)
-        {
+        if let Some(entity) = get_entity_mut(&mut MAP.borrow_mut(), entity_id) {
             if let Some(v) = entity.attributes.get(&key) {
                 value = v.clone();
             }
@@ -2303,12 +2269,7 @@ fn get_attr(key: String, vm: &VirtualMachine) -> PyResult<PyObjectRef> {
 /// Toggles a boolean attribute of the current entity or item.
 fn toggle_attr(key: String) {
     if let Some(item_id) = *CURR_ITEMID.borrow() {
-        if let Some(item) = MAP
-            .borrow_mut()
-            .items
-            .iter_mut()
-            .find(|item| item.id == item_id)
-        {
+        if let Some(item) = get_item_mut(&mut MAP.borrow_mut(), item_id) {
             item.attributes.toggle(&key);
             if key == "active" {
                 // Send active state
@@ -2329,12 +2290,7 @@ fn toggle_attr(key: String) {
             }
         } else {
             let entity_id = *CURR_ENTITYID.borrow();
-            if let Some(entity) = MAP
-                .borrow_mut()
-                .entities
-                .iter_mut()
-                .find(|entity| entity.id == entity_id)
-            {
+            if let Some(entity) = get_entity_mut(&mut MAP.borrow_mut(), entity_id) {
                 entity.attributes.toggle(&key);
             }
         }
@@ -2346,12 +2302,7 @@ fn set_attr(key: PyObjectRef, value: PyObjectRef, vm: &VirtualMachine) {
     if let Ok(key) = String::try_from_object(vm, key) {
         if let Some(value) = Value::from_pyobject(value, vm) {
             if let Some(item_id) = *CURR_ITEMID.borrow() {
-                if let Some(item) = MAP
-                    .borrow_mut()
-                    .items
-                    .iter_mut()
-                    .find(|item| item.id == item_id)
-                {
+                if let Some(item) = get_item_mut(&mut MAP.borrow_mut(), item_id) {
                     item.set_attribute(&key, value);
 
                     if key == "active" {
@@ -2374,12 +2325,7 @@ fn set_attr(key: PyObjectRef, value: PyObjectRef, vm: &VirtualMachine) {
                 }
             } else {
                 let entity_id = *CURR_ENTITYID.borrow();
-                if let Some(entity) = MAP
-                    .borrow_mut()
-                    .entities
-                    .iter_mut()
-                    .find(|entity| entity.id == entity_id)
-                {
+                if let Some(entity) = get_entity_mut(&mut MAP.borrow_mut(), entity_id) {
                     entity.set_attribute(&key, value);
                 }
             }
@@ -2445,16 +2391,44 @@ fn inventory_items(filter: String, vm: &VirtualMachine) -> PyResult<PyObjectRef>
     Ok(py_list.into())
 }
 
+/// Drop the item with the given id.
+fn drop(item_id: u32) {
+    let mut map = MAP.borrow_mut();
+
+    let entity_id = *CURR_ENTITYID.borrow();
+    let mut slot = None;
+    if let Some(entity) = get_entity_mut(&mut map, entity_id) {
+        // Collect matching slot indices
+        for (index, item) in entity.inventory.iter().enumerate() {
+            if let Some(item) = item {
+                if item.id == item_id {
+                    slot = Some(index);
+                    break;
+                }
+            }
+        }
+
+        let mut removed_items = Vec::new();
+        if let Some(slot) = slot {
+            if let Some(mut item) = entity.remove_item_from_slot(slot) {
+                item.position = entity.position;
+                item.mark_all_dirty();
+                removed_items.push(item);
+            }
+        }
+
+        for item in removed_items {
+            map.items.push(item);
+        }
+    }
+}
+
 /// Drop the given items.
 fn drop_items(filter: String) {
     let mut map = MAP.borrow_mut();
 
     let entity_id = *CURR_ENTITYID.borrow();
-    if let Some(entity) = map
-        .entities
-        .iter_mut()
-        .find(|entity| entity.id == entity_id)
-    {
+    if let Some(entity) = get_entity_mut(&mut map, entity_id) {
         // Collect matching slot indices
         let matching_slots: Vec<usize> = entity
             .iter_inventory()
@@ -2775,12 +2749,7 @@ fn goto(destination: String, speed: f32) {
 /// CloseIn: Move within a radius of a target entity with a given speed
 fn close_in(target: u32, target_radius: f32, speed: f32) {
     let entity_id = *CURR_ENTITYID.borrow();
-    if let Some(entity) = MAP
-        .borrow_mut()
-        .entities
-        .iter_mut()
-        .find(|entity| entity.id == entity_id)
-    {
+    if let Some(entity) = get_entity_mut(&mut MAP.borrow_mut(), entity_id) {
         entity.action = CloseIn(target, target_radius, speed);
     }
 }
@@ -2819,12 +2788,7 @@ fn random_walk_in_sector(
     let max_sleep: i32 = get_i32(max_sleep, 0, vm); // Default max_sleep: 0
 
     let entity_id = *CURR_ENTITYID.borrow();
-    if let Some(entity) = MAP
-        .borrow_mut()
-        .entities
-        .iter_mut()
-        .find(|entity| entity.id == entity_id)
-    {
+    if let Some(entity) = get_entity_mut(&mut MAP.borrow_mut(), entity_id) {
         entity.action = RandomWalkInSector(distance, speed, max_sleep, 0, zero());
     }
 }
@@ -3055,12 +3019,12 @@ fn get_config_string_default(table: &str, key: &str, default: &str) -> String {
 /// Get an attribute value from the current item or entity.
 fn get_attr_internal(key: &str) -> Option<Value> {
     if let Some(id) = *CURR_ITEMID.borrow() {
-        if let Some(item) = MAP.borrow().items.iter().find(|item| item.id == id) {
+        if let Some(item) = get_item_mut(&mut MAP.borrow_mut(), id) {
             return item.attributes.get(key).cloned();
         }
     } else {
         let id = *CURR_ENTITYID.borrow();
-        if let Some(entity) = MAP.borrow().entities.iter().find(|entity| entity.id == id) {
+        if let Some(entity) = get_entity_mut(&mut MAP.borrow_mut(), id) {
             return entity.attributes.get(key).cloned();
         }
     };

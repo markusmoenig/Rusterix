@@ -594,10 +594,13 @@ impl Client {
 
     /// Draw the game into the internal buffer
     pub fn draw_game(&mut self, map: &Map, assets: &Assets, messages: Vec<crate::server::Message>) {
+        let mut player_entity = Entity::default();
+
         // Reset the intent to the server value
         for entity in map.entities.iter() {
             if entity.is_player() {
                 self.intent = entity.get_attr_string("intent").unwrap_or_default();
+                player_entity = entity.clone();
             }
         }
 
@@ -649,7 +652,16 @@ impl Client {
 
         // Draw the messages on top
         if let Some(widget) = &mut self.messages_widget {
-            if !self.widgets_to_hide.contains(&widget.name) {
+            let hide = self.widgets_to_hide.iter().any(|pattern| {
+                if pattern.ends_with('*') {
+                    let prefix = &pattern[..pattern.len() - 1];
+                    widget.name.starts_with(prefix)
+                } else {
+                    widget.name == *pattern
+                }
+            });
+
+            if !hide {
                 widget.update_draw(&mut self.target, assets, messages);
                 self.target
                     .blend_into(widget.rect.x as i32, widget.rect.y as i32, &widget.buffer);
@@ -658,10 +670,42 @@ impl Client {
 
         // Draw the text widgets on top
         for widget in self.text_widgets.values_mut() {
-            if !self.widgets_to_hide.contains(&widget.name) {
+            let hide = self.widgets_to_hide.iter().any(|pattern| {
+                if pattern.ends_with('*') {
+                    let prefix = &pattern[..pattern.len() - 1];
+                    widget.name.starts_with(prefix)
+                } else {
+                    widget.name == *pattern
+                }
+            });
+
+            if !hide {
                 widget.update_draw(&mut self.target, map, &self.currencies, assets);
                 self.target
                     .blend_into(widget.rect.x as i32, widget.rect.y as i32, &widget.buffer);
+            }
+        }
+
+        // Draw the button widgets which support inventory / gear on top
+        for widget in self.button_widgets.values_mut() {
+            let hide = self.widgets_to_hide.iter().any(|pattern| {
+                if pattern.ends_with('*') {
+                    let prefix = &pattern[..pattern.len() - 1];
+                    widget.name.starts_with(prefix)
+                } else {
+                    widget.name == *pattern
+                }
+            });
+
+            if !hide {
+                widget.update_draw(
+                    &mut self.target,
+                    map,
+                    assets,
+                    &player_entity,
+                    &self.draw2d,
+                    &self.animation_frame,
+                );
             }
         }
     }
@@ -702,6 +746,7 @@ impl Client {
                 }
 
                 if let Some(hide) = &widget.hide {
+                    self.widgets_to_hide.clear();
                     for h in hide {
                         self.widgets_to_hide.push(h.clone());
                     }
@@ -709,6 +754,18 @@ impl Client {
                 if let Some(show) = &widget.show {
                     for s in show {
                         self.widgets_to_hide.retain(|x| x != s);
+                    }
+                }
+                if let Some(inventory_index) = &widget.inventory_index {
+                    for entity in map.entities.iter() {
+                        if entity.is_player() {
+                            if let Some(item) = entity.inventory.get(*inventory_index) {
+                                if let Some(item) = item {
+                                    action = Some(EntityAction::ItemClicked(item.id, 0.0));
+                                    break;
+                                }
+                            }
+                        }
                     }
                 }
 
@@ -800,7 +857,7 @@ impl Client {
 
         let action_str: String = action.to_string();
         if action_str == "none" {
-            self.activated_widgets = vec![];
+            self.activated_widgets = self.permanently_activated_widgets.clone();
         } else {
             for (id, widget) in self.button_widgets.iter_mut() {
                 if widget.action == action_str && !self.activated_widgets.contains(id) {
@@ -867,6 +924,7 @@ impl Client {
                         let mut show: Option<Vec<String>> = None;
                         let mut hide: Option<Vec<String>> = None;
                         let mut deactivate: Vec<String> = vec![];
+                        let mut inventory_index: Option<usize> = None;
 
                         if let Some(ui) = table.get("ui").and_then(toml::Value::as_table) {
                             // Check for action
@@ -933,6 +991,16 @@ impl Client {
                                 {
                                     self.activated_widgets.push(widget.id);
                                     self.permanently_activated_widgets.push(widget.id);
+                                    if let Some(hide) = &hide {
+                                        self.widgets_to_hide = hide.clone();
+                                    }
+                                }
+                            }
+
+                            // Check for inventory
+                            if let Some(value) = ui.get("inventory_index") {
+                                if let Some(v) = value.as_integer() {
+                                    inventory_index = Some(v as usize);
                                 }
                             }
                         }
@@ -946,6 +1014,7 @@ impl Client {
                             show,
                             hide,
                             deactivate,
+                            inventory_index,
                         };
 
                         self.button_widgets.insert(widget.id, button_widget);
