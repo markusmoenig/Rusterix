@@ -1514,33 +1514,74 @@ impl RegionInstance {
                     }
                     EntityClicked(clicked_entity_id, distance) => {
                         with_regionctx(self.id, |ctx: &mut RegionCtx| {
-                            if let Some(entity) = ctx
-                                .map
-                                .entities
-                                .iter_mut()
-                                .find(|entity| entity.id == entity_id)
-                            {
-                                self.send_entity_intent_events_clicked(
-                                    entity,
-                                    clicked_entity_id,
-                                    distance,
-                                );
+                            if let Some(entity) = get_entity_mut(&mut ctx.map, entity_id) {
+                                if let Some(class_name) = ctx.entity_classes.get(&entity.id) {
+                                    // Send "intent" event for the entity
+                                    let mut cont = ValueContainer::default();
+                                    cont.set("distance", Value::Float(distance));
+                                    cont.set("entity_id", Value::UInt(clicked_entity_id));
+
+                                    let intent =
+                                        entity.attributes.get_str_default("intent", "".into());
+
+                                    cont.set("intent", Value::Str(intent));
+                                    let cmd = format!(
+                                        "{}.event('intent', {})",
+                                        class_name,
+                                        cont.to_python_dict_string()
+                                    );
+                                    ctx.to_execute_entity.push((
+                                        entity.id,
+                                        "intent".into(),
+                                        cmd.clone(),
+                                    ));
+
+                                    entity.set_attribute("intent", Value::Str(String::new()));
+                                }
                             }
                         });
                     }
                     ItemClicked(clicked_item_id, distance) => {
                         with_regionctx(self.id, |ctx: &mut RegionCtx| {
-                            if let Some(entity) = ctx
-                                .map
-                                .entities
-                                .iter_mut()
-                                .find(|entity| entity.id == entity_id)
-                            {
-                                self.send_item_intent_events_clicked(
-                                    entity,
-                                    clicked_item_id,
-                                    distance,
-                                );
+                            if let Some(entity) = get_entity_mut(&mut ctx.map, entity_id) {
+                                if let Some(class_name) = ctx.entity_classes.get(&entity.id) {
+                                    // Send "intent" event for the entity
+                                    let mut cont = ValueContainer::default();
+                                    cont.set("distance", Value::Float(distance));
+                                    cont.set("item_id", Value::UInt(clicked_item_id));
+                                    cont.set("entity_id", Value::UInt(entity.id));
+
+                                    let intent =
+                                        entity.attributes.get_str_default("intent", "".into());
+
+                                    cont.set("intent", Value::Str(intent));
+                                    let cmd = format!(
+                                        "{}.event('intent', {})",
+                                        class_name,
+                                        cont.to_python_dict_string()
+                                    );
+                                    ctx.to_execute_entity.push((
+                                        entity.id,
+                                        "intent".into(),
+                                        cmd.clone(),
+                                    ));
+
+                                    if let Some(class_name) = ctx.item_classes.get(&clicked_item_id)
+                                    {
+                                        let cmd = format!(
+                                            "{}.event('intent', {})",
+                                            class_name,
+                                            cont.to_python_dict_string()
+                                        );
+                                        ctx.to_execute_item.push((
+                                            clicked_item_id,
+                                            "intent".into(),
+                                            cmd,
+                                        ));
+                                    }
+
+                                    entity.set_attribute("intent", Value::Str(String::new()));
+                                }
                             }
                         });
                     }
@@ -2419,66 +2460,6 @@ impl RegionInstance {
                         );
                         ctx.to_execute_item.push((item_id, "intent".into(), cmd));
                     }
-                }
-
-                entity.set_attribute("intent", Value::Str(String::new()));
-            }
-        });
-    }
-
-    /// Player clicked on an entity.
-    fn send_entity_intent_events_clicked(&self, entity: &mut Entity, target: u32, distance: f32) {
-        with_regionctx(self.id, |ctx: &mut RegionCtx| {
-            if let Some(class_name) = ctx.entity_classes.get(&entity.id) {
-                // Send "intent" event for the entity
-                let mut cont = ValueContainer::default();
-                cont.set("distance", Value::Float(distance));
-                cont.set("entity_id", Value::UInt(target));
-
-                let intent = entity.attributes.get_str_default("intent", "".into());
-
-                cont.set("intent", Value::Str(intent));
-                let cmd = format!(
-                    "{}.event('intent', {})",
-                    class_name,
-                    cont.to_python_dict_string()
-                );
-                ctx.to_execute_entity
-                    .push((entity.id, "intent".into(), cmd.clone()));
-
-                entity.set_attribute("intent", Value::Str(String::new()));
-            }
-        });
-    }
-
-    /// Player clicked on an item.
-    fn send_item_intent_events_clicked(&self, entity: &mut Entity, target: u32, distance: f32) {
-        with_regionctx(self.id, |ctx: &mut RegionCtx| {
-            if let Some(class_name) = ctx.entity_classes.get(&entity.id) {
-                // Send "intent" event for the entity
-                let mut cont = ValueContainer::default();
-                cont.set("distance", Value::Float(distance));
-                cont.set("item_id", Value::UInt(target));
-                cont.set("entity_id", Value::UInt(entity.id));
-
-                let intent = entity.attributes.get_str_default("intent", "".into());
-
-                cont.set("intent", Value::Str(intent));
-                let cmd = format!(
-                    "{}.event('intent', {})",
-                    class_name,
-                    cont.to_python_dict_string()
-                );
-                ctx.to_execute_entity
-                    .push((entity.id, "intent".into(), cmd.clone()));
-
-                if let Some(class_name) = ctx.item_classes.get(&target) {
-                    let cmd = format!(
-                        "{}.event('intent', {})",
-                        class_name,
-                        cont.to_python_dict_string()
-                    );
-                    ctx.to_execute_item.push((target, "intent".into(), cmd));
                 }
 
                 entity.set_attribute("intent", Value::Str(String::new()));
