@@ -6,13 +6,14 @@ pub mod item;
 pub mod message;
 pub mod py_fn;
 pub mod region;
+pub mod regionctx;
 
 use crossbeam_channel::{Receiver, Sender};
 
 use crate::Command;
 use crate::EntityAction;
 use crate::prelude::*;
-use std::sync::{Arc, LazyLock, RwLock};
+use std::sync::{Arc, LazyLock, Mutex, RwLock};
 use theframework::prelude::*;
 
 // Pipes to the regions
@@ -54,6 +55,8 @@ pub struct Server {
 
     pub log: String,
     pub log_changed: bool,
+
+    pub instances: Vec<Arc<Mutex<RegionInstance>>>,
 }
 
 impl Default for Server {
@@ -80,6 +83,8 @@ impl Server {
 
             log: String::new(),
             log_changed: true,
+
+            instances: vec![],
         }
     }
 
@@ -107,8 +112,8 @@ impl Server {
         assets: &Assets,
         config_toml: String,
     ) {
-        let mut region_instance = RegionInstance::default();
-        region_instance.id = self.get_next_id();
+        let mut region_instance = RegionInstance::new(self.instances.len() as u32);
+        // region_instance.id = self.get_next_id();
 
         self.region_id_map.insert(map.id, region_instance.id);
         self.region_name_id_map
@@ -121,7 +126,21 @@ impl Server {
         self.from_region.push(region_instance.from_receiver.clone());
 
         region_instance.init(name, map, assets, config_toml);
-        region_instance.run();
+        self.instances.push(Arc::new(Mutex::new(region_instance)));
+    }
+
+    /// Send a system tick to all instances.
+    pub fn system_tick(&self) {
+        for instance in &self.instances {
+            instance.lock().unwrap().system_tick();
+        }
+    }
+
+    /// Send a redraw tick to all instances.
+    pub fn redraw_tick(&self) {
+        for instance in &self.instances {
+            instance.lock().unwrap().redraw_tick();
+        }
     }
 
     /// Process a set of commands from a client.
@@ -506,6 +525,11 @@ impl Server {
         self.from_region.clear();
         self.times.clear();
         self.clear_log();
+
+        // Clear the store
+        crate::server::region::clear_regionctx_store();
+
+        self.instances.clear();
     }
 
     /// Create a id

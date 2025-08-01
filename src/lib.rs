@@ -123,6 +123,7 @@ pub use crate::{
         message::PlayerCamera,
         message::RegionMessage,
         region::RegionInstance,
+        regionctx::RegionCtx,
     },
     shader::{Shader, grid::GridShader, vgradient::VGrayGradientShader},
     shapestack::{
