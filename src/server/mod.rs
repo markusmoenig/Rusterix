@@ -9,6 +9,7 @@ pub mod region;
 pub mod regionctx;
 
 use crossbeam_channel::{Receiver, Sender};
+use rayon::prelude::*;
 
 use crate::Command;
 use crate::EntityAction;
@@ -131,16 +132,16 @@ impl Server {
 
     /// Send a system tick to all instances.
     pub fn system_tick(&self) {
-        for instance in &self.instances {
+        self.instances.par_iter().for_each(|instance| {
             instance.lock().unwrap().system_tick();
-        }
+        });
     }
 
     /// Send a redraw tick to all instances.
     pub fn redraw_tick(&self) {
-        for instance in &self.instances {
+        self.instances.par_iter().for_each(|instance| {
             instance.lock().unwrap().redraw_tick();
-        }
+        });
     }
 
     /// Process a set of commands from a client.

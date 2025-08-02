@@ -185,11 +185,6 @@ impl RegionInstance {
         interp.enter(|vm| {
             let scope = scope.lock().unwrap();
 
-            // Create a dict to hold metadata like region ID
-            let dict = vm.ctx.new_dict();
-            dict.set_item("__region_id", vm.ctx.new_int(region_id).into(), vm)
-                .expect("Failed to set region_id");
-
             let module = PyModule::new().into_ref(&vm.ctx);
             module
                 .as_object()
@@ -958,7 +953,7 @@ impl RegionInstance {
                     });
                     if let Err(err) = self.execute(&cmd) {
                         send_log_message(
-                            0,
+                            self.id,
                             format!(
                                 "{}: User Event Error for '{}': {}",
                                 self.name,
@@ -3245,6 +3240,14 @@ fn id(vm: &VirtualMachine) -> u32 {
     .unwrap()
 }
 
-/// This is a stub and not executed on the server but client, but we need to define it
-/// otherwise the script would fail.
-fn player_action(_action: String) {}
+/// Used only for local, Eldiron Creator emitted commands.
+fn player_action(action: String, vm: &VirtualMachine) {
+    if let Ok(parsed_action) = action.parse::<EntityAction>() {
+        with_regionctx(get_region_id(vm).unwrap(), |ctx: &mut RegionCtx| {
+            let entity_id = ctx.curr_entity_id;
+            if let Some(entity) = get_entity_mut(&mut ctx.map, entity_id) {
+                entity.action = parsed_action;
+            }
+        });
+    }
+}
