@@ -4,7 +4,7 @@ pub mod messages;
 pub mod screen;
 pub mod text;
 
-use crate::{Assets, Entity, Map, Rect, Value, client::draw2d};
+use crate::{Assets, Entity, Map, Rect, Texture, Value, client::draw2d};
 use draw2d::Draw2D;
 use theframework::prelude::*;
 
@@ -19,6 +19,7 @@ pub struct Widget {
     pub hide: Option<Vec<String>>,
     pub deactivate: Vec<String>,
     pub inventory_index: Option<usize>,
+    pub textures: Vec<Texture>,
 }
 
 impl Default for Widget {
@@ -39,6 +40,7 @@ impl Widget {
             hide: None,
             deactivate: vec![],
             inventory_index: None,
+            textures: vec![],
         }
     }
 
@@ -50,13 +52,33 @@ impl Widget {
         entity: &Entity,
         draw2d: &Draw2D,
         animation_frame: &usize,
+        texture_index: usize,
     ) {
+        let stride = buffer.stride();
+
+        if !self.textures.is_empty() {
+            draw2d.blend_scale_chunk(
+                buffer.pixels_mut(),
+                &(
+                    self.rect.x as usize,
+                    self.rect.y as usize,
+                    self.rect.width as usize,
+                    self.rect.height as usize,
+                ),
+                stride,
+                &self.textures[texture_index].data,
+                &(
+                    self.textures[texture_index].width as usize,
+                    self.textures[texture_index].height as usize,
+                ),
+            );
+        }
+
         if let Some(inventory_index) = &self.inventory_index {
             if let Some(item) = entity.inventory.get(*inventory_index) {
                 if let Some(item) = item {
                     if let Some(Value::Source(source)) = item.attributes.get("source") {
                         if let Some(tile) = source.tile_from_tile_list(assets) {
-                            let stride = buffer.stride();
                             let index = *animation_frame % tile.textures.len();
                             let rect = self.rect.with_border(4.0);
                             draw2d.blend_scale_chunk(

@@ -76,6 +76,8 @@ pub enum ShapeFXRole {
     Circle,
     Line,
     Box,
+    // UI Group
+    Widget,
 }
 
 use ShapeFXRole::*;
@@ -105,6 +107,7 @@ impl FromStr for ShapeFXRole {
             "Circle" => Ok(ShapeFXRole::Circle),
             "Line" => Ok(ShapeFXRole::Line),
             "Box" => Ok(ShapeFXRole::Box),
+            "Widget" => Ok(ShapeFXRole::Widget),
             _ => Err(()),
         }
     }
@@ -175,12 +178,13 @@ impl ShapeFX {
             Circle => "Circle".into(),
             Line => "Line".into(),
             Box => "Box".into(),
+            Widget => "Widget".into(),
         }
     }
 
     pub fn inputs(&self) -> Vec<TheNodeTerminal> {
         match self.role {
-            MaterialGeometry | SectorGeometry | LinedefGeometry | Shape => {
+            MaterialGeometry | SectorGeometry | LinedefGeometry | Shape | Widget => {
                 vec![]
             }
             Render => {
@@ -380,6 +384,18 @@ impl ShapeFX {
                     },
                     TheNodeTerminal {
                         name: "color".into(),
+                        category_name: "ShapeFX".into(),
+                    },
+                ]
+            }
+            Widget => {
+                vec![
+                    TheNodeTerminal {
+                        name: "normal".into(),
+                        category_name: "ShapeFX".into(),
+                    },
+                    TheNodeTerminal {
+                        name: "selected".into(),
                         category_name: "ShapeFX".into(),
                     },
                 ]

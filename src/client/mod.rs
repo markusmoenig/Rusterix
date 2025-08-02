@@ -705,6 +705,11 @@ impl Client {
                     &player_entity,
                     &self.draw2d,
                     &self.animation_frame,
+                    if self.activated_widgets.contains(&widget.id) {
+                        1
+                    } else {
+                        0
+                    },
                 );
             }
         }
@@ -891,6 +896,16 @@ impl Client {
             let width = bb.size().x * self.grid_size;
             let height = bb.size().y * self.grid_size;
 
+            let mut textures = vec![];
+
+            if let Some(Value::Source(PixelSource::ShapeFXGraphId(id))) =
+                widget.properties.get("screen_graph")
+            {
+                if let Some(graph) = screen.shapefx_graphs.get(id) {
+                    textures = graph.create_screen_widgets(width as usize, height as usize, assets);
+                }
+            }
+
             if let Some(crate::Value::Str(data)) = widget.properties.get("data") {
                 if let Ok(table) = data.parse::<Table>() {
                     let grid_size = self.grid_size;
@@ -1015,6 +1030,7 @@ impl Client {
                             hide,
                             deactivate,
                             inventory_index,
+                            textures,
                         };
 
                         self.button_widgets.insert(widget.id, button_widget);

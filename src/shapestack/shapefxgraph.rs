@@ -380,4 +380,120 @@ impl ShapeFXGraph {
         }
         pixel
     }
+
+    /// Evaluate as a screen widget
+    pub fn evaluate_screen_widget(
+        &self,
+        ctx: &ShapeContext,
+        mut incoming: Vec4<f32>,
+        terminal: usize,
+        assets: &Assets,
+    ) -> Option<Vec4<f32>> {
+        if self.nodes.is_empty() {
+            return None;
+        }
+        if self.nodes[0].role != ShapeFXRole::Widget {
+            return None;
+        }
+
+        let mut curr_index = 0_usize;
+        let mut curr_terminal = terminal;
+
+        let mut color = None;
+
+        let mut steps = 0;
+        while steps < 16 {
+            if let Some((next_node, next_terminal)) =
+                self.find_connected_input_node(curr_index, curr_terminal)
+            {
+                if let Some(col) = self.nodes[next_node as usize].evaluate_pixel(
+                    ctx,
+                    Some(incoming),
+                    assets,
+                    (self, next_node as usize),
+                ) {
+                    color = Some(col);
+                    incoming = col;
+                }
+                curr_index = next_node as usize;
+                curr_terminal = next_terminal as usize;
+                steps += 1;
+            } else {
+                break;
+            }
+        }
+        color
+    }
+
+    /// Create the screen widgets
+    pub fn create_screen_widgets(
+        &self,
+        width: usize,
+        height: usize,
+        assets: &Assets,
+    ) -> Vec<Texture> {
+        let px = 1.0;
+
+        let mut textures = vec![Texture::alloc(width, height), Texture::alloc(width, height)];
+
+        for (index, texture) in textures.iter_mut().enumerate() {
+            texture
+                .data
+                .par_rchunks_exact_mut(width * 4)
+                .enumerate()
+                .for_each(|(j, line)| {
+                    for (i, pixel) in line.chunks_exact_mut(4).enumerate() {
+                        let x = i as f32;
+                        let y = j as f32;
+
+                        // Normalized UVs
+                        let uv = Vec2::new(x / width as f32, 1.0 - y / height as f32);
+
+                        // Centered pixel coordinate in "world space"
+                        let world = uv * Vec2::new(width as f32, height as f32);
+
+                        // Simulated distance to nearest edge of the preview "shape"
+                        let dist_left = uv.x;
+                        let dist_right = 1.0 - uv.x;
+                        let dist_top = 1.0 - uv.y;
+                        let dist_bottom = uv.y;
+                        let edge_distance =
+                            dist_left.min(dist_right).min(dist_top).min(dist_bottom);
+
+                        // Optional: scale to world/pixel units if needed
+                        let distance = -edge_distance * width.min(height) as f32;
+
+                        // Build ShapeContext with no sector
+                        let ctx = ShapeContext {
+                            point_world: world,
+                            point: world / px,
+                            uv,
+                            distance_world: distance,
+                            distance,
+                            shape_id: 0,
+                            px,
+                            anti_aliasing: 1.0,
+                            t: None,
+                            line_dir: None,
+                            override_color: None,
+                        };
+
+                        let color = if let Some(col) = self.evaluate_screen_widget(
+                            &ctx,
+                            Vec4::new(0.0, 0.0, 0.0, 1.0),
+                            index,
+                            assets,
+                        ) {
+                            col
+                        } else {
+                            Vec4::new(0.0, 0.0, 0.0, 1.0)
+                        };
+
+                        pixel.copy_from_slice(&TheColor::from_vec4f(color).to_u8_array());
+                    }
+                });
+        }
+
+        textures
+    }
 }
