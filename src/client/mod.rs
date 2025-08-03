@@ -204,9 +204,12 @@ impl Client {
         map: &Map,
         assets: &Assets,
         values: &ValueContainer,
+        build_it: bool,
     ) {
         self.curr_map_id = map.id;
-        self.scene_d2 = self.builder_d2.build(map, assets, screen_size, values);
+        self.scene_d2 = self
+            .builder_d2
+            .build(map, assets, screen_size, values, build_it);
         self.builder_d2
             .build_entities_items(map, assets, &mut self.scene_d2, screen_size);
     }

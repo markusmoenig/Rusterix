@@ -32,8 +32,6 @@ impl D2Builder {
                 let bbox = sector.bounding_box(map);
 
                 let mut repeat = true;
-                let tile_size = 100;
-
                 if sector.properties.get_int_default("tile_mode", 1) == 0 {
                     repeat = false;
                 }
@@ -62,9 +60,7 @@ impl D2Builder {
                 }
 
                 if let Some(Value::Source(pixelsource)) = source {
-                    if let Some(tile) =
-                        pixelsource.to_tile(assets, tile_size, &sector.properties, map)
-                    {
+                    if let Some(tile) = pixelsource.tile_from_tile_list(assets) {
                         for vertex in &geo.0 {
                             let local = self.map_grid_to_local(
                                 screen_size,
@@ -238,6 +234,39 @@ impl D2Builder {
 
         let mut textures = vec![];
 
+        // Items
+        for item in &map.items {
+            let item_pos = Vec2::new(item.position.x, item.position.z);
+            let pos = self.map_grid_to_local(screen_size, Vec2::new(item_pos.x, item_pos.y), map);
+            let size = 1.0;
+            let hsize = 0.5;
+
+            if let Some(Value::Light(light)) = item.attributes.get("light") {
+                if light.active {
+                    let mut light = light.clone();
+                    light.set_position(item.position);
+                    scene.dynamic_lights.push(light.compile());
+                }
+            }
+
+            if let Some(Value::Source(source)) = item.attributes.get("source") {
+                if item.attributes.get_bool_default("visible", false) {
+                    if let Some(tile) = source.tile_from_tile_list(assets) {
+                        if let Some(texture_index) = assets.tile_index(&tile.id) {
+                            let mut batch = Batch2D::empty()
+                                .source(PixelSource::StaticTileIndex(texture_index))
+                                .receives_light(true);
+
+                            batch.add_rectangle(pos.x - hsize, pos.y - hsize, size, size);
+                            textures.push(tile.clone());
+                            repeated_offsets.insert(tile.id, repeated_batches.len());
+                            repeated_batches.push(batch);
+                        }
+                    }
+                }
+            }
+        }
+
         // We dont show entities and items in Effects Mode to avoid overlapping icons
         // Entities
         for entity in &map.entities {
@@ -289,39 +318,6 @@ impl D2Builder {
                             Batch2D::from_rectangle(pos.x - hsize, pos.y - hsize, size, size)
                                 .source(entity_tile);
                         scene.d2_dynamic.push(batch);
-                    }
-                }
-            }
-        }
-
-        // Items
-        for item in &map.items {
-            let item_pos = Vec2::new(item.position.x, item.position.z);
-            let pos = self.map_grid_to_local(screen_size, Vec2::new(item_pos.x, item_pos.y), map);
-            let size = 1.0;
-            let hsize = 0.5;
-
-            if let Some(Value::Light(light)) = item.attributes.get("light") {
-                if light.active {
-                    let mut light = light.clone();
-                    light.set_position(item.position);
-                    scene.dynamic_lights.push(light.compile());
-                }
-            }
-
-            if let Some(Value::Source(source)) = item.attributes.get("source") {
-                if item.attributes.get_bool_default("visible", false) {
-                    if let Some(tile) = source.tile_from_tile_list(assets) {
-                        if let Some(texture_index) = assets.tile_index(&tile.id) {
-                            let mut batch = Batch2D::empty()
-                                .source(PixelSource::StaticTileIndex(texture_index))
-                                .receives_light(true);
-
-                            batch.add_rectangle(pos.x - hsize, pos.y - hsize, size, size);
-                            textures.push(tile.clone());
-                            repeated_offsets.insert(tile.id, repeated_batches.len());
-                            repeated_batches.push(batch);
-                        }
                     }
                 }
             }
