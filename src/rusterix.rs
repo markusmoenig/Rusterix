@@ -215,8 +215,13 @@ impl Rusterix {
     }
 
     /// Draw the game as the client sees it.
-    pub fn draw_game(&mut self, map: &Map, messages: Vec<crate::server::Message>) {
-        self.client.draw_game(map, &self.assets, messages);
+    pub fn draw_game(
+        &mut self,
+        map: &Map,
+        messages: Vec<crate::server::Message>,
+        choices: Vec<crate::MultipleChoice>,
+    ) {
+        self.client.draw_game(map, &self.assets, messages, choices);
     }
 
     /// Update the server messages.

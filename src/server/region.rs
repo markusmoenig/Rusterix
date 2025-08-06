@@ -1,7 +1,7 @@
 use crate::server::py_fn::*;
 use crate::{
-    Assets, Currencies, Currency, Entity, EntityAction, Item, Map, PixelSource, PlayerCamera,
-    RegionCtx, Value, ValueContainer,
+    Assets, Choice, Currencies, Currency, Entity, EntityAction, Item, Map, MultipleChoice,
+    PixelSource, PlayerCamera, RegionCtx, Value, ValueContainer,
 };
 use crossbeam_channel::{Receiver, Sender, tick, unbounded};
 use rand::*;
@@ -374,6 +374,12 @@ impl RegionInstance {
             let _ = scope.globals.set_item(
                 "drop_items",
                 vm.new_function("drop_items", drop_items).into(),
+                vm,
+            );
+
+            let _ = scope.globals.set_item(
+                "offer_inventory",
+                vm.new_function("offer_inventory", offer_inventory).into(),
                 vm,
             );
 
@@ -987,8 +993,8 @@ impl RegionInstance {
 
                                     let intent =
                                         entity.attributes.get_str_default("intent", "".into());
+                                    cont.set("intent", Value::Str(intent.clone()));
 
-                                    cont.set("intent", Value::Str(intent));
                                     let cmd = format!(
                                         "{}.event('intent', {})",
                                         class_name,
@@ -999,6 +1005,26 @@ impl RegionInstance {
                                         "intent".into(),
                                         cmd.clone(),
                                     ));
+
+                                    // Send for the target
+                                    let mut cont = ValueContainer::default();
+                                    cont.set("distance", Value::Float(distance));
+                                    cont.set("entity_id", Value::UInt(entity_id));
+                                    cont.set("intent", Value::Str(intent));
+                                    if let Some(class_name) =
+                                        ctx.entity_classes.get(&clicked_entity_id)
+                                    {
+                                        let cmd = format!(
+                                            "{}.event('intent', {})",
+                                            class_name,
+                                            cont.to_python_dict_string()
+                                        );
+                                        ctx.to_execute_entity.push((
+                                            clicked_entity_id,
+                                            "intent".into(),
+                                            cmd,
+                                        ));
+                                    }
 
                                     entity.set_attribute("intent", Value::Str(String::new()));
                                 }
@@ -1881,20 +1907,24 @@ impl RegionInstance {
                 let mut cont = ValueContainer::default();
                 cont.set("distance", Value::Float(1.0));
 
-                let mut item_id = None;
+                let mut target_item_id = None;
+                let mut target_entity_id = None;
 
                 let mut found_target = false;
                 if let Some(entity_id) = get_entity_at(ctx, position) {
                     if entity_id != entity.id {
-                        cont.set("entity_id", Value::UInt(entity_id));
+                        cont.set("entity_id", Value::UInt(entity.id));
+                        target_entity_id = Some(entity_id);
                         found_target = true;
                     }
                 }
-                if let Some(i_id) = get_item_at(ctx, position) {
-                    cont.set("entity_id", Value::UInt(entity.id));
-                    cont.set("item_id", Value::UInt(i_id));
-                    item_id = Some(i_id);
-                    found_target = true;
+                if !found_target {
+                    if let Some(i_id) = get_item_at(ctx, position) {
+                        cont.set("entity_id", Value::UInt(entity.id));
+                        cont.set("item_id", Value::UInt(i_id));
+                        target_item_id = Some(i_id);
+                        found_target = true;
+                    }
                 }
 
                 let intent = entity.attributes.get_str_default("intent", "".into());
@@ -1915,7 +1945,17 @@ impl RegionInstance {
                 ctx.to_execute_entity
                     .push((entity.id, "intent".into(), cmd.clone()));
 
-                if let Some(item_id) = item_id {
+                if let Some(target_entity_id) = target_entity_id {
+                    if let Some(class_name) = ctx.entity_classes.get(&target_entity_id) {
+                        let cmd = format!(
+                            "{}.event('intent', {})",
+                            class_name,
+                            cont.to_python_dict_string()
+                        );
+                        ctx.to_execute_entity
+                            .push((target_entity_id, "intent".into(), cmd));
+                    }
+                } else if let Some(item_id) = target_item_id {
                     if let Some(class_name) = ctx.item_classes.get(&item_id) {
                         let cmd = format!(
                             "{}.event('intent', {})",
@@ -2632,6 +2672,41 @@ fn drop_items(filter: String, vm: &VirtualMachine) {
             for item in removed_items {
                 ctx.map.items.push(item);
             }
+        }
+    });
+}
+
+/// Offer inventory.
+fn offer_inventory(to: u32, filter: String, vm: &VirtualMachine) {
+    with_regionctx(get_region_id(vm).unwrap(), |ctx: &mut RegionCtx| {
+        let entity_id = ctx.curr_entity_id;
+        if let Some(entity) = get_entity_mut(&mut ctx.map, entity_id) {
+            // Collect matching slot indices
+            let matching_item_ids: Vec<u32> = entity
+                .iter_inventory()
+                .filter_map(|(_, item)| {
+                    let name = item.attributes.get_str("name").unwrap_or_default();
+                    let class_name = item.attributes.get_str("class_name").unwrap_or_default();
+
+                    if filter.is_empty() || name.contains(&filter) || class_name.contains(&filter) {
+                        Some(item.id)
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+
+            let mut choices = MultipleChoice::new(ctx.region_id, entity_id, to);
+            for item_id in matching_item_ids {
+                let choice = Choice::ItemToSell(item_id, entity_id, to);
+                choices.add(choice);
+            }
+
+            ctx.from_sender
+                .get()
+                .unwrap()
+                .send(RegionMessage::MultipleChoice(choices))
+                .unwrap();
         }
     });
 }

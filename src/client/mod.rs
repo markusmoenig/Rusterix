@@ -596,8 +596,18 @@ impl Client {
     }
 
     /// Draw the game into the internal buffer
-    pub fn draw_game(&mut self, map: &Map, assets: &Assets, messages: Vec<crate::server::Message>) {
+    pub fn draw_game(
+        &mut self,
+        map: &Map,
+        assets: &Assets,
+        messages: Vec<crate::server::Message>,
+        choices: Vec<crate::MultipleChoice>,
+    ) {
         let mut player_entity = Entity::default();
+
+        if !choices.is_empty() {
+            println!("got a choice {:?}", choices);
+        }
 
         // Reset the intent to the server value
         for entity in map.entities.iter() {

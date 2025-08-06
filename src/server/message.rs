@@ -3,7 +3,7 @@ use theframework::prelude::*;
 
 /// Messages to / from the Region to the server or client
 #[derive(Debug)]
-#[allow(clippy::large_enum_variant)]
+// #[allow(clippy::large_enum_variant)]
 pub enum RegionMessage {
     /// Register a local player (which receives user based events).
     /// RegionInstanceId, PlayerId
@@ -30,6 +30,8 @@ pub enum RegionMessage {
     Message(u32, Option<u32>, Option<u32>, u32, String, String),
     /// TransferEntity: Move the Entity from the region to a new region (name) in sector (name)
     TransferEntity(u32, Entity, String, String),
+    ///
+    MultipleChoice(MultipleChoice),
     /// Stop processing and quit
     Quit,
 }
@@ -114,5 +116,38 @@ impl TryFrom<i32> for EntityAction {
             3 => Ok(EntityAction::Backward),
             _ => Err("Invalid value for EntityAction"),
         }
+    }
+}
+
+/// A players choice.
+#[derive(Debug, Clone)]
+pub enum Choice {
+    /// An item to sell, item_id, seller_id, buyer_id
+    ItemToSell(u32, u32, u32),
+}
+
+/// Multiple choices for the player
+#[derive(Debug, Clone)]
+pub struct MultipleChoice {
+    pub region: u32,
+    pub from: u32,
+    pub to: u32,
+
+    pub choices: Vec<Choice>,
+}
+
+impl MultipleChoice {
+    pub fn new(region: u32, from: u32, to: u32) -> Self {
+        Self {
+            region,
+            from,
+            to,
+            choices: vec![],
+        }
+    }
+
+    /// Add a choice
+    pub fn add(&mut self, choice: Choice) {
+        self.choices.push(choice);
     }
 }

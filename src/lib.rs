@@ -120,8 +120,7 @@ pub use crate::{
         entity::EntityUpdate,
         item::{Item, ItemUpdate},
         message::EntityAction,
-        message::PlayerCamera,
-        message::RegionMessage,
+        message::{Choice, MultipleChoice, PlayerCamera, RegionMessage},
         region::RegionInstance,
         regionctx::RegionCtx,
     },
@@ -157,8 +156,8 @@ pub mod prelude {
         d3builder::D3Builder,
     };
     pub use crate::{
-        Assets, Currencies, Currency, Entity, EntityUpdate, Item, ItemUpdate, RegionInstance,
-        RegionMessage, Server, Wallet,
+        Assets, Choice, Currencies, Currency, Entity, EntityUpdate, Item, ItemUpdate,
+        MultipleChoice, RegionInstance, RegionMessage, Server, Wallet,
     };
     pub use crate::{BLACK, Pixel, TRANSPARENT, WHITE};
     pub use crate::{Batch2D, Batch3D, CullMode, PrimitiveMode};

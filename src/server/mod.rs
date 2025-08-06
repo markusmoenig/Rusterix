@@ -50,6 +50,7 @@ pub struct Server {
     pub entities: FxHashMap<u32, Vec<Entity>>,
     pub items: FxHashMap<u32, Vec<Item>>,
     pub messages: FxHashMap<u32, Vec<Message>>,
+    pub multiple_choice: FxHashMap<u32, Vec<MultipleChoice>>,
     pub times: FxHashMap<u32, TheTime>,
 
     pub state: ServerState,
@@ -78,6 +79,7 @@ impl Server {
             entities: FxHashMap::default(),
             items: FxHashMap::default(),
             messages: FxHashMap::default(),
+            multiple_choice: FxHashMap::default(),
             times: FxHashMap::default(),
 
             state: ServerState::Off,
@@ -212,6 +214,17 @@ impl Server {
         }
     }
 
+    /// Get multi-choice for a given region and clear them.
+    pub fn get_choices(&mut self, region_id: &Uuid) -> Vec<MultipleChoice> {
+        if let Some(region_id) = self.region_id_map.get(region_id) {
+            let choices = self.multiple_choice.get(region_id).cloned();
+            self.multiple_choice.remove(region_id);
+            choices.unwrap_or(vec![])
+        } else {
+            vec![]
+        }
+    }
+
     /// Get the current time for the given region.
     pub fn get_time(&self, region_id: &Uuid) -> Option<TheTime> {
         if let Some(region_id) = self.region_id_map.get(region_id) {
@@ -322,6 +335,14 @@ impl Server {
                             let messages =
                                 vec![(sender_entity, sender_item, receiver_id, message, category)];
                             self.messages.insert(id, messages);
+                        }
+                    }
+                    RegionMessage::MultipleChoice(choices) => {
+                        if let Some(multi_choice) = self.multiple_choice.get_mut(&choices.region) {
+                            multi_choice.push(choices.clone());
+                        } else {
+                            let multi_choice = vec![choices.clone()];
+                            self.multiple_choice.insert(choices.region, multi_choice);
                         }
                     }
                     RegionMessage::Time(id, time) => {
