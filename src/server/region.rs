@@ -1,7 +1,7 @@
 use crate::server::py_fn::*;
 use crate::{
-    Assets, Choice, Currencies, Currency, Entity, EntityAction, Item, Map, MultipleChoice,
-    PixelSource, PlayerCamera, RegionCtx, Value, ValueContainer,
+    Assets, Choice, Currency, Entity, EntityAction, Item, Map, MultipleChoice, PixelSource,
+    PlayerCamera, RegionCtx, Value, ValueContainer,
 };
 use crossbeam_channel::{Receiver, Sender, tick, unbounded};
 use rand::*;
@@ -442,6 +442,16 @@ impl RegionInstance {
         ctx.blocking_tiles = assets.blocking_tiles();
         ctx.assets = assets.clone();
 
+        // Installing currencies
+
+        _ = ctx.currencies.add_currency(Currency {
+            name: "Gold".into(),
+            symbol: "G".into(),
+            exchange_rate: 1.0,
+            max_limit: None,
+        });
+        ctx.currencies.base_currency = "G".to_string();
+
         // Installing Entity Class Templates
         for (name, (entity_source, entity_data)) in &assets.entities {
             if let Err(err) = self.execute(entity_source) {
@@ -533,7 +543,6 @@ impl RegionInstance {
 
         // --- Startup
 
-        // Initialize the local thread global storage
         ctx.from_sender.set(self.from_sender.clone()).unwrap();
         ctx.to_receiver.set(self.to_receiver.clone()).unwrap();
         ctx.region_id = self.id;
@@ -583,6 +592,11 @@ impl RegionInstance {
                                 for _ in 0..*inv_slots {
                                     e.inventory.push(None);
                                 }
+                            }
+
+                            // Set the wallet
+                            if let Some(Value::Int(wealth)) = e.attributes.get("wealth") {
+                                _ = e.add_base_currency(*wealth as i64, &ctx.currencies)
                             }
                         }
                     }
@@ -1075,6 +1089,59 @@ impl RegionInstance {
                             }
                         });
                     }
+                    Choice(choice) => match &choice {
+                        Choice::ItemToSell(item_id, seller_id, buyer_id) => {
+                            with_regionctx(self.id, |ctx: &mut RegionCtx| {
+                                // Get the price of the item.
+                                let mut price = 0;
+                                let mut can_afford = false;
+                                if let Some(entity) = get_entity_mut(&mut ctx.map, *seller_id) {
+                                    if let Some(item) = entity.get_item(*item_id) {
+                                        if let Some(w) = item.get_attribute("worth") {
+                                            if let Some(worth) = w.to_i32() {
+                                                price = worth as i64;
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // Check if the buyer can afford
+                                if let Some(entity) = get_entity_mut(&mut ctx.map, *buyer_id) {
+                                    can_afford = entity.wallet.can_afford(price, &ctx.currencies);
+                                }
+
+                                if can_afford {
+                                    let mut item_to_sell: Option<Item> = None;
+                                    if let Some(entity) = get_entity_mut(&mut ctx.map, *seller_id) {
+                                        if let Some(item) = entity.remove_item(*item_id) {
+                                            // println!("itemtosell {:?}", item);
+                                            item_to_sell = Some(item);
+                                            _ = entity.add_base_currency(price, &ctx.currencies);
+                                        }
+                                    }
+                                    if let Some(item) = item_to_sell {
+                                        if let Some(entity) =
+                                            get_entity_mut(&mut ctx.map, *buyer_id)
+                                        {
+                                            _ = entity.add_item(item);
+                                            _ = entity.spend_currency(price, &ctx.currencies);
+                                        }
+                                    }
+                                } else {
+                                    send_message(ctx, *buyer_id, "cant_afford".into(), "warning");
+                                }
+                            });
+                        }
+                        Choice::Cancel(from_id, to_id) => {
+                            with_regionctx(self.id, |ctx: &mut RegionCtx| {
+                                if let Some(class_name) = ctx.entity_classes.get(from_id) {
+                                    let cmd = format!("{}.event('goodbye', {})", class_name, to_id);
+                                    ctx.to_execute_entity
+                                        .push((*from_id, "goodbye".into(), cmd));
+                                }
+                            });
+                        }
+                    },
                     _ => {
                         with_regionctx(self.id, |ctx: &mut RegionCtx| {
                             if let Some(entity) = ctx
@@ -1773,6 +1840,11 @@ impl RegionInstance {
                                     e.inventory.push(None);
                                 }
                             }
+
+                            // Set the wallet
+                            if let Some(Value::Int(wealth)) = e.attributes.get("wealth") {
+                                _ = e.add_base_currency(*wealth as i64, &ctx.currencies)
+                            }
                         }
                     }
                 }
@@ -2246,18 +2318,10 @@ fn take(item_id: u32, vm: &VirtualMachine) -> bool {
 
                 if item.attributes.get_bool_default("monetary", false) {
                     // This is not a standalone item but money
-                    let amount = item.attributes.get_float_default("worth", 0.0);
-                    if amount > 0.0 {
+                    let amount = item.attributes.get_int_default("worth", 0);
+                    if amount > 0 {
                         message = format!("You take {} gold.", amount);
-                        let mut currencies = Currencies::default();
-                        _ = currencies.add_currency(Currency {
-                            name: "Gold".into(),
-                            symbol: "G".into(),
-                            exchange_rate: 1.0,
-                            max_limit: None,
-                        });
-                        currencies.base_currency = "G".to_string();
-                        _ = entity.add_base_currency(amount as i64, &currencies);
+                        _ = entity.add_base_currency(amount as i64, &ctx.currencies);
                     }
                 } else if entity.add_item(item).is_err() {
                     // TODO: Send message.

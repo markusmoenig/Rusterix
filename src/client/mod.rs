@@ -94,6 +94,9 @@ pub struct Client {
     /// Hidden widgets,
     widgets_to_hide: Vec<String>,
 
+    // Choice map
+    choice_map: Option<FxHashMap<char, Choice>>,
+
     // Intent
     intent: String,
     key_down_intent: Option<String>,
@@ -168,6 +171,8 @@ impl Client {
             currencies: Currencies::default(),
             intent: String::new(),
             key_down_intent: None,
+
+            choice_map: None,
 
             first_game_draw: false,
         }
@@ -605,10 +610,6 @@ impl Client {
     ) {
         let mut player_entity = Entity::default();
 
-        if !choices.is_empty() {
-            println!("got a choice {:?}", choices);
-        }
-
         // Reset the intent to the server value
         for entity in map.entities.iter() {
             if entity.is_player() {
@@ -675,7 +676,10 @@ impl Client {
             });
 
             if !hide {
-                widget.update_draw(&mut self.target, assets, messages);
+                let map = widget.update_draw(&mut self.target, assets, map, messages, choices);
+                if map.is_some() {
+                    self.choice_map = map;
+                }
                 self.target
                     .blend_into(widget.rect.x as i32, widget.rect.y as i32, &widget.buffer);
             }
@@ -867,6 +871,24 @@ impl Client {
 
         if self.key_down_intent.is_none() && event == "key_down" {
             self.key_down_intent = Some(self.intent.clone());
+        }
+
+        // --- Check for multiple choice
+
+        if let Some(choice_map) = &self.choice_map.clone() {
+            if event == "key_down" {
+                if let Value::Str(v) = &value {
+                    if let Some(c) = v.chars().next() {
+                        if let Some(choice) = choice_map.get(&c) {
+                            // println!("selected {:?}", choice);
+                            if matches!(choice, Choice::Cancel(_, _)) {
+                                self.choice_map = None;
+                            }
+                            return EntityAction::Choice(choice.clone());
+                        }
+                    }
+                }
+            }
         }
 
         // ---

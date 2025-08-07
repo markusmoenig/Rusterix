@@ -43,6 +43,14 @@ impl Value {
         }
     }
 
+    pub fn to_i32(&self) -> Option<i32> {
+        match self {
+            Value::Int(f) => Some(*f),
+            Value::Float(f) => Some(*f as i32),
+            _ => None,
+        }
+    }
+
     /// Convert from a Python object
     pub fn from_pyobject(value: PyObjectRef, vm: &VirtualMachine) -> Option<Self> {
         if value.class().is(vm.ctx.types.bool_type) {

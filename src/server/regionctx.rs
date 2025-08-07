@@ -53,4 +53,6 @@ pub struct RegionCtx {
     pub from_sender: OnceLock<Sender<RegionMessage>>,
 
     pub health_attr: String,
+
+    pub currencies: Currencies,
 }

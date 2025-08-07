@@ -62,6 +62,8 @@ pub enum EntityAction {
     Goto(Vec2<f32>, f32),
     /// CloseIn: Move within a radius of a target entity with a given speed
     CloseIn(u32, f32, f32),
+    /// A multiple choice item was selected by the user
+    Choice(Choice),
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]
@@ -120,8 +122,10 @@ impl TryFrom<i32> for EntityAction {
 }
 
 /// A players choice.
-#[derive(Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub enum Choice {
+    // Cancels a multiple choice. from, to
+    Cancel(u32, u32),
     /// An item to sell, item_id, seller_id, buyer_id
     ItemToSell(u32, u32, u32),
 }
