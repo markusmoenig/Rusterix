@@ -1,4 +1,4 @@
-use crate::{Assets, Choice, Map, Pixel, Rect, client::draw2d};
+use crate::{Assets, Choice, EntityAction, Map, Pixel, Rect, client::draw2d};
 use draw2d::Draw2D;
 use theframework::prelude::*;
 
@@ -9,7 +9,7 @@ pub struct MessagesWidget {
     pub buffer: TheRGBABuffer,
     pub font: Option<fontdue::Font>,
     pub font_size: f32,
-    pub messages: Vec<(String, Pixel)>,
+    pub messages: Vec<(String, Rect, Option<Choice>, Pixel)>,
     pub draw2d: Draw2D,
     pub spacing: f32,
     pub column_width: f32,
@@ -92,18 +92,14 @@ impl MessagesWidget {
         }
     }
 
-    pub fn update_draw(
+    /// Process the incoming messages
+    pub fn process_messages(
         &mut self,
-        buffer: &mut TheRGBABuffer,
         assets: &Assets,
         map: &Map,
         messages: Vec<crate::server::Message>,
         choices: Vec<crate::MultipleChoice>,
     ) -> Option<FxHashMap<char, Choice>> {
-        let width = buffer.dim().width;
-        let height = buffer.dim().height;
-        let mut choice_map = FxHashMap::default();
-
         // Append new messages
         for (_, _, _, message, category) in &messages {
             let mut color = self.default_color;
@@ -118,13 +114,17 @@ impl MessagesWidget {
             if let Some(en) = assets.locales.get("en") {
                 if let Some(translated) = en.get(message) {
                     // Use the translated message if available
-                    self.messages.push((translated.clone(), color));
+                    self.messages
+                        .push((translated.clone(), Rect::default(), None, color));
                     continue;
                 }
             }
 
-            self.messages.push((message.clone(), color));
+            self.messages
+                .push((message.clone(), Rect::default(), None, color));
         }
+
+        let mut choice_map = FxHashMap::default();
 
         let column_width = self.column_width as i32;
         for choices in choices {
@@ -172,16 +172,43 @@ impl MessagesWidget {
                 let padded_name = format!("{:<width$}", item_name, width = column_width as usize);
                 let text = format!("{}) {} {}G", index + 1, padded_name, item_price);
 
-                self.messages.push((text, color));
+                self.messages
+                    .push((text, Rect::default(), Some(choice.clone()), color));
             }
-            self.messages.push(("0} Exit".into(), color));
+            self.messages.push((
+                "0} Exit".into(),
+                Rect::default(),
+                Some(Choice::Cancel(choices.from, choices.to)),
+                color,
+            ));
         }
+
         // Purge the messages which are scrolled out of scope
         let max_messages = 100;
         if self.messages.len() > max_messages {
             let excess = self.messages.len() - max_messages;
             self.messages.drain(0..excess);
         }
+
+        if choice_map.is_empty() {
+            None
+        } else {
+            Some(choice_map)
+        }
+    }
+
+    pub fn update_draw(
+        &mut self,
+        buffer: &mut TheRGBABuffer,
+        assets: &Assets,
+        map: &Map,
+        messages: Vec<crate::server::Message>,
+        choices: Vec<crate::MultipleChoice>,
+    ) -> Option<FxHashMap<char, Choice>> {
+        let width = buffer.dim().width;
+        let height = buffer.dim().height;
+
+        let choice_map = self.process_messages(assets, map, messages, choices);
 
         // Draw bottom up
         if let Some(font) = &self.font {
@@ -192,7 +219,7 @@ impl MessagesWidget {
                 self.rect.y + self.rect.height - self.font_size.ceil()
             };
 
-            for (message, color) in self.messages.iter().rev() {
+            for (message, rect, _choice, color) in self.messages.iter_mut().rev() {
                 if y + self.font_size < self.rect.y {
                     break;
                 }
@@ -203,6 +230,8 @@ impl MessagesWidget {
                     self.rect.width as isize,
                     self.font_size as isize,
                 );
+
+                *rect = Rect::new(self.rect.x, y, self.rect.width, self.font_size);
 
                 self.draw2d.text_rect_blend_safe(
                     buffer.pixels_mut(),
@@ -225,11 +254,7 @@ impl MessagesWidget {
             }
         }
 
-        if choice_map.is_empty() {
-            None
-        } else {
-            Some(choice_map)
-        }
+        choice_map
     }
 
     /// Converts a hex color string to a [u8; 4] (RGBA).
@@ -257,5 +282,16 @@ impl MessagesWidget {
             },
             _ => [255, 255, 255, 255],
         }
+    }
+
+    pub fn touch_down(&self, coord: Vec2<i32>) -> Option<EntityAction> {
+        for (_, rect, choice, _) in &self.messages {
+            if rect.contains(Vec2::new(coord.x as f32, coord.y as f32)) {
+                if let Some(choice) = choice {
+                    return Some(EntityAction::Choice(choice.clone()));
+                }
+            }
+        }
+        None
     }
 }

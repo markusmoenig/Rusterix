@@ -682,6 +682,11 @@ impl Client {
                 }
                 self.target
                     .blend_into(widget.rect.x as i32, widget.rect.y as i32, &widget.buffer);
+            } else {
+                let map = widget.process_messages(assets, map, messages, choices);
+                if map.is_some() {
+                    self.choice_map = map;
+                }
             }
         }
 
@@ -807,6 +812,16 @@ impl Client {
             }
         }
 
+        // Test against clicks on interactive messages (multiple choice)
+        if action.is_none() {
+            for widget in self.messages_widget.iter() {
+                if let Some(action) = widget.touch_down(p) {
+                    return Some(action);
+                }
+            }
+        }
+
+        // Test against clicks on the map
         if action.is_none() {
             let mut player_pos: Vec2<f32> = Vec2::zero();
             for entity in map.entities.iter() {
@@ -832,7 +847,6 @@ impl Client {
                         let p = entity.get_pos_xz();
                         if pos.floor() == p.floor() {
                             let distance = player_pos.distance(p);
-                            println!("entity clocked");
                             return Some(EntityAction::EntityClicked(entity.id, distance));
                         }
                     }
@@ -841,7 +855,6 @@ impl Client {
                         let p = item.get_pos_xz();
                         if pos.floor() == p.floor() {
                             let distance = player_pos.distance(p);
-                            println!("item clocked");
                             return Some(EntityAction::ItemClicked(item.id, distance));
                         }
                     }
@@ -851,7 +864,6 @@ impl Client {
                         let p = entity.get_pos_xz();
                         if pos.floor() == p.floor() {
                             let distance = player_pos.distance(p);
-                            println!("entity clocked");
                             return Some(EntityAction::EntityClicked(entity.id, distance));
                         }
                     }
