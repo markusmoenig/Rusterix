@@ -9,13 +9,14 @@ pub struct MessagesWidget {
     pub buffer: TheRGBABuffer,
     pub font: Option<fontdue::Font>,
     pub font_size: f32,
-    pub messages: Vec<(String, Rect, Option<Choice>, Pixel)>,
+    pub messages: Vec<(Uuid, String, Rect, Option<Choice>, Pixel)>,
     pub draw2d: Draw2D,
     pub spacing: f32,
     pub column_width: f32,
     pub table: toml::Table,
     pub top_down: bool,
     pub default_color: Pixel,
+    pub clicked: Uuid,
 }
 
 impl Default for MessagesWidget {
@@ -40,6 +41,8 @@ impl MessagesWidget {
             table: toml::Table::default(),
             top_down: false,
             default_color: [170, 170, 170, 255],
+
+            clicked: Uuid::nil(),
         }
     }
 
@@ -114,14 +117,24 @@ impl MessagesWidget {
             if let Some(en) = assets.locales.get("en") {
                 if let Some(translated) = en.get(message) {
                     // Use the translated message if available
-                    self.messages
-                        .push((translated.clone(), Rect::default(), None, color));
+                    self.messages.push((
+                        Uuid::new_v4(),
+                        translated.clone(),
+                        Rect::default(),
+                        None,
+                        color,
+                    ));
                     continue;
                 }
             }
 
-            self.messages
-                .push((message.clone(), Rect::default(), None, color));
+            self.messages.push((
+                Uuid::new_v4(),
+                message.clone(),
+                Rect::default(),
+                None,
+                color,
+            ));
         }
 
         let mut choice_map = FxHashMap::default();
@@ -172,11 +185,17 @@ impl MessagesWidget {
                 let padded_name = format!("{:<width$}", item_name, width = column_width as usize);
                 let text = format!("{}) {} {}G", index + 1, padded_name, item_price);
 
-                self.messages
-                    .push((text, Rect::default(), Some(choice.clone()), color));
+                self.messages.push((
+                    Uuid::new_v4(),
+                    text,
+                    Rect::default(),
+                    Some(choice.clone()),
+                    color,
+                ));
             }
             self.messages.push((
-                "0} Exit".into(),
+                Uuid::new_v4(),
+                "0) Exit".into(),
                 Rect::default(),
                 Some(Choice::Cancel(choices.from, choices.to)),
                 color,
@@ -208,6 +227,15 @@ impl MessagesWidget {
         let width = buffer.dim().width;
         let height = buffer.dim().height;
 
+        fn darken(color: [u8; 4], amount: u8) -> [u8; 4] {
+            [
+                color[0].saturating_sub(amount),
+                color[1].saturating_sub(amount),
+                color[2].saturating_sub(amount),
+                color[3],
+            ]
+        }
+
         let choice_map = self.process_messages(assets, map, messages, choices);
 
         // Draw bottom up
@@ -219,7 +247,7 @@ impl MessagesWidget {
                 self.rect.y + self.rect.height - self.font_size.ceil()
             };
 
-            for (message, rect, _choice, color) in self.messages.iter_mut().rev() {
+            for (id, message, rect, _choice, color) in self.messages.iter_mut().rev() {
                 if y + self.font_size < self.rect.y {
                     break;
                 }
@@ -231,6 +259,12 @@ impl MessagesWidget {
                     self.font_size as isize,
                 );
 
+                let color = if *id == self.clicked {
+                    darken(*color, 100)
+                } else {
+                    *color
+                };
+
                 *rect = Rect::new(self.rect.x, y, self.rect.width, self.font_size);
 
                 self.draw2d.text_rect_blend_safe(
@@ -240,7 +274,7 @@ impl MessagesWidget {
                     font,
                     self.font_size,
                     message,
-                    color,
+                    &color,
                     draw2d::TheHorizontalAlign::Left,
                     draw2d::TheVerticalAlign::Center,
                     &(0, 0, width as isize, height as isize),
@@ -284,14 +318,19 @@ impl MessagesWidget {
         }
     }
 
-    pub fn touch_down(&self, coord: Vec2<i32>) -> Option<EntityAction> {
-        for (_, rect, choice, _) in &self.messages {
+    pub fn touch_down(&mut self, coord: Vec2<i32>) -> Option<EntityAction> {
+        for (id, _, rect, choice, _) in &self.messages {
             if rect.contains(Vec2::new(coord.x as f32, coord.y as f32)) {
                 if let Some(choice) = choice {
+                    self.clicked = id.clone();
                     return Some(EntityAction::Choice(choice.clone()));
                 }
             }
         }
         None
+    }
+
+    pub fn touch_up(&mut self) {
+        self.clicked = Uuid::nil();
     }
 }

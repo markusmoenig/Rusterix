@@ -814,7 +814,7 @@ impl Client {
 
         // Test against clicks on interactive messages (multiple choice)
         if action.is_none() {
-            for widget in self.messages_widget.iter() {
+            for widget in self.messages_widget.iter_mut() {
                 if let Some(action) = widget.touch_down(p) {
                     return Some(action);
                 }
@@ -879,6 +879,10 @@ impl Client {
     /// Click / touch up event
     pub fn touch_up(&mut self, _coord: Vec2<i32>, _map: &Map) {
         self.activated_widgets = self.permanently_activated_widgets.clone();
+
+        for widget in self.messages_widget.iter_mut() {
+            widget.touch_up();
+        }
     }
 
     pub fn user_event(&mut self, event: String, value: Value) -> EntityAction {
