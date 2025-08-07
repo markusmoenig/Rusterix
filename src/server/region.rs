@@ -1003,11 +1003,14 @@ impl RegionInstance {
                                     // Send "intent" event for the entity
                                     let mut cont = ValueContainer::default();
                                     cont.set("distance", Value::Float(distance));
-                                    cont.set("entity_id", Value::UInt(clicked_entity_id));
+                                    cont.set("entity_id", Value::UInt(entity_id));
+                                    cont.set("target_id", Value::UInt(clicked_entity_id));
 
                                     let intent =
                                         entity.attributes.get_str_default("intent", "".into());
                                     cont.set("intent", Value::Str(intent.clone()));
+
+                                    let event_name = format!("intent: {}", intent);
 
                                     let cmd = format!(
                                         "{}.event('intent', {})",
@@ -1016,7 +1019,7 @@ impl RegionInstance {
                                     );
                                     ctx.to_execute_entity.push((
                                         entity.id,
-                                        "intent".into(),
+                                        event_name.clone(),
                                         cmd.clone(),
                                     ));
 
@@ -1035,7 +1038,7 @@ impl RegionInstance {
                                         );
                                         ctx.to_execute_entity.push((
                                             clicked_entity_id,
-                                            "intent".into(),
+                                            event_name,
                                             cmd,
                                         ));
                                     }
@@ -1058,6 +1061,8 @@ impl RegionInstance {
                                     let intent =
                                         entity.attributes.get_str_default("intent", "".into());
 
+                                    let event_name = format!("intent: {}", intent);
+
                                     cont.set("intent", Value::Str(intent));
                                     let cmd = format!(
                                         "{}.event('intent', {})",
@@ -1066,7 +1071,7 @@ impl RegionInstance {
                                     );
                                     ctx.to_execute_entity.push((
                                         entity.id,
-                                        "intent".into(),
+                                        event_name.clone(),
                                         cmd.clone(),
                                     ));
 
@@ -1079,7 +1084,7 @@ impl RegionInstance {
                                         );
                                         ctx.to_execute_item.push((
                                             clicked_item_id,
-                                            "intent".into(),
+                                            event_name,
                                             cmd,
                                         ));
                                     }
@@ -1518,7 +1523,7 @@ impl RegionInstance {
                 // Check if we have already executed this script in this tick
                 if let Some(Value::Int64(tick)) = state_data.get(&todo.1) {
                     if *tick >= ticks {
-                        if todo.1 == "intent" {
+                        if todo.1.starts_with("intent") {
                             with_regionctx(self.id, |ctx| {
                                 send_message(ctx, todo.0, "cant_do_that_yet".into(), "warning");
                             });
@@ -1983,16 +1988,20 @@ impl RegionInstance {
                 let mut target_entity_id = None;
 
                 let mut found_target = false;
-                if let Some(entity_id) = get_entity_at(ctx, position) {
+                if let Some(entity_id) = get_entity_at(ctx, position, entity.id) {
                     if entity_id != entity.id {
                         cont.set("entity_id", Value::UInt(entity.id));
+                        cont.set("target_id", Value::UInt(entity_id));
+                        if let Some(i_id) = get_item_at(ctx, position) {
+                            cont.set("item_id", Value::UInt(i_id));
+                        }
                         target_entity_id = Some(entity_id);
                         found_target = true;
                     }
                 }
                 if !found_target {
                     if let Some(i_id) = get_item_at(ctx, position) {
-                        cont.set("entity_id", Value::UInt(entity.id));
+                        cont.set("source_id", Value::UInt(entity.id));
                         cont.set("item_id", Value::UInt(i_id));
                         target_item_id = Some(i_id);
                         found_target = true;
@@ -2008,6 +2017,8 @@ impl RegionInstance {
                     return;
                 }
 
+                let event_name = format!("intent: {}", intent);
+
                 cont.set("intent", Value::Str(intent));
                 let cmd = format!(
                     "{}.event('intent', {})",
@@ -2015,7 +2026,7 @@ impl RegionInstance {
                     cont.to_python_dict_string()
                 );
                 ctx.to_execute_entity
-                    .push((entity.id, "intent".into(), cmd.clone()));
+                    .push((entity.id, event_name.clone(), cmd.clone()));
 
                 if let Some(target_entity_id) = target_entity_id {
                     if let Some(class_name) = ctx.entity_classes.get(&target_entity_id) {
@@ -2025,7 +2036,7 @@ impl RegionInstance {
                             cont.to_python_dict_string()
                         );
                         ctx.to_execute_entity
-                            .push((target_entity_id, "intent".into(), cmd));
+                            .push((target_entity_id, event_name, cmd));
                     }
                 } else if let Some(item_id) = target_item_id {
                     if let Some(class_name) = ctx.item_classes.get(&item_id) {
@@ -2034,7 +2045,7 @@ impl RegionInstance {
                             class_name,
                             cont.to_python_dict_string()
                         );
-                        ctx.to_execute_item.push((item_id, "intent".into(), cmd));
+                        ctx.to_execute_item.push((item_id, event_name, cmd));
                     }
                 }
 
@@ -2776,10 +2787,13 @@ fn offer_inventory(to: u32, filter: String, vm: &VirtualMachine) {
 }
 
 /// Returns the entity at the given position (if any)
-fn get_entity_at(ctx: &RegionCtx, position: Vec2<f32>) -> Option<u32> {
+fn get_entity_at(ctx: &RegionCtx, position: Vec2<f32>, but_not: u32) -> Option<u32> {
     let mut entity = None;
 
     for other in ctx.map.entities.iter() {
+        if other.id == but_not {
+            continue;
+        }
         let other_position = other.get_pos_xz();
 
         let distance = position.distance(other_position);
@@ -3330,6 +3344,14 @@ fn create_item(ctx: &mut RegionCtx, class_name: String) -> Option<Item> {
     if let Some(data) = ctx.item_class_data.get(&class_name) {
         apply_item_data(&mut item, data);
     }
+
+    if let Some(class_name) = item.get_attr_string("class_name") {
+        let cmd = format!("{}.event(\"startup\", \"\")", class_name);
+        ctx.item_classes.insert(item.id, class_name.clone());
+        ctx.to_execute_item.push((item.id, "startup".into(), cmd));
+    }
+
+    item.mark_all_dirty();
 
     // Send active state
     let cmd = format!(

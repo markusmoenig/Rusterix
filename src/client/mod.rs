@@ -826,9 +826,13 @@ impl Client {
                     let pos = Vec2::new(gx, gy);
 
                     for entity in map.entities.iter() {
+                        if entity.attributes.get_str_default("mode", "active".into()) == "dead" {
+                            continue;
+                        }
                         let p = entity.get_pos_xz();
                         if pos.floor() == p.floor() {
                             let distance = player_pos.distance(p);
+                            println!("entity clocked");
                             return Some(EntityAction::EntityClicked(entity.id, distance));
                         }
                     }
@@ -837,7 +841,18 @@ impl Client {
                         let p = item.get_pos_xz();
                         if pos.floor() == p.floor() {
                             let distance = player_pos.distance(p);
+                            println!("item clocked");
                             return Some(EntityAction::ItemClicked(item.id, distance));
+                        }
+                    }
+
+                    // Try entities again but include dead ones too
+                    for entity in map.entities.iter() {
+                        let p = entity.get_pos_xz();
+                        if pos.floor() == p.floor() {
+                            let distance = player_pos.distance(p);
+                            println!("entity clocked");
+                            return Some(EntityAction::EntityClicked(entity.id, distance));
                         }
                     }
 
