@@ -515,6 +515,7 @@ impl Terrain {
     }
 
     /// Iterator
+    #[allow(mismatched_lifetime_syntaxes)]
     pub fn iter_tiles_mut(&mut self) -> TerrainTileIterMut {
         TerrainTileIterMut {
             chunks: self.chunks.iter_mut(),
@@ -549,7 +550,6 @@ pub struct TerrainTileIterMut<'a> {
     chunk_size: i32,
 }
 
-#[allow(clippy::needless_lifetimes)]
 impl<'a> Iterator for TerrainTileIterMut<'a> {
     type Item = TerrainTileRefMut;
 

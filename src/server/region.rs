@@ -2013,7 +2013,7 @@ impl RegionInstance {
                 }
                 if !found_target {
                     if let Some(i_id) = get_item_at(ctx, position) {
-                        cont.set("source_id", Value::UInt(entity.id));
+                        cont.set("entity_id", Value::UInt(entity.id));
                         cont.set("item_id", Value::UInt(i_id));
                         target_item_id = Some(i_id);
                         found_target = true;
