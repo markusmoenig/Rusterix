@@ -81,7 +81,12 @@ pub use crate::{
     camera::{D3Camera, d3firstp::D3FirstPCamera, d3iso::D3IsoCamera, d3orbit::D3OrbitCamera},
     chunk::Chunk,
     chunkbuilder::{ChunkBuilder, d2chunkbuilder::D2ChunkBuilder, d3chunkbuilder::D3ChunkBuilder},
-    client::{Client, command::Command, daylight::Daylight},
+    client::{
+        Client,
+        command::Command,
+        daylight::Daylight,
+        parser::{MsgParser, Tok},
+    },
     edge::Edges,
     intodata::IntoDataInput,
     map::{

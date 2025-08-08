@@ -1097,6 +1097,9 @@ impl RegionInstance {
                     Choice(choice) => match &choice {
                         Choice::ItemToSell(item_id, seller_id, buyer_id) => {
                             with_regionctx(self.id, |ctx: &mut RegionCtx| {
+                                let mut msg_to_buyer: Option<String> = None;
+                                let mut msg_role = "system";
+
                                 // Get the price of the item.
                                 let mut price = 0;
                                 let mut can_afford = false;
@@ -1128,12 +1131,21 @@ impl RegionInstance {
                                         if let Some(entity) =
                                             get_entity_mut(&mut ctx.map, *buyer_id)
                                         {
+                                            msg_to_buyer = Some(format!(
+                                                "{{you_bought}} {{I:{}.name, article=indef, case=lower}}",
+                                                item.id
+                                            ));
                                             _ = entity.add_item(item);
                                             _ = entity.spend_currency(price, &ctx.currencies);
                                         }
                                     }
                                 } else {
-                                    send_message(ctx, *buyer_id, "cant_afford".into(), "warning");
+                                    msg_to_buyer = Some("{cant_afford}".into());
+                                    msg_role = "warning";
+                                }
+
+                                if let Some(msg_to_buyer) = msg_to_buyer {
+                                    send_message(ctx, *buyer_id, msg_to_buyer, msg_role);
                                 }
                             });
                         }
@@ -1525,7 +1537,7 @@ impl RegionInstance {
                     if *tick >= ticks {
                         if todo.1.starts_with("intent") {
                             with_regionctx(self.id, |ctx| {
-                                send_message(ctx, todo.0, "cant_do_that_yet".into(), "warning");
+                                send_message(ctx, todo.0, "{cant_do_that_yet}".into(), "warning");
                             });
                         }
                         continue;
@@ -2011,7 +2023,7 @@ impl RegionInstance {
                 let intent = entity.attributes.get_str_default("intent", "".into());
 
                 if !found_target {
-                    let message = format!("nothing_to_{}", intent);
+                    let message = format!("{{nothing_to_{}}}", intent);
                     entity.set_attribute("intent", Value::Str(String::new()));
                     send_message(ctx, entity.id, message, "system");
                     return;
