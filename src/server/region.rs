@@ -3,7 +3,7 @@ use crate::{
     Assets, Choice, Currency, Entity, EntityAction, Item, Map, MultipleChoice, PixelSource,
     PlayerCamera, RegionCtx, Value, ValueContainer,
 };
-use crossbeam_channel::{Receiver, Sender, tick, unbounded};
+use crossbeam_channel::{Receiver, Sender, unbounded};
 use rand::*;
 
 use rustpython::vm::*;
@@ -61,90 +61,6 @@ pub fn get_global_id() -> u32 {
 }
 
 use EntityAction::*;
-
-/*
-// Local thread global data for the Region
-ref_thread_local! {
-    pub static managed REGION: RegionInstance = RegionInstance::new(0);
-    pub static managed MAP: Map = Map::default();
-    pub static managed MAPMINI: MapMini = MapMini::default();
-
-    /// The ids of blocking tiles (and materials). We need to know these for collision detection.
-    pub static managed BLOCKING_TILES: FxHashSet<Uuid> = FxHashSet::default();
-
-    /// The server time
-    pub static managed TIME: TheTime = TheTime::default();
-
-    /// RegionID
-    pub static managed REGIONID: u32 = 0;
-
-    /// A list of notifications to send to the given entity at the specified tick.
-    pub static managed NOTIFICATIONS_ENTITIES: Vec<(u32, i64, String)> = vec![];
-
-    /// A list of notifications to send to the given items at the specified tick.
-    pub static managed NOTIFICATIONS_ITEMS: Vec<(u32, i64, String)> = vec![];
-
-    /// The current tick
-    pub static managed TICKS: i64 = 0;
-    /// Ticks per in-game minute
-    pub static managed TICKS_PER_MINUTE: u32 = 4;
-
-    /// The entity id which is currently handled/executed in Python
-    pub static managed CURR_ENTITYID: u32 = 0;
-
-    /// The item id which is currently handled/executed in Python
-    pub static managed CURR_ITEMID: Option<u32> = None;
-
-    /// Maps the entity id to its class name.
-    pub static managed ENTITY_CLASSES: FxHashMap<u32, String> = FxHashMap::default();
-
-    /// Maps the item id to its class name.
-    pub static managed ITEM_CLASSES: FxHashMap<u32, String> = FxHashMap::default();
-
-    /// All Entity Classes for Players (we do not instantiate them)
-    pub static managed ENTITY_PLAYER_CLASSES: FxHashSet<String> = FxHashSet::default();
-
-    /// Maps an entity class name to its data file.
-    pub static managed ENTITY_CLASS_DATA: FxHashMap<String, String> = FxHashMap::default();
-
-    /// Maps an item class name to its data file.
-    pub static managed ITEM_CLASS_DATA: FxHashMap<String, String> = FxHashMap::default();
-
-    /// Proximity alerts for entities.
-    pub static managed ENTITY_PROXIMITY_ALERTS: FxHashMap<u32, f32> = FxHashMap::default();
-
-    /// Proximity alerts for items.
-    pub static managed ITEM_PROXIMITY_ALERTS: FxHashMap<u32, f32> = FxHashMap::default();
-
-    /// ENTITY and ITEM state data, for example which events got last executed in what tick
-    pub static managed ENTITY_STATE_DATA: FxHashMap<u32, ValueContainer> = FxHashMap::default();
-    pub static managed ITEM_STATE_DATA: FxHashMap<u32, ValueContainer> = FxHashMap::default();
-
-    /// Cmds which are queued to be executed to either entities or items.
-    /// First String is the Cmd Id, which is used to make sure the command is executed only once a tick.
-    pub static managed TO_EXECUTE_ENTITY: Vec<(u32, String, String)> = vec![];
-    pub static managed TO_EXECUTE_ITEM  : Vec<(u32, String, String)> = vec![];
-
-    /// Errors since starting the region.
-    pub static managed ERROR_COUNT: u32 = 0;
-    pub static managed STARTUP_ERRORS: Vec<String> = vec![];
-
-    pub static managed DELTA_TIME: f32 = 0.0;
-
-    /// Config TOML
-    pub static managed CONFIG: toml::Table = toml::Table::default();
-
-    /// Game Assets
-    pub static managed ASSETS: Assets = Assets::default();
-
-    pub static managed TO_RECEIVER: OnceLock<Receiver<RegionMessage>> = OnceLock::new();
-    pub static managed FROM_SENDER: OnceLock<Sender<RegionMessage>> = OnceLock::new();
-
-
-    // The name of the health & death arribute
-    pub static managed HEALTH_ATTR: String = "HP".into();
-
-}*/
 
 use super::RegionMessage;
 use super::data::{apply_entity_data, apply_item_data};
@@ -406,6 +322,12 @@ impl RegionInstance {
             let _ = scope
                 .globals
                 .set_item("id", vm.new_function("id", id).into(), vm);
+
+            let _ = scope.globals.set_item(
+                "set_debug_loc",
+                vm.new_function("set_debug_loc", set_debug_loc).into(),
+                vm,
+            );
         });
 
         let (to_sender, to_receiver) = unbounded::<RegionMessage>();
@@ -429,10 +351,18 @@ impl RegionInstance {
     }
 
     /// Initializes the Python bases classes, sets the map and applies entities
-    pub fn init(&mut self, name: String, map: Map, assets: &Assets, config_toml: String) {
+    pub fn init(
+        &mut self,
+        name: String,
+        map: Map,
+        assets: &Assets,
+        config_toml: String,
+        debug_mode: bool,
+    ) {
         self.name = name.clone();
 
         let mut ctx = RegionCtx::default();
+        ctx.debug_mode = debug_mode;
 
         if let Ok(toml) = config_toml.parse::<toml::Table>() {
             ctx.config = toml;
@@ -552,13 +482,8 @@ impl RegionInstance {
         ctx.ticks_per_minute = 4;
         ctx.ticks_per_minute = get_config_i32_default(&ctx, "game", "ticks_per_minute", 4) as u32;
 
-        let game_tick_ms = get_config_i32_default(&ctx, "game", "game_tick_ms", 250) as u64;
+        // let game_tick_ms = get_config_i32_default(&ctx, "game", "game_tick_ms", 250) as u64;
         let target_fps = get_config_i32_default(&ctx, "game", "target_fps", 30) as f32;
-
-        let _system_ticker = tick(std::time::Duration::from_millis(game_tick_ms));
-        let _redraw_ticker = tick(std::time::Duration::from_millis(
-            (1000.0 / target_fps) as u64,
-        ));
 
         ctx.delta_time = 1.0 / target_fps;
         ctx.health_attr = get_config_string_default(&ctx, "game", "health", "HP").to_string();
@@ -931,6 +856,12 @@ impl RegionInstance {
                             .push((*id, "proximity_warning".into(), cmd));
                     }
                 }
+            }
+
+            if ctx.debug_mode {
+                self.from_sender
+                    .send(RegionMessage::DebugData(ctx.debug.clone()))
+                    .unwrap();
             }
         });
     }
@@ -2910,8 +2841,14 @@ fn add_item(class_name: String, vm: &VirtualMachine) -> i32 {
             if let Some(entity) = ctx.map.entities.iter_mut().find(|entity| entity.id == id) {
                 let item_id = item.id;
                 if entity.add_item(item).is_ok() {
+                    if ctx.debug_mode {
+                        add_debug_value(ctx, Value::Str("Ok".into()), false);
+                    }
                     item_id as i32
                 } else {
+                    if ctx.debug_mode {
+                        add_debug_value(ctx, Value::Str("Inventory Full".into()), true);
+                    }
                     println!("add_item ({}): Inventory is full", class_name);
                     -1
                 }
@@ -2919,10 +2856,38 @@ fn add_item(class_name: String, vm: &VirtualMachine) -> i32 {
                 -1
             }
         } else {
+            if ctx.debug_mode {
+                add_debug_value(ctx, Value::Str("Unknown Item".into()), true);
+            }
             -1
         }
     })
     .unwrap()
+}
+
+/// Add a debug value at the current debug position
+#[inline(always)]
+fn add_debug_value(ctx: &mut RegionCtx, value: Value, error: bool) {
+    if let Some((event, x, y)) = &ctx.curr_debug_loc {
+        if let Some(item_id) = ctx.curr_item_id {
+            ctx.debug.add_value(item_id, event, *x, *y, value);
+            if error {
+                ctx.debug.add_error(item_id, event, *x, *y);
+            } else {
+                ctx.debug.remove_error(item_id, event, *x, *y);
+            }
+        } else {
+            ctx.debug
+                .add_value(ctx.curr_entity_id, event, *x, *y, value);
+            if error {
+                ctx.debug.add_error(ctx.curr_entity_id, event, *x, *y);
+            } else {
+                ctx.debug.remove_error(ctx.curr_entity_id, event, *x, *y);
+            }
+        }
+
+        ctx.curr_debug_loc = None;
+    }
 }
 
 /// Equip the item with the given item id.
@@ -3423,4 +3388,11 @@ fn player_action(action: String, vm: &VirtualMachine) {
             }
         });
     }
+}
+
+/// Set the current debug location in the grid.
+fn set_debug_loc(event: String, x: u32, y: u32, vm: &VirtualMachine) {
+    with_regionctx(get_region_id(vm).unwrap(), |ctx: &mut RegionCtx| {
+        ctx.curr_debug_loc = Some((event, x, y));
+    });
 }

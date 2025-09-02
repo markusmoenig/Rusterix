@@ -1,4 +1,4 @@
-use crate::{Entity, Value};
+use crate::{Debug, Entity, Value};
 use theframework::prelude::*;
 
 /// Messages to / from the Region to the server or client
@@ -30,8 +30,10 @@ pub enum RegionMessage {
     Message(u32, Option<u32>, Option<u32>, u32, String, String),
     /// TransferEntity: Move the Entity from the region to a new region (name) in sector (name)
     TransferEntity(u32, Entity, String, String),
-    ///
+    /// Send a multiple choice
     MultipleChoice(MultipleChoice),
+    /// Send the debug id of a character or item
+    DebugData(Debug),
     /// Stop processing and quit
     Quit,
 }

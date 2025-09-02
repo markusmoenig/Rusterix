@@ -13,6 +13,10 @@ pub struct RegionCtx {
 
     pub blocking_tiles: FxHashSet<Uuid>,
 
+    pub debug_mode: bool,
+    pub debug: Debug,
+    pub curr_debug_loc: Option<(String, u32, u32)>,
+
     pub time: TheTime,
     pub region_id: u32,
 

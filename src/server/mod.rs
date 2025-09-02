@@ -1,6 +1,7 @@
 pub mod assets;
 pub mod currency;
 pub mod data;
+pub mod debug;
 pub mod entity;
 pub mod item;
 pub mod message;
@@ -39,6 +40,10 @@ pub enum ServerState {
 pub struct Server {
     pub id_gen: u32,
 
+    /// In debug mode the serve sends grid based status updates for all entities / items
+    pub debug_mode: bool,
+    pub debug: Debug,
+
     /// Maps region uuids to the region id
     pub region_id_map: FxHashMap<Uuid, u32>,
     from_region: Vec<Receiver<RegionMessage>>,
@@ -71,6 +76,9 @@ impl Server {
     pub fn new() -> Self {
         Self {
             id_gen: 0,
+
+            debug_mode: false,
+            debug: Debug::default(),
 
             region_id_map: FxHashMap::default(),
             region_name_id_map: FxHashMap::default(),
@@ -128,7 +136,7 @@ impl Server {
 
         self.from_region.push(region_instance.from_receiver.clone());
 
-        region_instance.init(name, map, assets, config_toml);
+        region_instance.init(name, map, assets, config_toml, self.debug_mode);
         self.instances.push(Arc::new(Mutex::new(region_instance)));
     }
 
@@ -402,6 +410,10 @@ impl Server {
                                 }
                             }
                         }
+                    }
+                    RegionMessage::DebugData(data) => {
+                        println!("{:?}", data);
+                        self.debug.merge(&data);
                     }
                     _ => {}
                 }
