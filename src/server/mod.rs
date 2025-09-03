@@ -412,7 +412,6 @@ impl Server {
                         }
                     }
                     RegionMessage::DebugData(data) => {
-                        println!("{:?}", data);
                         self.debug.merge(&data);
                     }
                     _ => {}
