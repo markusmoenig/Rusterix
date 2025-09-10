@@ -47,7 +47,7 @@ where
 }
 
 /// Get the region id embedded in the VM
-fn get_region_id(vm: &VirtualMachine) -> Option<u32> {
+pub fn get_region_id(vm: &VirtualMachine) -> Option<u32> {
     let module = vm.import("__region_meta", 0).ok()?;
     let obj = module.get_attr("__region_id", vm).ok()?;
     obj.try_to_value::<u32>(vm).ok()
@@ -161,16 +161,22 @@ impl RegionInstance {
                 .set_item("equip", vm.new_function("equip", equip).into(), vm);
 
             let _ = scope.globals.set_item(
-                "get_entity_attr",
-                vm.new_function("get_entity_attr", get_entity_attr).into(),
+                "get_attr_of",
+                vm.new_function("get_attr_of", get_attr_of).into(),
                 vm,
             );
 
-            let _ = scope.globals.set_item(
-                "get_item_attr",
-                vm.new_function("get_item_attr", get_item_attr).into(),
-                vm,
-            );
+            // let _ = scope.globals.set_item(
+            //     "get_entity_attr",
+            //     vm.new_function("get_entity_attr", get_entity_attr).into(),
+            //     vm,
+            // );
+
+            // let _ = scope.globals.set_item(
+            //     "get_item_attr",
+            //     vm.new_function("get_item_attr", get_item_attr).into(),
+            //     vm,
+            // );
 
             let _ = scope.globals.set_item(
                 "get_attr",
@@ -2280,8 +2286,16 @@ fn take(item_id: u32, vm: &VirtualMachine) -> bool {
                 } else if entity.add_item(item).is_err() {
                     // TODO: Send message.
                     println!("Take: Too many items");
+                    if ctx.debug_mode {
+                        add_debug_value(ctx, Value::Str("Inventory Full".into()), true);
+                    }
                     rc = false;
                 }
+
+                if ctx.debug_mode && rc {
+                    add_debug_value(ctx, Value::Str("Ok".into()), false);
+                }
+
                 ctx.from_sender
                     .get()
                     .unwrap()
@@ -2297,6 +2311,10 @@ fn take(item_id: u32, vm: &VirtualMachine) -> bool {
                     "system".into(),
                 );
                 ctx.from_sender.get().unwrap().send(msg).unwrap();
+            }
+        } else {
+            if ctx.debug_mode {
+                add_debug_value(ctx, Value::Str("Unknown Item".into()), true);
             }
         }
         rc
@@ -2435,6 +2453,48 @@ fn took_damage(from: u32, mut amount: i32, vm: &VirtualMachine) {
 }
 
 /// Get an attribute from the given entity.
+fn get_attr_of(id: u32, key: String, vm: &VirtualMachine) -> PyResult<PyObjectRef> {
+    let mut value = Value::NoValue;
+
+    with_regionctx(get_region_id(vm).unwrap(), |ctx: &mut RegionCtx| {
+        let entity_id = id;
+        if let Some(entity) = get_entity_mut(&mut ctx.map, entity_id) {
+            if let Some(v) = entity.attributes.get(&key) {
+                value = v.clone();
+            }
+        }
+
+        if ctx.debug_mode {
+            if value != Value::NoValue {
+                add_debug_value(ctx, Value::Str(value.to_string()), false);
+            }
+        }
+    });
+
+    if value == Value::NoValue {
+        let item_id = id;
+        with_regionctx(get_region_id(vm).unwrap(), |ctx: &mut RegionCtx| {
+            if let Some(item) = get_item_mut(&mut ctx.map, item_id) {
+                if let Some(v) = item.get_attribute(&key) {
+                    value = v.clone();
+                }
+            }
+
+            if ctx.debug_mode {
+                if value == Value::NoValue {
+                    add_debug_value(ctx, Value::Str("Not Found".into()), true);
+                } else {
+                    add_debug_value(ctx, Value::Str(value.to_string()), false);
+                }
+            }
+        });
+    }
+
+    Ok(value.to_pyobject(vm))
+}
+
+/*
+/// Get an attribute from the given entity.
 fn get_entity_attr(entity_id: u32, key: String, vm: &VirtualMachine) -> PyResult<PyObjectRef> {
     let mut value = Value::NoValue;
 
@@ -2442,6 +2502,12 @@ fn get_entity_attr(entity_id: u32, key: String, vm: &VirtualMachine) -> PyResult
         if let Some(entity) = get_entity_mut(&mut ctx.map, entity_id) {
             if let Some(v) = entity.attributes.get(&key) {
                 value = v.clone();
+            }
+        }
+
+        if ctx.debug_mode {
+            if value == Value::NoValue {
+                add_debug_value(ctx, Value::Str("Not Found".into()), true);
             }
         }
     });
@@ -2459,10 +2525,17 @@ fn get_item_attr(item_id: u32, key: String, vm: &VirtualMachine) -> PyResult<PyO
                 value = v.clone();
             }
         }
+
+        if ctx.debug_mode {
+            if value == Value::NoValue {
+                add_debug_value(ctx, Value::Str("Not Found".into()), true);
+            }
+        }
     });
 
     Ok(value.to_pyobject(vm))
 }
+*/
 
 /// Get an attribute from the current item or entity.
 fn get_attr(key: String, vm: &VirtualMachine) -> PyResult<PyObjectRef> {
@@ -2481,6 +2554,14 @@ fn get_attr(key: String, vm: &VirtualMachine) -> PyResult<PyObjectRef> {
                 if let Some(v) = entity.attributes.get(&key) {
                     value = v.clone();
                 }
+            }
+        }
+
+        if ctx.debug_mode {
+            if value == Value::NoValue {
+                add_debug_value(ctx, Value::Str("Not Found".into()), true);
+            } else {
+                add_debug_value(ctx, Value::Str(value.to_string()), false);
             }
         }
     });
@@ -2867,7 +2948,7 @@ fn add_item(class_name: String, vm: &VirtualMachine) -> i32 {
 
 /// Add a debug value at the current debug position
 #[inline(always)]
-fn add_debug_value(ctx: &mut RegionCtx, value: Value, error: bool) {
+pub fn add_debug_value(ctx: &mut RegionCtx, value: Value, error: bool) {
     if let Some((event, x, y)) = &ctx.curr_debug_loc {
         if let Some(item_id) = ctx.curr_item_id {
             ctx.debug.add_value(item_id, event, *x, *y, value);
@@ -2905,6 +2986,14 @@ fn equip(item_id: u32, vm: &VirtualMachine) {
             if let Some(slot) = slot {
                 if entity.equip_item(item_id, &slot).is_err() {
                     println!("Equipped failure");
+                } else {
+                    if ctx.debug_mode {
+                        add_debug_value(ctx, Value::Str("Ok".into()), false);
+                    }
+                }
+            } else {
+                if ctx.debug_mode {
+                    add_debug_value(ctx, Value::Str("Unknown Item".into()), true);
                 }
             }
         }
@@ -2995,6 +3084,10 @@ fn goto(destination: String, speed: f32, vm: &VirtualMachine) {
                 .find(|entity| entity.id == entity_id)
             {
                 entity.action = Goto(coord, speed);
+            }
+        } else {
+            if ctx.debug_mode {
+                add_debug_value(ctx, Value::Str("Unknown Sector".into()), true);
             }
         }
     });
@@ -3124,6 +3217,10 @@ pub fn teleport(args: rustpython_vm::function::FuncArgs, vm: &VirtualMachine) ->
                     check_player_for_section_change(ctx, entity);
                 }
                 ctx.map.entities = entities;
+            } else {
+                if ctx.debug_mode {
+                    add_debug_value(ctx, Value::Str("Unknown Sector".into()), true);
+                }
             }
         } else {
             // Remove the entity from this region and send it to the server to be moved
@@ -3187,6 +3284,10 @@ pub fn message(args: rustpython_vm::function::FuncArgs, vm: &VirtualMachine) -> 
                 category,
             );
             ctx.from_sender.get().unwrap().send(msg).unwrap();
+
+            if ctx.debug_mode {
+                add_debug_value(ctx, Value::Str("Ok".into()), false);
+            }
         }
     });
 

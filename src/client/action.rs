@@ -20,6 +20,9 @@ fn intent(intent: String) {
     *ACTIONCMD.write().unwrap() = EntityAction::Intent(intent.clone());
 }
 
+/// Set the current debug location in the grid.
+fn set_debug_loc(_event: String, _x: u32, _y: u32, _vm: &VirtualMachine) {}
+
 pub struct ClientAction {
     interp: Interpreter,
     scope: Arc<Mutex<rustpython_vm::scope::Scope>>,
@@ -50,6 +53,12 @@ impl ClientAction {
             let _ = scope
                 .globals
                 .set_item("intent", vm.new_function("intent", intent).into(), vm);
+
+            let _ = scope.globals.set_item(
+                "set_debug_loc",
+                vm.new_function("set_debug_loc", set_debug_loc).into(),
+                vm,
+            );
         });
 
         Self {

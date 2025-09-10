@@ -1,3 +1,5 @@
+use crate::server::region::{add_debug_value, get_region_id, with_regionctx};
+use crate::{RegionCtx, Value};
 use rand::*;
 use rustpython::vm::*;
 use vek::Vec2;
@@ -68,22 +70,57 @@ pub fn random_in_range(
         let start: i32 = from.try_into_value(vm)?;
         let end: i32 = to.try_into_value(vm)?;
 
-        // Generate a random i32 within the range
-        let mut rng = rand::rng();
-        let result = rng.random_range(start..=end);
+        if start <= end {
+            // Generate a random i32 within the range
+            let mut rng = rand::rng();
+            let result = rng.random_range(start..=end);
 
-        Ok(vm.ctx.new_int(result).into())
+            with_regionctx(get_region_id(vm).unwrap(), |ctx: &mut RegionCtx| {
+                if ctx.debug_mode {
+                    add_debug_value(ctx, Value::Int(result), false);
+                }
+            });
+
+            Ok(vm.ctx.new_int(result).into())
+        } else {
+            with_regionctx(get_region_id(vm).unwrap(), |ctx: &mut RegionCtx| {
+                if ctx.debug_mode {
+                    add_debug_value(ctx, Value::Str("Invalid Range".into()), true);
+                }
+            });
+            Err(vm.new_type_error("Start > End".to_string()))
+        }
     } else if from.class().is(vm.ctx.types.float_type) && to.class().is(vm.ctx.types.float_type) {
         // Extract floats
         let start: f64 = from.try_into_value(vm)?;
         let end: f64 = to.try_into_value(vm)?;
 
-        // Generate a random f64 within the range
-        let mut rng = rand::rng();
-        let result = rng.random_range(start..=end);
+        if start <= end {
+            // Generate a random f64 within the range
+            let mut rng = rand::rng();
+            let result = rng.random_range(start..=end);
 
-        Ok(vm.ctx.new_float(result).into())
+            with_regionctx(get_region_id(vm).unwrap(), |ctx: &mut RegionCtx| {
+                if ctx.debug_mode {
+                    add_debug_value(ctx, Value::Float(result as f32), false);
+                }
+            });
+
+            Ok(vm.ctx.new_float(result).into())
+        } else {
+            with_regionctx(get_region_id(vm).unwrap(), |ctx: &mut RegionCtx| {
+                if ctx.debug_mode {
+                    add_debug_value(ctx, Value::Str("Invalid Range".into()), true);
+                }
+            });
+            Err(vm.new_type_error("Start > End".to_string()))
+        }
     } else {
+        with_regionctx(get_region_id(vm).unwrap(), |ctx: &mut RegionCtx| {
+            if ctx.debug_mode {
+                add_debug_value(ctx, Value::Str("Invalid Range".into()), true);
+            }
+        });
         // If the inputs are not valid numbers, raise a TypeError
         Err(vm.new_type_error("Both from and to must be integers or floats".to_string()))
     }
