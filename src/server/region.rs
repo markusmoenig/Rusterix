@@ -128,6 +128,12 @@ impl RegionInstance {
             );
 
             let _ = scope.globals.set_item(
+                "intent",
+                vm.new_function("intent", player_intent).into(),
+                vm,
+            );
+
+            let _ = scope.globals.set_item(
                 "set_player_camera",
                 vm.new_function("set_player_camera", set_player_camera)
                     .into(),
@@ -3490,6 +3496,9 @@ fn player_action(action: String, vm: &VirtualMachine) {
         });
     }
 }
+
+/// Dummy. Only used on the client side.
+fn player_intent(_intent: String, _vm: &VirtualMachine) {}
 
 /// Set the current debug location in the grid.
 fn set_debug_loc(event: String, x: u32, y: u32, vm: &VirtualMachine) {
