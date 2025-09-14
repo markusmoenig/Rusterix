@@ -17,7 +17,7 @@ use Movement::*;
 
 fn main() {
     let cube = Map::new();
-    let mut app = TheApp::new();
+    let app = TheApp::new();
 
     () = app.run(Box::new(cube));
 }

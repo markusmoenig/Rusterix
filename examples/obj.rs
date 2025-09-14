@@ -6,7 +6,7 @@ use vek::{Mat4, Vec2, Vec3, Vec4};
 
 fn main() {
     let demo = ObjDemo::new();
-    let mut app = TheApp::new();
+    let app = TheApp::new();
 
     () = app.run(Box::new(demo));
 }

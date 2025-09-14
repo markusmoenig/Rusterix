@@ -1,0 +1,68 @@
+use crate::Value;
+
+#[derive(Clone, Copy, Debug)]
+pub enum Plane {
+    XY, // Back, Front
+    YZ,
+    XZ, // Floor, Ceiling
+    ZY, // Left, Right
+}
+
+#[derive(Debug, Clone)]
+pub enum NodeOp {
+    LoadGlobal(usize),
+    StoreGlobal(usize),
+    LoadLocal(usize),
+    StoreLocal(usize),
+    Swap,
+    GetComponents(Vec<u8>),
+    SetComponents(Vec<u8>),
+    If(Vec<NodeOp>, Option<Vec<NodeOp>>),
+    Push(Value),
+    FunctionCall(u8, u8, usize),
+    Return,
+    Dup,
+    Clear,
+    Pack2,
+    Pack3,
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Length,
+    Abs,
+    Sin,
+    Cos,
+    Tan,
+    Atan,
+    Atan2,
+    Dot,
+    Cross,
+    Normalize,
+    Floor,
+    Ceil,
+    Fract,
+    Mod,
+    Degrees,
+    Radians,
+    Min,
+    Max,
+    Mix,
+    Smoothstep,
+    Step,
+    Clamp,
+    Sqrt,
+    Pow,
+    Log,
+    Print,
+    Eq,
+    Ne,
+    Lt,
+    Le,
+    Gt,
+    Ge,
+    And,
+    Or,
+    Not,
+    Neg,
+}

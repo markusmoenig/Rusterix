@@ -1,0 +1,8 @@
+[package]
+name = "rsta"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+rusteria = { version = "0.1.0", path = "../rusteria" }
+clap = "4.1.5"
