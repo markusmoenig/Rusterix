@@ -19,16 +19,20 @@ pub struct Program {
 
     /// Index of the shape function
     pub shade_index: Option<usize>,
+
+    /// Amount of local variables in the shade function
+    pub shade_locals: usize,
 }
 
 impl Program {
     pub fn new() -> Self {
         Self {
-            globals: 0,
             body: Vec::new(),
             user_functions: vec![],
             user_functions_name_map: FxHashMap::default(),
             shade_index: None,
+            globals: 0,
+            shade_locals: 0,
         }
     }
 }

@@ -839,6 +839,7 @@ impl Visitor for CompileVisitor {
                 .insert(objectd.name.clone(), index);
             if objectd.name == "shade" {
                 ctx.program.shade_index = Some(index);
+                ctx.program.shade_locals = cp.len();
             }
         }
 

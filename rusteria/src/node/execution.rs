@@ -1,4 +1,4 @@
-use vek::Vec3;
+use vek::{Clamp, Vec3};
 
 use crate::{NodeOp, Program, Value};
 
@@ -256,11 +256,13 @@ impl Execution {
                 }
                 NodeOp::Sin => {
                     let a = self.stack.pop().unwrap();
-                    self.stack.push(a.map(|x| x.sin()));
+                    // self.stack.push(a.map(|x| x.sin()));
+                    self.stack.push(Vec3::broadcast(a.x.sin()));
                 }
                 NodeOp::Cos => {
                     let a = self.stack.pop().unwrap();
-                    self.stack.push(a.map(|x| x.cos()));
+                    // self.stack.push(a.map(|x| x.cos()));
+                    self.stack.push(Vec3::broadcast(a.x.cos()));
                 }
                 NodeOp::Normalize => {
                     let a = self.stack.pop().unwrap();
@@ -343,7 +345,7 @@ impl Execution {
                     let c: Value = self.stack.pop().unwrap(); // x
                     let b: Value = self.stack.pop().unwrap(); // edge1
                     let a = self.stack.pop().unwrap(); // edge0
-                    let t = ((c - a) / (b - a)).map(|x| x.clamp(0.0, 1.0));
+                    let t = ((c - a) / (b - a)).clamped(0.0, 1.0); //.map(|x| x.clamp(0.0, 1.0));
                     self.stack
                         .push(t * t * (Value::broadcast(3.0) - Value::broadcast(2.0) * t));
                 }
@@ -485,7 +487,7 @@ impl Execution {
         self.stack.truncate(0);
         self.return_value = None;
 
-        self.locals.resize(10, Value::zero());
+        self.locals.resize(program.shade_locals, Value::zero());
 
         self.execute(&program.user_functions[index], program);
 

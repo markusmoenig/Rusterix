@@ -1077,6 +1077,8 @@ impl Rasterizer {
                                                         execution.input.z = color.z;
                                                         execution.hitpoint = world;
                                                         execution.time.x = self.time;
+                                                        execution.time.y = self.time;
+                                                        execution.time.z = self.time;
 
                                                         execution.reset(program.globals);
                                                         let rc = execution

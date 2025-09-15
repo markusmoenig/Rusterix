@@ -56,26 +56,10 @@ impl TheTrait for Cube {
 
         assets.add_shader(
             r#"
-            // Animated periodic rings centered on the face
-            // Controls: freq = rings per unit radius, speed = animation rate, thickness = ring thickness
             fn shade() {
-                let center = vec2(0.5, 0.5);
-                let r = length(uv - center);
-
-                let freq = 12.0;        // number of rings
-                let speed = 0.8;        // scroll speed (cycles / second)
-                let thickness = 0.015;  // visual thickness of a ring band
-
-                // Build a repeating 0..1 ramp over radius, animated by time
-                // fract(x) gives sawtooth; abs(fract(x)-0.5) is distance to ring center (0 at center)
-                let ramp = abs(fract(r * freq - time * speed) - 0.5);
-
-                // Convert distance-to-center into a soft band using smoothstep
-                let ring = 1.0 - smoothstep(0.5 - thickness, 0.5, ramp);
-
-                // Use the ring as a mask to mix over the incoming surface color
-                // (mix mode follows your existing convention: mix(channel, base, mask))
-                mix(1, input, ring);
+                let t = abs(sin(time)) * 0.5 + 0.5;
+                let radius = 0.2 + 0.45 * t;
+                return mix(1, input, smoothstep(0.0, 0.002, length(uv - 0.5) - radius));            
             }
         "#,
         );
