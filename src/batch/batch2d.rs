@@ -47,6 +47,9 @@ pub struct Batch2D {
 
     /// The material for the batch.
     pub material: Option<Material>,
+
+    /// Shader
+    pub shader: Option<usize>,
 }
 
 impl Default for Batch2D {
@@ -73,6 +76,7 @@ impl Batch2D {
             transform: Mat3::identity(),
             receives_light: true,
             material: None,
+            shader: None,
         }
     }
 
@@ -97,6 +101,7 @@ impl Batch2D {
             transform: Mat3::identity(),
             receives_light: true,
             material: None,
+            shader: None,
         }
     }
 
@@ -124,6 +129,10 @@ impl Batch2D {
     /// Append a rectangle to the existing batch
     pub fn add_rectangle(&mut self, x: f32, y: f32, width: f32, height: f32) {
         let base_index = self.vertices.len();
+
+        self.vertices.reserve(4);
+        self.uvs.reserve(4);
+        self.indices.reserve(2);
 
         // Add vertices
         self.vertices.extend(vec![
@@ -156,6 +165,10 @@ impl Batch2D {
         uvs: Vec<[f32; 2]>,
     ) {
         let base_index = self.vertices.len();
+
+        self.vertices.reserve(vertices.len());
+        self.uvs.reserve(uvs.len());
+        self.indices.reserve(indices.len());
 
         self.vertices.extend(vertices);
         self.uvs.extend(uvs);
@@ -190,31 +203,31 @@ impl Batch2D {
             [-1.0, -1.0],
         ];
 
-        let mut all_wrapped_vertices = vec![];
-        let mut all_wrapped_uvs = vec![];
-        let mut all_wrapped_indices = vec![];
+        let verts_per_tile = vertices.len();
+        let uvs_per_tile = uvs.len();
+        let tris_per_tile = indices.len();
+
+        // Pre-reserve for all 9 tiles
+        self.vertices.reserve(verts_per_tile * offsets.len());
+        self.uvs.reserve(uvs_per_tile * offsets.len());
+        self.indices.reserve(tris_per_tile * offsets.len());
 
         for offset in offsets.iter() {
-            let wrapped_vertices: Vec<[f32; 2]> =
-                vertices.iter().map(|&v| wrap_vertex(v, *offset)).collect();
+            let base_index = self.vertices.len();
 
-            // Offset indices for the current set of wrapped vertices
-            let base_index = all_wrapped_vertices.len();
-            let wrapped_indices: Vec<(usize, usize, usize)> = indices
-                .iter()
-                .map(|&(i0, i1, i2)| (i0 + base_index, i1 + base_index, i2 + base_index))
-                .collect();
+            // Append wrapped vertices directly
+            for &v in &vertices {
+                self.vertices.push(wrap_vertex(v, *offset));
+            }
+            // Append UVs without cloning the whole Vec each time
+            self.uvs.extend(uvs.iter().copied());
 
-            // Collect all wrapped data
-            all_wrapped_vertices.extend(wrapped_vertices);
-            all_wrapped_uvs.extend(uvs.clone());
-            all_wrapped_indices.extend(wrapped_indices);
+            // Append adjusted indices directly
+            for &(i0, i1, i2) in &indices {
+                self.indices
+                    .push((base_index + i0, base_index + i1, base_index + i2));
+            }
         }
-
-        // Add all wrapped vertices, UVs, and indices to the batch
-        self.vertices.extend(all_wrapped_vertices);
-        self.uvs.extend(all_wrapped_uvs);
-        self.indices.extend(all_wrapped_indices);
     }
 
     /// Append a line to the existing batch
@@ -224,13 +237,23 @@ impl Batch2D {
 
         let direction = [end[0] - start[0], end[1] - start[1]];
         let length = (direction[0] * direction[0] + direction[1] * direction[1]).sqrt();
+
+        let base_index = self.vertices.len();
+
+        // Avoid division by zero for zero-length lines
+        if length == 0.0 {
+            return;
+        }
+
+        self.vertices.reserve(4);
+        self.uvs.reserve(4);
+        self.indices.reserve(2);
+
         let normalized = [direction[0] / length, direction[1] / length];
         let normal = [
             -normalized[1] * thickness / 2.0,
             normalized[0] * thickness / 2.0,
         ];
-
-        let base_index = self.vertices.len();
 
         if self.mode == PrimitiveMode::Lines {
             // In line mode we add the start / end vertices directly.
@@ -294,6 +317,12 @@ impl Batch2D {
             [-1.0, -1.0],
         ];
 
+        // Each line produces 4 verts, 4 uvs, and 2 triangles
+        self.vertices
+            .reserve(self.vertices.len() + offsets.len() * 4);
+        self.uvs.reserve(self.uvs.len() + offsets.len() * 4);
+        self.indices.reserve(self.indices.len() + offsets.len() * 2);
+
         for offset in offsets.iter() {
             // Wrap start and end points
             let wrapped_start = wrap_point(start, *offset);
@@ -322,6 +351,12 @@ impl Batch2D {
         self
     }
 
+    /// Set the shader index for this batch
+    pub fn shader(mut self, shader: usize) -> Self {
+        self.shader = Some(shader);
+        self
+    }
+
     /// Set the 3D transform matrix for this batch
     pub fn transform(mut self, transform: Mat3<f32>) -> Self {
         self.transform = transform;
@@ -336,50 +371,61 @@ impl Batch2D {
 
     /// Project 2D vertices using a optional Mat3 transformation matrix
     pub fn project(&mut self, matrix: Option<Mat3<f32>>) {
-        if let Some(matrix) = matrix {
-            self.projected_vertices = self
-                .vertices
-                .iter()
-                .map(|&v| {
-                    let result = matrix * Vec3::new(v[0], v[1], 1.0);
-                    [result.x, result.y]
-                })
-                .collect();
-        } else {
-            self.projected_vertices = self.vertices.clone();
+        self.projected_vertices.clear();
+        self.projected_vertices.reserve(self.vertices.len());
+
+        let mut min_x = f32::INFINITY;
+        let mut max_x = f32::NEG_INFINITY;
+        let mut min_y = f32::INFINITY;
+        let mut max_y = f32::NEG_INFINITY;
+
+        match matrix {
+            Some(m) => {
+                for &v in &self.vertices {
+                    let r = m * Vec3::new(v[0], v[1], 1.0);
+                    let p = [r.x, r.y];
+                    min_x = min_x.min(p[0]);
+                    max_x = max_x.max(p[0]);
+                    min_y = min_y.min(p[1]);
+                    max_y = max_y.max(p[1]);
+                    self.projected_vertices.push(p);
+                }
+            }
+            None => {
+                for &p in &self.vertices {
+                    min_x = min_x.min(p[0]);
+                    max_x = max_x.max(p[0]);
+                    min_y = min_y.min(p[1]);
+                    max_y = max_y.max(p[1]);
+                    self.projected_vertices.push(p);
+                }
+            }
         }
 
-        // Precompute the bounding box
-        self.bounding_box = Some(self.calculate_bounding_box());
+        self.bounding_box = Some(Rect {
+            x: min_x,
+            y: min_y,
+            width: max_x - min_x,
+            height: max_y - min_y,
+        });
 
         // Precompute edges for each triangle
-        self.edges = self
-            .indices
-            .iter()
-            .map(|&(i0, i1, i2)| {
-                let v0 = self.projected_vertices[i0];
-                let v1 = self.projected_vertices[i1];
-                let v2 = self.projected_vertices[i2];
-
-                crate::Edges::new(
-                    [
-                        [v0[0], v0[1]], // First edge start
-                        [v1[0], v1[1]], // Second edge start
-                        [v2[0], v2[1]], // Third edge start
-                    ],
-                    [
-                        [v1[0], v1[1]], // First edge end
-                        [v2[0], v2[1]], // Second edge end
-                        [v0[0], v0[1]], // Third edge end
-                    ],
-                    true,
-                )
-            })
-            .collect();
+        self.edges.clear();
+        self.edges.reserve(self.indices.len());
+        for &(i0, i1, i2) in &self.indices {
+            let v0 = self.projected_vertices[i0];
+            let v1 = self.projected_vertices[i1];
+            let v2 = self.projected_vertices[i2];
+            self.edges.push(crate::Edges::new(
+                [[v0[0], v0[1]], [v1[0], v1[1]], [v2[0], v2[1]]],
+                [[v1[0], v1[1]], [v2[0], v2[1]], [v0[0], v0[1]]],
+                true,
+            ));
+        }
     }
 
     /// Calculate the bounding box for the projected vertices
-    fn calculate_bounding_box(&self) -> Rect {
+    fn _calculate_bounding_box(&self) -> Rect {
         let mut min_x = f32::INFINITY;
         let mut max_x = f32::NEG_INFINITY;
         let mut min_y = f32::INFINITY;

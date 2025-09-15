@@ -1,5 +1,6 @@
 use crate::{ShapeFXGraph, Value, prelude::*};
 use indexmap::IndexMap;
+use rusteria::{Program, Rusteria};
 use std::path::Path;
 use theframework::prelude::*;
 use toml::*;
@@ -44,6 +45,9 @@ pub struct Assets {
 
     /// A map of locale names to their translations.
     pub locales: FxHashMap<String, FxHashMap<String, String>>,
+
+    /// The list of shaders for the Batches
+    pub shaders: Vec<Program>,
 }
 
 impl Default for Assets {
@@ -75,7 +79,34 @@ impl Assets {
             palette: ThePalette::default(),
             global: ShapeFXGraph::default(),
             locales: FxHashMap::default(),
+            shaders: vec![],
         }
+    }
+
+    /// Add a shader
+    pub fn add_shader(&mut self, code: &str) -> Option<usize> {
+        let mut rs: Rusteria = Rusteria::default();
+
+        let _module = match rs.parse_str(code) {
+            Ok(module) => match rs.compile(&module) {
+                Ok(()) => {
+                    println!("Module '{}' compiled successfully.", module.name);
+                }
+                Err(e) => {
+                    eprintln!("Error compiling module: {e}");
+                    return None;
+                }
+            },
+            Err(e) => {
+                eprintln!("Error parsing module: {e}");
+                return None;
+            }
+        };
+
+        let index = self.shaders.len();
+        self.shaders.push(rs.context.program.clone());
+
+        Some(index)
     }
 
     /// Reads all locale tables (locale_*) from the config file.

@@ -1,7 +1,7 @@
 use crate::objectd::FunctionD;
 use crate::{
     ASTValue, AssignmentOperator, BinaryOperator, ComparisonOperator, Context, Environment,
-    EqualityOperator, Expr, Location, LogicalOperator, Module, NodeOp, RuntimeError, Stmt,
+    EqualityOperator, Expr, Location, LogicalOperator, NodeOp, PreModule, RuntimeError, Stmt,
     UnaryOperator, Value, Visitor,
 };
 use indexmap::{IndexMap, IndexSet};
@@ -290,7 +290,7 @@ impl Visitor for CompileVisitor {
 
     fn import(
         &mut self,
-        module: &Option<Module>,
+        module: &Option<PreModule>,
         _loc: &Location,
         ctx: &mut Context,
     ) -> Result<ASTValue, RuntimeError> {
@@ -529,8 +529,31 @@ impl Visitor for CompileVisitor {
     ) -> Result<ASTValue, RuntimeError> {
         let mut rc = ASTValue::None;
 
-        if name == "Clear" {
-            ctx.emit(NodeOp::Clear);
+        if name == "uv" {
+            ctx.emit(NodeOp::UV);
+            if !swizzle.is_empty() {
+                ctx.emit(NodeOp::GetComponents(swizzle.to_vec()));
+            }
+        } else if name == "normal" {
+            ctx.emit(NodeOp::Normal);
+            if !swizzle.is_empty() {
+                ctx.emit(NodeOp::GetComponents(swizzle.to_vec()));
+            }
+        } else if name == "input" {
+            ctx.emit(NodeOp::Input);
+            if !swizzle.is_empty() {
+                ctx.emit(NodeOp::GetComponents(swizzle.to_vec()));
+            }
+        } else if name == "hitpoint" {
+            ctx.emit(NodeOp::Hitpoint);
+            if !swizzle.is_empty() {
+                ctx.emit(NodeOp::GetComponents(swizzle.to_vec()));
+            }
+        } else if name == "time" {
+            ctx.emit(NodeOp::Time);
+            if !swizzle.is_empty() {
+                ctx.emit(NodeOp::GetComponents(swizzle.to_vec()));
+            }
         } else if self.functions.contains_key(&name) {
             rc = ASTValue::Function(name.clone(), vec![], Box::new(ASTValue::None));
         } else if self.user_functions.contains_key(&name) {

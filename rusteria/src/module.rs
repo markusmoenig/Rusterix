@@ -3,7 +3,7 @@ use rustc_hash::FxHashMap;
 use std::path::PathBuf;
 
 #[derive(Debug, Clone)]
-pub struct Module {
+pub struct PreModule {
     pub name: String,
     pub source: String,
     pub path: PathBuf,
@@ -12,7 +12,7 @@ pub struct Module {
     pub stmts: Vec<Box<Stmt>>,
 }
 
-impl Module {
+impl PreModule {
     pub fn new(
         name: String,
         source: String,

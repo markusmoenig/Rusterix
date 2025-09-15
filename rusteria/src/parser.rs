@@ -1,7 +1,7 @@
 use crate::zero_expr_float;
 use crate::{
     ASTValue, AssignmentOperator, BinaryOperator, ComparisonOperator, EqualityOperator, Expr,
-    IdVerifier, Location, LogicalOperator, Module, ParseError, Scanner, Stmt, Token, TokenType,
+    IdVerifier, Location, LogicalOperator, ParseError, PreModule, Scanner, Stmt, Token, TokenType,
     UnaryOperator, objectd::FunctionD,
 };
 use indexmap::IndexMap;
@@ -58,7 +58,7 @@ impl Parser {
     }
 
     /// Compile the main source module.
-    pub fn compile(&mut self, path: PathBuf) -> Result<Module, ParseError> {
+    pub fn compile(&mut self, path: PathBuf) -> Result<PreModule, ParseError> {
         if let Ok(source) = std::fs::read_to_string(path.clone()) {
             if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
                 self.compile_module(stem.to_string(), source, path)
@@ -76,7 +76,7 @@ impl Parser {
         name: String,
         source: String,
         path: PathBuf,
-    ) -> Result<Module, ParseError> {
+    ) -> Result<PreModule, ParseError> {
         // Extract all tokens from the scanner
         let mut scanner = Scanner::new(source.clone());
 
@@ -100,7 +100,7 @@ impl Parser {
             statements.push(Box::new(stmt));
         }
 
-        let module = Module::new(
+        let module = PreModule::new(
             name,
             source,
             self.path.clone(),
@@ -863,59 +863,6 @@ impl Parser {
                     ))
                 }
             }
-            TokenType::Float4 => {
-                self.advance();
-                if self.match_token(vec![TokenType::LeftParen]) {
-                    let comps = self.read_vec_components(4, token.line)?;
-                    let swizzle: Vec<u8> = self.get_swizzle_at_current();
-
-                    Ok(Expr::Value(
-                        ASTValue::Float4(
-                            if !comps.is_empty() {
-                                Box::new(comps[0].clone())
-                            } else {
-                                zero_expr_float!()
-                            },
-                            if comps.len() > 1 {
-                                Box::new(comps[1].clone())
-                            } else {
-                                if !comps.is_empty() {
-                                    Box::new(comps[0].clone())
-                                } else {
-                                    zero_expr_float!()
-                                }
-                            },
-                            if comps.len() > 2 {
-                                Box::new(comps[2].clone())
-                            } else {
-                                if !comps.is_empty() {
-                                    Box::new(comps[0].clone())
-                                } else {
-                                    zero_expr_float!()
-                                }
-                            },
-                            if comps.len() > 3 {
-                                Box::new(comps[3].clone())
-                            } else {
-                                if !comps.is_empty() {
-                                    Box::new(comps[0].clone())
-                                } else {
-                                    zero_expr_float!()
-                                }
-                            },
-                        ),
-                        swizzle,
-                        vec![],
-                        self.create_loc(token.line),
-                    ))
-                } else {
-                    Err(ParseError::new(
-                        "Expected '(' after vec4",
-                        token.line,
-                        &self.path,
-                    ))
-                }
-            }
             TokenType::LeftParen => {
                 self.advance();
                 let expr = self.expression()?;
@@ -939,16 +886,11 @@ impl Parser {
                         swizzle = self.get_swizzle_at_current();
                     }
                 }
-                /*
-                if token.lexeme == "local"
-                    || token.lexeme == "world"
-                    || token.lexeme == "u"
-                    || token.lexeme == "v"
-                    || token.lexeme == "d"
-                    || token.lexeme == "sdf"
-                    || token.lexeme == "inside"
-                    || token.lexeme == "hash"
-                    || token.lexeme == "Clear"
+                if token.lexeme == "uv"
+                    || token.lexeme == "input"
+                    || token.lexeme == "normal"
+                    || token.lexeme == "hitpoint"
+                    || token.lexeme == "time"
                 {
                     Ok(Expr::Variable(
                         token.lexeme.clone(),
@@ -956,7 +898,7 @@ impl Parser {
                         field_path,
                         self.create_loc(token.line),
                     ))
-                }*/
+                } else
                 // Local variables in functions
                 if self.locals_map.contains_key(&token.lexeme) {
                     Ok(Expr::Variable(

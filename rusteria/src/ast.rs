@@ -1,5 +1,5 @@
 use crate::objectd::FunctionD;
-use crate::{ASTValue, CompileVisitor, Context, Module, RuntimeError};
+use crate::{ASTValue, CompileVisitor, Context, PreModule, RuntimeError};
 use std::path::PathBuf;
 use vek::Vec3;
 
@@ -63,7 +63,7 @@ pub enum Stmt {
         Box<Stmt>,
         Location,
     ),
-    Import(Option<Module>, Location),
+    Import(Option<PreModule>, Location),
     FunctionDeclaration(FunctionD, Location),
     Print(Box<Expr>, Location),
     Block(Vec<Box<Stmt>>, Location),
@@ -230,7 +230,7 @@ pub trait Visitor {
 
     fn import(
         &mut self,
-        id: &Option<Module>,
+        id: &Option<PreModule>,
         loc: &Location,
         ctx: &mut Context,
     ) -> Result<ASTValue, RuntimeError>;

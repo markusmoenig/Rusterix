@@ -65,4 +65,9 @@ pub enum NodeOp {
     Or,
     Not,
     Neg,
+    UV,
+    Input,
+    Normal,
+    Hitpoint,
+    Time,
 }

@@ -46,14 +46,29 @@ const INV_255: f32 = 1.0 / 255.0;
 /// Convert from Pixel to Vec4<f32>
 #[inline(always)]
 pub fn pixel_to_vec4(pixel: &Pixel) -> vek::Vec4<f32> {
-    let v: vek::Vec4<u8> = vek::Vec4::from(*pixel);
-    v.map(|c| c as f32 * INV_255)
+    vek::Vec4::new(
+        pixel[0] as f32 * INV_255,
+        pixel[1] as f32 * INV_255,
+        pixel[2] as f32 * INV_255,
+        pixel[3] as f32 * INV_255,
+    )
+}
+
+#[inline(always)]
+fn f32_to_u8_saturated(x: f32) -> u8 {
+    let y = x.max(0.0).min(1.0).mul_add(255.0, 0.5);
+    y as i32 as u8
 }
 
 /// Convert from Vec4<f32> to Pixel
 #[inline(always)]
 pub fn vec4_to_pixel(vec: &vek::Vec4<f32>) -> Pixel {
-    vec.map(|c| (c * 255.0) as u8).into_array()
+    [
+        f32_to_u8_saturated(vec.x),
+        f32_to_u8_saturated(vec.y),
+        f32_to_u8_saturated(vec.z),
+        f32_to_u8_saturated(vec.w),
+    ]
 }
 
 /// Get time in ms

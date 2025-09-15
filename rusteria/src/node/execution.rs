@@ -1,3 +1,5 @@
+use vek::Vec3;
+
 use crate::{NodeOp, Program, Value};
 
 #[derive(Clone)]
@@ -16,6 +18,21 @@ pub struct Execution {
 
     /// Function return value.
     return_value: Option<Value>,
+
+    /// UV
+    pub uv: Value,
+
+    /// Input color
+    pub input: Value,
+
+    /// Normal
+    pub normal: Value,
+
+    /// Hitpoint
+    pub hitpoint: Value,
+
+    /// Time
+    pub time: Value,
 }
 
 impl Execution {
@@ -24,8 +41,13 @@ impl Execution {
             globals: vec![Value::zero(); var_size],
             locals: vec![],
             locals_stack: vec![],
-            stack: Vec::with_capacity(32),
+            stack: Vec::with_capacity(8),
             return_value: None,
+            uv: Vec3::zero(),
+            input: Vec3::zero(),
+            normal: Vec3::zero(),
+            hitpoint: Vec3::zero(),
+            time: Vec3::zero(),
         }
     }
 
@@ -34,8 +56,21 @@ impl Execution {
             globals: execution.globals.clone(),
             locals: vec![],
             locals_stack: vec![],
-            stack: Vec::with_capacity(32),
+            stack: Vec::with_capacity(8),
             return_value: None,
+            uv: Vec3::zero(),
+            input: Vec3::zero(),
+            normal: Vec3::zero(),
+            hitpoint: Vec3::zero(),
+            time: Vec3::zero(),
+        }
+    }
+
+    /// When switching between programs we need to resize the count of global variables.
+    #[inline]
+    pub fn reset(&mut self, var_size: usize) {
+        if var_size != self.globals.len() {
+            self.globals.resize(var_size, Value::zero());
         }
     }
 
@@ -412,6 +447,21 @@ impl Execution {
                     let a = self.stack.pop().unwrap();
                     println!("print: {:?}", a);
                 }
+                NodeOp::UV => {
+                    self.stack.push(self.uv);
+                }
+                NodeOp::Input => {
+                    self.stack.push(self.input);
+                }
+                NodeOp::Normal => {
+                    self.stack.push(self.normal);
+                }
+                NodeOp::Hitpoint => {
+                    self.stack.push(self.hitpoint);
+                }
+                NodeOp::Time => {
+                    self.stack.push(self.time);
+                }
             }
         }
     }
@@ -428,30 +478,16 @@ impl Execution {
         }
     }
 
-    /// Fast path: call a function with arguments provided as a slice (no Vec alloc).
+    /// Call a function with no arguments
     #[inline]
-    pub fn execute_function_slice(
-        &mut self,
-        args: &[Value],
-        index: usize,
-        program: &Program,
-    ) -> Value {
+    pub fn execute_function_no_args(&mut self, index: usize, program: &Program) -> Value {
         // Reset state for this call
         self.stack.truncate(0);
         self.return_value = None;
 
-        // Prepare locals without reallocating each time
-        let argc = args.len();
-        if self.locals.len() < argc {
-            self.locals.resize(argc, Value::zero());
-        }
-        // Copy args into locals in order (0..argc)
-        self.locals[..argc].clone_from_slice(args);
+        self.locals.resize(10, Value::zero());
 
-        // Borrow the function body without cloning the Arc
-        let body_arc = &program.user_functions[index];
-        let body: &[NodeOp] = body_arc.as_ref();
-        self.execute(body, program);
+        self.execute(&program.user_functions[index], program);
 
         // Prefer an explicit return value; else top of stack; else zero
         if let Some(ret) = self.return_value.take() {
@@ -464,10 +500,31 @@ impl Execution {
         }
     }
 
-    /// Fast path for arity=1 (common for fragment shaders): avoids heap allocs entirely.
+    /// Call a function with arguments provided as a slice.
     #[inline]
-    pub fn execute_function1(&mut self, a0: Value, index: usize, program: &Program) -> Value {
-        let args = [a0];
-        self.execute_function_slice(&args, index, program)
+    pub fn execute_function(&mut self, args: &[Value], index: usize, program: &Program) -> Value {
+        // Reset state for this call
+        self.stack.truncate(0);
+        self.return_value = None;
+
+        // Prepare locals without reallocating each time
+        let argc = args.len();
+        if self.locals.len() < argc {
+            self.locals.resize(argc, Value::zero());
+        }
+        // Copy args into locals in order (0..argc)
+        self.locals[..argc].clone_from_slice(args);
+
+        self.execute(&program.user_functions[index], program);
+
+        // Prefer an explicit return value; else top of stack; else zero
+        if let Some(ret) = self.return_value.take() {
+            return ret;
+        }
+        if let Some(rc) = self.stack.pop() {
+            rc
+        } else {
+            Value::zero()
+        }
     }
 }

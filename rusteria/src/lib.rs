@@ -24,7 +24,7 @@ pub use crate::{
     environment::Environment,
     errors::{ParseError, RuntimeError},
     idverifier::IdVerifier,
-    module::Module,
+    module::PreModule,
     node::execution::Execution,
     node::{nodeop::NodeOp, program::Program},
     parser::Parser,
@@ -37,7 +37,7 @@ use std::path::PathBuf;
 pub struct Rusteria {
     path: PathBuf,
     pub context: Context,
-    defaults: Option<Module>,
+    defaults: Option<PreModule>,
 }
 
 impl Default for Rusteria {
@@ -56,7 +56,7 @@ impl Rusteria {
     }
 
     // Parse the source code into a module.
-    pub fn parse(&mut self, path: PathBuf) -> Result<Module, ParseError> {
+    pub fn parse(&mut self, path: PathBuf) -> Result<PreModule, ParseError> {
         self.path = path.clone();
         let mut parser = Parser::new();
         let module = parser.compile(path.clone())?;
@@ -65,17 +65,17 @@ impl Rusteria {
     }
 
     // Parse the source code into a module.
-    pub fn parse_str(&mut self, str: String) -> Result<Module, ParseError> {
+    pub fn parse_str(&mut self, str: &str) -> Result<PreModule, ParseError> {
         self.path = PathBuf::from("string_based.shpz");
         let mut parser: Parser = Parser::new();
 
-        let module = parser.compile_module("main".into(), str, self.path.clone())?;
+        let module = parser.compile_module("main".into(), str.into(), self.path.clone())?;
 
         Ok(module)
     }
 
     // Compile the source code
-    pub fn compile(&mut self, module: &Module) -> Result<(), RuntimeError> {
+    pub fn compile(&mut self, module: &PreModule) -> Result<(), RuntimeError> {
         let mut visitor: CompileVisitor = CompileVisitor::new();
         self.context = Context::new(module.globals.clone());
 
@@ -90,6 +90,8 @@ impl Rusteria {
             _ = statement.accept(&mut visitor, &mut self.context)?;
         }
 
+        self.context.program.globals = self.context.globals.len();
+
         Ok(())
     }
 
@@ -98,15 +100,12 @@ impl Rusteria {
         let mut execution = Execution::new(self.context.globals.len());
 
         // Execute the main program to compile all voxels.
-        execution.execute(
-            &&self.context.program.body.clone(),
-            &mut self.context.program,
-        );
+        execution.execute(&&self.context.program.body, &self.context.program);
 
         execution.stack.pop()
     }
 
-    pub fn execute_string(&mut self, str: String) -> Option<Value> {
+    pub fn execute_string(&mut self, str: &str) -> Option<Value> {
         let result = self.parse_str(str);
         match result {
             Ok(module) => {

@@ -62,6 +62,9 @@ pub struct Batch3D {
 
     // Material
     pub material: Option<Material>,
+
+    /// Shader
+    pub shader: Option<usize>,
 }
 
 /// A batch of 4D vertices, indices and their UVs which make up a 3D mesh.
@@ -86,6 +89,7 @@ impl Batch3D {
             normals: vec![],
             clipped_normals: vec![],
             material: None,
+            shader: None,
         }
     }
 
@@ -112,6 +116,7 @@ impl Batch3D {
             normals: vec![],
             clipped_normals: vec![],
             material: None,
+            shader: None,
         }
     }
 
@@ -270,6 +275,12 @@ impl Batch3D {
         self
     }
 
+    /// Set the shader index for this batch
+    pub fn shader(mut self, shader: usize) -> Self {
+        self.shader = Some(shader);
+        self
+    }
+
     /// Set the 3D transform matrix for this batch
     pub fn transform(mut self, transform: Mat4<f32>) -> Self {
         self.transform_3d = transform;
@@ -290,36 +301,119 @@ impl Batch3D {
         viewport_width: f32,
         viewport_height: f32,
     ) {
-        let mut view_space_vertices: Vec<[f32; 4]> = self
-            .vertices
-            .iter()
-            .map(|&v| {
-                let v = view_matrix * self.transform_3d * Vec4::new(v[0], v[1], v[2], v[3]);
-                [v.x, v.y, v.z, v.w]
-            })
-            .collect();
+        // Combined matrices
+        let mvp = projection_matrix * view_matrix * self.transform_3d;
+
+        // Early-out frustum cull using object-space AABB (8 corners tested in clip space)
+        if !self.vertices.is_empty() {
+            let mut min_x = f32::INFINITY;
+            let mut min_y = f32::INFINITY;
+            let mut min_z = f32::INFINITY;
+            let mut max_x = f32::NEG_INFINITY;
+            let mut max_y = f32::NEG_INFINITY;
+            let mut max_z = f32::NEG_INFINITY;
+            for v in &self.vertices {
+                min_x = min_x.min(v[0]);
+                min_y = min_y.min(v[1]);
+                min_z = min_z.min(v[2]);
+                max_x = max_x.max(v[0]);
+                max_y = max_y.max(v[1]);
+                max_z = max_z.max(v[2]);
+            }
+            let corners = [
+                [min_x, min_y, min_z, 1.0],
+                [min_x, min_y, max_z, 1.0],
+                [min_x, max_y, min_z, 1.0],
+                [min_x, max_y, max_z, 1.0],
+                [max_x, min_y, min_z, 1.0],
+                [max_x, min_y, max_z, 1.0],
+                [max_x, max_y, min_z, 1.0],
+                [max_x, max_y, max_z, 1.0],
+            ];
+
+            // Test against clip-space planes: x in [-w,w], y in [-w,w], z in [-w,w]
+            let mut outside_left = true;
+            let mut outside_right = true;
+            let mut outside_bottom = true;
+            let mut outside_top = true;
+            let mut outside_near = true; // z < -w
+            let mut outside_far = true; // z >  w
+            for c in &corners {
+                let v = mvp * Vec4::new(c[0], c[1], c[2], c[3]);
+                let w = v.w;
+                outside_left &= v.x < -w;
+                outside_right &= v.x > w;
+                outside_bottom &= v.y < -w;
+                outside_top &= v.y > w;
+                outside_near &= v.z < -w;
+                outside_far &= v.z > w;
+            }
+            if outside_left
+                || outside_right
+                || outside_bottom
+                || outside_top
+                || outside_near
+                || outside_far
+            {
+                // Entire batch is outside; clear outputs and return
+                self.projected_vertices.clear();
+                self.clipped_indices.clear();
+                self.clipped_uvs.clear();
+                self.clipped_normals.clear();
+                self.edges.clear();
+                self.bounding_box = None;
+                return;
+            }
+        }
+
+        // Precompute view * model once (saves one Mat4 multiply per vertex)
+        let view_model = view_matrix * self.transform_3d;
+        let mut view_space_vertices: Vec<[f32; 4]> = Vec::with_capacity(self.vertices.len());
+        for &v in &self.vertices {
+            let v = view_model * Vec4::new(v[0], v[1], v[2], v[3]);
+            view_space_vertices.push([v.x, v.y, v.z, v.w]);
+        }
 
         // Near plane in camera space
         let near_plane = 0.1;
 
-        // Initialize clipped indices and UVs with the original
-        self.clipped_indices = self.indices.clone();
-        self.clipped_uvs = self.uvs.clone();
-        self.clipped_normals = self.normals.clone();
+        // Initialize clipped buffers (reusing allocations)
+        self.clipped_indices.clear();
+        self.clipped_uvs.clear();
+        self.clipped_normals.clear();
+        self.clipped_indices.reserve(self.indices.len());
+        self.clipped_uvs.reserve(self.uvs.len());
+        self.clipped_normals.reserve(self.normals.len());
+        self.clipped_indices.extend(self.indices.iter().copied());
+        self.clipped_uvs.extend(self.uvs.iter().copied());
+        self.clipped_normals.extend(self.normals.iter().copied());
 
-        // List of new vertices and their corresponding UVs and normals
-        let mut new_vertices = Vec::new();
-        let mut new_uvs = Vec::new();
-        let mut new_normals = Vec::new();
+        // New data created by clipping; reserve a small multiple to reduce reallocs
+        let mut new_vertices = Vec::with_capacity(self.vertices.len() / 8 + 8);
+        let mut new_uvs = Vec::with_capacity(self.uvs.len() / 8 + 8);
+        let mut new_normals = Vec::with_capacity(self.normals.len() / 8 + 8);
 
         // Visibility flags for edges
-        let mut edge_visibility = vec![true; self.indices.len()];
+        let mut edge_visibility = Vec::with_capacity(self.indices.len());
+        edge_visibility.resize(self.indices.len(), true);
 
         // Iterate over triangles
         for (triangle_idx, &(i0, i1, i2)) in self.indices.iter().enumerate() {
             let v0 = view_space_vertices[i0];
             let v1 = view_space_vertices[i1];
             let v2 = view_space_vertices[i2];
+
+            // Early backface culling in view space to skip clipping work
+            if self.cull_mode != CullMode::Off {
+                let orient = (v1[0] - v0[0]) * (v2[1] - v0[1]) - (v1[1] - v0[1]) * (v2[0] - v0[0]);
+                let is_front = orient > 0.0; // CCW convention
+                match self.cull_mode {
+                    CullMode::Back if is_front => continue,
+                    CullMode::Front if !is_front => continue,
+                    _ => {}
+                }
+            }
+
             let uv0 = self.uvs[i0];
             let uv1 = self.uvs[i1];
             let uv2 = self.uvs[i2];
@@ -344,13 +438,19 @@ impl Batch3D {
             }
 
             // Mixed case: Calculate intersections and append new vertices
-            let vertices = [(v0, uv0, n0), (v1, uv1, n1), (v2, uv2, n2)];
-            let mut clipped_indices = Vec::new();
-            let mut new_edge_visibility = Vec::new();
+            let vertices = [(&v0, &uv0, &n0), (&v1, &uv1, &n1), (&v2, &uv2, &n2)];
+            let mut clipped_indices: Vec<usize> = Vec::with_capacity(4);
+            let mut new_edge_visibility: Vec<bool> = Vec::with_capacity(4);
 
             for i in 0..3 {
                 let (current, uv_current, n_current) = vertices[i];
+                let current = *current;
+                let uv_current = *uv_current;
+                let n_current = *n_current;
                 let (next, uv_next, n_next) = vertices[(i + 1) % 3];
+                let next = *next;
+                let uv_next = *uv_next;
+                let n_next = *n_next;
 
                 if current[2] <= -near_plane {
                     new_vertices.push(current);
@@ -400,62 +500,58 @@ impl Batch3D {
         self.clipped_uvs.extend(new_uvs);
         self.clipped_normals.extend(new_normals);
 
-        // Perform projection
-        self.projected_vertices = view_space_vertices
-            .iter()
-            .map(|&v| {
-                let result = projection_matrix * Vec4::new(v[0], v[1], v[2], v[3]);
-                let w = result.w;
-                [
-                    ((result.x / w) * 0.5 + 0.5) * viewport_width,
-                    ((-result.y / w) * 0.5 + 0.5) * viewport_height,
-                    result.z / w,
-                    result.w,
-                ]
-            })
-            .collect();
+        // Perform projection with preallocation
+        self.projected_vertices.clear();
+        self.projected_vertices.reserve(view_space_vertices.len());
+        for &v in &view_space_vertices {
+            let result = projection_matrix * Vec4::new(v[0], v[1], v[2], v[3]);
+            let w = result.w;
+            self.projected_vertices.push([
+                ((result.x / w) * 0.5 + 0.5) * viewport_width,
+                ((-result.y / w) * 0.5 + 0.5) * viewport_height,
+                result.z / w,
+                w,
+            ]);
+        }
 
         // Precompute batch bounding box
         self.bounding_box = Some(self.calculate_bounding_box());
 
         // Update edges
-        self.edges = self
-            .clipped_indices
-            .iter()
-            .enumerate()
-            .map(|(triangle_idx, &(i0, i1, i2))| {
-                let v0 = self.projected_vertices[i0];
-                let mut v1 = self.projected_vertices[i1];
-                let mut v2 = self.projected_vertices[i2];
+        self.edges.clear();
+        self.edges.reserve(self.clipped_indices.len());
+        for (triangle_idx, &(i0, i1, i2)) in self.clipped_indices.iter().enumerate() {
+            let v0 = self.projected_vertices[i0];
+            let mut v1 = self.projected_vertices[i1];
+            let mut v2 = self.projected_vertices[i2];
 
-                let visible = match self.cull_mode {
-                    CullMode::Off => {
-                        if self.is_front_facing(&v0, &v1, &v2) {
-                            std::mem::swap(&mut v1, &mut v2);
-                        }
+            let visible = match self.cull_mode {
+                CullMode::Off => {
+                    if self.is_front_facing(&v0, &v1, &v2) {
+                        std::mem::swap(&mut v1, &mut v2);
+                    }
+                    true
+                }
+                CullMode::Front => !self.is_front_facing(&v0, &v1, &v2),
+                CullMode::Back => {
+                    if self.is_front_facing(&v0, &v1, &v2) {
+                        std::mem::swap(&mut v1, &mut v2);
                         true
+                    } else {
+                        false
                     }
-                    CullMode::Front => !self.is_front_facing(&v0, &v1, &v2),
-                    CullMode::Back => {
-                        if self.is_front_facing(&v0, &v1, &v2) {
-                            std::mem::swap(&mut v1, &mut v2);
-                            true
-                        } else {
-                            false
-                        }
-                    }
-                };
+                }
+            };
 
-                let edge_visible =
-                    edge_visibility.get(triangle_idx).copied().unwrap_or(true) && visible;
+            let edge_visible =
+                edge_visibility.get(triangle_idx).copied().unwrap_or(true) && visible;
 
-                crate::Edges::new(
-                    [[v0[0], v0[1]], [v1[0], v1[1]], [v2[0], v2[1]]],
-                    [[v1[0], v1[1]], [v2[0], v2[1]], [v0[0], v0[1]]],
-                    edge_visible,
-                )
-            })
-            .collect();
+            self.edges.push(crate::Edges::new(
+                [[v0[0], v0[1]], [v1[0], v1[1]], [v2[0], v2[1]]],
+                [[v1[0], v1[1]], [v2[0], v2[1]], [v0[0], v0[1]]],
+                edge_visible,
+            ));
+        }
     }
 
     /// Returns true if the triangle faces to the front

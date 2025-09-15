@@ -3612,6 +3612,7 @@ dependencies = [
  "regex",
  "rust-embed",
  "rustc-hash 2.1.1",
+ "rusteria",
  "rustpython",
  "rustpython-vm",
  "serde",

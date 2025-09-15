@@ -5,6 +5,9 @@ use std::sync::Arc;
 
 #[derive(Clone)]
 pub struct Program {
+    /// Number of global variables
+    pub globals: usize,
+
     /// The program body
     pub body: Vec<NodeOp>,
 
@@ -21,6 +24,7 @@ pub struct Program {
 impl Program {
     pub fn new() -> Self {
         Self {
+            globals: 0,
             body: Vec::new(),
             user_functions: vec![],
             user_functions_name_map: FxHashMap::default(),

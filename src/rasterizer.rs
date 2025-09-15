@@ -1,11 +1,12 @@
 use crate::{
-    Assets, Batch2D, Batch3D, Chunk, LightType, MapMini, Material, MaterialModifier, MaterialRole,
-    Pixel, PixelSource, PrimitiveMode, Ray, RenderMode, RepeatMode, Scene, Texture, pixel_to_vec4,
+    Assets, Batch2D, Batch3D, Chunk, LightType, MapMini, Material, MaterialRole, Pixel,
+    PixelSource, PrimitiveMode, Ray, RenderMode, RepeatMode, Scene, Texture, pixel_to_vec4,
     vec4_to_pixel,
 };
 use crate::{SampleMode, ShapeFXGraph};
 use rayon::prelude::*;
-use vek::{Clamp, Mat3, Mat4, Vec2, Vec3, Vec4};
+use rusteria::Execution;
+use vek::{Mat3, Mat4, Vec2, Vec3, Vec4};
 
 use SampleMode::*;
 
@@ -16,10 +17,10 @@ pub struct BrushPreview {
     pub falloff: f32,
 }
 
-fn pow32_fast(x: f32) -> f32 {
-    // Fit on [0,1]   (max abs error ≈ 1/512)
-    ((((1.004_4 * x - 1.032_7) * x + 0.508_9) * x + 0.007_8) * x).clamp(0.0, 1.0)
-}
+// fn pow32_fast(x: f32) -> f32 {
+//     // Fit on [0,1]   (max abs error ≈ 1/512)
+//     ((((1.004_4 * x - 1.032_7) * x + 0.508_9) * x + 0.007_8) * x).clamp(0.0, 1.0)
+// }
 
 pub struct Rasterizer {
     pub render_mode: RenderMode,
@@ -67,6 +68,9 @@ pub struct Rasterizer {
 
     /// The hour of the day.Used for procedural sky and ambient.
     pub hour: f32,
+
+    /// Timer, used for shading animations
+    pub time: f32,
 
     /// Optional sun direction provided by the Sky node
     pub sun_dir: Option<Vec3<f32>>,
@@ -130,6 +134,8 @@ impl Rasterizer {
             render_miss: vec![],
 
             hour: 12.0,
+            time: 0.0,
+
             sun_dir: None,
             day_factor: 0.0,
         }
@@ -156,6 +162,12 @@ impl Rasterizer {
     /// Sets the ambient color using the builder pattern.
     pub fn ambient(mut self, ambient: Vec4<f32>) -> Self {
         self.ambient_color = Some(ambient);
+        self
+    }
+
+    /// Sets the time
+    pub fn time(mut self, time: f32) -> Self {
+        self.time = time;
         self
     }
 
@@ -230,8 +242,10 @@ impl Rasterizer {
             }
         }
 
-        // Divide the screen into tiles
-        let mut tiles = Vec::new();
+        // Divide the screen into tiles (pre-reserve to avoid reallocations)
+        let tiles_x = (width + tile_size - 1) / tile_size;
+        let tiles_y = (height + tile_size - 1) / tile_size;
+        let mut tiles = Vec::with_capacity(tiles_x * tiles_y);
         for y in (0..height).step_by(tile_size) {
             for x in (0..width).step_by(tile_size) {
                 tiles.push(TileRect {
@@ -277,6 +291,8 @@ impl Rasterizer {
                     }
                 }
 
+                let mut execution = Execution::new(0);
+
                 if self.render_mode.supports3d() {
                     // Chunks
                     for chunk in scene.chunks.values() {
@@ -289,6 +305,7 @@ impl Rasterizer {
                                 scene,
                                 assets,
                                 Some(chunk),
+                                &mut execution,
                             );
                         }
                         if let Some(terrain_chunk) = &chunk.terrain_batch3d {
@@ -300,6 +317,7 @@ impl Rasterizer {
                                 scene,
                                 assets,
                                 Some(chunk),
+                                &mut execution,
                             );
                         }
                     }
@@ -314,6 +332,7 @@ impl Rasterizer {
                             scene,
                             assets,
                             None,
+                            &mut execution,
                         );
                     }
 
@@ -327,6 +346,7 @@ impl Rasterizer {
                             scene,
                             assets,
                             None,
+                            &mut execution,
                         );
                     }
 
@@ -484,34 +504,26 @@ impl Rasterizer {
                             let uv2 = batch.uvs[i2];
 
                             // Compute bounding box of the triangle
-                            let min_x = [v0[0], v1[0], v2[0]]
-                                .iter()
-                                .cloned()
-                                .fold(f32::INFINITY, f32::min)
-                                .floor()
-                                .max(tile.x as f32)
-                                as usize;
-                            let max_x = [v0[0], v1[0], v2[0]]
-                                .iter()
-                                .cloned()
-                                .fold(f32::NEG_INFINITY, f32::max)
-                                .ceil()
-                                .min((tile.x + tile.width) as f32)
-                                as usize;
-                            let min_y = [v0[1], v1[1], v2[1]]
-                                .iter()
-                                .cloned()
-                                .fold(f32::INFINITY, f32::min)
-                                .floor()
-                                .max(tile.y as f32)
-                                as usize;
-                            let max_y = [v0[1], v1[1], v2[1]]
-                                .iter()
-                                .cloned()
-                                .fold(f32::NEG_INFINITY, f32::max)
-                                .ceil()
-                                .min((tile.y + tile.height) as f32)
-                                as usize;
+                            let (min_xf, max_xf) = {
+                                let ax = v0[0];
+                                let bx = v1[0];
+                                let cx = v2[0];
+                                let minx = ax.min(bx.min(cx));
+                                let maxx = ax.max(bx.max(cx));
+                                (minx, maxx)
+                            };
+                            let (min_yf, max_yf) = {
+                                let ay = v0[1];
+                                let by = v1[1];
+                                let cy = v2[1];
+                                let miny = ay.min(by.min(cy));
+                                let maxy = ay.max(by.max(cy));
+                                (miny, maxy)
+                            };
+                            let min_x = min_xf.floor().max(tile.x as f32) as usize;
+                            let max_x = max_xf.ceil().min((tile.x + tile.width) as f32) as usize;
+                            let min_y = min_yf.floor().max(tile.y as f32) as usize;
+                            let max_y = max_yf.ceil().min((tile.y + tile.height) as f32) as usize;
 
                             // Rasterize the triangle within its bounding box
                             for ty in min_y..max_y {
@@ -773,7 +785,6 @@ impl Rasterizer {
                             );
                         }
                     }
-
                     PrimitiveMode::LineLoop => {
                         for i in 0..batch.projected_vertices.len() {
                             let p0 = batch.projected_vertices[i];
@@ -810,6 +821,7 @@ impl Rasterizer {
         scene: &Scene,
         assets: &Assets,
         chunk: Option<&Chunk>,
+        execution: &mut Execution,
     ) {
         // Bounding box check for the tile with the batch bbox
         if let Some(bbox) = batch.bounding_box {
@@ -835,34 +847,26 @@ impl Rasterizer {
                             let uv2 = batch.clipped_uvs[i2];
 
                             // Compute bounding box of the triangle
-                            let min_x = [v0[0], v1[0], v2[0]]
-                                .iter()
-                                .cloned()
-                                .fold(f32::INFINITY, f32::min)
-                                .floor()
-                                .max(tile.x as f32)
-                                as usize;
-                            let max_x = [v0[0], v1[0], v2[0]]
-                                .iter()
-                                .cloned()
-                                .fold(f32::NEG_INFINITY, f32::max)
-                                .ceil()
-                                .min((tile.x + tile.width) as f32)
-                                as usize;
-                            let min_y = [v0[1], v1[1], v2[1]]
-                                .iter()
-                                .cloned()
-                                .fold(f32::INFINITY, f32::min)
-                                .floor()
-                                .max(tile.y as f32)
-                                as usize;
-                            let max_y = [v0[1], v1[1], v2[1]]
-                                .iter()
-                                .cloned()
-                                .fold(f32::NEG_INFINITY, f32::max)
-                                .ceil()
-                                .min((tile.y + tile.height) as f32)
-                                as usize;
+                            let (min_xf, max_xf) = {
+                                let ax = v0[0];
+                                let bx = v1[0];
+                                let cx = v2[0];
+                                let minx = ax.min(bx.min(cx));
+                                let maxx = ax.max(bx.max(cx));
+                                (minx, maxx)
+                            };
+                            let (min_yf, max_yf) = {
+                                let ay = v0[1];
+                                let by = v1[1];
+                                let cy = v2[1];
+                                let miny = ay.min(by.min(cy));
+                                let maxy = ay.max(by.max(cy));
+                                (miny, maxy)
+                            };
+                            let min_x = min_xf.floor().max(tile.x as f32) as usize;
+                            let max_x = max_xf.ceil().min((tile.x + tile.width) as f32) as usize;
+                            let min_y = min_yf.floor().max(tile.y as f32) as usize;
+                            let max_y = max_yf.ceil().min((tile.y + tile.height) as f32) as usize;
 
                             // Rasterize the triangle within its bounding box
                             for ty in min_y..max_y {
@@ -904,9 +908,7 @@ impl Rasterizer {
                                             let world = self.screen_to_world(p[0], p[1], z);
                                             let world_2d = Vec2::new(world.x, world.z);
 
-                                            let (mut texel, material, is_terrain) = match batch
-                                                .source
-                                            {
+                                            let (mut texel, _is_terrain) = match batch.source {
                                                 PixelSource::StaticTileIndex(index) => {
                                                     let textile = &assets.tile_list[index as usize];
                                                     let index = scene.animation_frame
@@ -918,7 +920,6 @@ impl Rasterizer {
                                                             self.sample_mode,
                                                             batch.repeat_mode,
                                                         ),
-                                                        batch.material.clone(),
                                                         false,
                                                     )
                                                 }
@@ -934,11 +935,10 @@ impl Rasterizer {
                                                             self.sample_mode,
                                                             batch.repeat_mode,
                                                         ),
-                                                        batch.material.clone(),
                                                         false,
                                                     )
                                                 }
-                                                PixelSource::Pixel(col) => (col, None, false),
+                                                PixelSource::Pixel(col) => (col, false),
                                                 PixelSource::EntityTile(id, index) => {
                                                     if let Some(entity_sequences) =
                                                         assets.entity_tiles.get(&id)
@@ -955,14 +955,13 @@ impl Rasterizer {
                                                                     self.sample_mode,
                                                                     batch.repeat_mode,
                                                                 ),
-                                                                batch.material.clone(),
                                                                 false,
                                                             )
                                                         } else {
-                                                            ([0, 0, 0, 0], None, false)
+                                                            ([0, 0, 0, 0], false)
                                                         }
                                                     } else {
-                                                        ([0, 0, 0, 0], None, false)
+                                                        ([0, 0, 0, 0], false)
                                                     }
                                                 }
                                                 PixelSource::ItemTile(id, index) => {
@@ -981,14 +980,13 @@ impl Rasterizer {
                                                                     self.sample_mode,
                                                                     batch.repeat_mode,
                                                                 ),
-                                                                batch.material.clone(),
                                                                 false,
                                                             )
                                                         } else {
-                                                            ([0, 0, 0, 0], None, false)
+                                                            ([0, 0, 0, 0], false)
                                                         }
                                                     } else {
-                                                        ([0, 0, 0, 0], None, false)
+                                                        ([0, 0, 0, 0], false)
                                                     }
                                                 }
                                                 PixelSource::Terrain => {
@@ -1026,24 +1024,15 @@ impl Rasterizer {
                                                                 }
                                                             }
                                                         }
-                                                        (
-                                                            texel,
-                                                            Some(Material::new(
-                                                                MaterialRole::Glossy,
-                                                                MaterialModifier::InvSaturation,
-                                                                1.0,
-                                                                0.0,
-                                                            )),
-                                                            true,
-                                                        )
+                                                        (texel, true)
                                                     } else {
-                                                        ([255, 0, 0, 255], None, false)
+                                                        ([255, 0, 0, 255], false)
                                                     }
                                                 }
-                                                _ => ([0, 0, 0, 0], None, false),
+                                                _ => ([0, 0, 0, 0], false),
                                             };
 
-                                            let normal = if !batch.normals.is_empty() {
+                                            execution.normal = if !batch.normals.is_empty() {
                                                 let n0 = batch.clipped_normals[i0];
                                                 let n1 = batch.clipped_normals[i1];
                                                 let n2 = batch.clipped_normals[i2];
@@ -1068,12 +1057,41 @@ impl Rasterizer {
                                                     normal = -normal;
                                                 }
 
-                                                Some(normal)
+                                                normal
                                             } else {
-                                                None
+                                                Vec3::zero()
                                             };
 
-                                            let mut color = pixel_to_vec4(&texel);
+                                            // Execute the batch shader (if any)
+                                            if let Some(shader_index) = batch.shader {
+                                                if let Some(program) =
+                                                    assets.shaders.get(shader_index)
+                                                {
+                                                    if let Some(sh) = program.shade_index {
+                                                        let mut color = pixel_to_vec4(&texel);
+
+                                                        execution.uv.x = interpolated_u;
+                                                        execution.uv.y = interpolated_v;
+                                                        execution.input.x = color.x;
+                                                        execution.input.y = color.y;
+                                                        execution.input.z = color.z;
+                                                        execution.hitpoint = world;
+                                                        execution.time.x = self.time;
+
+                                                        execution.reset(program.globals);
+                                                        let rc = execution
+                                                            .execute_function_no_args(sh, program);
+
+                                                        color.x = rc.x;
+                                                        color.y = rc.y;
+                                                        color.z = rc.z;
+
+                                                        texel = vec4_to_pixel(&color);
+                                                    }
+                                                }
+                                            }
+
+                                            /*
                                             let mut specular_weight = 0.0;
                                             if let Some(material) = &material {
                                                 specular_weight = self.apply_material(
@@ -1225,7 +1243,7 @@ impl Rasterizer {
                                                 texel[2] = conv.z;
                                             } else {
                                                 texel = vec4_to_pixel(&color);
-                                            }
+                                            }*/
 
                                             // ---
 
