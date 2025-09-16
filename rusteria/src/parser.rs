@@ -146,9 +146,15 @@ impl Parser {
             }
         }
 
-        let mut initializer = None;
+        let initializer;
         if self.match_token(vec![TokenType::Equal]) {
             initializer = Some(self.expression()?);
+        } else {
+            return Err(ParseError::new(
+                "Expected '=' after variable name",
+                line,
+                &self.path,
+            ));
         }
 
         let init = if let Some(i) = initializer {
@@ -701,16 +707,16 @@ impl Parser {
             line,
         )?;
 
-        let swizzle = vec![];
+        let mut swizzle = vec![];
         let field_path = vec![];
-        /*
         if self.check(TokenType::Dot) {
             if self.is_swizzle_valid_at_current() {
                 swizzle = self.get_swizzle_at_current();
-            } else {
-                field_path = self.get_field_path_at_current();
             }
-        }*/
+            // else {
+            //     field_path = self.get_field_path_at_current();
+            // }
+        }
 
         Ok(Expr::FunctionCall(
             Box::new(callee),

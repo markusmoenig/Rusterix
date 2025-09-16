@@ -729,7 +729,7 @@ impl Visitor for CompileVisitor {
     fn func_call(
         &mut self,
         callee: &Expr,
-        _swizzle: &[u8],
+        swizzle: &[u8],
         _field_path: &[String],
         args: &[Box<Expr>],
         loc: &Location,
@@ -744,6 +744,9 @@ impl Visitor for CompileVisitor {
                         _ = arg.accept(self, ctx)?;
                     }
                     ctx.emit(func.op.clone());
+                    if !swizzle.is_empty() {
+                        ctx.emit(NodeOp::GetComponents(swizzle.to_vec()));
+                    }
                 } else {
                     return Err(RuntimeError::new(
                         format!(
@@ -778,6 +781,9 @@ impl Visitor for CompileVisitor {
                     total_locals as u8,
                     func_index,
                 ));
+                if !swizzle.is_empty() {
+                    ctx.emit(NodeOp::GetComponents(swizzle.to_vec()));
+                }
             } else {
                 return Err(RuntimeError::new(
                     format!("Unknown function '{}'", name),

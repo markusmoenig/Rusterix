@@ -62,7 +62,7 @@ impl TheTrait for Cube {
                 let t = time * 0.0;
 
                 // Move and scale domain; center the rings roughly in the middle of each face.
-                let uv2 = uv / 3.0;// - vec2(1.5);
+                let uv2 = uv / 3.0 - vec2(1.5);
 
                 // fBm turbulence (zero-mean) to warp the rings
                 let n1 = sample(uv2 + vec2(t, 0.0), "fbm_perlin");   // [0,1]
