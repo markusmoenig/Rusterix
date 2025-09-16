@@ -1,6 +1,6 @@
 use vek::Vec3;
 
-use crate::textures::patterns::pattern;
+use crate::textures::patterns::pattern_safe;
 use crate::{NodeOp, Program, Value};
 
 #[derive(Clone)]
@@ -474,11 +474,15 @@ impl Execution {
                     self.stack.push(self.time);
                 }
                 NodeOp::Sample => {
+                    let b = self.stack.pop().unwrap();
                     let a = self.stack.pop().unwrap();
-                    let tex = pattern(1);
-                    let rc = tex.sample(a);
-                    // self.stack.push(tex.sample(a));
-                    self.stack.push(tex.sample(rc));
+                    if let Some(tex) = pattern_safe(b.x as usize) {
+                        let rc = tex.sample(a);
+                        // self.stack.push(tex.sample(a));
+                        self.stack.push(tex.sample(rc));
+                    } else {
+                        self.stack.push(Vec3::zero());
+                    }
                 }
             }
         }
@@ -504,6 +508,8 @@ impl Execution {
         self.return_value = None;
 
         self.locals.resize(program.shade_locals, Value::zero());
+
+        // println!("{:?}", &program.user_functions[index]);
 
         self.execute(&program.user_functions[index], program);
 

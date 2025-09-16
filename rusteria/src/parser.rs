@@ -1,3 +1,4 @@
+use crate::textures::patterns::PatternKind;
 use crate::zero_expr_float;
 use crate::{
     ASTValue, AssignmentOperator, BinaryOperator, ComparisonOperator, EqualityOperator, Expr,
@@ -77,6 +78,8 @@ impl Parser {
         source: String,
         path: PathBuf,
     ) -> Result<PreModule, ParseError> {
+        // Preprocess: replace pattern name strings with numeric ids before scanning
+        let source = self.preprocess_pattern_strings(&source);
         // Extract all tokens from the scanner
         let mut scanner = Scanner::new(source.clone());
 
@@ -1193,5 +1196,49 @@ impl Parser {
             line,
             path: self.path.clone(),
         }
+    }
+
+    /// Replace string literals that are pattern names with their numeric ids before scanning.
+    /// Example: "perlin" -> 9 (no quotes) to allow sample() to accept ids without string support.
+    fn preprocess_pattern_strings(&self, src: &str) -> String {
+        let mut out = String::with_capacity(src.len());
+        let mut chars = src.chars().peekable();
+        while let Some(ch) = chars.next() {
+            if ch == '"' {
+                // beginning of string literal
+                let mut s = String::new();
+                let mut escaped = false;
+                while let Some(&c) = chars.peek() {
+                    chars.next();
+                    if escaped {
+                        // keep escape sequence in case we don't replace
+                        s.push('\\');
+                        s.push(c);
+                        escaped = false;
+                        continue;
+                    }
+                    if c == '\\' {
+                        escaped = true;
+                        continue;
+                    }
+                    if c == '"' {
+                        break;
+                    }
+                    s.push(c);
+                }
+                // If s (unescaped content) matches a known pattern name, replace with its index (no quotes)
+                if let Some(kind) = PatternKind::from_name(&s) {
+                    out.push_str(&kind.to_index().to_string());
+                } else {
+                    // keep original quotes and content if not a pattern name
+                    out.push('"');
+                    out.push_str(&s);
+                    out.push('"');
+                }
+            } else {
+                out.push(ch);
+            }
+        }
+        out
     }
 }

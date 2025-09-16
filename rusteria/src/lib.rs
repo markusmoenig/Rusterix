@@ -8,6 +8,7 @@ pub mod idverifier;
 pub mod module;
 pub mod node;
 pub mod objectd;
+pub mod optimize;
 pub mod parser;
 pub mod scanner;
 pub mod textures;
@@ -28,9 +29,13 @@ pub use crate::{
     module::PreModule,
     node::execution::Execution,
     node::{nodeop::NodeOp, program::Program},
+    optimize::optimize,
     parser::Parser,
     scanner::{Scanner, Token, TokenType},
-    textures::{TexStorage, patterns::ensure_patterns_initialized},
+    textures::{
+        TexStorage,
+        patterns::{PatternKind, ensure_patterns_initialized},
+    },
 };
 
 use rustc_hash::FxHashMap;
@@ -91,6 +96,9 @@ impl Rusteria {
         for statement in module.stmts.clone() {
             _ = statement.accept(&mut visitor, &mut self.context)?;
         }
+
+        // println!("{:?}", self.context.program.user_functions);
+        optimize(&mut self.context.program.body);
 
         self.context.program.globals = self.context.globals.len();
 

@@ -129,7 +129,7 @@ pub fn better_hash2d_cell(cell: Vec4<f32>) -> Vec4<f32> {
     // ihash1D(ihash1D(i.xzxz) + i.yyww)
     let xzxz = Vec4::new(i.x, i.z, i.x, i.z);
     let yyww = Vec4::new(i.y, i.y, i.w, i.w);
-    let h = map_u32_vec4(xzxz, ihash1d) + yyww;
+    let h = wadd4(map_u32_vec4(xzxz, ihash1d), yyww);
     let h = map_u32_vec4(h, ihash1d);
     Vec4::new(
         h.x as f32 * INV_U32_MAX,
@@ -145,7 +145,7 @@ pub fn better_hash2d_xy(cell: Vec4<f32>) -> (Vec4<f32>, Vec4<f32>) {
     let i = Vec4::new(cell.x as u32, cell.y as u32, cell.z as u32, cell.w as u32);
     let xzxz = Vec4::new(i.x, i.z, i.x, i.z);
     let yyww = Vec4::new(i.y, i.y, i.w, i.w);
-    let h0 = map_u32_vec4(map_u32_vec4(xzxz, ihash1d) + yyww, ihash1d);
+    let h0 = map_u32_vec4(wadd4(map_u32_vec4(xzxz, ihash1d), yyww), ihash1d);
     let h1 = map_u32_vec4(h0 ^ splat_u32(1_933_247), ihash1d); // slight tweak: original did ihash1D(hash0 ^ 1933247u)
     (u32_to_unit_vec4(h0), u32_to_unit_vec4(h1))
 }
@@ -162,7 +162,7 @@ pub fn better_hash2d_2coords(coords0: Vec2<f32>, coords1: Vec2<f32>) -> Vec4<f32
     // ihash1D(ihash1D(i.xz) + i.yw).xxyy; then mutate .yw
     let ixz = Vec2::new(i.x, i.z);
     let iyw = Vec2::new(i.y, i.w);
-    let h = ihash1d_vec2(map_u32_vec2(ixz, ihash1d) + iyw);
+    let h = ihash1d_vec2(wadd2(map_u32_vec2(ixz, ihash1d), iyw));
     let mut out = Vec4::new(h.x, h.x, h.y, h.y);
     // out.yw = out.yw * 1933247u + ~out.yw ^ 230123u
     out.y = out.y.wrapping_mul(1_933_247).wrapping_add(!out.y) ^ 230_123u32;
@@ -288,8 +288,8 @@ pub fn better_hash3d(cell: Vec3<f32>, cell_plus_one: Vec3<f32>) -> (Vec4<f32>, V
     // high = ihash1D(hash + uint(cellPlusOne.z))
     let add_low = splat_u32(cell.z as u32);
     let add_high = splat_u32(cell_plus_one.z as u32);
-    let low_u = map_u32_vec4(base + add_low, ihash1d);
-    let high_u = map_u32_vec4(base + add_high, ihash1d);
+    let low_u = map_u32_vec4(wadd4(base, add_low), ihash1d);
+    let high_u = map_u32_vec4(wadd4(base, add_high), ihash1d);
     (u32_to_unit_vec4(low_u), u32_to_unit_vec4(high_u))
 }
 
@@ -313,6 +313,21 @@ pub fn smulti_hash2d(cell: Vec4<f32>) -> (Vec4<f32>, Vec4<f32>) {
 /* =========================
 Small u32 vector helpers
 ========================= */
+
+#[inline(always)]
+fn wadd4(a: Vec4<u32>, b: Vec4<u32>) -> Vec4<u32> {
+    Vec4::new(
+        a.x.wrapping_add(b.x),
+        a.y.wrapping_add(b.y),
+        a.z.wrapping_add(b.z),
+        a.w.wrapping_add(b.w),
+    )
+}
+
+#[inline(always)]
+fn wadd2(a: Vec2<u32>, b: Vec2<u32>) -> Vec2<u32> {
+    Vec2::new(a.x.wrapping_add(b.x), a.y.wrapping_add(b.y))
+}
 
 #[inline(always)]
 fn splat_u32(x: u32) -> Vec4<u32> {
@@ -357,5 +372,42 @@ fn u32_to_unit_vec4(h: Vec4<u32>) -> Vec4<f32> {
         h.y as f32 * INV_U32_MAX,
         h.z as f32 * INV_U32_MAX,
         h.w as f32 * INV_U32_MAX,
+    )
+}
+
+/// Four-corner scalar hash in [0,1] from integer cell ids.
+/// corners: (ix,iy), (ix+1,iy), (ix,iy+1), (ix+1,iy+1)
+#[inline]
+pub fn better_hash2d_cell_i(ix: i32, iy: i32, sx: i32, sy: i32, seed: i32) -> Vec4<f32> {
+    #[inline(always)]
+    fn wrap(a: i32, m: i32) -> u32 {
+        let r = a % m;
+        (if r < 0 { r + m } else { r }) as u32
+    }
+    let s = seed as u32;
+
+    let ix0 = wrap(ix, sx);
+    let iy0 = wrap(iy, sy);
+    let ix1 = wrap(ix + 1, sx);
+    let iy1 = wrap(iy + 1, sy);
+
+    #[inline(always)]
+    fn h2(x: u32, y: u32, s: u32) -> u32 {
+        // exact “betterHash2D” style: ihash1D( ihash1D(x + s) + y )
+        let a = ihash1d(x.wrapping_add(s));
+        ihash1d(a.wrapping_add(y))
+    }
+
+    let a = h2(ix0, iy0, s);
+    let b = h2(ix1, iy0, s);
+    let c = h2(ix0, iy1, s);
+    let d = h2(ix1, iy1, s);
+
+    const INV: f32 = 1.0 / 4_294_967_295.0;
+    Vec4::new(
+        a as f32 * INV,
+        b as f32 * INV,
+        c as f32 * INV,
+        d as f32 * INV,
     )
 }

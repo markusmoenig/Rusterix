@@ -2,7 +2,7 @@ use crate::objectd::FunctionD;
 use crate::{
     ASTValue, AssignmentOperator, BinaryOperator, ComparisonOperator, Context, Environment,
     EqualityOperator, Expr, Location, LogicalOperator, NodeOp, PreModule, RuntimeError, Stmt,
-    UnaryOperator, Value, Visitor,
+    UnaryOperator, Value, Visitor, optimize,
 };
 use indexmap::{IndexMap, IndexSet};
 use rustc_hash::FxHashMap;
@@ -244,7 +244,7 @@ impl Visitor for CompileVisitor {
             "sample".to_string(),
             ASTFunction {
                 name: "sample".to_string(),
-                arguments: 1,
+                arguments: 2,
                 op: NodeOp::Sample,
             },
         );
@@ -564,10 +564,19 @@ impl Visitor for CompileVisitor {
             }
         } else if self.functions.contains_key(&name) {
             rc = ASTValue::Function(name.clone(), vec![], Box::new(ASTValue::None));
+            if !swizzle.is_empty() {
+                ctx.emit(NodeOp::GetComponents(swizzle.to_vec()));
+            }
         } else if self.user_functions.contains_key(&name) {
             rc = ASTValue::Function(name.clone(), vec![], Box::new(ASTValue::None));
+            if !swizzle.is_empty() {
+                ctx.emit(NodeOp::GetComponents(swizzle.to_vec()));
+            }
         } else if let Some(index) = self.locals.get_index_of(&name) {
             ctx.emit(NodeOp::LoadLocal(index));
+            if !swizzle.is_empty() {
+                ctx.emit(NodeOp::GetComponents(swizzle.to_vec()));
+            }
         } else {
             if let Some(index) = ctx.globals.get(&name) {
                 ctx.emit(NodeOp::LoadGlobal(*index as usize));
@@ -838,7 +847,8 @@ impl Visitor for CompileVisitor {
             .insert(objectd.name.clone(), (objectd.arity, cp.clone(), index));
 
         objectd.block.accept(self, ctx)?;
-        if let Some(codes) = ctx.take_last_custom_target() {
+        if let Some(mut codes) = ctx.take_last_custom_target() {
+            optimize(&mut codes);
             ctx.program
                 .user_functions
                 .push(Arc::from(codes.into_boxed_slice()));

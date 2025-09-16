@@ -57,12 +57,52 @@ impl TheTrait for Cube {
         assets.add_shader(
             r#"
             fn shade() {
-                // let t = abs(sin(time)) * 0.5 + 0.5;
-                // let radius = 0.2 + 0.45 * t;
-                // return mix(1, input, smoothstep(0.0, 0.002, length(uv - 0.5) - radius));
-                let p = sample(uv / 2.0 + vec2(time / 10.0, 0.0));
-                //return mix(1, input, clamp(p.x, 0, 1));
-                return p;
+                // Procedural wood: concentric growth rings warped by turbulence + fine grain.
+                // Only the .x channel of textures is used (value channel).
+                let t = time * 0.0;
+
+                // Move and scale domain; center the rings roughly in the middle of each face.
+                let uv2 = uv / 3.0;// - vec2(1.5);
+
+                // fBm turbulence (zero-mean) to warp the rings
+                let n1 = sample(uv2 + vec2(t, 0.0), "fbm_perlin");   // [0,1]
+                let n2 = sample(uv2 * 2.0 + vec2(0.0, t*0.7), "fbm_perlin");
+                let turb = 0.65 * n1 + 0.35 * n2;                       // [0,1]
+                let turb_zm = (turb - 0.5) * 2.0;                       // [-1,1]
+
+                // Radial distance from center (log cross-section look)
+                let r = length(uv2);
+
+                // Warp rings by turbulence (phase modulation)
+                let ring_freq = 10.0;            // number of rings
+                let ring_warp = 0.22;            // strength of warp
+                let rings = r + ring_warp * turb_zm;
+                let waves = sin(rings * ring_freq);
+
+                // Map sine to ring mask; sharpen valleys to make rings thinner
+                let rings_mask = pow(1.0 - abs(waves), 3.0);
+
+                // Fine longitudinal grain: high-frequency value noise stretched along X
+                let grain_uv = vec2(uv2.x * 8.0, uv2.y * 40.0);
+                let g = sample(grain_uv + vec2(0.0, t*0.5), "value");
+                let grain = (g - 0.5) * 2.0;     // zero-mean
+
+                // Base wood hues
+                let base_light = vec3(0.72, 0.52, 0.32);
+                let base_dark  = vec3(0.45, 0.30, 0.16);
+
+                // Mix light/dark by ring mask
+                let col = mix(base_light, base_dark, rings_mask);
+
+                // Apply subtle anisotropic grain as a multiplicative zero-mean factor
+                col = col * (1.0 + 0.06 * grain);
+
+                // Optional pore streaks (cathedrals): directional bands along Y with slight turbulence
+                let band = uv2.y + 0.15 * turb_zm;
+                let cathedral = pow(1.0 - abs(sin(band * 6.0)), 4.0);
+                col = mix(col, col * 0.9, cathedral * 0.2);
+
+                return col;
             }
         "#,
         );

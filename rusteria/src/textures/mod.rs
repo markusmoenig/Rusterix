@@ -4,6 +4,8 @@ pub mod multi_hash;
 pub mod noise;
 pub mod patterns;
 
+// Patterns taken from https://github.com/tuxalin/procedural-tileable-shaders
+
 /// Global texture size (square).
 pub const TEX_SIZE: usize = 512;
 
