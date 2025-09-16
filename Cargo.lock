@@ -3582,6 +3582,7 @@ version = "0.1.0"
 dependencies = [
  "image",
  "indexmap",
+ "once_cell",
  "rayon",
  "rustc-hash 2.1.1",
  "vek",
@@ -4447,7 +4448,6 @@ checksum = "c13547615a44dc9c452a8a534638acdf07120d4b6847c8178705da06306a3057"
 [[package]]
 name = "theframework"
 version = "0.1.40"
-source = "git+https://github.com/markusmoenig/theframework#1ab19da240a3eb6ea5653412a254e0339e912f1b"
 dependencies = [
  "arboard",
  "console_error_panic_hook",

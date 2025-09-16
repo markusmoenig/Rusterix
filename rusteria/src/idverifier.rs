@@ -57,12 +57,8 @@ impl IdVerifier {
             "step",
             "exp",
             "log",
-            "white_noise",
-            "value_noise",
-            "smooth_union",
-            "point_at",
             "print",
-            "slope",
+            "sample",
         ];
 
         for func in inbuilt_functions {

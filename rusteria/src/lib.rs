@@ -10,6 +10,7 @@ pub mod node;
 pub mod objectd;
 pub mod parser;
 pub mod scanner;
+pub mod textures;
 
 pub type Value = vek::Vec3<f32>;
 
@@ -29,6 +30,7 @@ pub use crate::{
     node::{nodeop::NodeOp, program::Program},
     parser::Parser,
     scanner::{Scanner, Token, TokenType},
+    textures::{TexStorage, patterns::ensure_patterns_initialized},
 };
 
 use rustc_hash::FxHashMap;

@@ -13,3 +13,4 @@ indexmap = "2.10.0"
 rayon = "1.11.0"
 vek = { version = "0.17.1", default-features = true }
 image = { version = "0.25", features = ["png"] }
+once_cell = "1.21.3"

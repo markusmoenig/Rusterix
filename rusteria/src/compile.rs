@@ -240,6 +240,14 @@ impl Visitor for CompileVisitor {
                 op: NodeOp::Print,
             },
         );
+        functions.insert(
+            "sample".to_string(),
+            ASTFunction {
+                name: "sample".to_string(),
+                arguments: 1,
+                op: NodeOp::Sample,
+            },
+        );
 
         Self {
             environment: Environment::default(),

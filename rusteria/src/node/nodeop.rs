@@ -70,4 +70,5 @@ pub enum NodeOp {
     Normal,
     Hitpoint,
     Time,
+    Sample,
 }

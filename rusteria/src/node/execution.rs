@@ -1,5 +1,6 @@
-use vek::{Clamp, Vec3};
+use vek::Vec3;
 
+use crate::textures::patterns::pattern;
 use crate::{NodeOp, Program, Value};
 
 #[derive(Clone)]
@@ -256,12 +257,10 @@ impl Execution {
                 }
                 NodeOp::Sin => {
                     let a = self.stack.pop().unwrap();
-                    // self.stack.push(a.map(|x| x.sin()));
                     self.stack.push(Vec3::broadcast(a.x.sin()));
                 }
                 NodeOp::Cos => {
                     let a = self.stack.pop().unwrap();
-                    // self.stack.push(a.map(|x| x.cos()));
                     self.stack.push(Vec3::broadcast(a.x.cos()));
                 }
                 NodeOp::Normalize => {
@@ -275,17 +274,16 @@ impl Execution {
                 }
                 NodeOp::Tan => {
                     let a = self.stack.pop().unwrap();
-                    self.stack.push(a.map(|x| x.tan()));
+                    self.stack.push(Vec3::broadcast(a.x.tan()));
                 }
                 NodeOp::Atan => {
                     let a = self.stack.pop().unwrap();
-                    self.stack.push(a.map(|x| x.atan()));
+                    self.stack.push(Vec3::broadcast(a.x.atan()));
                 }
                 NodeOp::Atan2 => {
                     let b = self.stack.pop().unwrap();
                     let a = self.stack.pop().unwrap();
-                    self.stack
-                        .push(Value::new(a.x.atan2(b.x), a.y.atan2(b.y), a.z.atan2(b.z)));
+                    self.stack.push(Value::broadcast(a.x.atan2(b.x)));
                 }
                 NodeOp::Dot => {
                     let b = self.stack.pop().unwrap();
@@ -345,9 +343,20 @@ impl Execution {
                     let c: Value = self.stack.pop().unwrap(); // x
                     let b: Value = self.stack.pop().unwrap(); // edge1
                     let a = self.stack.pop().unwrap(); // edge0
-                    let t = ((c - a) / (b - a)).clamped(0.0, 1.0); //.map(|x| x.clamp(0.0, 1.0));
-                    self.stack
-                        .push(t * t * (Value::broadcast(3.0) - Value::broadcast(2.0) * t));
+
+                    let denom = b.x - a.x;
+                    let mut t = if denom != 0.0 {
+                        (c.x - a.x) / denom
+                    } else {
+                        0.0
+                    };
+                    if t < 0.0 {
+                        t = 0.0;
+                    } else if t > 1.0 {
+                        t = 1.0;
+                    }
+                    let s = t * t * (3.0 - 2.0 * t);
+                    self.stack.push(Value::broadcast(s));
                 }
                 NodeOp::Step => {
                     // step(edge, x): returns 0.0 if x < edge else 1.0 (per component)
@@ -463,6 +472,13 @@ impl Execution {
                 }
                 NodeOp::Time => {
                     self.stack.push(self.time);
+                }
+                NodeOp::Sample => {
+                    let a = self.stack.pop().unwrap();
+                    let tex = pattern(1);
+                    let rc = tex.sample(a);
+                    // self.stack.push(tex.sample(a));
+                    self.stack.push(tex.sample(rc));
                 }
             }
         }

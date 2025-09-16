@@ -57,9 +57,12 @@ impl TheTrait for Cube {
         assets.add_shader(
             r#"
             fn shade() {
-                let t = abs(sin(time)) * 0.5 + 0.5;
-                let radius = 0.2 + 0.45 * t;
-                return mix(1, input, smoothstep(0.0, 0.002, length(uv - 0.5) - radius));            
+                // let t = abs(sin(time)) * 0.5 + 0.5;
+                // let radius = 0.2 + 0.45 * t;
+                // return mix(1, input, smoothstep(0.0, 0.002, length(uv - 0.5) - radius));
+                let p = sample(uv / 2.0 + vec2(time / 10.0, 0.0));
+                //return mix(1, input, clamp(p.x, 0, 1));
+                return p;
             }
         "#,
         );
