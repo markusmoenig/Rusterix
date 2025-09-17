@@ -8,7 +8,7 @@ repository = "https://github.com/markusmoenig/Rusterix"
 keywords = ["software", "rendering", "graphics", "game", "engine"]
 
 [workspace]
-members = [".", "rusteria", "rsta"]
+members = [".", "rusteria", "rsia"]
 
 [dependencies]
 # rustpython = { version = "0.4.0", features = [

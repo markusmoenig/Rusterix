@@ -3452,7 +3452,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a457e416a0f90d246a4c3288bd7a25b2304ca727f253f95be383dd17af56be8f"
 
 [[package]]
-name = "rsta"
+name = "rsia"
 version = "0.1.0"
 dependencies = [
  "clap",
@@ -4448,6 +4448,7 @@ checksum = "c13547615a44dc9c452a8a534638acdf07120d4b6847c8178705da06306a3057"
 [[package]]
 name = "theframework"
 version = "0.1.40"
+source = "git+https://github.com/markusmoenig/theframework#6a55d36135616133bc5b2c464d3a99bc7f548b42"
 dependencies = [
  "arboard",
  "console_error_panic_hook",

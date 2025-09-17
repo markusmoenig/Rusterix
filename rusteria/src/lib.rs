@@ -10,6 +10,7 @@ pub mod node;
 pub mod objectd;
 pub mod optimize;
 pub mod parser;
+pub mod renderbuffer;
 pub mod scanner;
 pub mod textures;
 
@@ -31,6 +32,7 @@ pub use crate::{
     node::{nodeop::NodeOp, program::Program},
     optimize::optimize,
     parser::Parser,
+    renderbuffer::RenderBuffer,
     scanner::{Scanner, Token, TokenType},
     textures::{
         TexStorage,
@@ -38,8 +40,10 @@ pub use crate::{
     },
 };
 
+use rayon::prelude::*;
 use rustc_hash::FxHashMap;
 use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
 
 pub struct Rusteria {
     path: PathBuf,
@@ -133,25 +137,47 @@ impl Rusteria {
         None
     }
 
-    // /// Write the image to disc.
-    // pub fn write_image(&self) {
-    //     let mut path = self.path.clone();
-    //     path.set_extension("png");
+    pub fn shade(&self, buffer: &mut Arc<Mutex<RenderBuffer>>, function_index: usize) {
+        let tile_size = (80, 80);
 
-    //     let b = self.buffer.lock().unwrap();
-    //     b.save_srgb(path.clone());
-    // }
+        let width = buffer.lock().unwrap().width;
+        let height = buffer.lock().unwrap().height;
 
-    // /// Write the image to an u array.
-    // pub fn write_image_to_array(&self) -> Vec<u8> {
-    //     let b = self.buffer.lock().unwrap();
-    //     b.to_u8_vec_gamma()
-    // }
+        let tiles = self.create_tiles(width, height, tile_size.0, tile_size.1);
+        let screen_size = vek::Vec2::new(width as f32, height as f32);
 
-    // /// Get the current time in ms.
-    // pub fn get_time(&self) -> u128 {
-    //     self.tracer.get_time()
-    // }
+        tiles.par_iter().for_each(|tile| {
+            let mut tile_buffer = RenderBuffer::new(tile.width, tile.height);
+            let mut execution = Execution::new(self.context.program.globals);
+
+            for h in 0..tile.height {
+                for w in 0..tile.width {
+                    let x = tile.x + w;
+                    let y = tile.y + h;
+
+                    if x >= width || y >= height {
+                        continue;
+                    }
+
+                    execution.uv = vek::Vec3::new(
+                        x as f32 / screen_size.x,
+                        1.0 - (y as f32 / screen_size.y),
+                        0.0,
+                    );
+
+                    let value =
+                        execution.execute_function_no_args(function_index, &self.context.program);
+
+                    tile_buffer.set(w, h, [value.x, value.y, value.z, 1.0]);
+                }
+            }
+
+            buffer
+                .lock()
+                .unwrap()
+                .accum_from(tile.x, tile.y, &tile_buffer);
+        });
+    }
 
     /// Imported paths
     pub fn imported_paths(&self) -> Vec<PathBuf> {
@@ -172,6 +198,43 @@ impl Rusteria {
             stop.as_millis()
         }
     }
+
+    /// Create the tiles for the given image size.
+    fn create_tiles(
+        &self,
+        image_width: usize,
+        image_height: usize,
+        tile_width: usize,
+        tile_height: usize,
+    ) -> Vec<Tile> {
+        let mut tiles = Vec::new();
+        let mut x = 0;
+        let mut y = 0;
+        while x < image_width && y < image_height {
+            let tile = Tile {
+                x,
+                y,
+                width: tile_width,
+                height: tile_height,
+            };
+            tiles.push(tile);
+            x += tile_width;
+            if x >= image_width {
+                x = 0;
+                y += tile_height;
+            }
+        }
+
+        tiles
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct Tile {
+    pub x: usize,
+    pub y: usize,
+    pub width: usize,
+    pub height: usize,
 }
 
 #[cfg(test)]
