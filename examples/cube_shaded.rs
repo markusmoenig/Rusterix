@@ -102,6 +102,9 @@ impl TheTrait for Cube {
                 let cathedral = pow(1.0 - abs(sin(band * 6.0)), 4.0);
                 col = mix(col, col * 0.9, cathedral * 0.2);
 
+                // let color_steps = 16.0;    
+                // col = floor(col * color_steps) / color_steps;
+
                 return col;
             }
         "#,
