@@ -93,7 +93,7 @@ impl TheTrait for Cube {
                 // Optional pore streaks (cathedrals): directional bands along Y with slight turbulence
                 let band = uv2.y + 0.15 * turb_zm;
                 let cathedral = pow(1.0 - abs(sin(band * 6.0)), 4.0);
-                color = mix(color, color * 0.9, cathedral * 0.2);
+                col = mix(col, col * 0.9, cathedral * 0.2);
 
                 // Roughness varies: pores are rougher, rings smoother
                 roughness = 0.6 + cathedral * 0.3;
