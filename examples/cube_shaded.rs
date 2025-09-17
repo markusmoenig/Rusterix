@@ -30,14 +30,7 @@ impl TheTrait for Cube {
                 Batch3D::from_box(-0.5, -0.5, -0.5, 1.0, 1.0, 1.0)
                     .source(PixelSource::StaticTileIndex(0))
                     .cull_mode(CullMode::Off)
-                    // Metallic material which is based on half of the
-                    // saturation of the pixel color
-                    .material(Material::new(
-                        MaterialRole::Metallic,
-                        MaterialModifier::Saturation,
-                        0.6,
-                        0.0,
-                    ))
+                    .ambient_color(Vec3::broadcast(0.3))
                     .shader(0)
                     .with_computed_normals(),
             ],
@@ -92,17 +85,18 @@ impl TheTrait for Cube {
                 let base_dark  = vec3(0.45, 0.30, 0.16);
 
                 // Mix light/dark by ring mask
-                let col = mix(base_light, base_dark, rings_mask);
+                color = mix(base_light, base_dark, rings_mask);
 
                 // Apply subtle anisotropic grain as a multiplicative zero-mean factor
-                col = col * (1.0 + 0.06 * grain);
+                color *= (1.0 + 0.06 * grain);
 
                 // Optional pore streaks (cathedrals): directional bands along Y with slight turbulence
                 let band = uv2.y + 0.15 * turb_zm;
                 let cathedral = pow(1.0 - abs(sin(band * 6.0)), 4.0);
-                col = mix(col, col * 0.9, cathedral * 0.2);
+                color = mix(color, color * 0.9, cathedral * 0.2);
 
-                return col;
+                // Roughness varies: pores are rougher, rings smoother
+                roughness = 0.6 + cathedral * 0.3;
             }
         "#,
         );

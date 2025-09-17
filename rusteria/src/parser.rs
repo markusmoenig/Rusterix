@@ -896,7 +896,11 @@ impl Parser {
                     }
                 }
                 if token.lexeme == "uv"
-                    || token.lexeme == "input"
+                    || token.lexeme == "color"
+                    || token.lexeme == "roughness"
+                    || token.lexeme == "metallic"
+                    || token.lexeme == "emissive"
+                    || token.lexeme == "transmission"
                     || token.lexeme == "normal"
                     || token.lexeme == "hitpoint"
                     || token.lexeme == "time"

@@ -23,8 +23,20 @@ pub struct Execution {
     /// UV
     pub uv: Value,
 
-    /// Input color
-    pub input: Value,
+    /// Input/Output color
+    pub color: Value,
+
+    /// Roughness
+    pub roughness: Value,
+
+    /// Metallic
+    pub metallic: Value,
+
+    /// Emissive
+    pub emissive: Value,
+
+    /// Transmission
+    pub transmission: Value,
 
     /// Normal
     pub normal: Value,
@@ -45,7 +57,11 @@ impl Execution {
             stack: Vec::with_capacity(8),
             return_value: None,
             uv: Vec3::zero(),
-            input: Vec3::zero(),
+            color: Vec3::zero(),
+            roughness: Vec3::broadcast(0.5),
+            metallic: Vec3::zero(),
+            emissive: Vec3::zero(),
+            transmission: Vec3::zero(),
             normal: Vec3::zero(),
             hitpoint: Vec3::zero(),
             time: Vec3::zero(),
@@ -60,7 +76,11 @@ impl Execution {
             stack: Vec::with_capacity(8),
             return_value: None,
             uv: Vec3::zero(),
-            input: Vec3::zero(),
+            color: Vec3::zero(),
+            roughness: Vec3::broadcast(0.5),
+            metallic: Vec3::zero(),
+            emissive: Vec3::zero(),
+            transmission: Vec3::zero(),
             normal: Vec3::zero(),
             hitpoint: Vec3::zero(),
             time: Vec3::zero(),
@@ -461,9 +481,6 @@ impl Execution {
                 NodeOp::UV => {
                     self.stack.push(self.uv);
                 }
-                NodeOp::Input => {
-                    self.stack.push(self.input);
-                }
                 NodeOp::Normal => {
                     self.stack.push(self.normal);
                 }
@@ -472,6 +489,36 @@ impl Execution {
                 }
                 NodeOp::Time => {
                     self.stack.push(self.time);
+                }
+                NodeOp::Color => {
+                    self.stack.push(self.color);
+                }
+                NodeOp::SetColor => {
+                    self.color = self.stack.pop().unwrap();
+                }
+                NodeOp::Roughness => {
+                    self.stack.push(self.roughness);
+                }
+                NodeOp::SetRoughness => {
+                    self.roughness = self.stack.pop().unwrap();
+                }
+                NodeOp::Metallic => {
+                    self.stack.push(self.metallic);
+                }
+                NodeOp::SetMetallic => {
+                    self.metallic = self.stack.pop().unwrap();
+                }
+                NodeOp::Emissive => {
+                    self.stack.push(self.emissive);
+                }
+                NodeOp::SetEmissive => {
+                    self.emissive = self.stack.pop().unwrap();
+                }
+                NodeOp::Transmission => {
+                    self.stack.push(self.transmission);
+                }
+                NodeOp::SetTransmission => {
+                    self.transmission = self.stack.pop().unwrap();
                 }
                 NodeOp::Sample => {
                     let b = self.stack.pop().unwrap();
@@ -500,6 +547,17 @@ impl Execution {
         }
     }
 
+    /// Execute the shading function
+    #[inline]
+    pub fn shade(&mut self, index: usize, program: &Program) {
+        // Reset state for this call
+        self.stack.truncate(0);
+        self.return_value = None;
+
+        self.locals.resize(program.shade_locals, Value::zero());
+        self.execute(&program.user_functions[index], program);
+    }
+
     /// Call a function with no arguments
     #[inline]
     pub fn execute_function_no_args(&mut self, index: usize, program: &Program) -> Value {
@@ -508,9 +566,6 @@ impl Execution {
         self.return_value = None;
 
         self.locals.resize(program.shade_locals, Value::zero());
-
-        // println!("{:?}", &program.user_functions[index]);
-
         self.execute(&program.user_functions[index], program);
 
         // Prefer an explicit return value; else top of stack; else zero

@@ -4448,7 +4448,6 @@ checksum = "c13547615a44dc9c452a8a534638acdf07120d4b6847c8178705da06306a3057"
 [[package]]
 name = "theframework"
 version = "0.1.40"
-source = "git+https://github.com/markusmoenig/theframework#6a55d36135616133bc5b2c464d3a99bc7f548b42"
 dependencies = [
  "arboard",
  "console_error_panic_hook",

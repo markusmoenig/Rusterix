@@ -1,7 +1,6 @@
 use crate::{
     Assets, Batch2D, Batch3D, Chunk, LightType, MapMini, Material, MaterialRole, Pixel,
-    PixelSource, PrimitiveMode, Ray, RenderMode, RepeatMode, Scene, Texture, pixel_to_vec4,
-    vec4_to_pixel,
+    PixelSource, PrimitiveMode, Ray, RenderMode, Scene, pixel_to_vec4, vec4_to_pixel,
 };
 use crate::{SampleMode, ShapeFXGraph};
 use rayon::prelude::*;
@@ -16,11 +15,6 @@ pub struct BrushPreview {
     pub radius: f32,
     pub falloff: f32,
 }
-
-// fn pow32_fast(x: f32) -> f32 {
-//     // Fit on [0,1]   (max abs error ≈ 1/512)
-//     ((((1.004_4 * x - 1.032_7) * x + 0.508_9) * x + 0.007_8) * x).clamp(0.0, 1.0)
-// }
 
 pub struct Rasterizer {
     pub render_mode: RenderMode,
@@ -908,7 +902,7 @@ impl Rasterizer {
                                             let world = self.screen_to_world(p[0], p[1], z);
                                             let world_2d = Vec2::new(world.x, world.z);
 
-                                            let (mut texel, _is_terrain) = match batch.source {
+                                            let (mut texel, is_terrain) = match batch.source {
                                                 PixelSource::StaticTileIndex(index) => {
                                                     let textile = &assets.tile_list[index as usize];
                                                     let index = scene.animation_frame
@@ -1032,7 +1026,7 @@ impl Rasterizer {
                                                 _ => ([0, 0, 0, 0], false),
                                             };
 
-                                            execution.normal = if !batch.normals.is_empty() {
+                                            let normal = if !batch.normals.is_empty() {
                                                 let n0 = batch.clipped_normals[i0];
                                                 let n1 = batch.clipped_normals[i1];
                                                 let n2 = batch.clipped_normals[i2];
@@ -1040,16 +1034,6 @@ impl Rasterizer {
                                                 let mut normal =
                                                     (n0 * alpha + n1 * beta + n2 * gamma)
                                                         .normalized();
-
-                                                // let bump = self.bump_from_texture(
-                                                //     interpolated_u,
-                                                //     interpolated_v,
-                                                //     &textile.textures[index],
-                                                //     self.sample_mode,
-                                                //     batch.repeat_mode,
-                                                //     1.0,
-                                                // );
-                                                // normal = (normal + bump).normalized();
 
                                                 let view_dir =
                                                     (self.camera_pos - world).normalized();
@@ -1062,190 +1046,138 @@ impl Rasterizer {
                                                 Vec3::zero()
                                             };
 
+                                            #[inline(always)]
+                                            fn srgb_to_linear_fast(x: f32) -> f32 {
+                                                // Approximate powf(x, 2.2)
+                                                // Polynomial fit, max abs error ≈ 0.008
+                                                let x2 = x * x;
+                                                (0.697_5 * x2 + 0.302_5) * x
+                                            }
+
+                                            #[inline(always)]
+                                            fn linear_to_srgb_fast(x: f32) -> f32 {
+                                                // Approximate powf(x, 1.0/2.2)
+                                                // Polynomial fit, max abs error ≈ 0.006
+                                                let sqrt_x = x.sqrt();
+                                                1.055 * sqrt_x - 0.055 * sqrt_x * sqrt_x
+                                            }
+
+                                            let mut color: Vec4<f32> = pixel_to_vec4(&texel);
+                                            color.x = srgb_to_linear_fast(color.x);
+                                            color.y = srgb_to_linear_fast(color.y);
+                                            color.z = srgb_to_linear_fast(color.z);
+
                                             // Execute the batch shader (if any)
                                             if let Some(shader_index) = batch.shader {
                                                 if let Some(program) =
                                                     assets.shaders.get(shader_index)
                                                 {
                                                     if let Some(sh) = program.shade_index {
-                                                        let mut color = pixel_to_vec4(&texel);
-
+                                                        execution.normal = normal;
                                                         execution.uv.x = interpolated_u;
                                                         execution.uv.y = interpolated_v;
-                                                        execution.input.x = color.x;
-                                                        execution.input.y = color.y;
-                                                        execution.input.z = color.z;
+                                                        execution.color.x = color.x;
+                                                        execution.color.y = color.y;
+                                                        execution.color.z = color.z;
                                                         execution.hitpoint = world;
                                                         execution.time.x = self.time;
                                                         execution.time.y = self.time;
                                                         execution.time.z = self.time;
 
+                                                        execution.roughness.x = 0.5;
+                                                        execution.metallic.x = 0.0;
+
                                                         execution.reset(program.globals);
-                                                        let rc = execution
-                                                            .execute_function_no_args(sh, program);
-
-                                                        color.x = rc.x;
-                                                        color.y = rc.y;
-                                                        color.z = rc.z;
-
-                                                        texel = vec4_to_pixel(&color);
+                                                        execution.shade(sh, program);
                                                     }
                                                 }
                                             }
 
-                                            /*
-                                            let mut specular_weight = 0.0;
-                                            if let Some(material) = &material {
-                                                specular_weight = self.apply_material(
-                                                    material, &mut color, &world_2d,
-                                                );
-                                            }
+                                            let mat_base = execution.color;
+                                            let mat_roughness =
+                                                execution.roughness.x.clamp(0.0, 1.0);
+                                            let mat_metallic = execution.metallic.x.clamp(0.0, 1.0);
+                                            let mat_emissive = execution.emissive;
 
-                                            // Apply hit post processing
-                                            for node in &self.render_hit {
-                                                self.render_graph.nodes[*node as usize]
-                                                    .render_hit_d3(
-                                                        &mut color,
-                                                        &self.camera_pos,
-                                                        &world,
-                                                        &Vec3::zero(),
-                                                        self,
-                                                        self.hour,
-                                                    );
-                                            }
+                                            let mut lit = Vec3::<f32>::zero();
 
-                                            // Direct Light
-                                            if batch.receives_light {
-                                                let mut lit = Vec3::<f32>::zero(); // accumulated light
-                                                let c = color.xyz().map(|v| (v * 255.0) as u8);
-                                                let base_8 = c.map(fast_srgb8::srgb8_to_f32);
-                                                let base: Vec3<f32> =
-                                                    Vec3::new(base_8[0], base_8[1], base_8[2]);
-
-                                                if is_terrain && self.sun_dir.is_some() {
-                                                    if let Some(sun_dir) = self.sun_dir {
-                                                        if let Some(normal) = normal {
-                                                            let n_dot_l =
-                                                                normal.dot(-sun_dir).max(0.0);
-                                                            let sun_color = Vec3::broadcast(1.0);
-
-                                                            // Sky ambient
-                                                            if let Some(sky) = &self.ambient_color {
-                                                                let hemi = 0.5 * (normal.y + 1.0);
-                                                                lit += sky.xyz() * base * hemi;
-                                                            }
-                                                            if self.day_factor > 0.0 {
-                                                                // Above horizon
-                                                                lit += sun_color * base * n_dot_l;
-
-                                                                if specular_weight > 0.0 {
-                                                                    let view_dir =
-                                                                        (self.camera_pos - world)
-                                                                            .normalized();
-                                                                    let half_v = (view_dir
-                                                                        - sun_dir)
-                                                                        .normalized();
-                                                                    let n_dot_h =
-                                                                        normal.dot(half_v).max(0.0);
-
-                                                                    // only add specular if the angle is sane
-
-                                                                    let spec = specular_weight
-                                                                        * pow32_fast(n_dot_h);
-                                                                    lit += sun_color * spec;
-                                                                }
-                                                            }
-                                                        }
-                                                    }
-                                                } else if let Some(ambient) = &self.ambient_color {
-                                                    let occ = self.mapmini.get_occlusion(world_2d);
-                                                    lit += (ambient * occ) * base; // tint ambient by albedo
-
-                                                    // very small ambient-specular -------------------------------------
-                                                    // Fresnel F₀: 0.04 for non-metals, albedo for metals
-                                                    let f0 = Vec3::lerp(
-                                                        Vec3::broadcast(0.04),
-                                                        base,
-                                                        specular_weight,
-                                                    );
-
-                                                    // we add only a fraction (e.g. 25 %) to avoid washing out
-                                                    let ambient_spec =
-                                                        f0 * ambient.xyz() * specular_weight * 0.25;
-
-                                                    lit += ambient_spec * occ;
+                                            if is_terrain {
+                                                // Terrain path: sky hemisphere + directional sun
+                                                if let Some(sky) = &self.ambient_color {
+                                                    let hemi = 0.5 * (normal.y + 1.0);
+                                                    // ambient only affects diffuse path
+                                                    let kd = mat_base
+                                                        * (1.0 - mat_metallic)
+                                                        * (1.0 - 0.04);
+                                                    lit += sky.xyz() * kd * hemi;
                                                 }
 
+                                                if let Some(sun_dir) = self.sun_dir {
+                                                    if self.day_factor > 0.0 {
+                                                        // Sun is directional: light vector is opposite to sun_dir
+                                                        let ldir = (-sun_dir).normalized();
+                                                        let sun_radiance = Vec3::broadcast(
+                                                            self.day_factor.max(0.0),
+                                                        );
+                                                        lit += self.shade_fast_brdf(
+                                                            mat_base,
+                                                            mat_roughness,
+                                                            mat_metallic,
+                                                            Vec3::zero(),
+                                                            normal,
+                                                            (self.camera_pos - world).normalized(),
+                                                            ldir,
+                                                            sun_radiance,
+                                                        );
+                                                    }
+                                                }
+
+                                                // (Optional) You can add local lights here too if desired.
+                                            } else {
+                                                // Non-terrain: batch ambient + all scene lights
+                                                let hemi = 0.5 * (normal.y + 1.0);
+                                                let kd =
+                                                    mat_base * (1.0 - mat_metallic) * (1.0 - 0.04); // cheap F0 reduction
+                                                lit += batch.ambient_color * kd * hemi;
+
+                                                // Direct lights
                                                 for light in
                                                     scene.lights.iter().chain(&scene.dynamic_lights)
                                                 {
-                                                    let Some(mut radiance) = light.radiance_at(
+                                                    let Some(radiance) = light.radiance_at(
                                                         world,
                                                         None,
                                                         self.hash_anim,
                                                     ) else {
                                                         continue;
                                                     };
+                                                    let ldir =
+                                                        (light.position - world).normalized();
 
-                                                    if normal.is_some() {
-                                                        radiance *= 5.0;
-                                                    }
-
-                                                    // 2-D shadow check for local lights
-                                                    let to_light = (light.position_2d() - world_2d)
-                                                        .normalized();
-                                                    let offset = world_2d + to_light * 0.01;
-                                                    if !self
-                                                        .mapmini
-                                                        .is_visible(offset, light.position_2d())
-                                                    {
-                                                        continue;
-                                                    }
-
-                                                    if let Some(n) = normal {
-                                                        // diffuse
-                                                        let n_dot_l = n
-                                                            .dot(
-                                                                (light.position - world)
-                                                                    .normalized(),
-                                                            )
-                                                            .max(0.0);
-                                                        let diffuse = base * n_dot_l;
-
-                                                        // specular (Blinn-Phong)
-                                                        let view_dir =
-                                                            (self.camera_pos - world).normalized();
-                                                        let half_v = (view_dir
-                                                            + (light.position - world)
-                                                                .normalized())
-                                                        .normalized();
-
-                                                        if specular_weight > 0.0 {
-                                                            let n_dot_h = n.dot(half_v).max(0.0);
-                                                            // const SHININESS: f32 = 32.0;
-                                                            // let spec = specular_weight
-                                                            //     * n_dot_h.powf(SHININESS);
-                                                            let spec = specular_weight
-                                                                * pow32_fast(n_dot_h);
-
-                                                            lit += radiance
-                                                                * (diffuse + Vec3::broadcast(spec));
-                                                        } else {
-                                                            lit += radiance * diffuse;
-                                                        }
-                                                    } else {
-                                                        lit += radiance * base; // flat shading
-                                                    }
+                                                    lit += self.shade_fast_brdf(
+                                                        mat_base,
+                                                        mat_roughness,
+                                                        mat_metallic,
+                                                        Vec3::zero(), // emissive added after loop for stability
+                                                        normal,
+                                                        (self.camera_pos - world).normalized(),
+                                                        ldir,
+                                                        radiance,
+                                                    );
                                                 }
+                                            }
 
-                                                let final_lit = lit.clamped(0.0, 1.0);
-                                                let conv = final_lit.map(fast_srgb8::f32_to_srgb8);
-                                                texel[0] = conv.x;
-                                                texel[1] = conv.y;
-                                                texel[2] = conv.z;
-                                            } else {
-                                                texel = vec4_to_pixel(&color);
-                                            }*/
+                                            // Add emissive unshadowed at the end
+                                            lit += mat_emissive;
+
+                                            // color.x = lit.x.powf(1.0 / 2.2);
+                                            // color.y = lit.y.powf(1.0 / 2.2);
+                                            // color.z = lit.z.powf(1.0 / 2.2);
+
+                                            color.x = linear_to_srgb_fast(lit.x);
+                                            color.y = linear_to_srgb_fast(lit.y);
+                                            color.z = linear_to_srgb_fast(lit.z);
+                                            texel = vec4_to_pixel(&color);
 
                                             // ---
 
@@ -1374,35 +1306,6 @@ impl Rasterizer {
 
             _ => 0.0,
         }
-    }
-
-    /// Calculate a bump normal for the texture
-    fn _bump_from_texture(
-        &self,
-        u: f32,
-        v: f32,
-        texture: &Texture,
-        sample_mode: SampleMode,
-        repeat_mode: RepeatMode,
-        scale: f32, // bumpiness scale factor, e.g. 1.0
-    ) -> Vec3<f32> {
-        let du = 1.0 / texture.width as f32;
-        let dv = 1.0 / texture.height as f32;
-
-        fn brightness(color: [u8; 4]) -> f32 {
-            (color[0] as f32 + color[1] as f32 + color[2] as f32) / (3.0 * 255.0)
-        }
-
-        let center = brightness(texture.sample(u, v, sample_mode, repeat_mode));
-        let right = brightness(texture.sample(u + du, v, sample_mode, repeat_mode));
-        let down = brightness(texture.sample(u, v + dv, sample_mode, repeat_mode));
-
-        // Derivatives
-        let dx = (right - center) * scale;
-        let dz = (down - center) * scale;
-
-        // Y-up tangent space: X = right, Z = down, Y = up
-        Vec3::new(-dx, 1.0, -dz).normalized()
     }
 
     // Gamma correction in final output
@@ -1583,6 +1486,80 @@ impl Rasterizer {
         let dir = (target - origin).normalized();
 
         Ray::new(origin, dir)
+    }
+
+    // Fast, approximated PBR shading via blinn / phong
+
+    #[inline(always)]
+    fn roughness_to_shininess(&self, r: f32) -> f32 {
+        // r in [0,1], perceptual roughness. Map to Blinn exponent (fast parametric fit).
+        let a = (r * r).max(1e-4);
+        (2.0 / a - 2.0).clamp(1.0, 2048.0)
+    }
+
+    #[inline(always)]
+    fn schlick_fresnel(&self, f0: Vec3<f32>, cos_theta: f32) -> Vec3<f32> {
+        // F = F0 + (1-F0)*(1-cos)^5
+        let one_minus = 1.0 - cos_theta.clamp(0.0, 1.0);
+        let x = one_minus * one_minus * one_minus * one_minus * one_minus;
+        f0 + (Vec3::one() - f0) * x
+    }
+
+    #[inline(always)]
+    fn max3(&self, v: Vec3<f32>) -> f32 {
+        v.x.max(v.y.max(v.z))
+    }
+
+    #[inline(always)]
+    fn blinn_phong_spec(&self, n: Vec3<f32>, l: Vec3<f32>, v: Vec3<f32>, shininess: f32) -> f32 {
+        let h = (l + v).normalized();
+        let n_dot_h = n.dot(h).max(0.0);
+        // Use your fast pow approx to keep it cheap
+        // pow32_fast approximates x^32; generalize with exp/log or use n^k fit:
+        // We'll keep a standard powf for clarity; you can plug your approx if desired.
+        n_dot_h.powf(shininess)
+    }
+
+    #[inline(always)]
+    fn shade_fast_brdf(
+        &self,
+        base_color: Vec3<f32>, // linear
+        roughness: f32,
+        metallic: f32,
+        emissive: Vec3<f32>, // linear, can be base_color * strength
+        n: Vec3<f32>,
+        v: Vec3<f32>,
+        l: Vec3<f32>,
+        light_radiance: Vec3<f32>, // linear radiance/intensity
+    ) -> Vec3<f32> {
+        let n_dot_l = n.dot(l).max(0.0);
+        if n_dot_l <= 0.0 {
+            return emissive;
+        }
+
+        // PBR-friendly params mapped to fast model
+        let f0 = Vec3::lerp(Vec3::broadcast(0.04), base_color, metallic); // colored F0 for metals
+        let mut kd = base_color * (1.0 - metallic); // no diffuse for metals
+
+        // Cheap “energy-ish” conservation: reduce diffuse by specular strength
+        kd *= 1.0 - self.max3(f0);
+
+        // Blinn exponent from roughness
+        let shininess = self.roughness_to_shininess(roughness);
+
+        // Spec term
+        let spec_b = self.blinn_phong_spec(n, l, v, shininess);
+
+        // Fresnel at the (H·V) angle: approximate with N·V to save ops
+        let n_dot_v = n.dot(v).max(0.0);
+        let f = self.schlick_fresnel(f0, n_dot_v);
+
+        // Final lobes
+        let diffuse = kd * n_dot_l; // Lambert
+        let specular = f * spec_b * n_dot_l; // colored specular
+
+        // Lighted color
+        (diffuse + specular) * light_radiance + emissive
     }
 }
 

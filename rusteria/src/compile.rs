@@ -345,180 +345,102 @@ impl Visitor for CompileVisitor {
         _loc: &Location,
         ctx: &mut Context,
     ) -> Result<ASTValue, RuntimeError> {
-        // NOTE: We intentionally DO NOT evaluate `expression` up-front for swizzled
-        // compound assignments, because we need the target value on the stack
-        // first to preserve order for SetComponents.
+        // Treat built-ins as pseudo-variables with custom load/store ops
+        enum Target {
+            Builtin { load: NodeOp, store: NodeOp },
+            Local { index: usize },
+            Global { index: usize },
+        }
 
-        if let Some(index) = self.locals.get_index_of(&name) {
-            let index = index as usize;
+        let target = if name == "color" {
+            Some(Target::Builtin {
+                load: NodeOp::Color,
+                store: NodeOp::SetColor,
+            })
+        } else if name == "roughness" {
+            Some(Target::Builtin {
+                load: NodeOp::Roughness,
+                store: NodeOp::SetRoughness,
+            })
+        } else if name == "metallic" {
+            Some(Target::Builtin {
+                load: NodeOp::Metallic,
+                store: NodeOp::SetMetallic,
+            })
+        } else if name == "emissive" {
+            Some(Target::Builtin {
+                load: NodeOp::Emissive,
+                store: NodeOp::SetEmissive,
+            })
+        } else if name == "transmission" {
+            Some(Target::Builtin {
+                load: NodeOp::Transmission,
+                store: NodeOp::SetTransmission,
+            })
+        } else if let Some(index) = self.locals.get_index_of(&name) {
+            Some(Target::Local { index })
+        } else if let Some(&g) = ctx.globals.get(&name) {
+            Some(Target::Global { index: g as usize })
+        } else {
+            None
+        };
+
+        if let Some(target) = target {
+            // Small helpers to emit load/store for any target kind
+            let load_target = |ctx: &mut Context| match target {
+                Target::Builtin { ref load, .. } => ctx.emit(load.clone()),
+                Target::Local { index } => ctx.emit(NodeOp::LoadLocal(index)),
+                Target::Global { index } => ctx.emit(NodeOp::LoadGlobal(index)),
+            };
+            let store_target = |ctx: &mut Context| match target {
+                Target::Builtin { ref store, .. } => ctx.emit(store.clone()),
+                Target::Local { index } => ctx.emit(NodeOp::StoreLocal(index)),
+                Target::Global { index } => ctx.emit(NodeOp::StoreGlobal(index)),
+            };
+
+            // Helper to emit arithmetic op for compound assignments
+            let emit_comp = |ctx: &mut Context| match op {
+                AssignmentOperator::AddAssign => ctx.emit(NodeOp::Add),
+                AssignmentOperator::SubtractAssign => ctx.emit(NodeOp::Sub),
+                AssignmentOperator::MultiplyAssign => ctx.emit(NodeOp::Mul),
+                AssignmentOperator::DivideAssign => ctx.emit(NodeOp::Div),
+                AssignmentOperator::Assign => unreachable!(),
+            };
+
             if swizzle.is_empty() {
-                // Non-swizzled assignment to a local
+                // Non-swizzled path
                 match op {
                     AssignmentOperator::Assign => {
                         _ = expression.accept(self, ctx)?; // RHS
-                        ctx.emit(NodeOp::StoreLocal(index));
+                        store_target(ctx);
                     }
-                    AssignmentOperator::AddAssign => {
-                        _ = expression.accept(self, ctx)?; // RHS
-                        ctx.emit(NodeOp::LoadLocal(index));
-                        ctx.emit(NodeOp::Swap); // [lhs, rhs] → [rhs, lhs] → then Add uses (lhs + rhs)?
-                        ctx.emit(NodeOp::Add);
-                        ctx.emit(NodeOp::StoreLocal(index));
-                    }
-                    AssignmentOperator::SubtractAssign => {
-                        _ = expression.accept(self, ctx)?; // RHS
-                        ctx.emit(NodeOp::LoadLocal(index));
-                        ctx.emit(NodeOp::Swap);
-                        ctx.emit(NodeOp::Sub);
-                        ctx.emit(NodeOp::StoreLocal(index));
-                    }
-                    AssignmentOperator::MultiplyAssign => {
-                        _ = expression.accept(self, ctx)?; // RHS
-                        ctx.emit(NodeOp::LoadLocal(index));
-                        ctx.emit(NodeOp::Swap);
-                        ctx.emit(NodeOp::Mul);
-                        ctx.emit(NodeOp::StoreLocal(index));
-                    }
-                    AssignmentOperator::DivideAssign => {
-                        _ = expression.accept(self, ctx)?; // RHS
-                        ctx.emit(NodeOp::LoadLocal(index));
-                        ctx.emit(NodeOp::Swap);
-                        ctx.emit(NodeOp::Div);
-                        ctx.emit(NodeOp::StoreLocal(index));
+                    _ => {
+                        // t = t (op) rhs
+                        load_target(ctx); // t
+                        _ = expression.accept(self, ctx)?; // t, rhs
+                        emit_comp(ctx); // t (op) rhs
+                        store_target(ctx); // store back
                     }
                 }
             } else {
-                // Swizzled assignment to a local
+                // Swizzled path (handle both plain and compound)
                 match op {
                     AssignmentOperator::Assign => {
-                        _ = expression.accept(self, ctx)?; // RHS
-                        ctx.emit(NodeOp::LoadLocal(index)); // target
-                        ctx.emit(NodeOp::Swap); // [target, rhs]
-                        ctx.emit(NodeOp::SetComponents(swizzle.to_vec()));
-                        ctx.emit(NodeOp::StoreLocal(index));
+                        _ = expression.accept(self, ctx)?; // rhs
+                        load_target(ctx); // rhs, t
+                        ctx.emit(NodeOp::Swap); // t, rhs
+                        ctx.emit(NodeOp::SetComponents(swizzle.to_vec())); // t'
+                        store_target(ctx);
                     }
-                    AssignmentOperator::AddAssign => {
-                        // Want: t.swizzle = t.swizzle + rhs
-                        ctx.emit(NodeOp::LoadLocal(index)); // t
+                    _ => {
+                        // t.swz = t.swz (op) rhs
+                        load_target(ctx); // t
                         ctx.emit(NodeOp::Dup); // t, t
                         ctx.emit(NodeOp::GetComponents(swizzle.to_vec())); // t, a
                         _ = expression.accept(self, ctx)?; // t, a, rhs
-                        ctx.emit(NodeOp::Add); // t, (a+rhs)
+                        emit_comp(ctx); // t, (a op rhs)
                         ctx.emit(NodeOp::SetComponents(swizzle.to_vec())); // t'
-                        ctx.emit(NodeOp::StoreLocal(index));
-                    }
-                    AssignmentOperator::SubtractAssign => {
-                        ctx.emit(NodeOp::LoadLocal(index));
-                        ctx.emit(NodeOp::Dup);
-                        ctx.emit(NodeOp::GetComponents(swizzle.to_vec())); // t, a
-                        _ = expression.accept(self, ctx)?; // t, a, rhs
-                        ctx.emit(NodeOp::Sub); // t, (a-rhs)
-                        ctx.emit(NodeOp::SetComponents(swizzle.to_vec())); // t'
-                        ctx.emit(NodeOp::StoreLocal(index));
-                    }
-                    AssignmentOperator::MultiplyAssign => {
-                        ctx.emit(NodeOp::LoadLocal(index));
-                        ctx.emit(NodeOp::Dup);
-                        ctx.emit(NodeOp::GetComponents(swizzle.to_vec())); // t, a
-                        _ = expression.accept(self, ctx)?; // t, a, rhs
-                        ctx.emit(NodeOp::Mul); // t, (a*rhs)
-                        ctx.emit(NodeOp::SetComponents(swizzle.to_vec())); // t'
-                        ctx.emit(NodeOp::StoreLocal(index));
-                    }
-                    AssignmentOperator::DivideAssign => {
-                        ctx.emit(NodeOp::LoadLocal(index));
-                        ctx.emit(NodeOp::Dup);
-                        ctx.emit(NodeOp::GetComponents(swizzle.to_vec())); // t, a
-                        _ = expression.accept(self, ctx)?; // t, a, rhs
-                        ctx.emit(NodeOp::Div); // t, (a/rhs)
-                        ctx.emit(NodeOp::SetComponents(swizzle.to_vec())); // t'
-                        ctx.emit(NodeOp::StoreLocal(index));
-                    }
-                }
-            }
-        } else if let Some(&index) = ctx.globals.get(&name) {
-            let index = index as usize;
-            if swizzle.is_empty() {
-                // Non-swizzled assignment to a global
-                match op {
-                    AssignmentOperator::Assign => {
-                        _ = expression.accept(self, ctx)?; // RHS
-                        ctx.emit(NodeOp::StoreGlobal(index));
-                    }
-                    AssignmentOperator::AddAssign => {
-                        _ = expression.accept(self, ctx)?; // RHS
-                        ctx.emit(NodeOp::LoadGlobal(index));
-                        ctx.emit(NodeOp::Swap);
-                        ctx.emit(NodeOp::Add);
-                        ctx.emit(NodeOp::StoreGlobal(index));
-                    }
-                    AssignmentOperator::SubtractAssign => {
-                        _ = expression.accept(self, ctx)?; // RHS
-                        ctx.emit(NodeOp::LoadGlobal(index));
-                        ctx.emit(NodeOp::Swap);
-                        ctx.emit(NodeOp::Sub);
-                        ctx.emit(NodeOp::StoreGlobal(index));
-                    }
-                    AssignmentOperator::MultiplyAssign => {
-                        _ = expression.accept(self, ctx)?; // RHS
-                        ctx.emit(NodeOp::LoadGlobal(index));
-                        ctx.emit(NodeOp::Swap);
-                        ctx.emit(NodeOp::Mul);
-                        ctx.emit(NodeOp::StoreGlobal(index));
-                    }
-                    AssignmentOperator::DivideAssign => {
-                        _ = expression.accept(self, ctx)?; // RHS
-                        ctx.emit(NodeOp::LoadGlobal(index));
-                        ctx.emit(NodeOp::Swap);
-                        ctx.emit(NodeOp::Div);
-                        ctx.emit(NodeOp::StoreGlobal(index));
-                    }
-                }
-            } else {
-                // Swizzled assignment to a global
-                match op {
-                    AssignmentOperator::Assign => {
-                        _ = expression.accept(self, ctx)?; // RHS
-                        ctx.emit(NodeOp::LoadGlobal(index));
-                        ctx.emit(NodeOp::Swap); // [target, rhs]
-                        ctx.emit(NodeOp::SetComponents(swizzle.to_vec()));
-                        ctx.emit(NodeOp::StoreGlobal(index));
-                    }
-                    AssignmentOperator::AddAssign => {
-                        ctx.emit(NodeOp::LoadGlobal(index)); // t
-                        ctx.emit(NodeOp::Dup); // t, t
-                        ctx.emit(NodeOp::GetComponents(swizzle.to_vec())); // t, a
-                        _ = expression.accept(self, ctx)?; // t, a, rhs
-                        ctx.emit(NodeOp::Add); // t, (a+rhs)
-                        ctx.emit(NodeOp::SetComponents(swizzle.to_vec())); // t'
-                        ctx.emit(NodeOp::StoreGlobal(index));
-                    }
-                    AssignmentOperator::SubtractAssign => {
-                        ctx.emit(NodeOp::LoadGlobal(index));
-                        ctx.emit(NodeOp::Dup);
-                        ctx.emit(NodeOp::GetComponents(swizzle.to_vec())); // t, a
-                        _ = expression.accept(self, ctx)?; // t, a, rhs
-                        ctx.emit(NodeOp::Sub); // t, (a-rhs)
-                        ctx.emit(NodeOp::SetComponents(swizzle.to_vec())); // t'
-                        ctx.emit(NodeOp::StoreGlobal(index));
-                    }
-                    AssignmentOperator::MultiplyAssign => {
-                        ctx.emit(NodeOp::LoadGlobal(index));
-                        ctx.emit(NodeOp::Dup);
-                        ctx.emit(NodeOp::GetComponents(swizzle.to_vec())); // t, a
-                        _ = expression.accept(self, ctx)?; // t, a, rhs
-                        ctx.emit(NodeOp::Mul); // t, (a*rhs)
-                        ctx.emit(NodeOp::SetComponents(swizzle.to_vec())); // t'
-                        ctx.emit(NodeOp::StoreGlobal(index));
-                    }
-                    AssignmentOperator::DivideAssign => {
-                        ctx.emit(NodeOp::LoadGlobal(index));
-                        ctx.emit(NodeOp::Dup);
-                        ctx.emit(NodeOp::GetComponents(swizzle.to_vec())); // t, a
-                        _ = expression.accept(self, ctx)?; // t, a, rhs
-                        ctx.emit(NodeOp::Div); // t, (a/rhs)
-                        ctx.emit(NodeOp::SetComponents(swizzle.to_vec())); // t'
-                        ctx.emit(NodeOp::StoreGlobal(index));
+                        store_target(ctx);
                     }
                 }
             }
@@ -547,8 +469,28 @@ impl Visitor for CompileVisitor {
             if !swizzle.is_empty() {
                 ctx.emit(NodeOp::GetComponents(swizzle.to_vec()));
             }
-        } else if name == "input" {
-            ctx.emit(NodeOp::Input);
+        } else if name == "color" {
+            ctx.emit(NodeOp::Color);
+            if !swizzle.is_empty() {
+                ctx.emit(NodeOp::GetComponents(swizzle.to_vec()));
+            }
+        } else if name == "roughness" {
+            ctx.emit(NodeOp::Roughness);
+            if !swizzle.is_empty() {
+                ctx.emit(NodeOp::GetComponents(swizzle.to_vec()));
+            }
+        } else if name == "metallic" {
+            ctx.emit(NodeOp::Metallic);
+            if !swizzle.is_empty() {
+                ctx.emit(NodeOp::GetComponents(swizzle.to_vec()));
+            }
+        } else if name == "emissive" {
+            ctx.emit(NodeOp::Emissive);
+            if !swizzle.is_empty() {
+                ctx.emit(NodeOp::GetComponents(swizzle.to_vec()));
+            }
+        } else if name == "transmission" {
+            ctx.emit(NodeOp::Transmission);
             if !swizzle.is_empty() {
                 ctx.emit(NodeOp::GetComponents(swizzle.to_vec()));
             }

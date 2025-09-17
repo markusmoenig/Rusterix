@@ -24,11 +24,9 @@ fn shade() {
     let vein_col = vec3(0.18, 0.20, 0.24);
 
     // Mix base and veins
-    let col = mix(base_col, vein_col, veins);
+    color = mix(base_col, vein_col, veins);
 
     // Subtle mottling using value noise
     let m = sample(uv2 * 0.5 + vec2(0.0), "value"); // [0,1]
-    let col = col * (0.9 + 0.1 * m);
-
-    return col;
+    color *= (0.9 + 0.1 * m);
 }

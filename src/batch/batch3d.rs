@@ -64,6 +64,9 @@ pub struct Batch3D {
     pub material: Option<Material>,
 
     /// Shader
+    pub ambient_color: Vec3<f32>,
+
+    /// Shader
     pub shader: Option<usize>,
 }
 
@@ -89,6 +92,7 @@ impl Batch3D {
             normals: vec![],
             clipped_normals: vec![],
             material: None,
+            ambient_color: Vec3::zero(),
             shader: None,
         }
     }
@@ -116,6 +120,7 @@ impl Batch3D {
             normals: vec![],
             clipped_normals: vec![],
             material: None,
+            ambient_color: Vec3::zero(),
             shader: None,
         }
     }
@@ -278,6 +283,12 @@ impl Batch3D {
     /// Set the shader index for this batch
     pub fn shader(mut self, shader: usize) -> Self {
         self.shader = Some(shader);
+        self
+    }
+
+    /// Set the ambient color for this batch
+    pub fn ambient_color(mut self, ambient_color: Vec3<f32>) -> Self {
+        self.ambient_color = ambient_color;
         self
     }
 

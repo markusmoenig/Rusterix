@@ -44,6 +44,7 @@ use rayon::prelude::*;
 use rustc_hash::FxHashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
+use vek::Vec3;
 
 pub struct Rusteria {
     path: PathBuf,
@@ -165,10 +166,14 @@ impl Rusteria {
                         0.0,
                     );
 
-                    let value =
-                        execution.execute_function_no_args(function_index, &self.context.program);
+                    execution.color = Vec3::zero();
+                    execution.shade(function_index, &self.context.program);
 
-                    tile_buffer.set(w, h, [value.x, value.y, value.z, 1.0]);
+                    tile_buffer.set(
+                        w,
+                        h,
+                        [execution.color.x, execution.color.y, execution.color.z, 1.0],
+                    );
                 }
             }
 
