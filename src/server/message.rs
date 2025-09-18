@@ -1,4 +1,5 @@
-use crate::{Debug, Entity, Value};
+use crate::{Entity, Value};
+use codegridfx::DebugModule;
 use theframework::prelude::*;
 
 /// Messages to / from the Region to the server or client
@@ -33,7 +34,7 @@ pub enum RegionMessage {
     /// Send a multiple choice
     MultipleChoice(MultipleChoice),
     /// Send the debug id of a character or item
-    DebugData(Debug),
+    DebugData(DebugModule),
     /// Stop processing and quit
     Quit,
 }

@@ -1,20 +1,19 @@
-use crate::prelude::*;
 use theframework::prelude::*;
 
 #[derive(Serialize, Deserialize, Clone, Default, Debug)]
-pub struct Debug {
+pub struct DebugModule {
     #[serde(with = "vectorize")]
     pub ids: FxHashMap<u32, Vec<DebugGrid>>,
 }
 
-impl Debug {
+impl DebugModule {
     pub fn clear(&mut self) {
         self.ids.clear();
     }
 
     /// Merge the content of another Debug into this one.
     /// Values and errors from `other` will be inserted into or overwrite existing entries.
-    pub fn merge(&mut self, other: &Debug) {
+    pub fn merge(&mut self, other: &DebugModule) {
         for (id, other_grids) in &other.ids {
             let grids = self.ids.entry(*id).or_default();
             for other_grid in other_grids {
@@ -38,7 +37,14 @@ impl Debug {
 
     /// Add or overwrite a value in the specified routine (by name) at (x, y).
     /// Creates the routine if it does not yet exist. Returns true if the value was written.
-    pub fn add_value(&mut self, id: u32, routine_name: &str, x: u32, y: u32, value: Value) -> bool {
+    pub fn add_value(
+        &mut self,
+        id: u32,
+        routine_name: &str,
+        x: u32,
+        y: u32,
+        value: TheValue,
+    ) -> bool {
         let grid = self.ensure_grid(id, routine_name);
         grid.result.insert((x, y), value);
         true
@@ -62,7 +68,7 @@ impl Debug {
     }
 
     /// Get a value at (x, y) from a routine by id and name.
-    pub fn get_value(&self, id: u32, routine_name: &str, x: u32, y: u32) -> Option<&Value> {
+    pub fn get_value(&self, id: u32, routine_name: &str, x: u32, y: u32) -> Option<&TheValue> {
         self.get_routine(id, routine_name)?.result.get(&(x, y))
     }
 
@@ -96,7 +102,7 @@ pub struct DebugGrid {
     pub name: String,
 
     pub errors: FxHashSet<(u32, u32)>,
-    pub result: FxHashMap<(u32, u32), Value>,
+    pub result: FxHashMap<(u32, u32), TheValue>,
 }
 
 impl DebugGrid {

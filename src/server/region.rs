@@ -15,6 +15,7 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use vek::Vec2;
 
 use std::sync::{LazyLock, RwLock};
+use theframework::prelude::TheValue;
 
 /// The global store of RegionCtx
 static REGIONCTX: LazyLock<RwLock<FxHashMap<u32, Arc<Mutex<RegionCtx>>>>> =
@@ -2293,13 +2294,13 @@ fn take(item_id: u32, vm: &VirtualMachine) -> bool {
                     // TODO: Send message.
                     println!("Take: Too many items");
                     if ctx.debug_mode {
-                        add_debug_value(ctx, Value::Str("Inventory Full".into()), true);
+                        add_debug_value(ctx, TheValue::Text("Inventory Full".into()), true);
                     }
                     rc = false;
                 }
 
                 if ctx.debug_mode && rc {
-                    add_debug_value(ctx, Value::Str("Ok".into()), false);
+                    add_debug_value(ctx, TheValue::Text("Ok".into()), false);
                 }
 
                 ctx.from_sender
@@ -2320,7 +2321,7 @@ fn take(item_id: u32, vm: &VirtualMachine) -> bool {
             }
         } else {
             if ctx.debug_mode {
-                add_debug_value(ctx, Value::Str("Unknown Item".into()), true);
+                add_debug_value(ctx, TheValue::Text("Unknown Item".into()), true);
             }
         }
         rc
@@ -2472,7 +2473,7 @@ fn get_attr_of(id: u32, key: String, vm: &VirtualMachine) -> PyResult<PyObjectRe
 
         if ctx.debug_mode {
             if value != Value::NoValue {
-                add_debug_value(ctx, Value::Str(value.to_string()), false);
+                add_debug_value(ctx, TheValue::Text(value.to_string()), false);
             }
         }
     });
@@ -2488,9 +2489,9 @@ fn get_attr_of(id: u32, key: String, vm: &VirtualMachine) -> PyResult<PyObjectRe
 
             if ctx.debug_mode {
                 if value == Value::NoValue {
-                    add_debug_value(ctx, Value::Str("Not Found".into()), true);
+                    add_debug_value(ctx, TheValue::Text("Not Found".into()), true);
                 } else {
-                    add_debug_value(ctx, Value::Str(value.to_string()), false);
+                    add_debug_value(ctx, TheValue::Text(value.to_string()), false);
                 }
             }
         });
@@ -2565,9 +2566,9 @@ fn get_attr(key: String, vm: &VirtualMachine) -> PyResult<PyObjectRef> {
 
         if ctx.debug_mode {
             if value == Value::NoValue {
-                add_debug_value(ctx, Value::Str("Not Found".into()), true);
+                add_debug_value(ctx, TheValue::Text("Not Found".into()), true);
             } else {
-                add_debug_value(ctx, Value::Str(value.to_string()), false);
+                add_debug_value(ctx, TheValue::Text(value.to_string()), false);
             }
         }
     });
@@ -2929,12 +2930,12 @@ fn add_item(class_name: String, vm: &VirtualMachine) -> i32 {
                 let item_id = item.id;
                 if entity.add_item(item).is_ok() {
                     if ctx.debug_mode {
-                        add_debug_value(ctx, Value::Str("Ok".into()), false);
+                        add_debug_value(ctx, TheValue::Text("Ok".into()), false);
                     }
                     item_id as i32
                 } else {
                     if ctx.debug_mode {
-                        add_debug_value(ctx, Value::Str("Inventory Full".into()), true);
+                        add_debug_value(ctx, TheValue::Text("Inventory Full".into()), true);
                     }
                     println!("add_item ({}): Inventory is full", class_name);
                     -1
@@ -2944,7 +2945,7 @@ fn add_item(class_name: String, vm: &VirtualMachine) -> i32 {
             }
         } else {
             if ctx.debug_mode {
-                add_debug_value(ctx, Value::Str("Unknown Item".into()), true);
+                add_debug_value(ctx, TheValue::Text("Unknown Item".into()), true);
             }
             -1
         }
@@ -2954,7 +2955,7 @@ fn add_item(class_name: String, vm: &VirtualMachine) -> i32 {
 
 /// Add a debug value at the current debug position
 #[inline(always)]
-pub fn add_debug_value(ctx: &mut RegionCtx, value: Value, error: bool) {
+pub fn add_debug_value(ctx: &mut RegionCtx, value: TheValue, error: bool) {
     if let Some((event, x, y)) = &ctx.curr_debug_loc {
         if let Some(item_id) = ctx.curr_item_id {
             ctx.debug.add_value(item_id, event, *x, *y, value);
@@ -2994,12 +2995,12 @@ fn equip(item_id: u32, vm: &VirtualMachine) {
                     println!("Equipped failure");
                 } else {
                     if ctx.debug_mode {
-                        add_debug_value(ctx, Value::Str("Ok".into()), false);
+                        add_debug_value(ctx, TheValue::Text("Ok".into()), false);
                     }
                 }
             } else {
                 if ctx.debug_mode {
-                    add_debug_value(ctx, Value::Str("Unknown Item".into()), true);
+                    add_debug_value(ctx, TheValue::Text("Unknown Item".into()), true);
                 }
             }
         }
@@ -3093,7 +3094,7 @@ fn goto(destination: String, speed: f32, vm: &VirtualMachine) {
             }
         } else {
             if ctx.debug_mode {
-                add_debug_value(ctx, Value::Str("Unknown Sector".into()), true);
+                add_debug_value(ctx, TheValue::Text("Unknown Sector".into()), true);
             }
         }
     });
@@ -3225,7 +3226,7 @@ pub fn teleport(args: rustpython_vm::function::FuncArgs, vm: &VirtualMachine) ->
                 ctx.map.entities = entities;
             } else {
                 if ctx.debug_mode {
-                    add_debug_value(ctx, Value::Str("Unknown Sector".into()), true);
+                    add_debug_value(ctx, TheValue::Text("Unknown Sector".into()), true);
                 }
             }
         } else {
@@ -3292,7 +3293,7 @@ pub fn message(args: rustpython_vm::function::FuncArgs, vm: &VirtualMachine) -> 
             ctx.from_sender.get().unwrap().send(msg).unwrap();
 
             if ctx.debug_mode {
-                add_debug_value(ctx, Value::Str("Ok".into()), false);
+                add_debug_value(ctx, TheValue::Text("Ok".into()), false);
             }
         }
     });

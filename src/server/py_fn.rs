@@ -1,7 +1,8 @@
+use crate::RegionCtx;
 use crate::server::region::{add_debug_value, get_region_id, with_regionctx};
-use crate::{RegionCtx, Value};
 use rand::*;
 use rustpython::vm::*;
+use theframework::prelude::TheValue;
 use vek::Vec2;
 
 use rustpython_vm::builtins::PyDict;
@@ -77,7 +78,7 @@ pub fn random_in_range(
 
             with_regionctx(get_region_id(vm).unwrap(), |ctx: &mut RegionCtx| {
                 if ctx.debug_mode {
-                    add_debug_value(ctx, Value::Int(result), false);
+                    add_debug_value(ctx, TheValue::Int(result), false);
                 }
             });
 
@@ -85,7 +86,7 @@ pub fn random_in_range(
         } else {
             with_regionctx(get_region_id(vm).unwrap(), |ctx: &mut RegionCtx| {
                 if ctx.debug_mode {
-                    add_debug_value(ctx, Value::Str("Invalid Range".into()), true);
+                    add_debug_value(ctx, TheValue::Text("Invalid Range".into()), true);
                 }
             });
             Err(vm.new_type_error("Start > End".to_string()))
@@ -102,7 +103,7 @@ pub fn random_in_range(
 
             with_regionctx(get_region_id(vm).unwrap(), |ctx: &mut RegionCtx| {
                 if ctx.debug_mode {
-                    add_debug_value(ctx, Value::Float(result as f32), false);
+                    add_debug_value(ctx, TheValue::Float(result as f32), false);
                 }
             });
 
@@ -110,7 +111,7 @@ pub fn random_in_range(
         } else {
             with_regionctx(get_region_id(vm).unwrap(), |ctx: &mut RegionCtx| {
                 if ctx.debug_mode {
-                    add_debug_value(ctx, Value::Str("Invalid Range".into()), true);
+                    add_debug_value(ctx, TheValue::Text("Invalid Range".into()), true);
                 }
             });
             Err(vm.new_type_error("Start > End".to_string()))
@@ -118,7 +119,7 @@ pub fn random_in_range(
     } else {
         with_regionctx(get_region_id(vm).unwrap(), |ctx: &mut RegionCtx| {
             if ctx.debug_mode {
-                add_debug_value(ctx, Value::Str("Invalid Range".into()), true);
+                add_debug_value(ctx, TheValue::Text("Invalid Range".into()), true);
             }
         });
         // If the inputs are not valid numbers, raise a TypeError

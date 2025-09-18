@@ -1,8 +1,7 @@
 use super::pixelsource::PixelSource;
 use crate::{BBox, Map, Value, ValueContainer};
+use codegridfx::Module;
 use earcutr::earcut;
-// use rand::Rng;
-// use rand::seq::SliceRandom;
 use theframework::prelude::*;
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -17,6 +16,9 @@ pub struct Sector {
 
     pub properties: ValueContainer,
     pub neighbours: Vec<u32>,
+
+    #[serde(default)]
+    pub module: Module,
 
     /// The rect tool layer for this sector (if created by the rect tool).
     #[serde(default)]
@@ -39,6 +41,7 @@ impl Sector {
             properties,
             neighbours: vec![],
 
+            module: Module::default(),
             layer: None,
         }
     }

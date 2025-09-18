@@ -136,7 +136,6 @@ pub use crate::{
         Server, ServerState,
         assets::Assets,
         currency::{Currencies, Currency, Wallet},
-        debug::{Debug, DebugGrid},
         entity::Entity,
         entity::EntityUpdate,
         item::{Item, ItemUpdate},
@@ -177,8 +176,8 @@ pub mod prelude {
         d3builder::D3Builder,
     };
     pub use crate::{
-        Assets, Choice, Currencies, Currency, Debug, DebugGrid, Entity, EntityUpdate, Item,
-        ItemUpdate, MultipleChoice, RegionInstance, RegionMessage, Server, Wallet,
+        Assets, Choice, Currencies, Currency, Entity, EntityUpdate, Item, ItemUpdate,
+        MultipleChoice, RegionInstance, RegionMessage, Server, Wallet,
     };
     pub use crate::{BLACK, Pixel, TRANSPARENT, WHITE};
     pub use crate::{Batch2D, Batch3D, CullMode, PrimitiveMode};
@@ -194,4 +193,5 @@ pub mod prelude {
     };
     pub use crate::{RepeatMode, SampleMode, Texture};
     pub use crate::{pixel_to_vec4, vec4_to_pixel};
+    pub use codegridfx::{DebugGrid, DebugModule};
 }

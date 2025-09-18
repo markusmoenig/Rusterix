@@ -1,7 +1,6 @@
 pub mod assets;
 pub mod currency;
 pub mod data;
-pub mod debug;
 pub mod entity;
 pub mod item;
 pub mod message;
@@ -42,7 +41,7 @@ pub struct Server {
 
     /// In debug mode the serve sends grid based status updates for all entities / items
     pub debug_mode: bool,
-    pub debug: Debug,
+    pub debug: DebugModule,
 
     /// Maps region uuids to the region id
     pub region_id_map: FxHashMap<Uuid, u32>,
@@ -78,7 +77,7 @@ impl Server {
             id_gen: 0,
 
             debug_mode: false,
-            debug: Debug::default(),
+            debug: DebugModule::default(),
 
             region_id_map: FxHashMap::default(),
             region_name_id_map: FxHashMap::default(),
