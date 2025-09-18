@@ -41,17 +41,25 @@ const FUNCTIONS: [&str; 30] = [
 
 #[derive(Serialize, Deserialize, Debug, Default, PartialEq, Clone)]
 pub enum ModuleType {
+    #[default]
     CharacterInstance,
     ItemInstance,
-    #[default]
     CharacterTemplate,
     ItemTemplate,
+    Sector,
 }
 
 impl ModuleType {
     pub fn is_instance(&self) -> bool {
         match self {
             ModuleType::CharacterInstance | ModuleType::ItemInstance => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_shader(&self) -> bool {
+        match self {
+            ModuleType::Sector => true,
             _ => false,
         }
     }
@@ -79,6 +87,13 @@ impl Module {
         }
     }
 
+    pub fn as_type(t: ModuleType) -> Self {
+        Self {
+            module_type: t,
+            ..Default::default()
+        }
+    }
+
     /// Sets the module type
     pub fn set_module_type(&mut self, module_type: ModuleType) {
         self.module_type = module_type;
@@ -97,7 +112,12 @@ impl Module {
 
     /// Add/ Update the routines of the module
     pub fn update_routines(&mut self) {
-        if self.module_type.is_instance() {
+        if self.module_type.is_shader() {
+            if !self.contains("shader") {
+                let routine = Routine::new("shader".into());
+                self.routines.insert(routine.id, routine);
+            }
+        } else if self.module_type.is_instance() {
             if !self.contains("instantiation") {
                 let routine = Routine::new("instantiation".into());
                 self.routines.insert(routine.id, routine);
@@ -142,7 +162,7 @@ impl Module {
     //     self.grid_ctx.error_color = ui.style.theme().color(Red).clone();
     // }
 
-    pub fn build_canvas(&self, ctx: &mut TheContext) -> TheCanvas {
+    pub fn build_canvas(&self, ctx: &mut TheContext, name: &str) -> TheCanvas {
         let mut canvas = TheCanvas::new();
 
         // Left code list
@@ -183,7 +203,7 @@ impl Module {
 
         // --
 
-        let render_view = TheRenderView::new(TheId::named("ModuleView"));
+        let render_view = TheRenderView::new(TheId::named(name));
 
         // let mut context_menu = TheContextMenu::named(str!("Context"));
         // context_menu.add(TheContextMenuItem::new(
@@ -268,7 +288,7 @@ impl Module {
     }
 
     pub fn redraw(&mut self, ui: &mut TheUI, ctx: &TheContext) {
-        if let Some(renderview) = ui.get_render_view("ModuleView") {
+        if let Some(renderview) = ui.get_render_view(self.get_view_name()) {
             *renderview.render_buffer_mut() = TheRGBABuffer::new(TheDim::new(
                 0,
                 0,
@@ -284,7 +304,7 @@ impl Module {
     }
 
     pub fn redraw_debug(&mut self, ui: &mut TheUI, ctx: &TheContext, id: u32, debug: &DebugModule) {
-        if let Some(renderview) = ui.get_render_view("ModuleView") {
+        if let Some(renderview) = ui.get_render_view(self.get_view_name()) {
             *renderview.render_buffer_mut() = TheRGBABuffer::new(TheDim::new(
                 0,
                 0,
@@ -315,13 +335,14 @@ impl Module {
 
         match event {
             TheEvent::WidgetResized(id, dim) => {
-                if id.name == "ModuleView" {
+                if id.name == self.get_view_name() {
+                    println!("{}", self.get_view_name());
                     // Set the screen widths in case something changed and the routines need a redraw.
                     for r in self.routines.values_mut() {
                         r.set_screen_width(dim.width as u32, ctx, &self.grid_ctx);
                     }
 
-                    if let Some(renderview) = ui.get_render_view("ModuleView") {
+                    if let Some(renderview) = ui.get_render_view(self.get_view_name()) {
                         *renderview.render_buffer_mut() =
                             TheRGBABuffer::new(TheDim::new(0, 0, dim.width, dim.height));
                         self.draw(renderview.render_buffer_mut());
@@ -331,8 +352,8 @@ impl Module {
                 }
             }
             TheEvent::RenderViewScrollBy(id, coord) => {
-                if id.name == "ModuleView" {
-                    if let Some(renderview) = ui.get_render_view("ModuleView") {
+                if id.name == self.get_view_name() {
+                    if let Some(renderview) = ui.get_render_view(self.get_view_name()) {
                         let view_port_height = renderview.dim().height;
                         let total_height = self.height();
 
@@ -360,7 +381,7 @@ impl Module {
             }
             TheEvent::KeyCodeDown(key) => {
                 if let Some(focus) = &ctx.ui.focus {
-                    if focus.name == "ModuleView" {
+                    if focus.name == self.get_view_name() {
                         let prev = self.to_json();
                         if let Some(key_code) = key.to_key_code() {
                             if key_code == TheKeyCode::Return {
@@ -485,7 +506,7 @@ impl Module {
                             }
                         }
                     }
-                    if let Some(renderview) = ui.get_render_view("ModuleView") {
+                    if let Some(renderview) = ui.get_render_view(self.get_view_name()) {
                         self.draw(renderview.render_buffer_mut());
                     }
                     ctx.ui.send(TheEvent::Custom(
@@ -597,7 +618,7 @@ impl Module {
                 // }
             }
             TheEvent::RenderViewContext(id, coord) => {
-                if id.name == "ModuleView" {
+                if id.name == self.get_view_name() {
                     for r in self.routines.values_mut() {
                         if r.visible {
                             if let Some(menu) = r.context_at(
@@ -606,7 +627,7 @@ impl Module {
                                 &mut self.grid_ctx,
                             ) {
                                 r.draw(ctx, &mut self.grid_ctx, 0, None);
-                                if let Some(renderview) = ui.get_render_view("ModuleView") {
+                                if let Some(renderview) = ui.get_render_view(self.get_view_name()) {
                                     self.draw(renderview.render_buffer_mut());
                                     redraw = true;
                                 }
@@ -619,7 +640,7 @@ impl Module {
                 }
             }
             TheEvent::RenderViewClicked(id, coord) => {
-                if id.name == "ModuleView" {
+                if id.name == self.get_view_name() {
                     let mut handled = false;
                     for r in self.routines.values_mut() {
                         if r.visible {
@@ -760,6 +781,14 @@ impl Module {
             }
         }
         out
+    }
+
+    /// Returns the view name for the module type
+    pub fn get_view_name(&self) -> &'static str {
+        if self.module_type == ModuleType::Sector {
+            return "ShadeModuleView";
+        }
+        "CodeModuleView"
     }
 
     /// Load a module from a JSON string.

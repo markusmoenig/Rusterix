@@ -5011,7 +5011,6 @@ checksum = "c13547615a44dc9c452a8a534638acdf07120d4b6847c8178705da06306a3057"
 [[package]]
 name = "theframework"
 version = "0.1.40"
-source = "git+https://github.com/markusmoenig/theframework#48563eff178dd368a69efb7bbc3564fe57d99bc6"
 dependencies = [
  "arboard",
  "console_error_panic_hook",
@@ -7022,8 +7021,3 @@ dependencies = [
  "syn 2.0.106",
  "winnow",
 ]
-
-[[patch.unused]]
-name = "radium"
-version = "1.1.0"
-source = "git+https://github.com/youknowone/ferrilab?branch=fix-nightly#4a301c3a223e096626a2773d1a1eed1fc4e21140"
