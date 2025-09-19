@@ -5,12 +5,12 @@
 use super::TexStorage;
 use crate::Value;
 use once_cell::sync::OnceCell;
-use vek::{Vec2, Vec3};
+use vek::{Mat2, Vec2, Vec3};
 
 /// Global storage of precomputed patterns.
 static PATTERNS: OnceCell<Vec<TexStorage>> = OnceCell::new();
 
-static TILING: f32 = 5.0;
+static TILING: f32 = 10.0;
 
 /// Enum of all available patterns, matches the build order in `build_patterns()`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -29,6 +29,8 @@ pub enum PatternKind {
     FbmPerlinTurbulence,
     FbmPerlinRidge,
     Voronoi,
+    Cellular,
+    Bricks,
 }
 
 impl PatternKind {
@@ -48,6 +50,8 @@ impl PatternKind {
             PatternKind::FbmPerlinTurbulence => 11,
             PatternKind::FbmPerlinRidge => 12,
             PatternKind::Voronoi => 13,
+            PatternKind::Cellular => 14,
+            PatternKind::Bricks => 15,
         }
     }
 
@@ -67,6 +71,8 @@ impl PatternKind {
             11 => PatternKind::FbmPerlinTurbulence,
             12 => PatternKind::FbmPerlinRidge,
             13 => PatternKind::Voronoi,
+            14 => PatternKind::Cellular,
+            15 => PatternKind::Bricks,
             _ => return None,
         })
     }
@@ -87,6 +93,8 @@ impl PatternKind {
             "fbm_perlin_turbulence" => Some(PatternKind::FbmPerlinTurbulence),
             "fbm_perlin_ridge" => Some(PatternKind::FbmPerlinRidge),
             "voronoi" => Some(PatternKind::Voronoi),
+            "cellular" => Some(PatternKind::Cellular),
+            "bricks" => Some(PatternKind::Bricks),
             _ => None,
         }
     }
@@ -140,6 +148,8 @@ fn build_patterns() -> Vec<TexStorage> {
     v.push(make_fbm_perlin_turbulence());
     v.push(make_fbm_perlin_ridge());
     v.push(make_voronoi_noise());
+    v.push(make_cellular());
+    v.push(make_bricks());
 
     v
 }
@@ -201,21 +211,32 @@ fn make_fbm_perlin_ridge() -> TexStorage {
 fn make_voronoi_noise() -> TexStorage {
     let mut tex = TexStorage::new();
     tex.compute_par(|uv| {
-        crate::textures::noise::voronoi_combined_2d(
-            uv.xy(),
-            Vec2::broadcast(TILING),
-            10.0,  // jitter
-            0.5,   // variance (default)
-            1.0,   // factor (default)
-            0.1,   // width (default)
-            0.0,   // smoothness (default)
-            0.0,   // warp (default)
-            2.0,   // warp_scale (default)
-            false, // warp_smudge (default)
-            0.0,   // smudge_phase (default)
-            10.0,  // seed
-        )
+        crate::textures::noise::voronoi_combined_2d(uv.xy(), Vec2::broadcast(TILING), 1.0, 0.0, 0.0)
     });
+    tex
+}
+
+fn make_cellular() -> TexStorage {
+    let mut tex = TexStorage::new();
+    tex.compute_par(|uv| {
+        let rc = crate::textures::noise::cellular_noise(uv.xy(), Vec2::broadcast(TILING), 1.0, 0.0);
+        Vec3::new(rc.x, rc.y, 0.0)
+    });
+    tex
+}
+
+fn _make_cellular() -> TexStorage {
+    let mut tex = TexStorage::new();
+    tex.compute_par(|uv| {
+        let rc = crate::textures::noise::metaballs(uv.xy(), Vec2::broadcast(TILING), 1.0, 0.0);
+        Vec3::broadcast(rc)
+    });
+    tex
+}
+
+fn make_bricks() -> TexStorage {
+    let mut tex = TexStorage::new();
+    tex.compute_par(|uv| bricks(uv));
     tex
 }
 
@@ -349,4 +370,61 @@ fn make_fbm_ridge_noise(noise: NoiseFn) -> TexStorage {
         Vec3::broadcast((sum / norm).clamp(0.0, 1.0))
     });
     tex
+}
+
+// --- Bricks
+
+fn _rot(a: f32) -> Mat2<f32> {
+    Mat2::new(a.cos(), -a.sin(), a.sin(), a.cos())
+}
+
+#[inline(always)]
+pub fn hash21(p: Vec2<f32>) -> f32 {
+    let mut p3 = Vec3::new(
+        (p.x * 0.1031).fract(),
+        (p.y * 0.1031).fract(),
+        (p.x * 0.1031).fract(),
+    );
+    let dot = p3.dot(Vec3::new(p3.y + 33.333, p3.z + 33.333, p3.x + 33.333));
+
+    p3.x += dot;
+    p3.y += dot;
+    p3.z += dot;
+
+    ((p3.x + p3.y) * p3.z).fract()
+}
+
+pub fn bricks(uv3: Vec3<f32>) -> Vec3<f32> {
+    fn s_box(p: Vec2<f32>, b: Vec2<f32>, r: f32) -> f32 {
+        let d = p.map(|v| v.abs()) - b + Vec2::new(r, r);
+        d.x.max(d.y).min(0.0) + (d.map(|v| v.max(0.0))).magnitude() - r
+    }
+
+    let ratio = 3.0;
+    let round = 0.0;
+    // let rotation = 0.0;
+    let gap = 0.1;
+    let cell = 16.0;
+    let mode = 0;
+
+    let mut u = uv3.xy();
+
+    let w = Vec2::new(ratio, 1.0);
+    u *= Vec2::new(cell, cell) / w;
+
+    if mode == 0 {
+        u.x += 0.5 * (u.y.floor() % 2.0);
+    }
+
+    let id = hash21(u.map(|v| v.floor()));
+
+    let p = u.map(|v| v.fract());
+    // p = rot((id - 0.5) * rotation) * (p - 0.5);
+
+    // hit.hash = id;
+    // hit.uv = p;
+
+    let d = s_box(p, Vec2::new(0.5, 0.5) - gap, round);
+
+    Vec3::new(if d <= 0.0 { 1.0 } else { 0.0 }, id, d.abs())
 }

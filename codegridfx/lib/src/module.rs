@@ -113,8 +113,8 @@ impl Module {
     /// Add/ Update the routines of the module
     pub fn update_routines(&mut self) {
         if self.module_type.is_shader() {
-            if !self.contains("shader") {
-                let routine = Routine::new("shader".into());
+            if !self.contains("shade") {
+                let routine = Routine::new("shade".into());
                 self.routines.insert(routine.id, routine);
             }
         } else if self.module_type.is_instance() {
@@ -255,17 +255,21 @@ impl Module {
             }
         }
 
-        let color = CellRole::Function.to_color();
-        for item_name in FUNCTIONS {
-            if self.filter_text.is_empty() || item_name.to_lowercase().contains(&self.filter_text) {
-                let mut item = TheListItem::new(TheId::named("Code Editor Code List Item"));
-                item.set_text(item_name.to_string());
-                item.set_associated_layout(list.id().clone());
-                item.set_background_color(TheColor::from(color));
-                if let Some(cell) = Cell::from_str(item_name) {
-                    item.set_status_text(&cell.status());
+        if !self.module_type.is_shader() {
+            let color = CellRole::Function.to_color();
+            for item_name in FUNCTIONS {
+                if self.filter_text.is_empty()
+                    || item_name.to_lowercase().contains(&self.filter_text)
+                {
+                    let mut item = TheListItem::new(TheId::named("Code Editor Code List Item"));
+                    item.set_text(item_name.to_string());
+                    item.set_associated_layout(list.id().clone());
+                    item.set_background_color(TheColor::from(color));
+                    if let Some(cell) = Cell::from_str(item_name) {
+                        item.set_status_text(&cell.status());
+                    }
+                    list.add_item(item, ctx);
                 }
-                list.add_item(item, ctx);
             }
         }
     }
@@ -336,7 +340,6 @@ impl Module {
         match event {
             TheEvent::WidgetResized(id, dim) => {
                 if id.name == self.get_view_name() {
-                    println!("{}", self.get_view_name());
                     // Set the screen widths in case something changed and the routines need a redraw.
                     for r in self.routines.values_mut() {
                         r.set_screen_width(dim.width as u32, ctx, &self.grid_ctx);
@@ -747,7 +750,11 @@ impl Module {
     pub fn build(&self, debug: bool) -> String {
         let mut out = String::new();
 
-        if self.module_type == ModuleType::CharacterTemplate
+        if self.module_type.is_shader() {
+            for r in self.routines.values() {
+                r.build_shader(&mut out, 0);
+            }
+        } else if self.module_type == ModuleType::CharacterTemplate
             || self.module_type == ModuleType::ItemTemplate
         {
             out += &format!("class {}:\n", self.name);
@@ -758,7 +765,7 @@ impl Module {
             // Build non user_events first
             for r in self.routines.values() {
                 if !USER_EVENTS.contains(&r.name.as_str()) {
-                    r.build(&mut out, 8, debug);
+                    r.build_python(&mut out, 8, debug);
                 } else {
                     contains_user_events = true;
                 }
@@ -769,7 +776,7 @@ impl Module {
                 // Build user_event (if any)
                 for r in self.routines.values() {
                     if USER_EVENTS.contains(&r.name.as_str()) {
-                        r.build(&mut out, 8, debug);
+                        r.build_python(&mut out, 8, debug);
                     }
                 }
             }
@@ -777,7 +784,7 @@ impl Module {
             out += "def setup():\n";
 
             for r in self.routines.values() {
-                r.build(&mut out, 4, debug);
+                r.build_python(&mut out, 4, debug);
             }
         }
         out

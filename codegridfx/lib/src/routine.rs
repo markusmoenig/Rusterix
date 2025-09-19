@@ -337,8 +337,17 @@ impl Routine {
         None
     }
 
+    /// Build the routine into shader source
+    pub fn build_shader(&self, out: &mut String, _indent: usize) {
+        // let indent = indent;
+
+        *out += "fn shade()) {\n";
+
+        *out += "}\n";
+    }
+
     /// Build the routine into Python source
-    pub fn build(&self, out: &mut String, indent: usize, debug: bool) {
+    pub fn build_python(&self, out: &mut String, indent: usize, debug: bool) {
         let mut indent = indent;
 
         if self.name != "instantiation" {

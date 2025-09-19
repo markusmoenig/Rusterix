@@ -15,7 +15,7 @@ fn mixf(a: f32, b: f32, t: f32) -> f32 {
 /// - `seed`: scalar added into the hash domain
 /// Returns noise in [-1, 1].
 #[inline]
-pub fn value_noise_2d_(pos: Vec2<f32>, scale: Vec2<f32>, seed: f32) -> f32 {
+pub fn value_noise_2d(pos: Vec2<f32>, scale: Vec2<f32>, seed: f32) -> f32 {
     let p = pos * scale;
 
     // integer base cell and fractional coords inside the cell
@@ -50,31 +50,6 @@ pub fn value_noise_2d_(pos: Vec2<f32>, scale: Vec2<f32>, seed: f32) -> f32 {
     let cd = c + (d - c) * u.x; // row y=1
     let v = ab + (cd - ab) * u.y;
     v
-}
-
-/// Diagnostic: value noise with linear weights (no quintic fade).
-#[inline]
-pub fn value_noise_2d(pos: Vec2<f32>, scale: Vec2<f32>, seed: f32) -> f32 {
-    let p = pos * scale;
-    let pf = p.floor();
-    let fx = (p.x - pf.x).clamp(0.0, 1.0);
-    let fy = (p.y - pf.y).clamp(0.0, 1.0);
-
-    let sx = scale.x as i32;
-    let sy = scale.y as i32;
-    let seed_i = seed as i32;
-    let ix = (pf.x as i32).rem_euclid(sx);
-    let iy = (pf.y as i32).rem_euclid(sy);
-
-    let h = better_hash2d_cell_i(ix, iy, sx, sy, seed_i);
-    let a = h.x;
-    let b = h.y;
-    let c = h.z;
-    let d = h.w;
-
-    let ab = a + (b - a) * fx;
-    let cd = c + (d - c) * fx;
-    ab + (cd - ab) * fy
 }
 
 use crate::textures::multi_hash::smulti_hash2d;
@@ -455,78 +430,222 @@ pub fn voronoi_position_2d(
 
 #[inline(always)]
 pub fn voronoi_combined_2d(
-    mut pos: Vec2<f32>,
+    pos: Vec2<f32>,
     scale: Vec2<f32>,
     jitter: f32,
-    // From voronoiPattern:
-    variance: f32, // 0..1 – probability of using 3D color hash instead of grayscale id
-    factor: f32,   // position factor multiplier
-    // From cracks:
-    width: f32,      // line width
-    smoothness: f32, // line softness
-    warp: f32,       // warp strength (0..1)
-    warp_scale: f32, // scale of warp (>= 0)
-    warp_smudge: bool,
-    smudge_phase: f32,
+    phase: f32,
     seed: f32,
 ) -> Vec3<f32> {
-    // x = distance-to-edge (raw metric as in `voronoi_2d`)
-    // y = id/hash (scalar in [0,1]) from voronoiPattern using tilePos
-    // z = crack (thin line mask) like cracks()
-    // const KPI2: f32 = 6.283_185_307_1;
+    let a = voronoi_2d(pos, scale, jitter, phase, seed);
+    let b = voronoi_position_2d(pos, scale, jitter, phase, seed);
 
+    // TODO Cracks
+    Vec3::new(a.x, b.x, 0.0)
+}
+
+#[inline]
+pub fn cellular_noise(pos: Vec2<f32>, scale: Vec2<f32>, jitter: f32, seed: f32) -> Vec2<f32> {
+    // Wrap incoming UVs into [0,1) to guarantee seamless edges when baking textures
+    let pos = Vec2::new(pos.x.rem_euclid(1.0), pos.y.rem_euclid(1.0));
+    let p = pos * scale;
+
+    // Base integer cell and fractional offset in [0,1)
+    let pf = p.floor();
+    let f = p - pf;
+
+    // Wrap indices as integers
+    let sx = scale.x as i32;
+    let sy = scale.y as i32;
+    let ix = (pf.x as i32).rem_euclid(sx);
+    let iy = (pf.y as i32).rem_euclid(sy);
+
+    // Helper: 2D center in [0,1]^2 for an integer cell (ix,iy)
     #[inline(always)]
-    fn smoothstepf(e0: f32, e1: f32, x: f32) -> f32 {
-        let t = ((x - e0) / (e1 - e0)).clamp(0.0, 1.0);
-        t * t * (3.0 - 2.0 * t)
+    fn center_for_cell(ix: i32, iy: i32, sx: i32, sy: i32, seed: f32) -> Vec2<f32> {
+        // Convert wrapped integer cell to float domain and hash once
+        let x = (ix.rem_euclid(sx)) as f32 + seed;
+        let y = (iy.rem_euclid(sy)) as f32 + seed;
+        let (hx, hy) = crate::textures::multi_hash::multi_hash2d(vek::Vec4::new(x, y, x, y));
+        vek::Vec2::new(hx.x, hy.x)
     }
 
-    // Hash used for voronoiPattern id (scalar in [0,1])
+    // Sweep the 3×3 neighborhood, gather the 2 smallest squared distances
+    let mut f1 = 1.0e9f32;
+    let mut f2 = 1.0e9f32;
+
+    for dj in -1..=1 {
+        for di in -1..=1 {
+            let c = center_for_cell(ix + di, iy + dj, sx, sy, seed) * jitter
+                + vek::Vec2::new(di as f32, dj as f32)
+                - f;
+            let d = c.dot(c);
+            if d < f1 {
+                f2 = f1;
+                f1 = d;
+            } else if d < f2 {
+                f2 = d;
+            }
+        }
+    }
+
+    // Match GLSL normalization: sqrt and scale (1/1.125)
+    vek::Vec2::new(f1.sqrt(), f2.sqrt()) * (1.0 / 1.125)
+}
+
+/// Classic 3x3 Cellular noise with F1/F2 (Euclidean). Returns (F1, F2) in [0,1].
+#[inline]
+pub fn cellular_noise_(pos: Vec2<f32>, scale: Vec2<f32>, jitter: f32, seed: f32) -> Vec2<f32> {
+    // Integer-wrapped variant to eliminate FP mod drift across many tiles (esp. vertical seams)
+    let p = pos * scale;
+
+    // Base integer cell and fractional in-cell coords
+    let pf = p.floor();
+    let f = p - pf;
+
+    // Wrap indices in integer domain
+    let sx = scale.x as i32;
+    let sy = scale.y as i32;
+
+    let ix = (pf.x as i32).rem_euclid(sx);
+    let iy = (pf.y as i32).rem_euclid(sy);
+
+    // Neighbors per GLSL: cells = mod(i.xyxy + offset.xxzz, scale.xyxy)
+    // offset = (-1,0,1) → xxzz = (-1,-1, +1, +1) for (x,y,x,y)
+    let ixm = (ix - 1).rem_euclid(sx);
+    let iym = (iy - 1).rem_euclid(sy);
+    let ixp = (ix + 1).rem_euclid(sx);
+    let iyp = (iy + 1).rem_euclid(sy);
+
+    // Convert to floats and add seed AFTER wrapping (matches GLSL ordering)
+    let cells = Vec4::new(ixm as f32, iym as f32, ixp as f32, iyp as f32) + Vec4::broadcast(seed);
+    let i = Vec2::new(ix as f32, iy as f32) + Vec2::broadcast(seed);
+
+    // Hash 8 neighbors in two batches, matching GLSL argument packing
+    let (dx0h, dy0h) = multi_hash2d(Vec4::new(cells.x, cells.y, i.x, cells.y)); // vec4(cells.xy, vec2(i.x, cells.y))
+    let (dx0v, dy0v) = multi_hash2d(Vec4::new(cells.z, cells.y, cells.x, i.y)); // vec4(cells.zyx, i.y)
+    let mut dx0 = Vec4::new(dx0h.x, dx0h.y, dx0v.x, dx0v.y);
+    let mut dy0 = Vec4::new(dy0h.x, dy0h.y, dy0v.x, dy0v.y);
+
+    let (dx1h, dy1h) = multi_hash2d(Vec4::new(cells.z, cells.w, cells.z, i.y)); // vec4(cells.zwz, i.y)
+    let (dx1v, dy1v) = multi_hash2d(Vec4::new(cells.x, cells.w, i.x, cells.w)); // vec4(cells.xw, vec2(i.x, cells.w))
+    let mut dx1 = Vec4::new(dx1h.x, dx1h.y, dx1v.x, dx1v.y);
+    let mut dy1 = Vec4::new(dy1h.x, dy1h.y, dy1v.x, dy1v.y);
+
+    // Offsets layout exactly as shader comments
+    dx0 = Vec4::new(-1.0, 0.0, 1.0, -1.0) + dx0 * jitter - Vec4::broadcast(f.x);
+    dy0 = Vec4::new(-1.0, -1.0, -1.0, 0.0) + dy0 * jitter - Vec4::broadcast(f.y);
+    dx1 = Vec4::new(1.0, 1.0, -1.0, 0.0) + dx1 * jitter - Vec4::broadcast(f.x);
+    dy1 = Vec4::new(1.0, 0.0, 1.0, 1.0) + dy1 * jitter - Vec4::broadcast(f.y);
+
+    let d0 = dx0 * dx0 + dy0 * dy0;
+    let d1 = dx1 * dx1 + dy1 * dy1;
+
+    // Center (0,0) cell: wrap i and hash once; subtract f for relative vector
+    let center = crate::textures::multi_hash::better_hash2d_vec2(i) * jitter - f;
+
+    #[allow(non_snake_case)]
+    // Shuffle to extract F1/F2 (vek-safe component-wise mins/maxes)
+    let mut F = Vec4::new(
+        d0.x.min(d1.x),
+        d0.y.min(d1.y),
+        d0.z.min(d1.z),
+        d0.w.min(d1.w),
+    );
+    let mx = Vec4::new(
+        d0.x.max(d1.x),
+        d0.y.max(d1.y),
+        d0.z.max(d1.z),
+        d0.w.max(d1.w),
+    );
+    let mx_wzyx = Vec4::new(mx.w, mx.z, mx.y, mx.x);
+    F = Vec4::new(
+        F.x.min(mx_wzyx.x),
+        F.y.min(mx_wzyx.y),
+        F.z.min(mx_wzyx.z),
+        F.w.min(mx_wzyx.w),
+    );
+
+    let a_xy = Vec2::new(F.x.min(F.z), F.y.min(F.w));
+    let b_xy = Vec2::new(F.x.max(F.z), F.y.max(F.w));
+    let b_yx = Vec2::new(b_xy.y, b_xy.x);
+    let new_xy = Vec2::new(a_xy.x.min(b_yx.x), a_xy.y.min(b_yx.y));
+    F.x = new_xy.x;
+    F.y = new_xy.y;
+
+    let center_d = center.dot(center);
+    F.z = center_d;
+    F.w = 1.0e5;
+
+    let a2_xy = Vec2::new(F.x.min(F.z), F.y.min(F.w));
+    let b2_xy = Vec2::new(F.x.max(F.z), F.y.max(F.w));
+    let b2_yx = Vec2::new(b2_xy.y, b2_xy.x);
+    let new2_xy = Vec2::new(a2_xy.x.min(b2_yx.x), a2_xy.y.min(b2_yx.y));
+    F.x = new2_xy.x;
+    F.y = new2_xy.y;
+
+    let f12 = Vec2::new(F.x.min(F.y), F.x.max(F.y));
+    f12.map(f32::sqrt) * (1.0 / 1.125)
+}
+
+/// Metaballs variation (product of distances to neighbors, square‑rooted), Euclidean.
+#[inline]
+pub fn metaballs(pos: Vec2<f32>, scale: Vec2<f32>, jitter: f32, seed: f32) -> f32 {
+    // Seam‑free metaballs: integer‑wrapped 3×3 neighbor sweep (tile‑perfect at texture edges)
+    // Wrap UVs first so baking at u/v==1.0 samples the same tile as 0.0
+    let pos = Vec2::new(pos.x.rem_euclid(1.0), pos.y.rem_euclid(1.0));
+    let p = pos * scale;
+
+    // Base integer cell and fractional offset in [0,1)
+    let pf = p.floor();
+    let f = p - pf;
+
+    // Wrap indices in integer domain
+    let sx = scale.x as i32;
+    let sy = scale.y as i32;
+    let ix = (pf.x as i32).rem_euclid(sx);
+    let iy = (pf.y as i32).rem_euclid(sy);
+
+    // Helper: jittered center for integer cell (cx,cy) in [0,1]^2
     #[inline(always)]
-    fn hash2_scalar(p: Vec2<f32>) -> f32 {
-        // David Hoskins style float hash
-        let d = p.x * 27.16898 + p.y * 38.90563;
-        (d.sin() * 5151.5473453).fract()
+    fn center_for_cell(cx: i32, cy: i32, sx: i32, sy: i32, seed: f32) -> Vec2<f32> {
+        let x = (cx.rem_euclid(sx)) as f32 + seed;
+        let y = (cy.rem_euclid(sy)) as f32 + seed;
+        let (hx, hy) = crate::textures::multi_hash::multi_hash2d(vek::Vec4::new(x, y, x, y));
+        vek::Vec2::new(hx.x, hy.x)
     }
 
-    // Optional warp (approximation of gradientNoised smudge behavior)
-    if warp > 0.0 {
-        let sc = scale * warp_scale.max(0.0);
-        // Use two decorrelated gradient noises to build a 2D offset
-        let n0 = gradient_noise_2d(pos, sc, smudge_phase + seed);
-        let n1 = gradient_noise_2d(
-            pos + Vec2::new(37.0, 19.0) * (1.0 / sc.x.max(1.0)),
-            sc,
-            smudge_phase + seed + 17.0,
-        );
-        let disp = if warp_smudge {
-            Vec2::new(n1, n0)
-        } else {
-            Vec2::broadcast(n0)
-        };
-        pos += disp * (0.1 * warp);
+    // Product‑of‑distances variant from the GLSL reference
+    // Start with center cell distance (clamped to 1.0), then fold in the 8 neighbors.
+    let mut d = {
+        let c = center_for_cell(ix, iy, sx, sy, seed) * jitter - f; // (0,0)
+        c.dot(c).min(1.0)
+    };
+
+    for dj in -1..=1 {
+        for di in -1..=1 {
+            if di == 0 && dj == 0 {
+                continue;
+            }
+            let c = center_for_cell(ix + di, iy + dj, sx, sy, seed) * jitter
+                + Vec2::new(di as f32, dj as f32)
+                - f;
+            let dist2 = c.dot(c);
+            d = d.min(d * dist2);
+        }
     }
 
-    // Run canonical Voronoi to get: distance-to-edge and tile position of winning cell
-    let v = voronoi_2d(pos, scale, jitter, 0.0, seed);
-    let distance_to_edge = v.x; // raw metric
-    let tile_pos = Vec2::new(v.y, v.z); // winning cell's (tile) position
+    d.sqrt()
+}
 
-    // ID / hash channel (match voronoiPattern idea):
-    // rand = abs(hash1D(tilePos * factor + seed)) -> here a scalar hash over 2D
-    let rand = hash2_scalar(tile_pos * factor + Vec2::broadcast(seed)).abs();
-    // If you want variance blending like GLSL (choose color vs grayscale), collapse to a scalar id
-    // that varies more strongly when `variance` is high. We mix rand with a 3D hash’ x component.
-    // (You have a GLSL hash3D; here we synthesize another scalar for variety.)
-    let aux = hash2_scalar(tile_pos + Vec2::broadcast(seed + 123.456));
-    let id_scalar = if rand < variance { aux } else { rand };
-
-    // Crack (thin edge mask) from distance_to_edge, like cracks():
-    // cracks = smoothstep(max(width - smoothness, 0), width + fwidth(v.x), v.x)
-    // We don’t have GPU fwidth; approximate with half a pixel in tile space.
-    let fw = (1.0 / scale.x.abs().max(1.0) + 1.0 / scale.y.abs().max(1.0)) * 0.5;
-    let edge = smoothstepf((width - smoothness).max(0.0), width + fw, distance_to_edge);
-
-    // Return combined: x = distance-to-edge, y = id/hash scalar, z = crack mask
-    Vec3::new(distance_to_edge, id_scalar, edge)
+#[inline]
+pub fn metaballs_smooth(
+    pos: Vec2<f32>,
+    scale: Vec2<f32>,
+    jitter: f32,
+    width: f32,
+    smoothness: f32,
+    seed: f32,
+) -> f32 {
+    let d = metaballs(pos, scale, jitter, seed);
+    (d - width).clamp(0.0, smoothness) / smoothness
 }
