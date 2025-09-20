@@ -1,6 +1,6 @@
 use crate::{
-    Assets, Batch2D, Batch3D, Chunk, LightType, MapMini, Material, MaterialRole, Pixel,
-    PixelSource, PrimitiveMode, Ray, RenderMode, Scene, pixel_to_vec4, vec4_to_pixel,
+    Assets, Batch2D, Batch3D, Chunk, LightType, MapMini, Pixel, PixelSource, PrimitiveMode, Ray,
+    RenderMode, Scene, pixel_to_vec4, vec4_to_pixel,
 };
 use crate::{SampleMode, ShapeFXGraph};
 use rayon::prelude::*;
@@ -14,6 +14,22 @@ pub struct BrushPreview {
     pub position: Vec3<f32>,
     pub radius: f32,
     pub falloff: f32,
+}
+
+#[inline(always)]
+fn srgb_to_linear_fast(x: f32) -> f32 {
+    // Approximate powf(x, 2.2)
+    // Polynomial fit, max abs error ≈ 0.008
+    let x2 = x * x;
+    (0.697_5 * x2 + 0.302_5) * x
+}
+
+#[inline(always)]
+fn linear_to_srgb_fast(x: f32) -> f32 {
+    // Approximate powf(x, 1.0/2.2)
+    // Polynomial fit, max abs error ≈ 0.006
+    let sqrt_x = x.sqrt();
+    1.055 * sqrt_x - 0.055 * sqrt_x * sqrt_x
 }
 
 pub struct Rasterizer {
@@ -414,6 +430,7 @@ impl Rasterizer {
                                 scene,
                                 assets,
                                 Some(chunk),
+                                &mut execution,
                             );
                         }
                         if let Some(terrain_chunk) = &chunk.terrain_batch2d {
@@ -424,18 +441,35 @@ impl Rasterizer {
                                 scene,
                                 assets,
                                 Some(chunk),
+                                &mut execution,
                             );
                         }
                     }
 
                     // Static
                     for batch in scene.d2_static.iter() {
-                        self.d2_rasterize(&mut buffer, tile, batch, scene, assets, None);
+                        self.d2_rasterize(
+                            &mut buffer,
+                            tile,
+                            batch,
+                            scene,
+                            assets,
+                            None,
+                            &mut execution,
+                        );
                     }
 
                     // Dynamic
                     for batch in scene.d2_dynamic.iter() {
-                        self.d2_rasterize(&mut buffer, tile, batch, scene, assets, None);
+                        self.d2_rasterize(
+                            &mut buffer,
+                            tile,
+                            batch,
+                            scene,
+                            assets,
+                            None,
+                            &mut execution,
+                        );
                     }
                 }
 
@@ -476,6 +510,7 @@ impl Rasterizer {
         scene: &Scene,
         assets: &Assets,
         chunk: Option<&Chunk>,
+        execution: &mut Execution,
     ) {
         if let Some(bbox) = batch.bounding_box {
             // Without padding horizontal lines may not be insde the BBox.
@@ -643,10 +678,43 @@ impl Rasterizer {
                                             _ => [0, 0, 0, 0],
                                         };
 
-                                        if let Some(material) = &batch.material {
-                                            let mut color = pixel_to_vec4(&texel);
-                                            _ = self.apply_material(material, &mut color, &world);
-                                            texel = vec4_to_pixel(&color);
+                                        // Execute the batch shader (if any)
+                                        if let Some(shader_index) = batch.shader {
+                                            let program = if let Some(chunk) = chunk {
+                                                chunk.shaders.get(shader_index)
+                                            } else {
+                                                scene.shaders.get(shader_index)
+                                            };
+
+                                            if let Some(program) = program {
+                                                if let Some(sh) = program.shade_index {
+                                                    let mut color: Vec4<f32> =
+                                                        pixel_to_vec4(&texel);
+
+                                                    execution.uv.x = u;
+                                                    execution.uv.y = v;
+                                                    execution.color.x = color.x;
+                                                    execution.color.y = color.y;
+                                                    execution.color.z = color.z;
+                                                    execution.hitpoint.x = world.x;
+                                                    execution.hitpoint.y = world.y;
+                                                    execution.time.x = self.time;
+                                                    execution.time.y = self.time;
+                                                    execution.time.z = self.time;
+
+                                                    execution.roughness.x = 0.5;
+                                                    execution.metallic.x = 0.0;
+
+                                                    execution.reset(program.globals);
+                                                    execution.shade(sh, program);
+
+                                                    color.x = execution.color.x;
+                                                    color.y = execution.color.y;
+                                                    color.z = execution.color.z;
+                                                    color.w = 1.0;
+                                                    texel = vec4_to_pixel(&color);
+                                                }
+                                            }
                                         }
 
                                         if batch.receives_light
@@ -1023,7 +1091,7 @@ impl Rasterizer {
                                                         ([255, 0, 0, 255], false)
                                                     }
                                                 }
-                                                _ => ([0, 0, 0, 0], false),
+                                                _ => ([0, 0, 0, 255], false),
                                             };
 
                                             let normal = if !batch.normals.is_empty() {
@@ -1046,22 +1114,6 @@ impl Rasterizer {
                                                 Vec3::zero()
                                             };
 
-                                            #[inline(always)]
-                                            fn srgb_to_linear_fast(x: f32) -> f32 {
-                                                // Approximate powf(x, 2.2)
-                                                // Polynomial fit, max abs error ≈ 0.008
-                                                let x2 = x * x;
-                                                (0.697_5 * x2 + 0.302_5) * x
-                                            }
-
-                                            #[inline(always)]
-                                            fn linear_to_srgb_fast(x: f32) -> f32 {
-                                                // Approximate powf(x, 1.0/2.2)
-                                                // Polynomial fit, max abs error ≈ 0.006
-                                                let sqrt_x = x.sqrt();
-                                                1.055 * sqrt_x - 0.055 * sqrt_x * sqrt_x
-                                            }
-
                                             let mut color: Vec4<f32> = pixel_to_vec4(&texel);
                                             color.x = srgb_to_linear_fast(color.x);
                                             color.y = srgb_to_linear_fast(color.y);
@@ -1069,9 +1121,13 @@ impl Rasterizer {
 
                                             // Execute the batch shader (if any)
                                             if let Some(shader_index) = batch.shader {
-                                                if let Some(program) =
-                                                    assets.shaders.get(shader_index)
-                                                {
+                                                let program = if let Some(chunk) = chunk {
+                                                    chunk.shaders.get(shader_index)
+                                                } else {
+                                                    scene.shaders.get(shader_index)
+                                                };
+
+                                                if let Some(program) = program {
                                                     if let Some(sh) = program.shade_index {
                                                         execution.normal = normal;
                                                         execution.uv.x = interpolated_u;
@@ -1252,59 +1308,6 @@ impl Rasterizer {
                     }
                 }
             }
-        }
-    }
-
-    /// Applies a material to the color, called from both 2D and 3D rasterizer
-    #[inline(always)]
-    fn apply_material(&self, material: &Material, color: &mut Vec4<f32>, world: &Vec2<f32>) -> f32 {
-        let value = material.modifier.modify(color, &material.value);
-
-        match material.role {
-            // value = 0‥1  (1 = fully matte, 0 = mirror-like)
-            MaterialRole::Matte => 1.0 - value,
-            // value = 0‥1  (0 = diffuse, 1 = perfect mirror)
-            MaterialRole::Glossy => value,
-            // value = 0‥1, both gloss and F₀ shift toward white
-            MaterialRole::Metallic => {
-                let m = value;
-                let inv_m = 1.0 - m;
-                *color = Vec4::new(
-                    // F₀ tint
-                    color.x * inv_m + m,
-                    color.y * inv_m + m,
-                    color.z * inv_m + m,
-                    color.w,
-                );
-                m
-            }
-            // value = brightness multiplier with flicker
-            MaterialRole::Emissive => {
-                let flicker = material.flicker;
-                let flicker_factor = if flicker > 0.0 {
-                    let combined_hash = self
-                        .hash_anim
-                        .wrapping_add((world.x as u32 + world.y as u32) * 100);
-                    let flicker_value = (combined_hash as f32 / u32::MAX as f32).clamp(0.0, 1.0);
-                    1.0 - flicker_value * flicker
-                } else {
-                    1.0
-                };
-
-                let e = value;
-                let base = color.xyz();
-                let len = base.magnitude();
-
-                if len > 0.0 {
-                    let boosted = base * (1.0 + e);
-                    color.x = boosted.x * flicker_factor;
-                    color.y = boosted.y * flicker_factor;
-                    color.z = boosted.z * flicker_factor;
-                }
-                0.0
-            }
-
-            _ => 0.0,
         }
     }
 

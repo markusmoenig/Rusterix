@@ -99,6 +99,7 @@ pub enum Cell {
     If,
     Else,
 
+    // Python based
     Action,
     AddItem,
     BlockEvents,
@@ -130,6 +131,9 @@ pub enum Cell {
     Teleport,
     ToggleAttr,
     TookDamage,
+
+    // Shader based
+    Sample,
 
     LeftParent,
     RightParent,
@@ -208,6 +212,8 @@ impl Cell {
             Cell::ToggleAttr => "toggle_attr",
             Cell::TookDamage => "took_damage",
 
+            Cell::Sample => "sample",
+
             Cell::LeftParent => "Left Parenthesis",
             Cell::RightParent => "Right Parenthesis",
         }
@@ -259,6 +265,9 @@ impl Cell {
             "teleport" => Some(Cell::Teleport),
             "toggle_attr" => Some(Cell::ToggleAttr),
             "took_damage" => Some(Cell::TookDamage),
+
+            "sample" => Some(Cell::Sample),
+
             _ => None,
         }
     }
@@ -325,6 +334,8 @@ impl Cell {
             ToggleAttr => "toggle_attr".into(),
             TookDamage => "took_damage".into(),
 
+            Sample => "sample".into(),
+
             LeftParent => "(".into(),
             RightParent => ")".into(),
             _ => "".into(),
@@ -368,6 +379,9 @@ impl Cell {
             Teleport => "Teleport to a sector. Optionally in another region.".into(),
             ToggleAttr => "Toggles a boolean attribute of the current entity or item.".into(),
             TookDamage => "Takes damage.".into(),
+
+            Sample => "Sample a noise or pattern texture.".into(),
+            
             _ => "".into(),
         }
     }

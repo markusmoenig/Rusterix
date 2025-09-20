@@ -24,7 +24,7 @@ impl TheTrait for Cube {
     where
         Self: Sized,
     {
-        let scene = Scene::from_static(
+        let mut scene = Scene::from_static(
             vec![Batch2D::from_rectangle(0.0, 0.0, 200.0, 200.0)],
             vec![
                 Batch3D::from_box(-0.5, -0.5, -0.5, 1.0, 1.0, 1.0)
@@ -43,11 +43,7 @@ impl TheTrait for Cube {
         ])
         .background(Box::new(VGrayGradientShader::new()));
 
-        let mut assets = Assets::default().textures(vec![Tile::from_texture(Texture::from_image(
-            Path::new("images/logo.png"),
-        ))]);
-
-        assets.add_shader(
+        scene.add_shader(
             r#"
             fn shade() {
                 // Procedural wood: concentric growth rings warped by turbulence + fine grain.
@@ -104,6 +100,10 @@ impl TheTrait for Cube {
             }
         "#,
         );
+
+        let assets = Assets::default().textures(vec![Tile::from_texture(Texture::from_image(
+            Path::new("images/logo.png"),
+        ))]);
 
         let mut camera = D3OrbitCamera::new();
         camera.set_parameter_f32("distance", 1.5);

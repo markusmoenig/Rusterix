@@ -41,7 +41,7 @@ impl Sector {
             properties,
             neighbours: vec![],
 
-            module: Module::default(),
+            module: Module::as_type(codegridfx::ModuleType::Sector),
             layer: None,
         }
     }

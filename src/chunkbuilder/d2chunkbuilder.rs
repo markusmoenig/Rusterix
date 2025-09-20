@@ -24,6 +24,8 @@ impl ChunkBuilder for D2ChunkBuilder {
             let bbox = sector.bounding_box(map);
             if bbox.intersects(&chunk.bbox) && chunk.bbox.contains(bbox.center()) {
                 if let Some(geo) = sector.generate_geometry(map) {
+                    let shader_index = chunk.add_shader(&sector.module.build_shader());
+
                     let mut vertices: Vec<[f32; 2]> = vec![];
                     let mut uvs: Vec<[f32; 2]> = vec![];
 
@@ -39,40 +41,51 @@ impl ChunkBuilder for D2ChunkBuilder {
                         source = sector.properties.get("ceiling_source");
                     }
 
+                    let mut processed = false;
+                    for vertex in &geo.0 {
+                        let local = Vec2::new(vertex[0], vertex[1]);
+                        let repeat = true;
+
+                        if !repeat {
+                            let uv = [
+                                (vertex[0] - bbox.min.x) / (bbox.max.x - bbox.min.x),
+                                (vertex[1] - bbox.min.y) / (bbox.max.y - bbox.min.y),
+                            ];
+                            uvs.push(uv);
+                        } else {
+                            let texture_scale = 1.0;
+                            let uv = [
+                                (vertex[0] - bbox.min.x) / texture_scale,
+                                (vertex[1] - bbox.min.y) / texture_scale,
+                            ];
+                            uvs.push(uv);
+                        }
+                        vertices.push([local.x, local.y]);
+                    }
+
                     if let Some(Value::Source(pixelsource)) = source {
                         if let Some(tile) = pixelsource.tile_from_tile_list(assets) {
-                            for vertex in &geo.0 {
-                                let local = Vec2::new(vertex[0], vertex[1]);
-                                let repeat = true;
-
-                                if !repeat {
-                                    let uv = [
-                                        (vertex[0] - bbox.min.x) / (bbox.max.x - bbox.min.x),
-                                        (vertex[1] - bbox.min.y) / (bbox.max.y - bbox.min.y),
-                                    ];
-                                    uvs.push(uv);
-                                } else {
-                                    let texture_scale = 1.0;
-                                    let uv = [
-                                        (vertex[0] - bbox.min.x) / texture_scale,
-                                        (vertex[1] - bbox.min.y) / texture_scale,
-                                    ];
-                                    uvs.push(uv);
-                                }
-                                vertices.push([local.x, local.y]);
-                            }
-
                             if let Some(texture_index) = assets.tile_index(&tile.id) {
-                                let batch = Batch2D::new(vertices, geo.1, uvs)
-                                    .repeat_mode(if repeat {
-                                        crate::RepeatMode::RepeatXY
-                                    } else {
-                                        crate::RepeatMode::ClampXY
-                                    })
-                                    .source(PixelSource::StaticTileIndex(texture_index));
+                                let mut batch =
+                                    Batch2D::new(vertices.clone(), geo.1.clone(), uvs.clone())
+                                        .repeat_mode(if repeat {
+                                            crate::RepeatMode::RepeatXY
+                                        } else {
+                                            crate::RepeatMode::ClampXY
+                                        })
+                                        .source(PixelSource::StaticTileIndex(texture_index));
+                                batch.shader = shader_index;
                                 chunk.batches2d.push(batch);
+                                processed = true;
                             }
                         }
+                    }
+
+                    if let Some(shader_index) = shader_index
+                        && processed == false
+                    {
+                        let batch = Batch2D::new(vertices, geo.1, uvs).shader(shader_index);
+                        chunk.batches2d.push(batch);
                     }
                 }
             }

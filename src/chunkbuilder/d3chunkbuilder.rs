@@ -58,84 +58,57 @@ impl ChunkBuilder for D3ChunkBuilder {
                 }
 
                 if add_it {
-                    let material: Option<Material> =
-                        crate::scenebuilder::get_material_from_geo_graph(
-                            &sector.properties,
-                            2,
-                            map,
-                        );
-
                     if let Some((vertices, indices)) = sector.generate_geometry(map) {
+                        let shader_index = chunk.add_shader(&sector.module.build_shader());
+
                         let sector_elevation =
                             sector.properties.get_float_default("floor_height", 0.0);
 
                         // Generate floor geometry
                         if !add_it_as_box {
+                            let mut processed = false;
+
+                            let floor_vertices: Vec<[f32; 4]> = vertices
+                                .iter()
+                                .map(|&v| {
+                                    [
+                                        v[0],
+                                        sector_elevation + if add_it_as_floor { 0.2 } else { 0.0 },
+                                        v[1],
+                                        1.0,
+                                    ]
+                                })
+                                .collect();
+
+                            let floor_uvs: Vec<[f32; 2]> =
+                                vertices.iter().map(|&v| [v[0], v[1]]).collect();
+
                             if let Some(Value::Source(pixelsource)) =
                                 sector.properties.get("floor_source")
                             {
                                 if let Some(tile) = pixelsource.tile_from_tile_list(assets) {
                                     if let Some(texture_index) = assets.tile_index(&tile.id) {
-                                        let floor_vertices = vertices
-                                            .iter()
-                                            .map(|&v| {
-                                                [
-                                                    v[0],
-                                                    sector_elevation
-                                                        + if add_it_as_floor { 0.2 } else { 0.0 },
-                                                    v[1],
-                                                    1.0,
-                                                ]
-                                            })
-                                            .collect();
-
-                                        let floor_uvs =
-                                            vertices.iter().map(|&v| [v[0], v[1]]).collect();
-
                                         let mut batch = Batch3D::new(
-                                            floor_vertices,
+                                            floor_vertices.clone(),
                                             indices.clone(),
-                                            floor_uvs,
+                                            floor_uvs.clone(),
                                         )
                                         .repeat_mode(crate::RepeatMode::RepeatXY)
                                         .source(PixelSource::StaticTileIndex(texture_index));
-                                        batch.material = material;
+                                        batch.shader = shader_index;
                                         chunk.batches3d.push(batch);
-
-                                        /*
-                                        if material.is_some() {
-                                            let texture_index = textures.len();
-                                            let mut batch = Batch::emptyd3()
-                                                .repeat_mode(crate::RepeatMode::RepeatXY)
-                                                .texture_index(texture_index);
-                                            batch.material = material;
-                                            batch.add(floor_vertices, indices.clone(), floor_uvs);
-
-                                            textures.push(tile.clone());
-                                            repeated_offsets.insert(tile.id, repeated_batches.len());
-                                            repeated_batches.push(batch);
-                                        } else if let Some(offset) = repeated_offsets.get(&tile.id) {
-                                            repeated_batches[*offset].add(
-                                                floor_vertices,
-                                                indices.clone(),
-                                                floor_uvs,
-                                            );
-                                        } else {
-                                            let texture_index = textures.len();
-
-                                            let mut batch = Batch::emptyd3()
-                                                .repeat_mode(crate::RepeatMode::RepeatXY)
-                                                .sample_mode(sample_mode)
-                                                .texture_index(texture_index);
-
-                                            batch.add(floor_vertices, indices.clone(), floor_uvs);
-
-                                            textures.push(tile.clone());
-                                            repeated_offsets.insert(tile.id, repeated_batches.len());
-                                            repeated_batches.push(batch);
-                                        }*/
+                                        processed = true;
                                     }
                                 }
+                            }
+
+                            if let Some(shader_index) = shader_index
+                                && !processed
+                            {
+                                let batch =
+                                    Batch3D::new(floor_vertices, indices.clone(), floor_uvs)
+                                        .shader(shader_index);
+                                chunk.batches3d.push(batch);
                             }
                         }
 

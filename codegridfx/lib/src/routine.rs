@@ -338,10 +338,72 @@ impl Routine {
     }
 
     /// Build the routine into shader source
-    pub fn build_shader(&self, out: &mut String, _indent: usize) {
-        // let indent = indent;
+    pub fn build_shader(&self, out: &mut String, indent: usize) {
+        let mut indent = indent;
 
-        *out += "fn shade()) {\n";
+        *out += "fn shade() {\n";
+        indent += 4;
+
+        let rows = self.grid.grid_by_rows();
+
+        // If empty just add a "pass" statement
+        if rows.len() <= 1 {
+            *out += &format!("{:indent$}pass\n", "");
+        }
+
+        for row in rows {
+            let mut row_code = String::new();
+
+            let mut is_if = false;
+            let mut is_else = false;
+            let mut ind = indent;
+
+            for (index, (item, pos)) in row.iter().enumerate() {
+                if index == 0 {
+                    if matches!(item.cell, Cell::If) {
+                        is_if = true;
+                    }
+                    if matches!(item.cell, Cell::Else) {
+                        is_else = true;
+                    }
+
+                    if let Some(i) = self.grid.row_indents.get(&pos.1) {
+                        ind += *i as usize * 4;
+                    }
+                }
+
+                row_code += &item.code();
+                if item.cell.role() == CellRole::Function && item.form == CellItemForm::Rounded {
+                    row_code += ")";
+                }
+
+                if !item.description.is_empty() {
+                    // Check if we need to insert a "," or ")"
+                    if let Some(next) = self.grid.grid.get(&(pos.0 + 1, pos.1)) {
+                        if !next.description.is_empty() {
+                            row_code += ", ";
+                        } else {
+                            row_code += ") ";
+                        }
+                    } else {
+                        row_code += ") ";
+                    }
+                }
+
+                if index == row.len() - 1 {
+                    if is_if || is_else {
+                        row_code += "{";
+                    } else {
+                        row_code += " ";
+                    }
+                } else {
+                    row_code += " ";
+                }
+            }
+
+            row_code += ";";
+            *out += &format!("{:ind$}{}\n", "", row_code);
+        }
 
         *out += "}\n";
     }

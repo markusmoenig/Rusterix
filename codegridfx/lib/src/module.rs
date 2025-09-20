@@ -39,6 +39,8 @@ const FUNCTIONS: [&str; 30] = [
     "took_damage",
 ];
 
+const SHADER_FUNCTIONS: [&str; 1] = ["sample"];
+
 #[derive(Serialize, Deserialize, Debug, Default, PartialEq, Clone)]
 pub enum ModuleType {
     #[default]
@@ -255,7 +257,23 @@ impl Module {
             }
         }
 
-        if !self.module_type.is_shader() {
+        if self.module_type.is_shader() {
+            let color = CellRole::Function.to_color();
+            for item_name in SHADER_FUNCTIONS {
+                if self.filter_text.is_empty()
+                    || item_name.to_lowercase().contains(&self.filter_text)
+                {
+                    let mut item = TheListItem::new(TheId::named("Code Editor Code List Item"));
+                    item.set_text(item_name.to_string());
+                    item.set_associated_layout(list.id().clone());
+                    item.set_background_color(TheColor::from(color));
+                    if let Some(cell) = Cell::from_str(item_name) {
+                        item.set_status_text(&cell.status());
+                    }
+                    list.add_item(item, ctx);
+                }
+            }
+        } else if !self.module_type.is_shader() {
             let color = CellRole::Function.to_color();
             for item_name in FUNCTIONS {
                 if self.filter_text.is_empty()
@@ -747,14 +765,30 @@ impl Module {
     }
 
     /// Build the module into Python source
-    pub fn build(&self, debug: bool) -> String {
+    pub fn build_shader(&self) -> String {
         let mut out = String::new();
 
         if self.module_type.is_shader() {
             for r in self.routines.values() {
-                r.build_shader(&mut out, 0);
+                if r.name == "shade" {
+                    r.build_shader(&mut out, 0);
+                    break;
+                }
             }
-        } else if self.module_type == ModuleType::CharacterTemplate
+        }
+
+        if !out.is_empty() {
+            println!("{}", out);
+        }
+
+        out
+    }
+
+    /// Build the module into Python source
+    pub fn build(&self, debug: bool) -> String {
+        let mut out = String::new();
+
+        if self.module_type == ModuleType::CharacterTemplate
             || self.module_type == ModuleType::ItemTemplate
         {
             out += &format!("class {}:\n", self.name);

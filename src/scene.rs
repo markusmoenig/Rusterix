@@ -1,5 +1,6 @@
 use crate::{Batch2D, Batch3D, Chunk, CompiledLight, MapMini, Shader, Tile};
 use rayon::prelude::*;
+use rusteria::{Program, Rusteria};
 use theframework::prelude::*;
 use vek::{Mat3, Mat4};
 
@@ -35,6 +36,9 @@ pub struct Scene {
     /// For 2D grid conversion when we dont use a matrix
     pub mapmini: MapMini,
 
+    /// The list of shaders for the Batches
+    pub shaders: Vec<Program>,
+
     /// The build chunks
     pub chunks: FxHashMap<(i32, i32), Chunk>,
 }
@@ -61,6 +65,7 @@ impl Scene {
             animation_frame: 1,
 
             mapmini: MapMini::default(),
+            shaders: vec![],
 
             chunks: FxHashMap::default(),
         }
@@ -81,9 +86,39 @@ impl Scene {
             animation_frame: 1,
 
             mapmini: MapMini::default(),
+            shaders: vec![],
 
             chunks: FxHashMap::default(),
         }
+    }
+
+    /// Add a shader
+    pub fn add_shader(&mut self, code: &str) -> Option<usize> {
+        if code.is_empty() {
+            return None;
+        };
+
+        let mut rs: Rusteria = Rusteria::default();
+        let _module = match rs.parse_str(code) {
+            Ok(module) => match rs.compile(&module) {
+                Ok(()) => {}
+                Err(e) => {
+                    eprintln!("Error compiling module: {e}");
+                    return None;
+                }
+            },
+            Err(e) => {
+                eprintln!("Error parsing module: {e}");
+                return None;
+            }
+        };
+
+        println!("{}", rs.context.program.body.len());
+
+        let index = self.shaders.len();
+        self.shaders.push(rs.context.program.clone());
+
+        Some(index)
     }
 
     /// Sets the background shader using the builder pattern.

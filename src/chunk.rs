@@ -1,4 +1,5 @@
 use crate::{BBox, Batch2D, Batch3D, CompiledLight, Pixel, Texture};
+use rusteria::{Program, Rusteria};
 use vek::Vec2;
 
 /// A chunk of 2D and 3D batches which make up a Scene.
@@ -18,6 +19,9 @@ pub struct Chunk {
 
     // Lights
     pub lights: Vec<CompiledLight>,
+
+    /// The list of shaders for the Batches
+    pub shaders: Vec<Program>,
 }
 
 impl Chunk {
@@ -34,7 +38,37 @@ impl Chunk {
             terrain_batch3d: None,
             terrain_texture: None,
             lights: vec![],
+            shaders: vec![],
         }
+    }
+
+    /// Add a shader
+    pub fn add_shader(&mut self, code: &str) -> Option<usize> {
+        if code.is_empty() {
+            return None;
+        };
+
+        let mut rs: Rusteria = Rusteria::default();
+        let _module = match rs.parse_str(code) {
+            Ok(module) => match rs.compile(&module) {
+                Ok(()) => {}
+                Err(e) => {
+                    eprintln!("Error compiling module: {e}");
+                    return None;
+                }
+            },
+            Err(e) => {
+                eprintln!("Error parsing module: {e}");
+                return None;
+            }
+        };
+
+        println!("{}", rs.context.program.body.len());
+
+        let index = self.shaders.len();
+        self.shaders.push(rs.context.program.clone());
+
+        Some(index)
     }
 
     /// Sample the baked terrain texture at the given world position
