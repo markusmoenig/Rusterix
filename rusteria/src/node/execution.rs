@@ -1,7 +1,9 @@
+use std::path::PathBuf;
+
 use vek::Vec3;
 
 use crate::textures::patterns::pattern_safe;
-use crate::{NodeOp, Program, Value};
+use crate::{NodeOp, Program, TexStorage, Value};
 
 #[derive(Clone)]
 pub struct Execution {
@@ -19,6 +21,9 @@ pub struct Execution {
 
     /// Function return value.
     return_value: Option<Value>,
+
+    /// Allocated textures.
+    textures: Vec<TexStorage>,
 
     /// UV
     pub uv: Value,
@@ -56,6 +61,7 @@ impl Execution {
             locals_stack: vec![],
             stack: Vec::with_capacity(32),
             return_value: None,
+            textures: vec![],
             uv: Vec3::zero(),
             color: Vec3::zero(),
             roughness: Vec3::broadcast(0.5),
@@ -75,6 +81,7 @@ impl Execution {
             locals_stack: vec![],
             stack: Vec::with_capacity(32),
             return_value: None,
+            textures: vec![],
             uv: Vec3::zero(),
             color: Vec3::zero(),
             roughness: Vec3::broadcast(0.5),
@@ -199,9 +206,7 @@ impl Execution {
                     };
 
                     // Clean up temporaries
-                    while self.stack.len() > stack_base {
-                        _ = self.stack.pop();
-                    }
+                    self.stack.truncate(stack_base);
 
                     self.pop_locals_state();
 
@@ -209,9 +214,6 @@ impl Execution {
                     self.stack.push(ret);
                 }
                 NodeOp::Return => {
-                    // Prefer the top of stack as the explicit return expression.
-                    // If nothing was pushed (e.g., miscompiled branch), fall back to an
-                    // existing return_value (from a deeper recursive call), else zero.
                     let v = if let Some(top) = self.stack.pop() {
                         top
                     } else if let Some(prev) = self.return_value.take() {
@@ -220,6 +222,7 @@ impl Execution {
                         Value::zero()
                     };
                     self.return_value = Some(v);
+                    self.stack.clear();
                     break;
                 }
                 NodeOp::Pack2 => {
@@ -236,6 +239,33 @@ impl Execution {
                 NodeOp::Dup => {
                     if let Some(top) = self.stack.last() {
                         self.stack.push(*top);
+                    }
+                }
+                NodeOp::For(init, cond, incr, body) => {
+                    let base = self.stack.len();
+                    let mut iter = 0usize;
+                    self.execute(init, program);
+                    // self.stack.truncate(base);
+
+                    loop {
+                        self.execute(cond, program);
+
+                        let z = self.stack.pop().unwrap();
+                        if z.x == 0.0 {
+                            break;
+                        }
+                        // self.stack.truncate(base);
+
+                        self.execute(body, program);
+                        // self.stack.truncate(base);
+
+                        self.execute(incr, program);
+                        // self.stack.truncate(base);
+
+                        iter += 1;
+                        if iter > 10_000_000 {
+                            panic!("Inifinite for loop detected");
+                        }
                     }
                 }
                 NodeOp::If(then_code, else_code) => {
@@ -524,11 +554,74 @@ impl Execution {
                     let b = self.stack.pop().unwrap();
                     let a = self.stack.pop().unwrap();
                     if let Some(tex) = pattern_safe(b.x as usize) {
-                        let rc = tex.sample(a);
-                        // self.stack.push(tex.sample(a));
-                        self.stack.push(tex.sample(rc));
+                        self.stack.push(tex.sample(a));
                     } else {
                         self.stack.push(Vec3::zero());
+                    }
+                }
+                NodeOp::Alloc => {
+                    let b = self.stack.pop().unwrap();
+                    let a = self.stack.pop().unwrap();
+                    let index = self.textures.len();
+                    let tex = TexStorage::new(a.x as usize, b.x as usize);
+                    self.textures.push(tex);
+                    self.stack.push(Vec3::broadcast(index as f32));
+                }
+                NodeOp::Iterate => {
+                    let b = self.stack.pop().unwrap(); // string index
+                    let a = self.stack.pop().unwrap(); // texture index
+                    if let Some(tex) = self.textures.get_mut(a.x as usize) {
+                        if let Some(p) = program.strings.get(b.x as usize) {
+                            if let Some(fn_index) = program.user_functions_name_map.get(p) {
+                                let fidx = *fn_index;
+                                tex.par_iterate_with(
+                                    || {
+                                        // Per-row execution context cloned from current globals
+                                        let mut ex = Execution::new(0);
+                                        // Carry over shared context fields
+                                        ex.time = self.time;
+                                        ex.normal = self.normal;
+                                        ex.hitpoint = self.hitpoint;
+                                        ex.color = self.color;
+                                        ex.roughness = self.roughness;
+                                        ex.metallic = self.metallic;
+                                        ex.emissive = self.emissive;
+                                        ex.transmission = self.transmission;
+                                        ex
+                                    },
+                                    |state, _x, _y, uv| {
+                                        // Prepare state for this pixel
+                                        state.stack.truncate(0);
+                                        state.return_value = None;
+                                        state.uv = uv;
+
+                                        // Ensure locals sized for this shader
+                                        state.locals.resize(program.shade_locals, Value::zero());
+
+                                        // Execute function body
+                                        state.execute(&program.user_functions[fidx], program);
+
+                                        // Prefer explicit return value; else use color
+                                        if let Some(ret) = state.return_value.take() {
+                                            ret
+                                        } else {
+                                            state.color
+                                        }
+                                    },
+                                );
+                            }
+                        }
+                    }
+                }
+                NodeOp::Save => {
+                    let b = self.stack.pop().unwrap();
+                    let a = self.stack.pop().unwrap();
+                    if let Some(tex) = self.textures.get(a.x as usize) {
+                        if let Some(p) = program.strings.get(b.x as usize) {
+                            if let Err(err) = tex.save_png(&PathBuf::from(p)) {
+                                println!("{}", err.to_string());
+                            }
+                        }
                     }
                 }
             }

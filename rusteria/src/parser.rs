@@ -1,8 +1,7 @@
-use crate::textures::patterns::PatternKind;
 use crate::zero_expr_float;
 use crate::{
     ASTValue, AssignmentOperator, BinaryOperator, ComparisonOperator, EqualityOperator, Expr,
-    IdVerifier, Location, LogicalOperator, ParseError, PreModule, Scanner, Stmt, Token, TokenType,
+    IdVerifier, Location, LogicalOperator, Module, ParseError, Scanner, Stmt, Token, TokenType,
     UnaryOperator, objectd::FunctionD,
 };
 use indexmap::IndexMap;
@@ -32,6 +31,9 @@ pub struct Parser {
 
     /// User defined function names
     function_names: FxHashSet<String>,
+
+    /// Strings
+    strings: Vec<String>,
 }
 
 impl Default for Parser {
@@ -55,11 +57,12 @@ impl Parser {
             locals_map: IndexMap::default(),
 
             function_names: FxHashSet::default(),
+            strings: vec![],
         }
     }
 
     /// Compile the main source module.
-    pub fn compile(&mut self, path: PathBuf) -> Result<PreModule, ParseError> {
+    pub fn compile(&mut self, path: PathBuf) -> Result<Module, ParseError> {
         if let Ok(source) = std::fs::read_to_string(path.clone()) {
             if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
                 self.compile_module(stem.to_string(), source, path)
@@ -77,12 +80,8 @@ impl Parser {
         name: String,
         source: String,
         path: PathBuf,
-    ) -> Result<PreModule, ParseError> {
-        // Preprocess: replace pattern name strings with numeric ids before scanning
-        let source = self.preprocess_pattern_strings(&source);
-        // Extract all tokens from the scanner
+    ) -> Result<Module, ParseError> {
         let mut scanner = Scanner::new(source.clone());
-
         let mut tokens = vec![];
         loop {
             let token = scanner.scan_token();
@@ -103,12 +102,13 @@ impl Parser {
             statements.push(Box::new(stmt));
         }
 
-        let module = PreModule::new(
+        let module = Module::new(
             name,
             source,
             self.path.clone(),
             statements,
             self.globals_map.clone(),
+            self.strings.clone(),
         );
 
         Ok(module)
@@ -347,9 +347,75 @@ impl Parser {
             self.block()
         } else if self.match_token(vec![TokenType::Return]) {
             self.return_statement()
+        } else if self.match_token(vec![TokenType::For]) {
+            self.for_statement()
         } else {
             self.expression_statement()
         }
+    }
+
+    fn for_statement(&mut self) -> Result<Stmt, ParseError> {
+        let line = self.current_line;
+        self.consume(TokenType::LeftParen, "Expect '(' after 'for'", line)?;
+
+        let mut inits: Vec<Box<Stmt>> = vec![];
+
+        // self.inside_for_initializer = true;
+        loop {
+            let i = self.declaration()?;
+            inits.push(Box::new(i));
+
+            if !self.match_token(vec![TokenType::Comma]) {
+                break;
+            }
+        }
+        // self.inside_for_initializer = false;
+
+        self.consume(
+            TokenType::Semicolon,
+            "Expect ';' after loop initializer",
+            line,
+        )?;
+
+        let mut conditions: Vec<Box<Expr>> = vec![];
+
+        loop {
+            let c = self.expression()?;
+            conditions.push(Box::new(c));
+
+            if !self.match_token(vec![TokenType::Comma]) {
+                break;
+            }
+        }
+
+        self.consume(
+            TokenType::Semicolon,
+            "Expect ';' after loop condition",
+            line,
+        )?;
+
+        let mut incrs: Vec<Box<Expr>> = vec![];
+
+        loop {
+            let c = self.expression()?;
+            incrs.push(Box::new(c));
+
+            if !self.match_token(vec![TokenType::Comma]) {
+                break;
+            }
+        }
+
+        self.consume(TokenType::RightParen, "Expect ')' after for loop", line)?;
+
+        let body = self.statement()?;
+
+        Ok(Stmt::For(
+            inits,
+            conditions,
+            incrs,
+            Box::new(body),
+            self.create_loc(line),
+        ))
     }
 
     fn expression_statement(&mut self) -> Result<Stmt, ParseError> {
@@ -730,6 +796,17 @@ impl Parser {
     fn primary(&mut self) -> Result<Expr, ParseError> {
         let token = self.peek();
         match token.kind {
+            TokenType::String => {
+                self.advance();
+                let index = self.strings.len() as f32;
+                self.strings.push(token.lexeme.clone().replace("\"", ""));
+                Ok(Expr::Value(
+                    ASTValue::Float(index),
+                    vec![],
+                    vec![],
+                    self.create_loc(token.line),
+                ))
+            }
             TokenType::False => {
                 self.advance();
                 Ok(Expr::Value(
@@ -1206,49 +1283,5 @@ impl Parser {
             line,
             path: self.path.clone(),
         }
-    }
-
-    /// Replace string literals that are pattern names with their numeric ids before scanning.
-    /// Example: "perlin" -> 9 (no quotes) to allow sample() to accept ids without string support.
-    fn preprocess_pattern_strings(&self, src: &str) -> String {
-        let mut out = String::with_capacity(src.len());
-        let mut chars = src.chars().peekable();
-        while let Some(ch) = chars.next() {
-            if ch == '"' {
-                // beginning of string literal
-                let mut s = String::new();
-                let mut escaped = false;
-                while let Some(&c) = chars.peek() {
-                    chars.next();
-                    if escaped {
-                        // keep escape sequence in case we don't replace
-                        s.push('\\');
-                        s.push(c);
-                        escaped = false;
-                        continue;
-                    }
-                    if c == '\\' {
-                        escaped = true;
-                        continue;
-                    }
-                    if c == '"' {
-                        break;
-                    }
-                    s.push(c);
-                }
-                // If s (unescaped content) matches a known pattern name, replace with its index (no quotes)
-                if let Some(kind) = PatternKind::from_name(&s) {
-                    out.push_str(&kind.to_index().to_string());
-                } else {
-                    // keep original quotes and content if not a pattern name
-                    out.push('"');
-                    out.push_str(&s);
-                    out.push('"');
-                }
-            } else {
-                out.push(ch);
-            }
-        }
-        out
     }
 }

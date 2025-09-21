@@ -49,6 +49,8 @@ pub enum ModuleType {
     CharacterTemplate,
     ItemTemplate,
     Sector,
+    Wall,
+    Material,
 }
 
 impl ModuleType {
@@ -61,7 +63,7 @@ impl ModuleType {
 
     pub fn is_shader(&self) -> bool {
         match self {
-            ModuleType::Sector => true,
+            ModuleType::Sector | ModuleType::Wall | ModuleType::Material => true,
             _ => false,
         }
     }
@@ -115,9 +117,21 @@ impl Module {
     /// Add/ Update the routines of the module
     pub fn update_routines(&mut self) {
         if self.module_type.is_shader() {
-            if !self.contains("shade") {
-                let routine = Routine::new("shade".into());
-                self.routines.insert(routine.id, routine);
+            if matches!(self.module_type, ModuleType::Sector) {
+                if !self.contains("floor_shader") {
+                    let routine = Routine::new("floor_shader".into());
+                    self.routines.insert(routine.id, routine);
+                }
+                if !self.contains("ceiling_shader") {
+                    let mut routine = Routine::new("ceiling_shader".into());
+                    routine.folded = true;
+                    self.routines.insert(routine.id, routine);
+                }
+            } else {
+                if !self.contains("shader") {
+                    let routine = Routine::new("shader".into());
+                    self.routines.insert(routine.id, routine);
+                }
             }
         } else if self.module_type.is_instance() {
             if !self.contains("instantiation") {
@@ -764,13 +778,33 @@ impl Module {
         height
     }
 
-    /// Build the module into Python source
-    pub fn build_shader(&self) -> String {
+    /// Build shader code: floor
+    pub fn build_floor_shader(&self) -> String {
         let mut out = String::new();
 
         if self.module_type.is_shader() {
             for r in self.routines.values() {
-                if r.name == "shade" {
+                if r.name == "floor_shader" {
+                    r.build_shader(&mut out, 0);
+                    break;
+                }
+            }
+        }
+
+        if !out.is_empty() {
+            println!("{}", out);
+        }
+
+        out
+    }
+
+    /// Build shader code: floor
+    pub fn build_ceiling_shader(&self) -> String {
+        let mut out = String::new();
+
+        if self.module_type.is_shader() {
+            for r in self.routines.values() {
+                if r.name == "ceiling_shader" {
                     r.build_shader(&mut out, 0);
                     break;
                 }

@@ -18,6 +18,7 @@ pub enum NodeOp {
     GetComponents(Vec<u8>),
     SetComponents(Vec<u8>),
     If(Vec<NodeOp>, Option<Vec<NodeOp>>),
+    For(Vec<NodeOp>, Vec<NodeOp>, Vec<NodeOp>, Vec<NodeOp>),
     Push(Value),
     FunctionCall(u8, u8, usize),
     Return,
@@ -80,4 +81,7 @@ pub enum NodeOp {
     SetEmissive,
     Transmission,
     SetTransmission,
+    Alloc,
+    Iterate,
+    Save,
 }

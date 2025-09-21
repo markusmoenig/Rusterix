@@ -1,0 +1,83 @@
+
+/*
+// Marble
+fn shade_() {
+    // Animated marble using fBm Perlin turbulence to warp periodic bands.
+    // We only read the x component from textures for speed (our VM uses x as the value).
+    let t = 1;
+
+    // Scale the domain (bigger = larger veins)
+    let uv2 = uv * 1.0;
+
+    // Two octaves of precomputed fBm Perlin, phase-shifted to avoid locking patterns
+    let n1 = sample(uv2 + vec2(t, 0.0), "fbm_perlin");
+    let n2 = sample(uv2 * 2.0 + vec2(0.0, t), "fbm_perlin");
+    let turb = 0.6 * n1 + 0.4 * n2; // [0,1]
+
+    // Periodic bands along x, warped by turbulence
+    let bands = uv2.x + turb * 0.6;
+    let s = sin(bands * 8.0);               // number of veins
+    let veins = pow(1.0 - abs(s), 3.0);     // sharpen sin valleys into thin veins
+
+    // Base marble color (slightly bluish-white) and vein color
+    let base_col = vec3(0.92, 0.93, 0.96);
+    let vein_col = vec3(0.18, 0.20, 0.24);
+
+    // Mix base and veins
+    color = mix(base_col, vein_col, veins);
+
+    // Subtle mottling using value noise
+    let m = sample(uv2 * 0.5 + vec2(0.0), "value"); // [0,1]
+    color *= (0.9 + 0.1 * m);
+}*/
+
+fn hash(p, scale) {
+    p = mod(p, scale);
+    let p3 = fract(p.xyx * 0.13); 
+    p3 += dot(p3, p3.yzx + 3.333); 
+    return fract((p3.x + p3.y) * p3.z); 
+}
+
+fn noise(x, scale) {
+    x *= scale;
+
+    let i = floor(x);
+    let f = fract(x);
+
+	let a = hash(i, scale);
+    let b = hash(i + vec2(1.0, 0.0), scale);
+    let c = hash(i + vec2(0.0, 1.0), scale);
+    let d = hash(i + vec2(1.0, 1.0), scale);
+
+    let u = f * f * (3.0 - 2.0 * f);
+	return mix(a, b, u.x) + (c - a) * u.y * (1.0 - u.x) + (d - b) * u.x * u.y;
+}
+
+fn fbm(x, scale) {
+	let v = 0.0;
+	let a = 0.5;
+	let shift = vec2(100);
+    //mat2 rot = mat2(cos(0.5), sin(0.5), -sin(0.5), cos(0.50));
+	//for (let i = 0; i < 5; i += 1) {
+		v += a * noise(x, scale);
+		//x += shift;//rot * x * 2.0 + shift;
+		//a *= 0.5;
+	//}
+	return fbm;
+}
+
+
+fn make_value_noise() {
+    color = noise(uv, 20);
+}
+
+fn make_fbm_value_noise() {
+    color = fbm(uv, 20);
+}
+
+let tex = alloc(512, 512);
+iterate(tex, "make_value_noise");
+save(tex, "rusteria/embedded/value.png");
+
+//iterate(tex, "make_fbm_value_noise");
+//save(tex, "rusteria/embedded/fbm_value.png");

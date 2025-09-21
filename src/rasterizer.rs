@@ -970,7 +970,7 @@ impl Rasterizer {
                                             let world = self.screen_to_world(p[0], p[1], z);
                                             let world_2d = Vec2::new(world.x, world.z);
 
-                                            let (mut texel, is_terrain) = match batch.source {
+                                            let (mut texel, _is_terrain) = match batch.source {
                                                 PixelSource::StaticTileIndex(index) => {
                                                     let textile = &assets.tile_list[index as usize];
                                                     let index = scene.animation_frame
@@ -1157,8 +1157,9 @@ impl Rasterizer {
 
                                             let mut lit = Vec3::<f32>::zero();
 
-                                            if is_terrain {
-                                                // Terrain path: sky hemisphere + directional sun
+                                            let occlusion = self.mapmini.get_occlusion(world_2d);
+                                            // Sky hemisphere + directional sun
+                                            if occlusion > 0.0 {
                                                 if let Some(sky) = &self.ambient_color {
                                                     let hemi = 0.5 * (normal.y + 1.0);
                                                     // ambient only affects diffuse path
@@ -1188,39 +1189,38 @@ impl Rasterizer {
                                                     }
                                                 }
 
-                                                // (Optional) You can add local lights here too if desired.
-                                            } else {
-                                                // Non-terrain: batch ambient + all scene lights
-                                                let hemi = 0.5 * (normal.y + 1.0);
-                                                let kd =
-                                                    mat_base * (1.0 - mat_metallic) * (1.0 - 0.04); // cheap F0 reduction
-                                                lit += batch.ambient_color * kd * hemi;
+                                                // Apply sector based occlusion
+                                                lit[0] *= occlusion;
+                                                lit[1] *= occlusion;
+                                                lit[2] *= occlusion;
+                                            }
 
-                                                // Direct lights
-                                                for light in
-                                                    scene.lights.iter().chain(&scene.dynamic_lights)
-                                                {
-                                                    let Some(radiance) = light.radiance_at(
-                                                        world,
-                                                        None,
-                                                        self.hash_anim,
-                                                    ) else {
-                                                        continue;
-                                                    };
-                                                    let ldir =
-                                                        (light.position - world).normalized();
+                                            // Non-terrain: batch ambient + all scene lights
+                                            let hemi = 0.5 * (normal.y + 1.0);
+                                            let kd = mat_base * (1.0 - mat_metallic) * (1.0 - 0.04); // cheap F0 reduction
+                                            lit += batch.ambient_color * kd * hemi;
 
-                                                    lit += self.shade_fast_brdf(
-                                                        mat_base,
-                                                        mat_roughness,
-                                                        mat_metallic,
-                                                        Vec3::zero(), // emissive added after loop for stability
-                                                        normal,
-                                                        (self.camera_pos - world).normalized(),
-                                                        ldir,
-                                                        radiance,
-                                                    );
-                                                }
+                                            // Direct lights
+                                            for light in
+                                                scene.lights.iter().chain(&scene.dynamic_lights)
+                                            {
+                                                let Some(radiance) =
+                                                    light.radiance_at(world, None, self.hash_anim)
+                                                else {
+                                                    continue;
+                                                };
+                                                let ldir = (light.position - world).normalized();
+
+                                                lit += self.shade_fast_brdf(
+                                                    mat_base,
+                                                    mat_roughness,
+                                                    mat_metallic,
+                                                    Vec3::zero(), // emissive added after loop for stability
+                                                    normal,
+                                                    (self.camera_pos - world).normalized(),
+                                                    ldir,
+                                                    radiance,
+                                                );
                                             }
 
                                             // Add emissive unshadowed at the end

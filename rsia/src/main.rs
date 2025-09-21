@@ -9,7 +9,7 @@ fn cli() -> Command {
         .author("Markus Moenig")
         .version("0.1.0")
         .allow_external_subcommands(true)
-        .arg(arg!([FILE] "Input '.denscr' file").default_value("test.rsia"))
+        .arg(arg!([FILE] "Input '.denscr' file").default_value("main.rusteria"))
         .arg(
             arg!(-r --resolution <RES> "Output resolution (WIDTHxHEIGHT)").default_value("800x800"),
         )

@@ -1,0 +1,8 @@
+
+fn shade_() {
+    color = sample(uv, "hash");
+}
+
+for (let i = 0; i < 4; i += 1) {
+    print(i);
+}

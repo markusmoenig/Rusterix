@@ -59,7 +59,7 @@ impl ChunkBuilder for D3ChunkBuilder {
 
                 if add_it {
                     if let Some((vertices, indices)) = sector.generate_geometry(map) {
-                        let shader_index = chunk.add_shader(&sector.module.build_shader());
+                        let shader_index = chunk.add_shader(&sector.module.build_floor_shader());
 
                         let sector_elevation =
                             sector.properties.get_float_default("floor_height", 0.0);

@@ -22,6 +22,9 @@ pub struct Program {
 
     /// Amount of local variables in the shade function
     pub shade_locals: usize,
+
+    /// Strings,
+    pub strings: Vec<String>,
 }
 
 impl Program {
@@ -33,6 +36,7 @@ impl Program {
             shade_index: None,
             globals: 0,
             shade_locals: 0,
+            strings: vec![],
         }
     }
 }

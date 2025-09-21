@@ -59,6 +59,9 @@ impl IdVerifier {
             "log",
             "print",
             "sample",
+            "alloc",
+            "iterate",
+            "save",
         ];
 
         for func in inbuilt_functions {

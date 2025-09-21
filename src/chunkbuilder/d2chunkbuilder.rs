@@ -24,7 +24,7 @@ impl ChunkBuilder for D2ChunkBuilder {
             let bbox = sector.bounding_box(map);
             if bbox.intersects(&chunk.bbox) && chunk.bbox.contains(bbox.center()) {
                 if let Some(geo) = sector.generate_geometry(map) {
-                    let shader_index = chunk.add_shader(&sector.module.build_shader());
+                    let shader_index = chunk.add_shader(&sector.module.build_floor_shader());
 
                     let mut vertices: Vec<[f32; 2]> = vec![];
                     let mut uvs: Vec<[f32; 2]> = vec![];

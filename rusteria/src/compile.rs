@@ -1,12 +1,13 @@
 use crate::objectd::FunctionD;
 use crate::{
     ASTValue, AssignmentOperator, BinaryOperator, ComparisonOperator, Context, Environment,
-    EqualityOperator, Expr, Location, LogicalOperator, NodeOp, PreModule, RuntimeError, Stmt,
-    UnaryOperator, Value, Visitor, optimize,
+    EqualityOperator, Expr, Location, LogicalOperator, Module, NodeOp, PatternKind, RuntimeError,
+    Stmt, UnaryOperator, Value, Visitor, optimize,
 };
 use indexmap::{IndexMap, IndexSet};
 use rustc_hash::FxHashMap;
 use std::sync::Arc;
+use vek::Vec3;
 
 #[derive(Clone)]
 pub struct ASTFunction {
@@ -249,6 +250,31 @@ impl Visitor for CompileVisitor {
             },
         );
 
+        functions.insert(
+            "alloc".to_string(),
+            ASTFunction {
+                name: "alloc".to_string(),
+                arguments: 2,
+                op: NodeOp::Alloc,
+            },
+        );
+        functions.insert(
+            "iterate".to_string(),
+            ASTFunction {
+                name: "iterate".to_string(),
+                arguments: 2,
+                op: NodeOp::Iterate,
+            },
+        );
+        functions.insert(
+            "save".to_string(),
+            ASTFunction {
+                name: "save".to_string(),
+                arguments: 2,
+                op: NodeOp::Save,
+            },
+        );
+
         Self {
             environment: Environment::default(),
             functions,
@@ -298,7 +324,7 @@ impl Visitor for CompileVisitor {
 
     fn import(
         &mut self,
-        module: &Option<PreModule>,
+        module: &Option<Module>,
         _loc: &Location,
         ctx: &mut Context,
     ) -> Result<ASTValue, RuntimeError> {
@@ -680,7 +706,48 @@ impl Visitor for CompileVisitor {
         let callee = callee.accept(self, ctx)?;
 
         if let ASTValue::Function(name, _func_args, _returns) = callee {
-            if let Some(func) = &self.functions.get(&name).cloned() {
+            if name == "sample" {
+                if 2 == args.len() {
+                    _ = args[0].accept(self, ctx)?;
+
+                    ctx.add_custom_target();
+                    _ = args[1].accept(self, ctx)?;
+                    if let Some(op) = ctx.take_last_custom_target() {
+                        let mut success = false;
+                        match op[0] {
+                            NodeOp::Push(val) => {
+                                if let Some(str) = ctx.program.strings.get(val.x as usize) {
+                                    if let Some(pattern) = PatternKind::from_name(str) {
+                                        let index = pattern.to_index();
+                                        ctx.emit(NodeOp::Push(Vec3::broadcast(index as f32)));
+                                        success = true;
+                                    }
+                                }
+                            }
+                            _ => {}
+                        }
+                        if !success {
+                            // Value noise by default
+                            ctx.emit(NodeOp::Push(Vec3::broadcast(1.0)));
+                        }
+                    }
+
+                    ctx.emit(NodeOp::Sample);
+                    if !swizzle.is_empty() {
+                        ctx.emit(NodeOp::GetComponents(swizzle.to_vec()));
+                    }
+                } else {
+                    return Err(RuntimeError::new(
+                        format!(
+                            "Wrong amount of arguments for '{}', expected '{}' got '{}'",
+                            name,
+                            2,
+                            args.len(),
+                        ),
+                        loc,
+                    ));
+                }
+            } else if let Some(func) = &self.functions.get(&name).cloned() {
                 if func.arguments as usize == args.len() {
                     for arg in args {
                         _ = arg.accept(self, ctx)?;
@@ -939,57 +1006,49 @@ impl Visitor for CompileVisitor {
 
     fn for_stmt(
         &mut self,
-        _init: &[Box<Stmt>],
-        _conditions: &[Box<Expr>],
-        _incr: &[Box<Expr>],
-        _body_stmt: &Stmt,
+        init: &[Box<Stmt>],
+        conditions: &[Box<Expr>],
+        incr: &[Box<Expr>],
+        body_stmt: &Stmt,
         _loc: &Location,
-        _ctx: &mut Context,
+        ctx: &mut Context,
     ) -> Result<ASTValue, RuntimeError> {
-        /*
-        ctx.add_line();
-
-        for i in init {
-            let _rc = i.accept(self, ctx)?;
+        let mut init_code = vec![];
+        ctx.add_custom_target();
+        for stmt in init {
+            _ = stmt.accept(self, ctx)?;
+        }
+        if let Some(code) = ctx.take_last_custom_target() {
+            init_code = code;
         }
 
-        let instr = "(block".to_string();
-        ctx.add_wat(&instr);
-        ctx.add_indention();
-
-        let instr = "(loop".to_string();
-        ctx.add_wat(&instr);
-        ctx.add_indention();
-
-        self.break_depth.push(0);
-
-        for cond in conditions {
-            let _rc = cond.accept(self, ctx)?;
-
-            let instr = "(i32.eqz)".to_string();
-            ctx.add_wat(&instr);
-
-            let instr = "(br_if 1)".to_string();
-            ctx.add_wat(&instr);
+        let mut cond_code = vec![];
+        ctx.add_custom_target();
+        for stmt in conditions {
+            _ = stmt.accept(self, ctx)?;
+        }
+        if let Some(code) = ctx.take_last_custom_target() {
+            cond_code = code;
         }
 
-        let _rc = body_stmt.accept(self, ctx)?;
-
-        for i in incr {
-            let _rc = i.accept(self, ctx)?;
+        let mut incr_code = vec![];
+        ctx.add_custom_target();
+        for stmt in incr {
+            _ = stmt.accept(self, ctx)?;
+        }
+        if let Some(code) = ctx.take_last_custom_target() {
+            incr_code = code;
         }
 
-        let instr = "(br 0)".to_string();
-        ctx.add_wat(&instr);
+        let mut body_code = vec![];
+        ctx.add_custom_target();
+        body_stmt.accept(self, ctx)?;
+        if let Some(code) = ctx.take_last_custom_target() {
+            body_code = code;
+        }
 
-        self.break_depth.pop();
+        ctx.emit(NodeOp::For(init_code, cond_code, incr_code, body_code));
 
-        ctx.remove_indention();
-        ctx.add_wat(")");
-
-        ctx.remove_indention();
-        ctx.add_wat(")");
-        */
         Ok(ASTValue::None)
     }
 

@@ -27,7 +27,7 @@ pub use crate::{
     environment::Environment,
     errors::{ParseError, RuntimeError},
     idverifier::IdVerifier,
-    module::PreModule,
+    module::Module,
     node::execution::Execution,
     node::{nodeop::NodeOp, program::Program},
     optimize::optimize,
@@ -49,7 +49,7 @@ use vek::Vec3;
 pub struct Rusteria {
     path: PathBuf,
     pub context: Context,
-    defaults: Option<PreModule>,
+    defaults: Option<Module>,
 }
 
 impl Default for Rusteria {
@@ -68,7 +68,7 @@ impl Rusteria {
     }
 
     // Parse the source code into a module.
-    pub fn parse(&mut self, path: PathBuf) -> Result<PreModule, ParseError> {
+    pub fn parse(&mut self, path: PathBuf) -> Result<Module, ParseError> {
         self.path = path.clone();
         let mut parser = Parser::new();
         let module = parser.compile(path.clone())?;
@@ -77,7 +77,7 @@ impl Rusteria {
     }
 
     // Parse the source code into a module.
-    pub fn parse_str(&mut self, str: &str) -> Result<PreModule, ParseError> {
+    pub fn parse_str(&mut self, str: &str) -> Result<Module, ParseError> {
         self.path = PathBuf::from("string_based.shpz");
         let mut parser: Parser = Parser::new();
 
@@ -87,9 +87,10 @@ impl Rusteria {
     }
 
     // Compile the source code
-    pub fn compile(&mut self, module: &PreModule) -> Result<(), RuntimeError> {
+    pub fn compile(&mut self, module: &Module) -> Result<(), RuntimeError> {
         let mut visitor: CompileVisitor = CompileVisitor::new();
         self.context = Context::new(module.globals.clone());
+        self.context.program.strings = module.strings.clone();
 
         // Add default materials
         if let Some(defs) = &self.defaults {
@@ -106,6 +107,7 @@ impl Rusteria {
         optimize(&mut self.context.program.body);
 
         self.context.program.globals = self.context.globals.len();
+        self.context.program.strings = module.strings.clone();
 
         Ok(())
     }

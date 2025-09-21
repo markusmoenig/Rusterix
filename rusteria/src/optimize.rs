@@ -1,6 +1,6 @@
 use crate::NodeOp;
 
-fn peephole_locals(ops: &mut Vec<NodeOp>) {
+fn _peephole_locals(ops: &mut Vec<NodeOp>) {
     let mut i = 0;
     while i + 1 < ops.len() {
         match (&ops[i], &ops[i + 1]) {
@@ -14,6 +14,6 @@ fn peephole_locals(ops: &mut Vec<NodeOp>) {
     }
 }
 
-pub fn optimize(ops: &mut Vec<NodeOp>) {
-    peephole_locals(ops);
+pub fn optimize(_ops: &mut Vec<NodeOp>) {
+    // peephole_locals(ops);
 }
