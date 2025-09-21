@@ -300,6 +300,16 @@ impl Execution {
                     let a = self.stack.pop().unwrap();
                     self.stack.push(Value::broadcast(a.magnitude()));
                 }
+                NodeOp::Length2 => {
+                    let a = self.stack.pop().unwrap();
+                    let len2 = (a.x * a.x + a.y * a.y).sqrt();
+                    self.stack.push(Value::new(len2, 0.0, 0.0));
+                }
+                NodeOp::Length3 => {
+                    let a = self.stack.pop().unwrap();
+                    let len3 = (a.x * a.x + a.y * a.y + a.z * a.z).sqrt();
+                    self.stack.push(Value::new(len3, 0.0, 0.0));
+                }
                 NodeOp::Abs => {
                     let a = self.stack.pop().unwrap();
                     self.stack.push(a.map(|x| x.abs()));

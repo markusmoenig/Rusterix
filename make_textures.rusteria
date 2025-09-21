@@ -52,6 +52,7 @@ save(tex, "rusteria/embedded/value.png");
 iterate(tex, "make_fbm_value_noise");
 save(tex, "rusteria/embedded/fbm_value.png");
 
+/*
 // Simplex noise, based on https://www.shadertoy.com/view/Msf3WH
 // The MIT License
 // Copyright © 2013 Inigo Quilez
@@ -88,3 +89,93 @@ fn make_simplex_noise() {
 
 iterate(tex, "make_simplex_noise");
 save(tex, "rusteria/embedded/simplex.png");
+*/
+
+// True 2D Perlin gradient noise
+
+// Gradient hash: pick one of 8 unit vectors based on lattice index
+fn grad2(i) {
+    // Hash into [0,8)
+    let h = floor(fract(sin2(dot2(i, vec2(127.1, 311.7))) * 43758.5453) * 8.0);
+
+    // Branch by range, since h is float
+    if (h < 1.0) { return vec3( 1.0,  0.0, 0.0); }
+    if (h < 2.0) { return vec3(-1.0,  0.0, 0.0); }
+    if (h < 3.0) { return vec3( 0.0,  1.0, 0.0); }
+    if (h < 4.0) { return vec3( 0.0, -1.0, 0.0); }
+    if (h < 5.0) { return vec3( 0.707,  0.707, 0.0); }
+    if (h < 6.0) { return vec3(-0.707,  0.707, 0.0); }
+    if (h < 7.0) { return vec3( 0.707, -0.707, 0.0); }
+    return vec3(-0.707, -0.707, 0.0);
+}
+
+// Fade curve (Perlin's improved smoothstep)
+fn fade(t) {
+    return t * t * t * (t * (t * 6.0 - 15.0) + 10.0);
+}
+
+fn perlin_noise(p, period) {
+    p *= period;
+
+    let i = floor(p);
+    let f = fract(p);
+
+    // wrap lattice indices to [0, period)
+    let iw   = mod(i, period);
+    let iw10 = mod(i + vec2(1.0, 0.0), period);
+    let iw01 = mod(i + vec2(0.0, 1.0), period);
+    let iw11 = mod(i + vec2(1.0, 1.0), period);
+
+    // Gradient vectors at four wrapped corners
+    let g00 = grad2(iw);
+    let g10 = grad2(iw10);
+    let g01 = grad2(iw01);
+    let g11 = grad2(iw11);
+
+    // Offsets from *unwrapped* corners (to preserve local geometry)
+    let d00 = vec2(f.x,   f.y);
+    let d10 = vec2(f.x-1, f.y);
+    let d01 = vec2(f.x,   f.y-1);
+    let d11 = vec2(f.x-1, f.y-1);
+
+    // Dot products
+    let v00 = dot2(d00, g00);
+    let v10 = dot2(d10, g10);
+    let v01 = dot2(d01, g01);
+    let v11 = dot2(d11, g11);
+
+    // Fade
+    let u = fade(f);
+
+    // Interpolation
+    let nx0 = mix(v00, v10, u.x);
+    let nx1 = mix(v01, v11, u.x);
+    let nxy = mix(nx0, nx1, u.y);
+
+    return 0.5 * vec3(nxy + 1.0);
+}
+
+fn perlin_fbm(p, scale) {
+    let v = 0.0;
+    let a = 0.5;
+    for (let i = 0; i < 5; i += 1) {
+        v += a * perlin_noise(p, scale);
+        p = p * 2.0 + vec2(100.0);
+        a *= 0.5;
+    }
+    return vec3(v);
+}
+
+fn make_perlin_noise() {
+    color = perlin_noise(uv, 10.0);
+}
+
+fn make_perlin_fbm() {
+    color = perlin_fbm(uv, 10.0);
+}
+
+iterate(tex, "make_perlin_noise");
+save(tex, "rusteria/embedded/perlin.png");
+
+iterate(tex, "make_perlin_fbm");
+save(tex, "rusteria/embedded/fbm_perlin.png");

@@ -37,6 +37,8 @@ impl IdVerifier {
             "mix",
             "smoothstep",
             "length",
+            "length2",
+            "length3",
             "normalize",
             "sin",
             "sin1",

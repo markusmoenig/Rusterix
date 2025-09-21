@@ -17,8 +17,8 @@ fn shade() {
     let r  = length(vec2(dx, dy));
 
     // small, tileable turbulence (wrap inputs + integer scales)
-    let w1 = sample(fract(uv0 * 2.0 + vec2(t, 0.0)), "fbm_value"); // tiles (×2)
-    let w2 = sample(fract(uv0 * 4.0 + vec2(0.0, t)), "fbm_value"); // tiles (×4)
+    let w1 = sample(fract(uv0 * 2.0 + vec2(t, 0.0)), "fbm_perlin"); // tiles (×2)
+    let w2 = sample(fract(uv0 * 4.0 + vec2(0.0, t)), "fbm_perlin"); // tiles (×4)
     let turb = (0.6 * w1 + 0.4 * w2) - 0.5;  // zero-mean
 
     // ring phase; keep warp small to avoid marble look

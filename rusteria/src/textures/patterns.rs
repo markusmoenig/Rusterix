@@ -16,6 +16,8 @@ static PATTERNS: OnceCell<Vec<TexStorage>> = OnceCell::new();
 pub enum PatternKind {
     Value,
     FbmValue,
+    Perlin,
+    FbmPerlin,
 }
 
 impl PatternKind {
@@ -23,6 +25,8 @@ impl PatternKind {
         match self {
             PatternKind::Value => 0,
             PatternKind::FbmValue => 1,
+            PatternKind::Perlin => 2,
+            PatternKind::FbmPerlin => 3,
         }
     }
 
@@ -30,6 +34,8 @@ impl PatternKind {
         Some(match i {
             0 => PatternKind::Value,
             1 => PatternKind::FbmValue,
+            2 => PatternKind::Perlin,
+            3 => PatternKind::FbmPerlin,
             _ => return None,
         })
     }
@@ -38,6 +44,8 @@ impl PatternKind {
         match name.to_lowercase().as_str() {
             "value" => Some(PatternKind::Value),
             "fbm_value" => Some(PatternKind::FbmValue),
+            "perlin" => Some(PatternKind::Perlin),
+            "fbm_perlin" => Some(PatternKind::FbmPerlin),
             _ => None,
         }
     }

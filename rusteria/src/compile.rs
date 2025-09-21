@@ -42,6 +42,22 @@ impl Visitor for CompileVisitor {
             },
         );
         functions.insert(
+            "length2".to_string(),
+            ASTFunction {
+                name: "length2".to_string(),
+                arguments: 1,
+                op: NodeOp::Length2,
+            },
+        );
+        functions.insert(
+            "length3".to_string(),
+            ASTFunction {
+                name: "length3".to_string(),
+                arguments: 1,
+                op: NodeOp::Length3,
+            },
+        );
+        functions.insert(
             "abs".to_string(),
             ASTFunction {
                 name: "abs".to_string(),

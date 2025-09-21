@@ -31,6 +31,8 @@ pub enum NodeOp {
     Mul,
     Div,
     Length,
+    Length2,
+    Length3,
     Abs,
     Sin,
     Sin1,
