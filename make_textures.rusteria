@@ -52,7 +52,6 @@ save(tex, "rusteria/embedded/value.png");
 iterate(tex, "make_fbm_value_noise");
 save(tex, "rusteria/embedded/fbm_value.png");
 
-/*
 // Simplex noise, based on https://www.shadertoy.com/view/Msf3WH
 // The MIT License
 // Copyright © 2013 Inigo Quilez
@@ -60,8 +59,9 @@ save(tex, "rusteria/embedded/fbm_value.png");
 fn simplex_hash( p, scale )
 {
     //p = mod(p, scale);
-	p = vec2( dot(p,vec2(127.1,311.7)), dot(p,vec2(269.5,183.3)) );
-	return -1.0 + 2.0*fract(sin(p)*43758.5453123);
+	p = vec2( dot2(p,vec2(127.1,311.7)), dot2(p,vec2(269.5,183.3)) );
+    let t = -1.0 + 2.0*fract(sin2(p)*43758.5453123);
+    return vec3(t.x, t.y, 0.0);
 }
 
 fn simplex_noise( p, scale )
@@ -77,8 +77,8 @@ fn simplex_noise( p, scale )
     let  o = vec2(m,1.0-m);
     let  b = a - o + K2;
 	let  c = a - 1.0 + 2.0*K2;
-    let  h = max( 0.5-vec3(dot(a,a), dot(b,b), dot(c,c) ), 0.0 );
-	let  n = h*h*h*h*vec3( dot(a,simplex_hash(i+0.0, scale)), dot(b,simplex_hash(i+o, scale)), dot(c,simplex_hash(i+1.0, scale)));
+    let  h = max( 0.5-vec3(dot2(a,a), dot2(b,b), dot2(c,c) ), 0.0 );
+	let  n = h*h*h*h*vec3( dot2(a,simplex_hash(i+0.0, scale)), dot2(b,simplex_hash(i+o, scale)), dot2(c,simplex_hash(i+1.0, scale)));
     return 0.5 + dot( n, vec3(70.0) ) * 0.5;
 }
 
@@ -88,4 +88,3 @@ fn make_simplex_noise() {
 
 iterate(tex, "make_simplex_noise");
 save(tex, "rusteria/embedded/simplex.png");
-*/

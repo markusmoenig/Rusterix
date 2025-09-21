@@ -308,9 +308,25 @@ impl Execution {
                     let a = self.stack.pop().unwrap();
                     self.stack.push(a.map(|x| x.sin()));
                 }
+                NodeOp::Sin1 => {
+                    let a = self.stack.pop().unwrap();
+                    self.stack.push(Value::new(a.x.sin(), 0.0, 0.0));
+                }
+                NodeOp::Sin2 => {
+                    let a = self.stack.pop().unwrap();
+                    self.stack.push(Value::new(a.x.sin(), a.y.sin(), 0.0));
+                }
                 NodeOp::Cos => {
                     let a = self.stack.pop().unwrap();
                     self.stack.push(a.map(|x| x.cos()));
+                }
+                NodeOp::Cos1 => {
+                    let a = self.stack.pop().unwrap();
+                    self.stack.push(Value::new(a.x.sin(), 0.0, 0.0));
+                }
+                NodeOp::Cos2 => {
+                    let a = self.stack.pop().unwrap();
+                    self.stack.push(Value::new(a.x.sin(), a.y.sin(), 0.0));
                 }
                 NodeOp::Normalize => {
                     let a = self.stack.pop().unwrap();
@@ -346,6 +362,18 @@ impl Execution {
                     let a = self.stack.pop().unwrap();
                     self.stack.push(Value::broadcast(a.dot(b)));
                 }
+                NodeOp::Dot2 => {
+                    let b = self.stack.pop().unwrap();
+                    let a = self.stack.pop().unwrap();
+                    let dot2 = a.x * b.x + a.y * b.y;
+                    self.stack.push(Value::new(dot2, 0.0, 0.0));
+                }
+                NodeOp::Dot3 => {
+                    let b = self.stack.pop().unwrap();
+                    let a = self.stack.pop().unwrap();
+                    let dot3 = a.x * b.x + a.y * b.y + a.z * b.z;
+                    self.stack.push(Value::new(dot3, 0.0, 0.0));
+                }
                 NodeOp::Cross => {
                     let b = self.stack.pop().unwrap();
                     let a = self.stack.pop().unwrap();
@@ -361,7 +389,10 @@ impl Execution {
                 }
                 NodeOp::Fract => {
                     let a = self.stack.pop().unwrap();
-                    self.stack.push(a.map(|x| x.fract()));
+                    // GLSL fract: x - floor(x) (Rust's .fract() == x - trunc(x), which breaks for negatives)
+                    // self.stack.push(a.map(|x| x.fract()));
+                    let f = a.map(|x| x - x.floor());
+                    self.stack.push(f);
                 }
                 /*
                 Rust style

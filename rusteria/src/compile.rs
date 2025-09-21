@@ -58,11 +58,43 @@ impl Visitor for CompileVisitor {
             },
         );
         functions.insert(
+            "sin1".to_string(),
+            ASTFunction {
+                name: "sin1".to_string(),
+                arguments: 1,
+                op: NodeOp::Sin1,
+            },
+        );
+        functions.insert(
+            "sin2".to_string(),
+            ASTFunction {
+                name: "sin2".to_string(),
+                arguments: 1,
+                op: NodeOp::Sin2,
+            },
+        );
+        functions.insert(
             "cos".to_string(),
             ASTFunction {
                 name: "cos".to_string(),
                 arguments: 1,
                 op: NodeOp::Cos,
+            },
+        );
+        functions.insert(
+            "cos1".to_string(),
+            ASTFunction {
+                name: "cos1".to_string(),
+                arguments: 1,
+                op: NodeOp::Cos1,
+            },
+        );
+        functions.insert(
+            "cos2".to_string(),
+            ASTFunction {
+                name: "cos2".to_string(),
+                arguments: 1,
+                op: NodeOp::Cos2,
             },
         );
         functions.insert(
@@ -103,6 +135,22 @@ impl Visitor for CompileVisitor {
                 name: "dot".to_string(),
                 arguments: 2,
                 op: NodeOp::Dot,
+            },
+        );
+        functions.insert(
+            "dot2".to_string(),
+            ASTFunction {
+                name: "dot2".to_string(),
+                arguments: 2,
+                op: NodeOp::Dot2,
+            },
+        );
+        functions.insert(
+            "dot3".to_string(),
+            ASTFunction {
+                name: "dot3".to_string(),
+                arguments: 3,
+                op: NodeOp::Dot3,
             },
         );
         functions.insert(
