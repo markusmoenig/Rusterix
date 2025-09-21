@@ -37,6 +37,7 @@ pub enum NodeOp {
     Tan,
     Atan,
     Atan2,
+    Rotate2D,
     Dot,
     Cross,
     Normalize,

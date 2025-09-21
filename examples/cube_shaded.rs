@@ -54,8 +54,8 @@ impl TheTrait for Cube {
                 let uv2 = uv / 3.0 - vec2(1.5);
 
                 // fBm turbulence (zero-mean) to warp the rings
-                let n1 = sample(uv2 + vec2(t, 0.0), "fbm_perlin");   // [0,1]
-                let n2 = sample(uv2 * 2.0 + vec2(0.0, t*0.7), "fbm_perlin");
+                let n1 = sample(uv2 + vec2(t, 0.0), "fbm_value");   // [0,1]
+                let n2 = sample(uv2 * 2.0 + vec2(0.0, t*0.7), "fbm_value");
                 let turb = 0.65 * n1 + 0.35 * n2;                       // [0,1]
                 let turb_zm = (turb - 0.5) * 2.0;                       // [-1,1]
 

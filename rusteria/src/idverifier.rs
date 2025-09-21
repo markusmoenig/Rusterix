@@ -29,6 +29,7 @@ impl IdVerifier {
         let mut inbuilt = FxHashMap::default();
 
         let inbuilt_functions = vec![
+            "rotate2d",
             "dot",
             "cross",
             "mix",
@@ -62,6 +63,7 @@ impl IdVerifier {
             "alloc",
             "iterate",
             "save",
+            "rotate2d",
         ];
 
         for func in inbuilt_functions {

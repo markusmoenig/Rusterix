@@ -222,7 +222,6 @@ impl Execution {
                         Value::zero()
                     };
                     self.return_value = Some(v);
-                    self.stack.clear();
                     break;
                 }
                 NodeOp::Pack2 => {
@@ -245,7 +244,7 @@ impl Execution {
                     let base = self.stack.len();
                     let mut iter = 0usize;
                     self.execute(init, program);
-                    // self.stack.truncate(base);
+                    self.stack.truncate(base);
 
                     loop {
                         self.execute(cond, program);
@@ -254,13 +253,13 @@ impl Execution {
                         if z.x == 0.0 {
                             break;
                         }
-                        // self.stack.truncate(base);
+                        self.stack.truncate(base);
 
                         self.execute(body, program);
-                        // self.stack.truncate(base);
+                        self.stack.truncate(base);
 
                         self.execute(incr, program);
-                        // self.stack.truncate(base);
+                        self.stack.truncate(base);
 
                         iter += 1;
                         if iter > 10_000_000 {
@@ -307,11 +306,11 @@ impl Execution {
                 }
                 NodeOp::Sin => {
                     let a = self.stack.pop().unwrap();
-                    self.stack.push(Vec3::broadcast(a.x.sin()));
+                    self.stack.push(a.map(|x| x.sin()));
                 }
                 NodeOp::Cos => {
                     let a = self.stack.pop().unwrap();
-                    self.stack.push(Vec3::broadcast(a.x.cos()));
+                    self.stack.push(a.map(|x| x.cos()));
                 }
                 NodeOp::Normalize => {
                     let a = self.stack.pop().unwrap();
@@ -324,16 +323,23 @@ impl Execution {
                 }
                 NodeOp::Tan => {
                     let a = self.stack.pop().unwrap();
-                    self.stack.push(Vec3::broadcast(a.x.tan()));
+                    self.stack.push(a.map(|x| x.tan()));
                 }
                 NodeOp::Atan => {
                     let a = self.stack.pop().unwrap();
-                    self.stack.push(Vec3::broadcast(a.x.atan()));
+                    self.stack.push(a.map(|x| x.atan()));
                 }
                 NodeOp::Atan2 => {
                     let b = self.stack.pop().unwrap();
                     let a = self.stack.pop().unwrap();
-                    self.stack.push(Value::broadcast(a.x.atan2(b.x)));
+                    self.stack.push(a.map2(b, |x, y| x.atan2(y)));
+                }
+                NodeOp::Rotate2D => {
+                    let angle = self.stack.pop().unwrap();
+                    let v = self.stack.pop().unwrap();
+                    let (s, c) = angle.x.sin_cos();
+                    self.stack
+                        .push(Value::new(v.x * c - v.y * s, v.x * s + v.y * c, v.z));
                 }
                 NodeOp::Dot => {
                     let b = self.stack.pop().unwrap();
@@ -357,10 +363,20 @@ impl Execution {
                     let a = self.stack.pop().unwrap();
                     self.stack.push(a.map(|x| x.fract()));
                 }
+                /*
+                Rust style
                 NodeOp::Mod => {
                     let b = self.stack.pop().unwrap();
                     let a = self.stack.pop().unwrap();
                     self.stack.push(Value::new(a.x % b.x, a.y % b.y, a.z % b.z));
+                }*/
+                NodeOp::Mod => {
+                    let b = self.stack.pop().unwrap();
+                    let a = self.stack.pop().unwrap();
+                    let rx = a.x - b.x * (a.x / b.x).floor();
+                    let ry = a.y - b.y * (a.y / b.y).floor();
+                    let rz = a.z - b.z * (a.z / b.z).floor();
+                    self.stack.push(Value::new(rx, ry, rz));
                 }
                 NodeOp::Radians => {
                     let a = self.stack.pop().unwrap();

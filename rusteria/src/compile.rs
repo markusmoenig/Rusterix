@@ -190,7 +190,7 @@ impl Visitor for CompileVisitor {
             ASTFunction {
                 name: "step".to_string(),
                 arguments: 2,
-                op: NodeOp::Smoothstep,
+                op: NodeOp::Step,
             },
         );
         functions.insert(
@@ -272,6 +272,14 @@ impl Visitor for CompileVisitor {
                 name: "save".to_string(),
                 arguments: 2,
                 op: NodeOp::Save,
+            },
+        );
+        functions.insert(
+            "rotate2d".to_string(),
+            ASTFunction {
+                name: "rotate2d".to_string(),
+                arguments: 2,
+                op: NodeOp::Rotate2D,
             },
         );
 

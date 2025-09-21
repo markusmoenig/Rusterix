@@ -14,34 +14,30 @@ static PATTERNS: OnceCell<Vec<TexStorage>> = OnceCell::new();
 /// Enum of all available patterns, matches the build order in `build_patterns()`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, EnumCount)]
 pub enum PatternKind {
-    Hash,
     Value,
-    Bricks,
+    FbmValue,
 }
 
 impl PatternKind {
     pub fn to_index(self) -> usize {
         match self {
-            PatternKind::Hash => 0,
-            PatternKind::Value => 1,
-            PatternKind::Bricks => 2,
+            PatternKind::Value => 0,
+            PatternKind::FbmValue => 1,
         }
     }
 
     pub fn from_index(i: usize) -> Option<Self> {
         Some(match i {
-            0 => PatternKind::Hash,
-            1 => PatternKind::Value,
-            2 => PatternKind::Bricks,
+            0 => PatternKind::Value,
+            1 => PatternKind::FbmValue,
             _ => return None,
         })
     }
 
     pub fn from_name(name: &str) -> Option<Self> {
         match name.to_lowercase().as_str() {
-            "hash" => Some(PatternKind::Hash),
             "value" => Some(PatternKind::Value),
-            "bricks" => Some(PatternKind::Bricks),
+            "fbm_value" => Some(PatternKind::FbmValue),
             _ => None,
         }
     }
