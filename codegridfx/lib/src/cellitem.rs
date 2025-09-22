@@ -2,9 +2,10 @@ use crate::{
     Cell, DebugModule, Grid, GridCtx, ModuleType,
     cell::{ArithmeticOp, CellRole, ComparisonOp},
 };
-use theframework::prelude::*;
-
 use Cell::*;
+use rusteria::PatternKind;
+use strum::IntoEnumIterator;
+use theframework::prelude::*;
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
 pub enum CellItemForm {
@@ -198,7 +199,11 @@ impl CellItem {
                     );
                 }
             }
-            Cell::Integer(_) | Cell::Float(_) | Cell::Str(_) | Cell::Boolean(_) => {
+            Cell::Integer(_)
+            | Cell::Float(_)
+            | Cell::Str(_)
+            | Cell::Boolean(_)
+            | Cell::Textures(_) => {
                 if let Some(font) = &ctx.ui.font {
                     ctx.draw.rounded_rect(
                         buffer.pixels_mut(),
@@ -330,7 +335,7 @@ impl CellItem {
         let large_font_size = 14.0;
         let mut size = Vec2::new(30, 50);
         match &self.cell {
-            Variable(_) | Integer(_) | Float(_) | Str(_) | Boolean(_) => {
+            Variable(_) | Integer(_) | Float(_) | Str(_) | Boolean(_) | Textures(_) => {
                 let text = match self.option {
                     1 => {
                         format!("First({})", self.cell.to_string())
@@ -496,6 +501,26 @@ impl CellItem {
                 );
                 nodeui.add_item(item);
             }
+            Textures(name) => {
+                let mut index = 0;
+                if let Some(kind) = PatternKind::from_name(name) {
+                    index = kind.to_index();
+                }
+
+                // building your selector:
+                let options: Vec<String> = PatternKind::iter()
+                    .map(|k| <&'static str>::from(k).to_string())
+                    .collect();
+
+                let item = TheNodeUIItem::Selector(
+                    "cgfxPatternKind".into(),
+                    "Pattern".into(),
+                    "Select the precomputed pattern".into(),
+                    options,
+                    index as i32,
+                );
+                nodeui.add_item(item);
+            }
             _ => {}
         }
 
@@ -557,6 +582,13 @@ impl CellItem {
                 if let Some(val) = value.to_i32() {
                     if let Some(o) = ArithmeticOp::from_index(val as usize) {
                         *op = o;
+                    }
+                }
+            }
+            Textures(str) => {
+                if let Some(val) = value.to_i32() {
+                    if let Some(kind) = PatternKind::from_index(val as usize) {
+                        *str = kind.display_name().to_string();
                     }
                 }
             }
@@ -1810,7 +1842,7 @@ impl CellItem {
                 grid.insert(
                     (pos.0 + 2, pos.1),
                     CellItem::new_dependency(
-                        Cell::Str("value".into()),
+                        Cell::Textures("value".into()),
                         self.id,
                         true,
                         "Texture",

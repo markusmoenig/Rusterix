@@ -6,47 +6,54 @@ use super::TexStorage;
 use once_cell::sync::OnceCell;
 use rust_embed::RustEmbed;
 use std::path::Path;
-use strum::EnumCount;
+use strum::{EnumCount, EnumIter, IntoStaticStr};
 
 /// Global storage of precomputed patterns.
 static PATTERNS: OnceCell<Vec<TexStorage>> = OnceCell::new();
 
 /// Enum of all available patterns, matches the build order in `build_patterns()`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, EnumCount)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, EnumCount, EnumIter, IntoStaticStr)]
 pub enum PatternKind {
-    Value,
-    FbmValue,
-    Perlin,
-    FbmPerlin,
+    ValueNoise,
+    FbmValueNoise,
+    PerlinNoise,
+    FbmPerlinNoise,
 }
 
 impl PatternKind {
     pub fn to_index(self) -> usize {
         match self {
-            PatternKind::Value => 0,
-            PatternKind::FbmValue => 1,
-            PatternKind::Perlin => 2,
-            PatternKind::FbmPerlin => 3,
+            PatternKind::ValueNoise => 0,
+            PatternKind::FbmValueNoise => 1,
+            PatternKind::PerlinNoise => 2,
+            PatternKind::FbmPerlinNoise => 3,
         }
     }
 
     pub fn from_index(i: usize) -> Option<Self> {
         Some(match i {
-            0 => PatternKind::Value,
-            1 => PatternKind::FbmValue,
-            2 => PatternKind::Perlin,
-            3 => PatternKind::FbmPerlin,
+            0 => PatternKind::ValueNoise,
+            1 => PatternKind::FbmValueNoise,
+            2 => PatternKind::PerlinNoise,
+            3 => PatternKind::FbmPerlinNoise,
             _ => return None,
         })
     }
-
     pub fn from_name(name: &str) -> Option<Self> {
         match name.to_lowercase().as_str() {
-            "value" => Some(PatternKind::Value),
-            "fbm_value" => Some(PatternKind::FbmValue),
-            "perlin" => Some(PatternKind::Perlin),
-            "fbm_perlin" => Some(PatternKind::FbmPerlin),
+            "value" => Some(PatternKind::ValueNoise),
+            "fbm_value" => Some(PatternKind::FbmValueNoise),
+            "perlin" => Some(PatternKind::PerlinNoise),
+            "fbm_perlin" => Some(PatternKind::FbmPerlinNoise),
             _ => None,
+        }
+    }
+    pub fn display_name(self) -> &'static str {
+        match self {
+            PatternKind::ValueNoise => "value",
+            PatternKind::FbmValueNoise => "fbm_value",
+            PatternKind::PerlinNoise => "perlin",
+            PatternKind::FbmPerlinNoise => "fbm_perlin",
         }
     }
 }
