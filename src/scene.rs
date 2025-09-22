@@ -113,8 +113,6 @@ impl Scene {
             }
         };
 
-        println!("{}", rs.context.program.body.len());
-
         let index = self.shaders.len();
         self.shaders.push(rs.context.program.clone());
 

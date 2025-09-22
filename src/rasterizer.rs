@@ -1119,6 +1119,10 @@ impl Rasterizer {
                                             color.y = srgb_to_linear_fast(color.y);
                                             color.z = srgb_to_linear_fast(color.z);
 
+                                            execution.color.x = color.x;
+                                            execution.color.y = color.y;
+                                            execution.color.z = color.z;
+
                                             // Execute the batch shader (if any)
                                             if let Some(shader_index) = batch.shader {
                                                 let program = if let Some(chunk) = chunk {
@@ -1132,9 +1136,7 @@ impl Rasterizer {
                                                         execution.normal = normal;
                                                         execution.uv.x = interpolated_u;
                                                         execution.uv.y = interpolated_v;
-                                                        execution.color.x = color.x;
-                                                        execution.color.y = color.y;
-                                                        execution.color.z = color.z;
+
                                                         execution.hitpoint = world;
                                                         execution.time.x = self.time;
                                                         execution.time.y = self.time;
@@ -1190,9 +1192,9 @@ impl Rasterizer {
                                                 }
 
                                                 // Apply sector based occlusion
-                                                lit[0] *= occlusion;
-                                                lit[1] *= occlusion;
-                                                lit[2] *= occlusion;
+                                                // lit[0] *= occlusion;
+                                                // lit[1] *= occlusion;
+                                                // lit[2] *= occlusion;
                                             }
 
                                             // Non-terrain: batch ambient + all scene lights

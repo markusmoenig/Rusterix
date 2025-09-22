@@ -1,5 +1,5 @@
 use crate::{
-    Cell, DebugModule, Grid, GridCtx,
+    Cell, DebugModule, Grid, GridCtx, ModuleType,
     cell::{ArithmeticOp, CellRole, ComparisonOp},
 };
 use theframework::prelude::*;
@@ -402,7 +402,7 @@ impl CellItem {
     }
 
     /// Creates the settings for the cell
-    pub fn create_settings(&self) -> TheNodeUI {
+    pub fn create_settings(&self, module_type: ModuleType) -> TheNodeUI {
         let mut nodeui: TheNodeUI = TheNodeUI::default();
 
         match &self.cell {
@@ -417,18 +417,20 @@ impl CellItem {
                 );
                 nodeui.add_item(item);
 
-                let item = TheNodeUIItem::Selector(
-                    "cgfxVariableOption".into(),
-                    "Access".into(),
-                    "Select the access mode of the variable".into(),
-                    vec![
-                        "Self".to_string(),
-                        "List: First Item".to_string(),
-                        "List: Length".to_string(),
-                    ],
-                    self.option,
-                );
-                nodeui.add_item(item);
+                if !module_type.is_shader() {
+                    let item = TheNodeUIItem::Selector(
+                        "cgfxVariableOption".into(),
+                        "Access".into(),
+                        "Select the access mode of the variable".into(),
+                        vec![
+                            "Self".to_string(),
+                            "List: First Item".to_string(),
+                            "List: Length".to_string(),
+                        ],
+                        self.option,
+                    );
+                    nodeui.add_item(item);
+                }
             }
             Integer(value) | Float(value) => {
                 let item = TheNodeUIItem::Text(
@@ -568,6 +570,16 @@ impl CellItem {
             Cell::ConstructAssignBlock => {
                 if pos.0 == 0 {
                     grid.insert((pos.0, pos.1), CellItem::new(Cell::Variable("var".into())));
+                    grid.insert((pos.0 + 1, pos.1), CellItem::new(Cell::Assignment));
+                    grid.insert((pos.0 + 2, pos.1), CellItem::new(Cell::Integer("0".into())));
+                }
+            }
+            Cell::ConstructColorAssignBlock => {
+                if pos.0 == 0 {
+                    grid.insert(
+                        (pos.0, pos.1),
+                        CellItem::new(Cell::Variable("color".into())),
+                    );
                     grid.insert((pos.0 + 1, pos.1), CellItem::new(Cell::Assignment));
                     grid.insert((pos.0 + 2, pos.1), CellItem::new(Cell::Integer("0".into())));
                 }
@@ -1193,6 +1205,591 @@ impl CellItem {
                         self.id,
                         true,
                         "Amount",
+                        CellItemForm::RightRounded,
+                    ),
+                );
+                self.form = CellItemForm::LeftRounded;
+                grid.insert(pos, self)
+            }
+
+            Cell::Abs => {
+                grid.insert(
+                    (pos.0 + 1, pos.1),
+                    CellItem::new_dependency(
+                        Cell::Variable("x".into()),
+                        self.id,
+                        true,
+                        "X",
+                        CellItemForm::RightRounded,
+                    ),
+                );
+                self.form = CellItemForm::LeftRounded;
+                grid.insert(pos, self)
+            }
+
+            Cell::Atan => {
+                grid.insert(
+                    (pos.0 + 1, pos.1),
+                    CellItem::new_dependency(
+                        Cell::Variable("x".into()),
+                        self.id,
+                        true,
+                        "X",
+                        CellItemForm::RightRounded,
+                    ),
+                );
+                self.form = CellItemForm::LeftRounded;
+                grid.insert(pos, self)
+            }
+
+            Cell::Atan2 => {
+                grid.insert(
+                    (pos.0 + 1, pos.1),
+                    CellItem::new_dependency(
+                        Cell::Variable("y".into()),
+                        self.id,
+                        true,
+                        "Y",
+                        CellItemForm::Box,
+                    ),
+                );
+                grid.insert(
+                    (pos.0 + 2, pos.1),
+                    CellItem::new_dependency(
+                        Cell::Variable("x".into()),
+                        self.id,
+                        true,
+                        "X",
+                        CellItemForm::RightRounded,
+                    ),
+                );
+                self.form = CellItemForm::LeftRounded;
+                grid.insert(pos, self)
+            }
+
+            Cell::Ceil => {
+                grid.insert(
+                    (pos.0 + 1, pos.1),
+                    CellItem::new_dependency(
+                        Cell::Variable("x".into()),
+                        self.id,
+                        true,
+                        "X",
+                        CellItemForm::RightRounded,
+                    ),
+                );
+                self.form = CellItemForm::LeftRounded;
+                grid.insert(pos, self)
+            }
+
+            Cell::Clamp => {
+                grid.insert(
+                    (pos.0 + 1, pos.1),
+                    CellItem::new_dependency(
+                        Cell::Variable("x".into()),
+                        self.id,
+                        true,
+                        "X",
+                        CellItemForm::Box,
+                    ),
+                );
+                grid.insert(
+                    (pos.0 + 2, pos.1),
+                    CellItem::new_dependency(
+                        Cell::Variable("min".into()),
+                        self.id,
+                        true,
+                        "Min",
+                        CellItemForm::Box,
+                    ),
+                );
+                grid.insert(
+                    (pos.0 + 3, pos.1),
+                    CellItem::new_dependency(
+                        Cell::Variable("max".into()),
+                        self.id,
+                        true,
+                        "Max",
+                        CellItemForm::RightRounded,
+                    ),
+                );
+                self.form = CellItemForm::LeftRounded;
+                grid.insert(pos, self)
+            }
+
+            Cell::Cos => {
+                grid.insert(
+                    (pos.0 + 1, pos.1),
+                    CellItem::new_dependency(
+                        Cell::Variable("x".into()),
+                        self.id,
+                        true,
+                        "Radians",
+                        CellItemForm::RightRounded,
+                    ),
+                );
+                self.form = CellItemForm::LeftRounded;
+                grid.insert(pos, self)
+            }
+
+            Cell::Cross => {
+                grid.insert(
+                    (pos.0 + 1, pos.1),
+                    CellItem::new_dependency(
+                        Cell::Variable("a".into()),
+                        self.id,
+                        true,
+                        "A",
+                        CellItemForm::Box,
+                    ),
+                );
+                grid.insert(
+                    (pos.0 + 2, pos.1),
+                    CellItem::new_dependency(
+                        Cell::Variable("b".into()),
+                        self.id,
+                        true,
+                        "B",
+                        CellItemForm::RightRounded,
+                    ),
+                );
+                self.form = CellItemForm::LeftRounded;
+                grid.insert(pos, self)
+            }
+
+            Cell::Degrees => {
+                grid.insert(
+                    (pos.0 + 1, pos.1),
+                    CellItem::new_dependency(
+                        Cell::Variable("x".into()),
+                        self.id,
+                        true,
+                        "Radians",
+                        CellItemForm::RightRounded,
+                    ),
+                );
+                self.form = CellItemForm::LeftRounded;
+                grid.insert(pos, self)
+            }
+
+            Cell::Dot => {
+                grid.insert(
+                    (pos.0 + 1, pos.1),
+                    CellItem::new_dependency(
+                        Cell::Variable("a".into()),
+                        self.id,
+                        true,
+                        "A",
+                        CellItemForm::Box,
+                    ),
+                );
+                grid.insert(
+                    (pos.0 + 2, pos.1),
+                    CellItem::new_dependency(
+                        Cell::Variable("b".into()),
+                        self.id,
+                        true,
+                        "B",
+                        CellItemForm::RightRounded,
+                    ),
+                );
+                self.form = CellItemForm::LeftRounded;
+                grid.insert(pos, self)
+            }
+
+            Cell::Exp => {
+                grid.insert(
+                    (pos.0 + 1, pos.1),
+                    CellItem::new_dependency(
+                        Cell::Variable("x".into()),
+                        self.id,
+                        true,
+                        "X",
+                        CellItemForm::RightRounded,
+                    ),
+                );
+                self.form = CellItemForm::LeftRounded;
+                grid.insert(pos, self)
+            }
+
+            Cell::Floor => {
+                grid.insert(
+                    (pos.0 + 1, pos.1),
+                    CellItem::new_dependency(
+                        Cell::Variable("x".into()),
+                        self.id,
+                        true,
+                        "X",
+                        CellItemForm::RightRounded,
+                    ),
+                );
+                self.form = CellItemForm::LeftRounded;
+                grid.insert(pos, self)
+            }
+
+            Cell::Fract => {
+                grid.insert(
+                    (pos.0 + 1, pos.1),
+                    CellItem::new_dependency(
+                        Cell::Variable("x".into()),
+                        self.id,
+                        true,
+                        "X",
+                        CellItemForm::RightRounded,
+                    ),
+                );
+                self.form = CellItemForm::LeftRounded;
+                grid.insert(pos, self)
+            }
+
+            Cell::Length => {
+                grid.insert(
+                    (pos.0 + 1, pos.1),
+                    CellItem::new_dependency(
+                        Cell::Variable("x".into()),
+                        self.id,
+                        true,
+                        "X",
+                        CellItemForm::RightRounded,
+                    ),
+                );
+                self.form = CellItemForm::LeftRounded;
+                grid.insert(pos, self)
+            }
+
+            Cell::Log => {
+                grid.insert(
+                    (pos.0 + 1, pos.1),
+                    CellItem::new_dependency(
+                        Cell::Variable("x".into()),
+                        self.id,
+                        true,
+                        "X",
+                        CellItemForm::RightRounded,
+                    ),
+                );
+                self.form = CellItemForm::LeftRounded;
+                grid.insert(pos, self)
+            }
+
+            Cell::Max => {
+                grid.insert(
+                    (pos.0 + 1, pos.1),
+                    CellItem::new_dependency(
+                        Cell::Variable("a".into()),
+                        self.id,
+                        true,
+                        "A",
+                        CellItemForm::Box,
+                    ),
+                );
+                grid.insert(
+                    (pos.0 + 2, pos.1),
+                    CellItem::new_dependency(
+                        Cell::Variable("b".into()),
+                        self.id,
+                        true,
+                        "B",
+                        CellItemForm::RightRounded,
+                    ),
+                );
+                self.form = CellItemForm::LeftRounded;
+                grid.insert(pos, self)
+            }
+
+            Cell::Min => {
+                grid.insert(
+                    (pos.0 + 1, pos.1),
+                    CellItem::new_dependency(
+                        Cell::Variable("a".into()),
+                        self.id,
+                        true,
+                        "A",
+                        CellItemForm::Box,
+                    ),
+                );
+                grid.insert(
+                    (pos.0 + 2, pos.1),
+                    CellItem::new_dependency(
+                        Cell::Variable("b".into()),
+                        self.id,
+                        true,
+                        "B",
+                        CellItemForm::RightRounded,
+                    ),
+                );
+                self.form = CellItemForm::LeftRounded;
+                grid.insert(pos, self)
+            }
+
+            Cell::Mix => {
+                grid.insert(
+                    (pos.0 + 1, pos.1),
+                    CellItem::new_dependency(
+                        Cell::Variable("a".into()),
+                        self.id,
+                        true,
+                        "A",
+                        CellItemForm::Box,
+                    ),
+                );
+                grid.insert(
+                    (pos.0 + 2, pos.1),
+                    CellItem::new_dependency(
+                        Cell::Variable("b".into()),
+                        self.id,
+                        true,
+                        "B",
+                        CellItemForm::Box,
+                    ),
+                );
+                grid.insert(
+                    (pos.0 + 3, pos.1),
+                    CellItem::new_dependency(
+                        Cell::Variable("t".into()),
+                        self.id,
+                        true,
+                        "T",
+                        CellItemForm::RightRounded,
+                    ),
+                );
+                self.form = CellItemForm::LeftRounded;
+                grid.insert(pos, self)
+            }
+
+            Cell::Mod => {
+                grid.insert(
+                    (pos.0 + 1, pos.1),
+                    CellItem::new_dependency(
+                        Cell::Variable("x".into()),
+                        self.id,
+                        true,
+                        "X",
+                        CellItemForm::Box,
+                    ),
+                );
+                grid.insert(
+                    (pos.0 + 2, pos.1),
+                    CellItem::new_dependency(
+                        Cell::Variable("y".into()),
+                        self.id,
+                        true,
+                        "Y",
+                        CellItemForm::RightRounded,
+                    ),
+                );
+                self.form = CellItemForm::LeftRounded;
+                grid.insert(pos, self)
+            }
+
+            Cell::Normalize => {
+                grid.insert(
+                    (pos.0 + 1, pos.1),
+                    CellItem::new_dependency(
+                        Cell::Variable("x".into()),
+                        self.id,
+                        true,
+                        "X",
+                        CellItemForm::RightRounded,
+                    ),
+                );
+                self.form = CellItemForm::LeftRounded;
+                grid.insert(pos, self)
+            }
+
+            Cell::Pow => {
+                grid.insert(
+                    (pos.0 + 1, pos.1),
+                    CellItem::new_dependency(
+                        Cell::Variable("x".into()),
+                        self.id,
+                        true,
+                        "Base X",
+                        CellItemForm::Box,
+                    ),
+                );
+                grid.insert(
+                    (pos.0 + 2, pos.1),
+                    CellItem::new_dependency(
+                        Cell::Variable("y".into()),
+                        self.id,
+                        true,
+                        "Exponent Y",
+                        CellItemForm::RightRounded,
+                    ),
+                );
+                self.form = CellItemForm::LeftRounded;
+                grid.insert(pos, self)
+            }
+
+            Cell::Radians => {
+                grid.insert(
+                    (pos.0 + 1, pos.1),
+                    CellItem::new_dependency(
+                        Cell::Variable("degrees".into()),
+                        self.id,
+                        true,
+                        "Degrees",
+                        CellItemForm::RightRounded,
+                    ),
+                );
+                self.form = CellItemForm::LeftRounded;
+                grid.insert(pos, self)
+            }
+
+            Cell::Rand => {
+                grid.insert(
+                    (pos.0 + 1, pos.1),
+                    CellItem::new_dependency(
+                        Cell::Variable("uv".into()),
+                        self.id,
+                        true,
+                        "UV",
+                        CellItemForm::RightRounded,
+                    ),
+                );
+                self.form = CellItemForm::LeftRounded;
+                grid.insert(pos, self)
+            }
+
+            Cell::Rotate2d => {
+                grid.insert(
+                    (pos.0 + 1, pos.1),
+                    CellItem::new_dependency(
+                        Cell::Variable("uv".into()),
+                        self.id,
+                        true,
+                        "UV",
+                        CellItemForm::Box,
+                    ),
+                );
+                grid.insert(
+                    (pos.0 + 2, pos.1),
+                    CellItem::new_dependency(
+                        Cell::Float("0.0".into()),
+                        self.id,
+                        true,
+                        "Angle (rad)",
+                        CellItemForm::RightRounded,
+                    ),
+                );
+                self.form = CellItemForm::LeftRounded;
+                grid.insert(pos, self)
+            }
+
+            Cell::Sign => {
+                grid.insert(
+                    (pos.0 + 1, pos.1),
+                    CellItem::new_dependency(
+                        Cell::Variable("x".into()),
+                        self.id,
+                        true,
+                        "X",
+                        CellItemForm::RightRounded,
+                    ),
+                );
+                self.form = CellItemForm::LeftRounded;
+                grid.insert(pos, self)
+            }
+
+            Cell::Sin => {
+                grid.insert(
+                    (pos.0 + 1, pos.1),
+                    CellItem::new_dependency(
+                        Cell::Variable("x".into()),
+                        self.id,
+                        true,
+                        "Radians",
+                        CellItemForm::RightRounded,
+                    ),
+                );
+                self.form = CellItemForm::LeftRounded;
+                grid.insert(pos, self)
+            }
+
+            Cell::Smoothstep => {
+                grid.insert(
+                    (pos.0 + 1, pos.1),
+                    CellItem::new_dependency(
+                        Cell::Variable("edge0".into()),
+                        self.id,
+                        true,
+                        "Edge 0",
+                        CellItemForm::Box,
+                    ),
+                );
+                grid.insert(
+                    (pos.0 + 2, pos.1),
+                    CellItem::new_dependency(
+                        Cell::Variable("edge1".into()),
+                        self.id,
+                        true,
+                        "Edge 1",
+                        CellItemForm::Box,
+                    ),
+                );
+                grid.insert(
+                    (pos.0 + 3, pos.1),
+                    CellItem::new_dependency(
+                        Cell::Variable("x".into()),
+                        self.id,
+                        true,
+                        "X",
+                        CellItemForm::RightRounded,
+                    ),
+                );
+                self.form = CellItemForm::LeftRounded;
+                grid.insert(pos, self)
+            }
+
+            Cell::Sqrt => {
+                grid.insert(
+                    (pos.0 + 1, pos.1),
+                    CellItem::new_dependency(
+                        Cell::Variable("x".into()),
+                        self.id,
+                        true,
+                        "X",
+                        CellItemForm::RightRounded,
+                    ),
+                );
+                self.form = CellItemForm::LeftRounded;
+                grid.insert(pos, self)
+            }
+
+            Cell::Step => {
+                grid.insert(
+                    (pos.0 + 1, pos.1),
+                    CellItem::new_dependency(
+                        Cell::Variable("edge".into()),
+                        self.id,
+                        true,
+                        "Edge",
+                        CellItemForm::Box,
+                    ),
+                );
+                grid.insert(
+                    (pos.0 + 2, pos.1),
+                    CellItem::new_dependency(
+                        Cell::Variable("x".into()),
+                        self.id,
+                        true,
+                        "X",
+                        CellItemForm::RightRounded,
+                    ),
+                );
+                self.form = CellItemForm::LeftRounded;
+                grid.insert(pos, self)
+            }
+
+            Cell::Tan => {
+                grid.insert(
+                    (pos.0 + 1, pos.1),
+                    CellItem::new_dependency(
+                        Cell::Variable("x".into()),
+                        self.id,
+                        true,
+                        "Radians",
                         CellItemForm::RightRounded,
                     ),
                 );

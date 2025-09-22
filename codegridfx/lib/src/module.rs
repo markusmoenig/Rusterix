@@ -39,9 +39,42 @@ const FUNCTIONS: [&str; 30] = [
     "took_damage",
 ];
 
-const SHADER_FUNCTIONS: [&str; 1] = ["sample"];
+const SHADER_BLOCKS: [&str; 3] = ["Event", "Color = ..", "If .. == .."];
 
-#[derive(Serialize, Deserialize, Debug, Default, PartialEq, Clone)]
+const SHADER_FUNCTIONS: [&str; 30] = [
+    "abs",
+    "atan",
+    "atan2",
+    "ceil",
+    "clamp",
+    "cos",
+    "cross",
+    "degrees",
+    "dot",
+    "exp",
+    "floor",
+    "fract",
+    "length",
+    "log",
+    "max",
+    "min",
+    "mix",
+    "mod",
+    "normalize",
+    "pow",
+    "radians",
+    "rand",
+    "rotate2d",
+    "sign",
+    "sin",
+    "smoothstep",
+    "sample",
+    "sqrt",
+    "step",
+    "tan",
+];
+
+#[derive(Serialize, Deserialize, Debug, Default, PartialEq, Clone, Copy)]
 pub enum ModuleType {
     #[default]
     CharacterInstance,
@@ -239,13 +272,30 @@ impl Module {
         list.clear();
 
         let color = CellRole::Event.to_color();
-        for item_name in BLOCKS {
-            if self.filter_text.is_empty() || item_name.to_lowercase().contains(&self.filter_text) {
-                let mut item = TheListItem::new(TheId::named("Code Editor Code List Item"));
-                item.set_text(item_name.to_string());
-                item.set_associated_layout(list.id().clone());
-                item.set_background_color(TheColor::from(color));
-                list.add_item(item, ctx);
+
+        if self.module_type.is_shader() {
+            for item_name in SHADER_BLOCKS {
+                if self.filter_text.is_empty()
+                    || item_name.to_lowercase().contains(&self.filter_text)
+                {
+                    let mut item = TheListItem::new(TheId::named("Code Editor Code List Item"));
+                    item.set_text(item_name.to_string());
+                    item.set_associated_layout(list.id().clone());
+                    item.set_background_color(TheColor::from(color));
+                    list.add_item(item, ctx);
+                }
+            }
+        } else {
+            for item_name in BLOCKS {
+                if self.filter_text.is_empty()
+                    || item_name.to_lowercase().contains(&self.filter_text)
+                {
+                    let mut item = TheListItem::new(TheId::named("Code Editor Code List Item"));
+                    item.set_text(item_name.to_string());
+                    item.set_associated_layout(list.id().clone());
+                    item.set_background_color(TheColor::from(color));
+                    list.add_item(item, ctx);
+                }
             }
         }
 
@@ -609,6 +659,7 @@ impl Module {
                                 ctx,
                                 &mut self.grid_ctx,
                                 drop,
+                                self.module_type,
                             );
                             if handled {
                                 break;
@@ -684,6 +735,7 @@ impl Module {
                                 ui,
                                 ctx,
                                 &mut self.grid_ctx,
+                                self.module_type,
                             );
                             if handled {
                                 if self.grid_ctx.current_cell == None {
@@ -809,10 +861,6 @@ impl Module {
                     break;
                 }
             }
-        }
-
-        if !out.is_empty() {
-            println!("{}", out);
         }
 
         out

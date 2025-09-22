@@ -1,4 +1,6 @@
-use crate::{Cell, CellItem, DebugModule, Grid, GridCtx, cell::CellRole, cellitem::CellItemForm};
+use crate::{
+    Cell, CellItem, DebugModule, Grid, GridCtx, ModuleType, cell::CellRole, cellitem::CellItemForm,
+};
 use theframework::prelude::*;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -158,6 +160,7 @@ impl Routine {
         ctx: &mut TheContext,
         grid_ctx: &mut GridCtx,
         drop: &TheDrop,
+        module_type: ModuleType,
     ) -> bool {
         let mut handled = false;
         let mut pos: Option<(u32, u32)> = None;
@@ -245,7 +248,7 @@ impl Routine {
 
         if let Some(pos) = pos {
             if let Some(item) = self.grid.grid.get(&pos) {
-                let nodeui: TheNodeUI = item.create_settings();
+                let nodeui: TheNodeUI = item.create_settings(module_type);
                 if let Some(layout) = ui.get_text_layout("Node Settings") {
                     nodeui.apply_to_text_layout(layout);
                     ctx.ui.relayout = true;
@@ -271,6 +274,7 @@ impl Routine {
         ui: &mut TheUI,
         ctx: &mut TheContext,
         grid_ctx: &mut GridCtx,
+        module_type: ModuleType,
     ) -> bool {
         let mut handled = false;
         let header_height = 35;
@@ -294,7 +298,7 @@ impl Routine {
                         if grid_ctx.current_cell != Some(coord.clone()) {
                             grid_ctx.current_cell = Some(coord.clone());
 
-                            let nodeui: TheNodeUI = cell.create_settings();
+                            let nodeui: TheNodeUI = cell.create_settings(module_type);
                             if let Some(layout) = ui.get_text_layout("Node Settings") {
                                 nodeui.apply_to_text_layout(layout);
                                 ctx.ui.relayout = true;
