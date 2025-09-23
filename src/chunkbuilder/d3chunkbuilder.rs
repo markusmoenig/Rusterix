@@ -1,4 +1,6 @@
-use crate::{Assets, Batch3D, Chunk, ChunkBuilder, Map, Material, PixelSource, Tile, Value};
+use crate::{
+    Assets, Batch3D, Chunk, ChunkBuilder, Linedef, Map, Material, PixelSource, Tile, Value,
+};
 use vek::Vec2;
 
 pub struct D3ChunkBuilder {}
@@ -59,7 +61,7 @@ impl ChunkBuilder for D3ChunkBuilder {
 
                 if add_it {
                     if let Some((vertices, indices)) = sector.generate_geometry(map) {
-                        let shader_index = chunk.add_shader(&sector.module.build_floor_shader());
+                        let shader_index = chunk.add_shader(&sector.module.build_shader());
 
                         let sector_elevation =
                             sector.properties.get_float_default("floor_height", 0.0);
@@ -209,7 +211,10 @@ impl ChunkBuilder for D3ChunkBuilder {
                         if !add_it_as_floor {
                             for &linedef_id in &sector.linedefs {
                                 if let Some(linedef) = map.linedefs.get(linedef_id as usize) {
-                                    if let Some(start_vertex) =
+                                    if !linedef.profile.vertices.is_empty() {
+                                        // Profile Wall
+                                        build_profile_wall(map, assets, chunk, linedef);
+                                    } else if let Some(start_vertex) =
                                         map.find_vertex(linedef.start_vertex)
                                     {
                                         if let Some(end_vertex) =
@@ -421,6 +426,134 @@ fn add_wall(
                     &tile,
                 );
                 current_height = next_height;
+            }
+        }
+    }
+}
+
+fn build_profile_wall(map: &Map, assets: &Assets, chunk: &mut Chunk, linedef: &Linedef) {
+    if let (Some(start_vertex), Some(end_vertex)) = (
+        map.find_vertex(linedef.start_vertex),
+        map.find_vertex(linedef.end_vertex),
+    ) {
+        let start = start_vertex.as_vec2();
+        let end = end_vertex.as_vec2();
+        let delta = end - start;
+        let len = delta.magnitude();
+        if len <= 1e-6 {
+            return;
+        }
+        let dir = delta / len; // unit direction along the wall in XZ plane
+
+        // Nudge geometry slightly toward the front sector to avoid corner z-fighting/overlap
+        let inward_normal = Vec2::new(-dir.y, dir.x); // left side of the edge is the front
+        let default_eps = 0.001_f32;
+        let eps = linedef
+            .properties
+            .get_float("profile_wall_epsilon")
+            .unwrap_or(default_eps);
+        // Positive moves toward front; negative toward back-only walls
+        let offset2 = if linedef.front_sector.is_some() {
+            inward_normal * eps
+        } else if linedef.back_sector.is_some() {
+            inward_normal * -eps
+        } else {
+            Vec2::new(0.0, 0.0)
+        };
+
+        // Base elevation from the front sector if present, otherwise 0.0
+        let base_elevation = if let Some(front_id) = linedef.front_sector {
+            if let Some(front) = map.sectors.get(front_id as usize) {
+                front.properties.get_float_default("floor_height", 0.0)
+            } else {
+                0.0
+            }
+        } else {
+            0.0
+        };
+
+        let profile = &linedef.profile;
+        // Derive left/right anchors from profile vertex IDs; fallback to min/max if IDs missing
+        let mut left_x = f32::INFINITY;
+        let mut right_x = f32::NEG_INFINITY;
+        for v in &profile.vertices {
+            if let Some(id) = v.properties.get_int("profile_id") {
+                match id {
+                    1 | 2 => {
+                        left_x = left_x.min(v.x);
+                    } // left side
+                    0 | 3 => {
+                        right_x = right_x.max(v.x);
+                    } // right side
+                    _ => {}
+                }
+            }
+        }
+        if !left_x.is_finite() || !right_x.is_finite() {
+            // Fallback: compute from all vertices
+            left_x = f32::INFINITY;
+            right_x = f32::NEG_INFINITY;
+            for v in &profile.vertices {
+                left_x = left_x.min(v.x);
+                right_x = right_x.max(v.x);
+            }
+        }
+        // Guard against degenerate width
+        let denom = (right_x - left_x).max(1e-6);
+        let sectors = profile.sorted_sectors_by_area();
+
+        for sector in sectors {
+            // Triangulate the 2D profile sector in its own map (profile)
+            if let Some((pverts, pindices)) = sector.generate_geometry(profile) {
+                // Optional shader/material per profile sector
+                let shader_index = chunk.add_shader(&sector.module.build_shader());
+
+                // Map 2D profile vertices to 3D world space along the wall plane
+                // profile (x,y) -> world [x,z] = start + dir * mapped_x, world y = base_elevation + y
+                let world_vertices: Vec<[f32; 4]> = pverts
+                    .iter()
+                    .map(|&v| {
+                        let x = v[0];
+                        let y = v[1];
+                        // Normalize profile x relative to anchors and clamp into [0..len]
+                        let mut t = (x - left_x) / denom; // 0..1 across the drawn profile
+                        if t < 0.0 {
+                            t = 0.0;
+                        } else if t > 1.0 {
+                            t = 1.0;
+                        }
+                        let along = t * len;
+                        let pos2 = start + dir * along + offset2; // XZ plane mapping with slight inward offset
+                        [pos2.x, base_elevation + y, pos2.y, 1.0]
+                    })
+                    .collect();
+
+                // Use profile coordinates as UVs so textures/shaders align with the drawn profile
+                let uvs: Vec<[f32; 2]> = pverts.iter().map(|&v| [v[0], v[1]]).collect();
+
+                // Try a tile/source from the profile sector; fall back to shader-only
+                let mut pushed = false;
+                if let Some(Value::Source(pixelsource)) = sector.properties.get("source") {
+                    if let Some(tile) = pixelsource.tile_from_tile_list(assets) {
+                        if let Some(texture_index) = assets.tile_index(&tile.id) {
+                            let mut batch =
+                                Batch3D::new(world_vertices.clone(), pindices.clone(), uvs.clone())
+                                    .repeat_mode(crate::RepeatMode::RepeatXY)
+                                    .source(PixelSource::StaticTileIndex(texture_index));
+                            batch.shader = shader_index;
+                            chunk.batches3d.push(batch);
+                            pushed = true;
+                        }
+                    }
+                }
+
+                if !pushed {
+                    let mut batch = Batch3D::new(world_vertices, pindices, uvs);
+                    if let Some(si) = shader_index {
+                        batch.shader = Some(si);
+                    }
+                    chunk.batches3d.push(batch);
+                }
             }
         }
     }

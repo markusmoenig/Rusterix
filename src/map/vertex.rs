@@ -1,7 +1,7 @@
 use crate::ValueContainer;
 use theframework::prelude::*;
 
-#[derive(Serialize, Deserialize, PartialEq, Clone, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Clone, Debug, Default)]
 pub struct Vertex {
     pub id: u32,
 

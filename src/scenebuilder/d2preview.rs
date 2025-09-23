@@ -106,19 +106,20 @@ impl D2PreviewBuilder {
         assets: &Assets,
         screen_size: Vec2<f32>,
         _properties: &ValueContainer,
-        build_it: bool,
+        _build_it: bool,
     ) -> Scene {
         let mut scene = Scene::empty();
 
-        if !build_it {
-            return scene;
-        }
+        // if !build_it {
+        //     return scene;
+        // }
 
         for sector in &map.sectors {
             if let Some(geo) = sector.generate_geometry(map) {
                 let mut vertices: Vec<[f32; 2]> = vec![];
                 let mut uvs: Vec<[f32; 2]> = vec![];
                 let bbox = sector.bounding_box(map);
+                let shader_index = scene.add_shader(&sector.module.build_shader());
 
                 let mut repeat = true;
                 if sector.properties.get_int_default("tile_mode", 1) == 0 {
@@ -128,43 +129,51 @@ impl D2PreviewBuilder {
                 // Use the floor or ceiling source
                 let source = sector.properties.get("floor_source");
 
+                let mut processed = false;
+                for vertex in &geo.0 {
+                    let local =
+                        self.map_grid_to_local(screen_size, Vec2::new(vertex[0], vertex[1]), map);
+
+                    if !repeat {
+                        let uv = [
+                            (vertex[0] - bbox.min.x) / (bbox.max.x - bbox.min.x),
+                            (vertex[1] - bbox.min.y) / (bbox.max.y - bbox.min.y),
+                        ];
+                        uvs.push(uv);
+                    } else {
+                        let texture_scale = 1.0;
+                        let uv = [
+                            (vertex[0] - bbox.min.x) / texture_scale,
+                            (vertex[1] - bbox.min.y) / texture_scale,
+                        ];
+                        uvs.push(uv);
+                    }
+                    vertices.push([local.x, local.y]);
+                }
+
                 if let Some(Value::Source(pixelsource)) = source {
                     if let Some(tile) = pixelsource.tile_from_tile_list(assets) {
-                        for vertex in &geo.0 {
-                            let local = self.map_grid_to_local(
-                                screen_size,
-                                Vec2::new(vertex[0], vertex[1]),
-                                map,
-                            );
-
-                            if !repeat {
-                                let uv = [
-                                    (vertex[0] - bbox.min.x) / (bbox.max.x - bbox.min.x),
-                                    (vertex[1] - bbox.min.y) / (bbox.max.y - bbox.min.y),
-                                ];
-                                uvs.push(uv);
-                            } else {
-                                let texture_scale = 1.0;
-                                let uv = [
-                                    (vertex[0] - bbox.min.x) / texture_scale,
-                                    (vertex[1] - bbox.min.y) / texture_scale,
-                                ];
-                                uvs.push(uv);
-                            }
-                            vertices.push([local.x, local.y]);
-                        }
-
                         if let Some(texture_index) = assets.tile_index(&tile.id) {
-                            let batch = Batch2D::new(vertices, geo.1, uvs)
-                                .repeat_mode(if repeat {
-                                    crate::RepeatMode::RepeatXY
-                                } else {
-                                    crate::RepeatMode::ClampXY
-                                })
-                                .source(PixelSource::StaticTileIndex(texture_index));
+                            let mut batch =
+                                Batch2D::new(vertices.clone(), geo.1.clone(), uvs.clone())
+                                    .repeat_mode(if repeat {
+                                        crate::RepeatMode::RepeatXY
+                                    } else {
+                                        crate::RepeatMode::ClampXY
+                                    })
+                                    .source(PixelSource::StaticTileIndex(texture_index));
+                            batch.shader = shader_index;
                             scene.d2_static.push(batch);
+                            processed = true;
                         }
                     }
+                }
+
+                if let Some(shader_index) = shader_index
+                    && processed == false
+                {
+                    let batch = Batch2D::new(vertices, geo.1, uvs).shader(shader_index);
+                    scene.d2_static.push(batch);
                 }
             }
         }
@@ -503,6 +512,11 @@ impl D2PreviewBuilder {
                         let start_pos = self.map_grid_to_local(screen_size, start_vertex, map);
                         if let Some(end_vertex) = map.get_vertex(linedef.end_vertex) {
                             let end_pos = self.map_grid_to_local(screen_size, end_vertex, map);
+
+                            // Special color for wall profile
+                            if linedef.properties.contains("profile") {
+                                non_selected_lines_with_selected_graph.push((start_pos, end_pos));
+                            }
 
                             // ---
                             // Check for wall lights

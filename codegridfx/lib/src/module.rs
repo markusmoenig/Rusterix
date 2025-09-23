@@ -151,13 +151,8 @@ impl Module {
     pub fn update_routines(&mut self) {
         if self.module_type.is_shader() {
             if matches!(self.module_type, ModuleType::Sector) {
-                if !self.contains("floor_shader") {
-                    let routine = Routine::new("floor_shader".into());
-                    self.routines.insert(routine.id, routine);
-                }
-                if !self.contains("ceiling_shader") {
-                    let mut routine = Routine::new("ceiling_shader".into());
-                    routine.folded = true;
+                if !self.contains("shader") {
+                    let routine = Routine::new("shader".into());
                     self.routines.insert(routine.id, routine);
                 }
             } else {
@@ -830,13 +825,13 @@ impl Module {
         height
     }
 
-    /// Build shader code: floor
-    pub fn build_floor_shader(&self) -> String {
+    /// Build shader code
+    pub fn build_shader(&self) -> String {
         let mut out = String::new();
 
         if self.module_type.is_shader() {
             for r in self.routines.values() {
-                if r.name == "floor_shader" {
+                if r.name == "shader" {
                     r.build_shader(&mut out, 0);
                     break;
                 }
@@ -850,7 +845,7 @@ impl Module {
         out
     }
 
-    /// Build shader code: floor
+    /// Build shader code: ceiling
     pub fn build_ceiling_shader(&self) -> String {
         let mut out = String::new();
 
