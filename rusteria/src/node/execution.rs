@@ -40,8 +40,11 @@ pub struct Execution {
     /// Emissive
     pub emissive: Value,
 
-    /// Transmission
-    pub transmission: Value,
+    /// Opacity
+    pub opacity: Value,
+
+    /// Bump
+    pub bump: Value,
 
     /// Normal
     pub normal: Value,
@@ -67,7 +70,8 @@ impl Execution {
             roughness: Vec3::broadcast(0.5),
             metallic: Vec3::zero(),
             emissive: Vec3::zero(),
-            transmission: Vec3::zero(),
+            opacity: Vec3::zero(),
+            bump: Vec3::zero(),
             normal: Vec3::zero(),
             hitpoint: Vec3::zero(),
             time: Vec3::zero(),
@@ -87,7 +91,8 @@ impl Execution {
             roughness: Vec3::broadcast(0.5),
             metallic: Vec3::zero(),
             emissive: Vec3::zero(),
-            transmission: Vec3::zero(),
+            opacity: Vec3::zero(),
+            bump: Vec3::zero(),
             normal: Vec3::zero(),
             hitpoint: Vec3::zero(),
             time: Vec3::zero(),
@@ -601,11 +606,17 @@ impl Execution {
                 NodeOp::SetEmissive => {
                     self.emissive = self.stack.pop().unwrap();
                 }
-                NodeOp::Transmission => {
-                    self.stack.push(self.transmission);
+                NodeOp::Opacity => {
+                    self.stack.push(self.opacity);
                 }
-                NodeOp::SetTransmission => {
-                    self.transmission = self.stack.pop().unwrap();
+                NodeOp::SetOpacity => {
+                    self.opacity = self.stack.pop().unwrap();
+                }
+                NodeOp::Bump => {
+                    self.stack.push(self.bump);
+                }
+                NodeOp::SetBump => {
+                    self.bump = self.stack.pop().unwrap();
                 }
                 NodeOp::Sample => {
                     let b = self.stack.pop().unwrap();
@@ -643,7 +654,8 @@ impl Execution {
                                         ex.roughness = self.roughness;
                                         ex.metallic = self.metallic;
                                         ex.emissive = self.emissive;
-                                        ex.transmission = self.transmission;
+                                        ex.opacity = self.opacity;
+                                        ex.bump = self.bump;
                                         ex
                                     },
                                     |state, _x, _y, uv| {

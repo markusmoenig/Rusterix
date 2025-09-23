@@ -470,10 +470,10 @@ impl Visitor for CompileVisitor {
                 load: NodeOp::Emissive,
                 store: NodeOp::SetEmissive,
             })
-        } else if name == "transmission" {
+        } else if name == "opacity" {
             Some(Target::Builtin {
-                load: NodeOp::Transmission,
-                store: NodeOp::SetTransmission,
+                load: NodeOp::Opacity,
+                store: NodeOp::SetOpacity,
             })
         } else if let Some(index) = self.locals.get_index_of(&name) {
             Some(Target::Local { index })
@@ -587,8 +587,13 @@ impl Visitor for CompileVisitor {
             if !swizzle.is_empty() {
                 ctx.emit(NodeOp::GetComponents(swizzle.to_vec()));
             }
-        } else if name == "transmission" {
-            ctx.emit(NodeOp::Transmission);
+        } else if name == "opacity" {
+            ctx.emit(NodeOp::Opacity);
+            if !swizzle.is_empty() {
+                ctx.emit(NodeOp::GetComponents(swizzle.to_vec()));
+            }
+        } else if name == "bump" {
+            ctx.emit(NodeOp::Bump);
             if !swizzle.is_empty() {
                 ctx.emit(NodeOp::GetComponents(swizzle.to_vec()));
             }

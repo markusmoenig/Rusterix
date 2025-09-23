@@ -1145,6 +1145,8 @@ impl Rasterizer {
                                                         execution.roughness.x = 0.5;
                                                         execution.metallic.x = 0.0;
 
+                                                        execution.opacity.x = 1.0;
+
                                                         execution.reset(program.globals);
                                                         execution.shade(sh, program);
                                                     }
@@ -1235,6 +1237,7 @@ impl Rasterizer {
                                             color.x = linear_to_srgb_fast(lit.x);
                                             color.y = linear_to_srgb_fast(lit.y);
                                             color.z = linear_to_srgb_fast(lit.z);
+                                            color.w = execution.opacity.x;
                                             texel = vec4_to_pixel(&color);
 
                                             // ---
