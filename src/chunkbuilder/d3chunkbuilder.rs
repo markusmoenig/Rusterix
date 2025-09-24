@@ -25,23 +25,6 @@ impl ChunkBuilder for D3ChunkBuilder {
         for sector in &map.sectors {
             let bbox = sector.bounding_box(map);
             if bbox.intersects(&chunk.bbox) && chunk.bbox.contains(bbox.center()) {
-                // // Add Floor Light
-                // if let Some(Value::Light(light)) = sector.properties.get("floor_light") {
-                //     if let Some(center) = sector.center(map) {
-                //         let bbox = sector.bounding_box(map);
-                //         let light = light.from_sector(Vec3::new(center.x, 0.0, center.y), bbox.size());
-                //         scene.lights.push(light);
-                //     }
-                // }
-                // // Add Ceiling Light
-                // if let Some(Value::Light(light)) = sector.properties.get("ceiling_light") {
-                //     if let Some(center) = sector.center(map) {
-                //         let bbox = sector.bounding_box(map);
-                //         let light = light.from_sector(Vec3::new(center.x, 0.0, center.y), bbox.size());
-                //         scene.lights.push(light);
-                //     }
-                // }
-
                 let mut add_it = true;
 
                 // Special cases from the Rect tool
@@ -82,8 +65,43 @@ impl ChunkBuilder for D3ChunkBuilder {
                                 })
                                 .collect();
 
-                            let floor_uvs: Vec<[f32; 2]> =
-                                vertices.iter().map(|&v| [v[0], v[1]]).collect();
+                            // Build floor UVs with a switch between area-scaled and repeat mode
+                            // tile_mode: 0 => scale to area [0..1]; 1 (default) => repeat using texture_scale
+                            let tile_mode = sector.properties.get_int_default("tile_mode", 1);
+
+                            // Compute local bbox of the floor vertices (in map space of this sector geometry)
+                            let mut minx = f32::INFINITY;
+                            let mut miny = f32::INFINITY;
+                            let mut maxx = f32::NEG_INFINITY;
+                            let mut maxy = f32::NEG_INFINITY;
+                            for &v in &vertices {
+                                minx = minx.min(v[0]);
+                                maxx = maxx.max(v[0]);
+                                miny = miny.min(v[1]);
+                                maxy = maxy.max(v[1]);
+                            }
+                            let sx = (maxx - minx).max(1e-6);
+                            let sy = (maxy - miny).max(1e-6);
+
+                            let mut floor_uvs: Vec<[f32; 2]> = Vec::with_capacity(vertices.len());
+                            if tile_mode == 0 {
+                                // Normalize to [0..1] over the local area
+                                for &v in &vertices {
+                                    floor_uvs.push([(v[0] - minx) / sx, (v[1] - miny) / sy]);
+                                }
+                            } else {
+                                // Repeat mode with per-axis texture scales
+                                let tex_scale_x =
+                                    sector.properties.get_float_default("texture_scale_x", 1.0);
+                                let tex_scale_y =
+                                    sector.properties.get_float_default("texture_scale_y", 1.0);
+                                for &v in &vertices {
+                                    floor_uvs.push([
+                                        (v[0] - minx) / tex_scale_x,
+                                        (v[1] - miny) / tex_scale_y,
+                                    ]);
+                                }
+                            }
 
                             if let Some(Value::Source(pixelsource)) =
                                 sector.properties.get("floor_source")
@@ -154,8 +172,48 @@ impl ChunkBuilder for D3ChunkBuilder {
                                             })
                                             .collect();
 
-                                        let ceiling_uvs =
-                                            vertices.iter().map(|&v| [v[0], v[1]]).collect();
+                                        // Build ceiling UVs with a switch between area-scaled and repeat mode
+                                        // tile_mode: 0 => scale to area [0..1]; 1 (default) => repeat using texture_scale
+                                        let tile_mode =
+                                            sector.properties.get_int_default("tile_mode", 1);
+
+                                        // Compute local bbox of the ceiling vertices (map space of this sector geometry)
+                                        let mut minx = f32::INFINITY;
+                                        let mut miny = f32::INFINITY;
+                                        let mut maxx = f32::NEG_INFINITY;
+                                        let mut maxy = f32::NEG_INFINITY;
+                                        for &v in &vertices {
+                                            minx = minx.min(v[0]);
+                                            maxx = maxx.max(v[0]);
+                                            miny = miny.min(v[1]);
+                                            maxy = maxy.max(v[1]);
+                                        }
+                                        let sx = (maxx - minx).max(1e-6);
+                                        let sy = (maxy - miny).max(1e-6);
+
+                                        let mut ceiling_uvs: Vec<[f32; 2]> =
+                                            Vec::with_capacity(vertices.len());
+                                        if tile_mode == 0 {
+                                            // Normalize to [0..1] over the local area
+                                            for &v in &vertices {
+                                                ceiling_uvs
+                                                    .push([(v[0] - minx) / sx, (v[1] - miny) / sy]);
+                                            }
+                                        } else {
+                                            // Repeat mode with per-axis texture scales (defaults 1.0)
+                                            let tex_scale_x = sector
+                                                .properties
+                                                .get_float_default("texture_scale_x", 1.0);
+                                            let tex_scale_y = sector
+                                                .properties
+                                                .get_float_default("texture_scale_y", 1.0);
+                                            for &v in &vertices {
+                                                ceiling_uvs.push([
+                                                    (v[0] - minx) / tex_scale_x,
+                                                    (v[1] - miny) / tex_scale_y,
+                                                ]);
+                                            }
+                                        }
                                         // let ceiling_indices =
                                         //     indices.iter().map(|&v| (v.2, v.1, v.0)).collect();
 
@@ -528,8 +586,38 @@ fn build_profile_wall(map: &Map, assets: &Assets, chunk: &mut Chunk, linedef: &L
                     })
                     .collect();
 
-                // Use profile coordinates as UVs so textures/shaders align with the drawn profile
-                let uvs: Vec<[f32; 2]> = pverts.iter().map(|&v| [v[0], v[1]]).collect();
+                // Build UVs with a switch between area-scaled and repeat mode
+                // tile_mode: 0 => scale to area [0..1]; 1 (default) => repeat using texture_scale
+                let tile_mode = sector.properties.get_int_default("tile_mode", 1);
+
+                // Compute local bbox of the profile vertices (in profile space)
+                let mut minx = f32::INFINITY;
+                let mut miny = f32::INFINITY;
+                let mut maxx = f32::NEG_INFINITY;
+                let mut maxy = f32::NEG_INFINITY;
+                for &v in &pverts {
+                    minx = minx.min(v[0]);
+                    maxx = maxx.max(v[0]);
+                    miny = miny.min(v[1]);
+                    maxy = maxy.max(v[1]);
+                }
+                let sx = (maxx - minx).max(1e-6);
+                let sy = (maxy - miny).max(1e-6);
+
+                let mut uvs: Vec<[f32; 2]> = Vec::with_capacity(pverts.len());
+                if tile_mode == 0 {
+                    // Scale UVs to the area (0..1) based on bbox in profile space
+                    for &v in &pverts {
+                        uvs.push([(v[0] - minx) / sx, (v[1] - miny) / sy]);
+                    }
+                } else {
+                    // Repeat mode: allow per-axis texture scale; default 1.0 means 1 unit = 1 UV
+                    let tex_scale_x = sector.properties.get_float_default("texture_scale_x", 1.0);
+                    let tex_scale_y = sector.properties.get_float_default("texture_scale_y", 1.0);
+                    for &v in &pverts {
+                        uvs.push([(v[0] - minx) / tex_scale_x, (v[1] - miny) / tex_scale_y]);
+                    }
+                }
 
                 // Try a tile/source from the profile sector; fall back to shader-only
                 let mut pushed = false;

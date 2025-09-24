@@ -706,7 +706,7 @@ impl Rasterizer {
                                                     execution.metallic.x = 0.0;
 
                                                     execution.reset(program.globals);
-                                                    execution.shade(sh, program);
+                                                    execution.shade(sh, program, &assets.palette);
 
                                                     color.x = execution.color.x;
                                                     color.y = execution.color.y;
@@ -1148,7 +1148,11 @@ impl Rasterizer {
                                                         execution.opacity.x = 1.0;
 
                                                         execution.reset(program.globals);
-                                                        execution.shade(sh, program);
+                                                        execution.shade(
+                                                            sh,
+                                                            program,
+                                                            &assets.palette,
+                                                        );
                                                     }
                                                 }
                                             }

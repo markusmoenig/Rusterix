@@ -179,3 +179,80 @@ save(tex, "rusteria/embedded/perlin.png");
 
 iterate(tex, "make_perlin_fbm");
 save(tex, "rusteria/embedded/fbm_perlin.png");
+
+// Bricks
+
+fn hash21(p)
+{
+	let p3 = fract(p * vec3(.1031, .1030, .0973));
+	p3 += dot(p3, p3.yzx + 33.33);
+    return fract((p3.xx+p3.yz)*p3.zy);
+}
+
+fn make_bricks() {
+    let ratio = 3.0;
+    let cell = 18.0;
+    let gap  = 0.05;
+    let bevel = 0.0;
+    let cycle = vec2( round(cell / ratio), cell);
+
+    let u = uv;
+
+    let w = vec2(ratio, 1.0);
+    u *= cell / w;
+
+    u.x += 0.5 * (floor(u.y) % 2.0);
+
+    let p = u % cycle;
+    p = floor(p);
+    p.z = 0.0;
+    let id = hash21(p);
+
+    let s = w* (fract(u) - 1./2.); 
+
+    let a = w/2. - gap - abs(s);
+    let b  = a * 2. / bevel;
+    let m = min(b.x,b.y); 
+
+    let mask = clamp( m ,0.,1.); 
+
+    color = vec2(mask.x, id.x);
+}
+
+iterate(tex, "make_bricks");
+save(tex, "rusteria/embedded/bricks.png");
+
+// Tiles
+
+fn make_tiles() {
+    let ratio = 1.0;
+    let cell = 18.0;
+    let gap  = 0.01;
+    let bevel = 0.1;
+    let cycle = vec2( ceil(cell / ratio), cell);
+
+    let u = uv;
+
+    let w = vec2(ratio, 1.0);
+    u *= cell / w;
+
+    //u.x += 0.5 * (floor(u.y) % 2.0);
+
+    let p = mod(u, cycle);
+    p = floor(p);
+    p.z = 0.0;
+    let id = hash21(p);
+
+    let s = w* (fract(u) - 1./2.); 
+
+    let a = w/2. - gap - abs(s);
+    let b  = a * 2. / bevel;
+    let m = min(b.x,b.y); 
+
+    let mask = clamp( m ,0.,1.); 
+
+    color = vec2(mask.x, id.x);
+}
+
+iterate(tex, "make_tiles");
+save(tex, "rusteria/embedded/tiles.png");

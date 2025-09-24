@@ -4,7 +4,6 @@
 
 use super::TexStorage;
 use once_cell::sync::OnceCell;
-use rust_embed::RustEmbed;
 use std::path::Path;
 use strum::{EnumCount, EnumIter, IntoStaticStr};
 
@@ -18,6 +17,8 @@ pub enum PatternKind {
     FbmValueNoise,
     PerlinNoise,
     FbmPerlinNoise,
+    Bricks,
+    Tiles,
 }
 
 impl PatternKind {
@@ -27,6 +28,8 @@ impl PatternKind {
             PatternKind::FbmValueNoise => 1,
             PatternKind::PerlinNoise => 2,
             PatternKind::FbmPerlinNoise => 3,
+            PatternKind::Bricks => 4,
+            PatternKind::Tiles => 5,
         }
     }
 
@@ -36,6 +39,8 @@ impl PatternKind {
             1 => PatternKind::FbmValueNoise,
             2 => PatternKind::PerlinNoise,
             3 => PatternKind::FbmPerlinNoise,
+            4 => PatternKind::Bricks,
+            5 => PatternKind::Tiles,
             _ => return None,
         })
     }
@@ -45,6 +50,8 @@ impl PatternKind {
             "fbm_value" => Some(PatternKind::FbmValueNoise),
             "perlin" => Some(PatternKind::PerlinNoise),
             "fbm_perlin" => Some(PatternKind::FbmPerlinNoise),
+            "bricks" => Some(PatternKind::Bricks),
+            "tiles" => Some(PatternKind::Tiles),
             _ => None,
         }
     }
@@ -54,6 +61,8 @@ impl PatternKind {
             PatternKind::FbmValueNoise => "fbm_value",
             PatternKind::PerlinNoise => "perlin",
             PatternKind::FbmPerlinNoise => "fbm_perlin",
+            PatternKind::Bricks => "bricks",
+            PatternKind::Tiles => "tiles",
         }
     }
 }
@@ -88,15 +97,11 @@ pub fn pattern_safe(id: usize) -> Option<&'static TexStorage> {
     vec.get(id)
 }
 
-#[derive(RustEmbed)]
-#[folder = "embedded/"]
-struct EmbeddedPatterns;
-
 fn build_patterns() -> Vec<TexStorage> {
     const PATTERN_COUNT: usize = PatternKind::COUNT;
     let mut out: Vec<TexStorage> = (0..PATTERN_COUNT).map(|_| TexStorage::new(1, 1)).collect();
 
-    for file in EmbeddedPatterns::iter() {
+    for file in crate::Embedded::iter() {
         let path_str = file.as_ref();
         if !path_str.ends_with(".png") {
             continue;
@@ -107,7 +112,7 @@ fn build_patterns() -> Vec<TexStorage> {
             .unwrap_or("")
             .to_lowercase();
         if let Some(kind) = PatternKind::from_name(&stem) {
-            if let Some(bytes) = EmbeddedPatterns::get(path_str) {
+            if let Some(bytes) = crate::Embedded::get(path_str) {
                 if let Ok(tex) = TexStorage::from_png_bytes(bytes.data.as_ref()) {
                     out[kind.to_index()] = tex;
                 }

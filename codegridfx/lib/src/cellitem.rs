@@ -203,7 +203,9 @@ impl CellItem {
             | Cell::Float(_)
             | Cell::Str(_)
             | Cell::Boolean(_)
-            | Cell::Textures(_) => {
+            | Cell::Textures(_)
+            | PaletteColor(_)
+            | Value(_) => {
                 if let Some(font) = &ctx.ui.font {
                     ctx.draw.rounded_rect(
                         buffer.pixels_mut(),
@@ -335,7 +337,8 @@ impl CellItem {
         let large_font_size = 14.0;
         let mut size = Vec2::new(30, 50);
         match &self.cell {
-            Variable(_) | Integer(_) | Float(_) | Str(_) | Boolean(_) | Textures(_) => {
+            Variable(_) | Integer(_) | Float(_) | Str(_) | Boolean(_) | Textures(_)
+            | PaletteColor(_) | Value(_) => {
                 let text = match self.option {
                     1 => {
                         format!("First({})", self.cell.to_string())
@@ -407,7 +410,7 @@ impl CellItem {
     }
 
     /// Creates the settings for the cell
-    pub fn create_settings(&self, module_type: ModuleType) -> TheNodeUI {
+    pub fn create_settings(&self, palette: &ThePalette, module_type: ModuleType) -> TheNodeUI {
         let mut nodeui: TheNodeUI = TheNodeUI::default();
 
         match &self.cell {
@@ -448,7 +451,7 @@ impl CellItem {
                 );
                 nodeui.add_item(item);
             }
-            Str(value) => {
+            Str(value) | Value(value) => {
                 let item = TheNodeUIItem::Text(
                     "cgfxValue".into(),
                     "Value".into(),
@@ -469,6 +472,18 @@ impl CellItem {
                 );
                 nodeui.add_item(item);
             }
+            &PaletteColor(value) => {
+                let item = TheNodeUIItem::PaletteSlider(
+                    "cgfxValue".into(),
+                    "Value".into(),
+                    "Set the value".into(),
+                    value as i32,
+                    palette.clone(),
+                    false,
+                );
+                nodeui.add_item(item);
+            }
+
             Comparison(op) => {
                 let item = TheNodeUIItem::Selector(
                     "cgfxComparisonOp".into(),
@@ -528,19 +543,32 @@ impl CellItem {
     }
 
     /// Creates the settings for the cell
-    pub fn apply_value(&mut self, name: &str, value: &TheValue) {
+    pub fn apply_value(&mut self, name: &str, value: &TheValue, module_type: ModuleType) -> bool {
         match &mut self.cell {
             Variable(var_name) => {
                 if let Some(n) = value.to_string()
                     && name == "cgfxVariableName"
                 {
-                    if Self::is_valid_python_variable(&n) {
+                    if !module_type.is_shader() {
+                        if Self::is_valid_python_variable(&n) {
+                            *var_name = n;
+                        }
+                    } else {
                         *var_name = n;
                     }
                 } else if let Some(v) = value.to_i32()
                     && name == "cgfxVariableOption"
                 {
                     self.option = v;
+                }
+            }
+            PaletteColor(index) => {
+                if let Some(v) = value.to_i32()
+                    && name == "cgfxValue"
+                    && v < 256
+                {
+                    *index = v as u8;
+                    return false;
                 }
             }
             Integer(value_name) => {
@@ -594,6 +622,7 @@ impl CellItem {
             }
             _ => {}
         }
+        true
     }
 
     /// Inserts the item at the given position.
@@ -613,7 +642,7 @@ impl CellItem {
                         CellItem::new(Cell::Variable("color".into())),
                     );
                     grid.insert((pos.0 + 1, pos.1), CellItem::new(Cell::Assignment));
-                    grid.insert((pos.0 + 2, pos.1), CellItem::new(Cell::Integer("0".into())));
+                    grid.insert((pos.0 + 2, pos.1), CellItem::new(Cell::Value("1".into())));
                 }
             }
             Cell::ConstructIfBlock => {

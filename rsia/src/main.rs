@@ -46,10 +46,12 @@ fn main() {
         }
     };
 
+    let palette = ds.create_default_palette();
+
     if let Some(shade_index) = ds.context.program.shade_index {
         let mut buffer = Arc::new(Mutex::new(RenderBuffer::new(width, height)));
         let t0 = ds.get_time();
-        ds.shade(&mut buffer, shade_index);
+        ds.shade(&mut buffer, shade_index, &palette);
         let t1 = ds.get_time();
         println!("Rendered in {}ms", t1 - t0);
         let mut png_path = path.clone();
@@ -57,7 +59,7 @@ fn main() {
         buffer.lock().unwrap().save(png_path);
     } else {
         let t0 = ds.get_time();
-        let rc = ds.execute();
+        let rc = ds.execute(&palette);
         let t1 = ds.get_time();
         println!("Executed in {}ms", t1 - t0);
         if let Some(rc) = rc {

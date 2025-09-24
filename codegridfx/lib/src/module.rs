@@ -40,7 +40,7 @@ const FUNCTIONS: [&str; 30] = [
 ];
 
 const SHADER_BLOCKS: [&str; 3] = ["Event", "Color = ..", "If .. == .."];
-
+const SHADER_VALUES: [&str; 4] = ["Boolean", "Palette Color", "Value", "Variable"];
 const SHADER_FUNCTIONS: [&str; 30] = [
     "abs",
     "atan",
@@ -294,14 +294,31 @@ impl Module {
             }
         }
 
-        let color = CellRole::Value.to_color();
-        for item_name in VALUES {
-            if self.filter_text.is_empty() || item_name.to_lowercase().contains(&self.filter_text) {
-                let mut item = TheListItem::new(TheId::named("Code Editor Code List Item"));
-                item.set_text(item_name.to_string());
-                item.set_associated_layout(list.id().clone());
-                item.set_background_color(TheColor::from(color));
-                list.add_item(item, ctx);
+        if self.module_type.is_shader() {
+            let color = CellRole::Value.to_color();
+            for item_name in SHADER_VALUES {
+                if self.filter_text.is_empty()
+                    || item_name.to_lowercase().contains(&self.filter_text)
+                {
+                    let mut item = TheListItem::new(TheId::named("Code Editor Code List Item"));
+                    item.set_text(item_name.to_string());
+                    item.set_associated_layout(list.id().clone());
+                    item.set_background_color(TheColor::from(color));
+                    list.add_item(item, ctx);
+                }
+            }
+        } else {
+            let color = CellRole::Value.to_color();
+            for item_name in VALUES {
+                if self.filter_text.is_empty()
+                    || item_name.to_lowercase().contains(&self.filter_text)
+                {
+                    let mut item = TheListItem::new(TheId::named("Code Editor Code List Item"));
+                    item.set_text(item_name.to_string());
+                    item.set_associated_layout(list.id().clone());
+                    item.set_background_color(TheColor::from(color));
+                    list.add_item(item, ctx);
+                }
             }
         }
 
@@ -411,7 +428,13 @@ impl Module {
     }
 
     /// Handle events
-    pub fn handle_event(&mut self, event: &TheEvent, ui: &mut TheUI, ctx: &mut TheContext) -> bool {
+    pub fn handle_event(
+        &mut self,
+        event: &TheEvent,
+        ui: &mut TheUI,
+        ctx: &mut TheContext,
+        palette: &ThePalette,
+    ) -> bool {
         let mut redraw: bool = false;
 
         match event {
@@ -576,11 +599,13 @@ impl Module {
                     }
                 } else if id.name.starts_with("cgfx") {
                     let prev = self.to_json();
+                    let mut needs_update = true;
                     for r in self.routines.values_mut() {
                         if Some(r.id) == self.grid_ctx.selected_routine {
                             if let Some(coord) = self.grid_ctx.current_cell {
                                 if let Some(item) = r.grid.grid.get_mut(&coord) {
-                                    item.apply_value(&id.name, value);
+                                    needs_update =
+                                        item.apply_value(&id.name, value, self.module_type);
                                     r.draw(ctx, &self.grid_ctx, 0, None);
                                 }
                             }
@@ -591,7 +616,7 @@ impl Module {
                     }
                     ctx.ui.send(TheEvent::Custom(
                         TheId::named("ModuleChanged"),
-                        TheValue::Empty,
+                        TheValue::Bool(needs_update),
                     ));
                     ctx.ui.send(TheEvent::CustomUndo(
                         TheId::named("ModuleUndo"),
@@ -655,6 +680,7 @@ impl Module {
                                 &mut self.grid_ctx,
                                 drop,
                                 self.module_type,
+                                palette,
                             );
                             if handled {
                                 break;
@@ -731,6 +757,7 @@ impl Module {
                                 ctx,
                                 &mut self.grid_ctx,
                                 self.module_type,
+                                palette,
                             );
                             if handled {
                                 if self.grid_ctx.current_cell == None {

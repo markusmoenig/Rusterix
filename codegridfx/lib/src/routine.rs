@@ -161,6 +161,7 @@ impl Routine {
         grid_ctx: &mut GridCtx,
         drop: &TheDrop,
         module_type: ModuleType,
+        palette: &ThePalette,
     ) -> bool {
         let mut handled = false;
         let mut pos: Option<(u32, u32)> = None;
@@ -248,7 +249,7 @@ impl Routine {
 
         if let Some(pos) = pos {
             if let Some(item) = self.grid.grid.get(&pos) {
-                let nodeui: TheNodeUI = item.create_settings(module_type);
+                let nodeui: TheNodeUI = item.create_settings(palette, module_type);
                 if let Some(layout) = ui.get_text_layout("Node Settings") {
                     nodeui.apply_to_text_layout(layout);
                     ctx.ui.relayout = true;
@@ -275,6 +276,7 @@ impl Routine {
         ctx: &mut TheContext,
         grid_ctx: &mut GridCtx,
         module_type: ModuleType,
+        palette: &ThePalette,
     ) -> bool {
         let mut handled = false;
         let header_height = 35;
@@ -298,14 +300,14 @@ impl Routine {
                         if grid_ctx.current_cell != Some(coord.clone()) {
                             grid_ctx.current_cell = Some(coord.clone());
 
-                            let nodeui: TheNodeUI = cell.create_settings(module_type);
+                            let nodeui: TheNodeUI = cell.create_settings(palette, module_type);
                             if let Some(layout) = ui.get_text_layout("Node Settings") {
                                 nodeui.apply_to_text_layout(layout);
                                 ctx.ui.relayout = true;
 
                                 ctx.ui.send(TheEvent::Custom(
                                     TheId::named("Show Node Settings"),
-                                    TheValue::Text(format!("{} Settings", cell.cell.description())),
+                                    TheValue::Text(format!("{}", cell.cell.description())),
                                 ));
                             }
 

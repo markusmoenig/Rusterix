@@ -8,6 +8,8 @@ repository = "https://github.com/markusmoenig/Rusterix"
 keywords = ["software", "rendering", "graphics", "game", "3d", "doom", "engine"]
 
 [dependencies]
+theframework.workspace = true
+
 rustc-hash = "2.1.1"
 indexmap = "2.10.0"
 rayon = "1.11.0"

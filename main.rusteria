@@ -1,31 +1,37 @@
 
-// Marble
+fn hash21(p)
+{
+	let p3 = fract(p * vec3(.1031, .1030, .0973));
+	p3 += dot(p3, p3.yzx + 33.33);
+    return fract((p3.xx+p3.yz)*p3.zy);
+}
+
 fn shade() {
-    // Animated marble using fBm Perlin turbulence to warp periodic bands.
-    // We only read the x component from textures for speed (our VM uses x as the value).
-    let t = 1;
+    let ratio = 3.0;
+    let cell = 18.0;
+    let gap  = 0.05;
+    let bevel = 0.0;
+    let cycle = vec2( round(cell / ratio), cell);
 
-    // Scale the domain (bigger = larger veins)
-    let uv2 = uv * 1.0;
+    let u = uv;
 
-    // Two octaves of precomputed fBm Perlin, phase-shifted to avoid locking patterns
-    let n1 = sample(uv2 + vec2(t, 0.0), "fbm_value");
-    let n2 = sample(uv2 * 2.0 + vec2(0.0, t), "fbm_value");
-    let turb = 0.6 * n1 + 0.4 * n2; // [0,1]
+    let w = vec2(ratio, 1.0);
+    u *= cell / w;
 
-    // Periodic bands along x, warped by turbulence
-    let bands = uv2.x + turb * 0.6;
-    let s = sin(bands * 8.0);               // number of veins
-    let veins = pow(1.0 - abs(s), 3.0);     // sharpen sin valleys into thin veins
+    u.x += 0.5 * (floor(u.y) % 2.0);
 
-    // Base marble color (slightly bluish-white) and vein color
-    let base_col = vec3(0.92, 0.93, 0.96);
-    let vein_col = vec3(0.18, 0.20, 0.24);
+    let p = u % cycle;
+    p = floor(p);
+    p.z = 0.0;
+    let id = hash21(p);
 
-    // Mix base and veins
-    color = mix(base_col, vein_col, veins);
+    let s = w* (fract(u) - 1./2.); 
 
-    // Subtle mottling using value noise
-    let m = sample(uv2 * 0.5 + vec2(0.0), "value"); // [0,1]
-    color *= (0.9 + 0.1 * m);    
+    let a = w/2. - gap - abs(s);
+    let b  = a * 2. / bevel;
+    let m = min(b.x,b.y); 
+
+    let mask = clamp( m ,0.,1.); 
+
+    color = vec2(mask.x, id.y);
 }

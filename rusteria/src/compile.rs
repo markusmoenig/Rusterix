@@ -346,6 +346,22 @@ impl Visitor for CompileVisitor {
                 op: NodeOp::Rotate2D,
             },
         );
+        functions.insert(
+            "palette".to_string(),
+            ASTFunction {
+                name: "palette".to_string(),
+                arguments: 1,
+                op: NodeOp::PaletteIndex,
+            },
+        );
+        functions.insert(
+            "round".to_string(),
+            ASTFunction {
+                name: "round".to_string(),
+                arguments: 1,
+                op: NodeOp::Round,
+            },
+        );
 
         Self {
             environment: Environment::default(),

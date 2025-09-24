@@ -16,6 +16,12 @@ pub mod textures;
 
 pub type Value = vek::Vec3<f32>;
 
+use rust_embed::RustEmbed;
+
+#[derive(RustEmbed)]
+#[folder = "embedded/"]
+struct Embedded;
+
 pub use crate::{
     ast::{
         AssignmentOperator, BinaryOperator, ComparisonOperator, EqualityOperator, Expr, Location,
@@ -44,6 +50,7 @@ use rayon::prelude::*;
 use rustc_hash::FxHashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
+use theframework::theui::ThePalette;
 use vek::Vec3;
 
 pub struct Rusteria {
@@ -65,6 +72,17 @@ impl Rusteria {
             context: Context::new(FxHashMap::default()),
             defaults: None,
         }
+    }
+
+    /// Returns the default palette: https://lospec.com/palette-list/duel
+    pub fn create_default_palette(&self) -> ThePalette {
+        let mut palette = ThePalette::default();
+        if let Some(bytes) = Embedded::get("duel.txt") {
+            if let Ok(txt) = std::str::from_utf8(bytes.data.as_ref()) {
+                palette.load_from_txt(txt.to_string());
+            }
+        }
+        palette
     }
 
     // Parse the source code into a module.
@@ -113,23 +131,23 @@ impl Rusteria {
     }
 
     /// Compile the voxels into the VoxelGrid.
-    pub fn execute(&mut self) -> Option<Value> {
+    pub fn execute(&mut self, palette: &ThePalette) -> Option<Value> {
         let mut execution = Execution::new(self.context.globals.len());
 
         // Execute the main program to compile all voxels.
-        execution.execute(&&self.context.program.body, &self.context.program);
+        execution.execute(&&self.context.program.body, &self.context.program, palette);
 
         execution.stack.pop()
     }
 
-    pub fn execute_string(&mut self, str: &str) -> Option<Value> {
+    pub fn execute_string(&mut self, str: &str, palette: &ThePalette) -> Option<Value> {
         let result = self.parse_str(str);
         match result {
             Ok(module) => {
                 let result = self.compile(&module);
                 match result {
                     Ok(_) => {
-                        return self.execute();
+                        return self.execute(palette);
                     }
                     Err(err) => println!("{}", err.to_string()),
                 }
@@ -140,7 +158,12 @@ impl Rusteria {
         None
     }
 
-    pub fn shade(&self, buffer: &mut Arc<Mutex<RenderBuffer>>, function_index: usize) {
+    pub fn shade(
+        &self,
+        buffer: &mut Arc<Mutex<RenderBuffer>>,
+        function_index: usize,
+        palette: &ThePalette,
+    ) {
         let tile_size = (80, 80);
 
         let width = buffer.lock().unwrap().width;
@@ -169,7 +192,7 @@ impl Rusteria {
                     );
 
                     execution.color = Vec3::zero();
-                    execution.shade(function_index, &self.context.program);
+                    execution.shade(function_index, &self.context.program, palette);
 
                     tile_buffer.set(
                         w,
@@ -251,7 +274,7 @@ mod tests {
     #[test]
     fn addition() {
         let mut script = Rusteria::default();
-        let result = script.execute_string("let a = 2; a + 2;".into());
+        let result = script.execute_string("let a = 2; a + 2;".into(), &ThePalette::default());
         assert_eq!(result.unwrap().x, 4.0);
     }
 
@@ -268,7 +291,7 @@ mod tests {
         }
         fib(27);
         "#;
-        let result = script.execute_string(fib.into());
+        let result = script.execute_string(fib.into(), &ThePalette::default());
         assert_eq!(result.unwrap().x, 196418.0);
     }
 }

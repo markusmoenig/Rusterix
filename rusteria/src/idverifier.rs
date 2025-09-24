@@ -72,6 +72,8 @@ impl IdVerifier {
             "iterate",
             "save",
             "rotate2d",
+            "palette",
+            "round",
         ];
 
         for func in inbuilt_functions {

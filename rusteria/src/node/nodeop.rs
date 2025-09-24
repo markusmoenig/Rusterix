@@ -51,6 +51,7 @@ pub enum NodeOp {
     Normalize,
     Floor,
     Ceil,
+    Round,
     Fract,
     Mod,
     Degrees,
@@ -95,4 +96,5 @@ pub enum NodeOp {
     Alloc,
     Iterate,
     Save,
+    PaletteIndex,
 }

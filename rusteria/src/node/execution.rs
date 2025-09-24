@@ -1,9 +1,8 @@
-use std::path::PathBuf;
-
-use vek::Vec3;
-
 use crate::textures::patterns::pattern_safe;
 use crate::{NodeOp, Program, TexStorage, Value};
+use std::path::PathBuf;
+use theframework::thepalette::ThePalette;
+use vek::Vec3;
 
 #[derive(Clone)]
 pub struct Execution {
@@ -107,7 +106,7 @@ impl Execution {
         }
     }
 
-    pub fn execute(&mut self, code: &[NodeOp], program: &Program) {
+    pub fn execute(&mut self, code: &[NodeOp], program: &Program, palette: &ThePalette) {
         for op in code {
             // Unwind if return is set
             if self.return_value.is_some() {
@@ -199,7 +198,7 @@ impl Execution {
 
                     // Execute the function body
                     let body = program.user_functions[*index].clone(); // Arc clone
-                    self.execute(&body, program);
+                    self.execute(&body, program, palette);
 
                     // Retrieve the return value. A function always returns exactly one value.
                     let ret = if self.return_value.is_some() {
@@ -248,11 +247,11 @@ impl Execution {
                 NodeOp::For(init, cond, incr, body) => {
                     let base = self.stack.len();
                     let mut iter = 0usize;
-                    self.execute(init, program);
+                    self.execute(init, program, palette);
                     self.stack.truncate(base);
 
                     loop {
-                        self.execute(cond, program);
+                        self.execute(cond, program, palette);
 
                         let z = self.stack.pop().unwrap();
                         if z.x == 0.0 {
@@ -260,10 +259,10 @@ impl Execution {
                         }
                         self.stack.truncate(base);
 
-                        self.execute(body, program);
+                        self.execute(body, program, palette);
                         self.stack.truncate(base);
 
-                        self.execute(incr, program);
+                        self.execute(incr, program, palette);
                         self.stack.truncate(base);
 
                         iter += 1;
@@ -275,9 +274,9 @@ impl Execution {
                 NodeOp::If(then_code, else_code) => {
                     let value = self.stack.pop().unwrap().x != 0.0;
                     if value {
-                        self.execute(then_code, program);
+                        self.execute(then_code, program, palette);
                     } else if let Some(else_code) = else_code {
-                        self.execute(else_code, program);
+                        self.execute(else_code, program, palette);
                     }
                 }
                 // Math
@@ -368,7 +367,8 @@ impl Execution {
                 NodeOp::Rotate2D => {
                     let angle = self.stack.pop().unwrap();
                     let v = self.stack.pop().unwrap();
-                    let (s, c) = angle.x.sin_cos();
+                    let rad = angle.x.to_radians();
+                    let (s, c) = rad.sin_cos();
                     self.stack
                         .push(Value::new(v.x * c - v.y * s, v.x * s + v.y * c, v.z));
                 }
@@ -401,6 +401,10 @@ impl Execution {
                 NodeOp::Ceil => {
                     let a = self.stack.pop().unwrap();
                     self.stack.push(a.map(|x| x.ceil()));
+                }
+                NodeOp::Round => {
+                    let a = self.stack.pop().unwrap();
+                    self.stack.push(a.map(|x| x.round()));
                 }
                 NodeOp::Fract => {
                     let a = self.stack.pop().unwrap();
@@ -664,11 +668,16 @@ impl Execution {
                                         state.return_value = None;
                                         state.uv = uv;
 
-                                        // Ensure locals sized for this shader
-                                        state.locals.resize(program.shade_locals, Value::zero());
+                                        // Todo: Get the exact number of locals for this fn
+                                        // Currently we do not store every local variable count in program
+                                        state.locals.resize(20, Value::zero());
 
                                         // Execute function body
-                                        state.execute(&program.user_functions[fidx], program);
+                                        state.execute(
+                                            &program.user_functions[fidx],
+                                            program,
+                                            palette,
+                                        );
 
                                         // Prefer explicit return value; else use color
                                         if let Some(ret) = state.return_value.take() {
@@ -693,6 +702,14 @@ impl Execution {
                         }
                     }
                 }
+                NodeOp::PaletteIndex => {
+                    let a = self.stack.pop().unwrap();
+                    if let Some(col) = palette.colors.get(a.x as usize) {
+                        if let Some(col) = col {
+                            self.stack.push(col.to_vec3());
+                        }
+                    }
+                }
             }
         }
     }
@@ -711,24 +728,29 @@ impl Execution {
 
     /// Execute the shading function
     #[inline]
-    pub fn shade(&mut self, index: usize, program: &Program) {
+    pub fn shade(&mut self, index: usize, program: &Program, palette: &ThePalette) {
         // Reset state for this call
         self.stack.truncate(0);
         self.return_value = None;
 
         self.locals.resize(program.shade_locals, Value::zero());
-        self.execute(&program.user_functions[index], program);
+        self.execute(&program.user_functions[index], program, palette);
     }
 
     /// Call a function with no arguments
     #[inline]
-    pub fn execute_function_no_args(&mut self, index: usize, program: &Program) -> Value {
+    pub fn execute_function_no_args(
+        &mut self,
+        index: usize,
+        program: &Program,
+        palette: &ThePalette,
+    ) -> Value {
         // Reset state for this call
         self.stack.truncate(0);
         self.return_value = None;
 
         self.locals.resize(program.shade_locals, Value::zero());
-        self.execute(&program.user_functions[index], program);
+        self.execute(&program.user_functions[index], program, palette);
 
         // Prefer an explicit return value; else top of stack; else zero
         if let Some(ret) = self.return_value.take() {
@@ -743,7 +765,13 @@ impl Execution {
 
     /// Call a function with arguments provided as a slice.
     #[inline]
-    pub fn execute_function(&mut self, args: &[Value], index: usize, program: &Program) -> Value {
+    pub fn execute_function(
+        &mut self,
+        args: &[Value],
+        index: usize,
+        program: &Program,
+        palette: &ThePalette,
+    ) -> Value {
         // Reset state for this call
         self.stack.truncate(0);
         self.return_value = None;
@@ -756,7 +784,7 @@ impl Execution {
         // Copy args into locals in order (0..argc)
         self.locals[..argc].clone_from_slice(args);
 
-        self.execute(&program.user_functions[index], program);
+        self.execute(&program.user_functions[index], program, palette);
 
         // Prefer an explicit return value; else top of stack; else zero
         if let Some(ret) = self.return_value.take() {

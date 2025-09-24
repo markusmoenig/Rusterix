@@ -99,6 +99,8 @@ pub enum Cell {
     Arithmetic(ArithmeticOp),
     If,
     Else,
+    PaletteColor(u8),
+    Value(String),
 
     // Python based
     Action,
@@ -211,6 +213,8 @@ impl Cell {
             Cell::Arithmetic(_) => "Arithmetic",
             Cell::If => "If",
             Cell::Else => "Else",
+            Cell::PaletteColor(_) => "Palette Color",
+            Cell::Value(_) => "Value",
 
             Cell::Action => "Action",
             Cell::AddItem => "Add Item",
@@ -297,6 +301,8 @@ impl Cell {
             "Arithmetic" => Some(Cell::Arithmetic(ArithmeticOp::Add)),
             "If" => Some(Cell::If),
             "Else" => Some(Cell::Else),
+            "Palette Color" => Some(Cell::PaletteColor(0)),
+            "Value" => Some(Cell::Value("1".to_string())),
 
             "action" => Some(Cell::Action),
             "add_item" => Some(Cell::AddItem),
@@ -388,6 +394,12 @@ impl Cell {
                 } else {
                     format!("\"{}\"", value)
                 }
+            }
+            PaletteColor(idx) => {
+                format!("palette({})", idx)
+            }
+            Value(value) => {
+                value.clone()
             }
 
             Assignment => "=".into(),
@@ -525,7 +537,7 @@ impl Cell {
             Pow => "Power: x^y.".into(),
             Radians => "Convert degrees to radians.".into(),
             Rand => "Random number in [0,1).".into(),
-            Rotate2d => "Rotate a 2D vector by an angle.".into(),
+            Rotate2d => "Rotate a 2D vector by an angle (in degrees).".into(),
             Sign => "Sign of x (-1, 0, or 1) component-wise.".into(),
             Sin => "Sine of angle (radians).".into(),
             Smoothstep => "Hermite smooth interpolation between edge0 and edge1.".into(),
@@ -540,7 +552,7 @@ impl Cell {
 
     pub fn role(&self) -> CellRole {
         match &self {
-            Variable(_) | Integer(_) | Float(_) | Str(_) | Boolean(_) | Textures(_) => CellRole::Value,
+            Variable(_) | Integer(_) | Float(_) | Str(_) | Boolean(_) | Textures(_) | Value(_) | PaletteColor(_) => CellRole::Value,
             Assignment | Comparison(_) | If | Else => CellRole::Operator,
             Empty => CellRole::None,
 

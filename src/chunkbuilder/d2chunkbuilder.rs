@@ -44,7 +44,6 @@ impl ChunkBuilder for D2ChunkBuilder {
                     let mut processed = false;
                     for vertex in &geo.0 {
                         let local = Vec2::new(vertex[0], vertex[1]);
-                        let repeat = true;
 
                         if !repeat {
                             let uv = [
