@@ -553,7 +553,7 @@ impl Cell {
     pub fn role(&self) -> CellRole {
         match &self {
             Variable(_) | Integer(_) | Float(_) | Str(_) | Boolean(_) | Textures(_) | Value(_) | PaletteColor(_) => CellRole::Value,
-            Assignment | Comparison(_) | If | Else => CellRole::Operator,
+            Assignment | Comparison(_) | If | Else | Arithmetic(_) => CellRole::Operator,
             Empty => CellRole::None,
 
             _ => CellRole::Function,

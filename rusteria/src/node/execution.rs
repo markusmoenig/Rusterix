@@ -577,6 +577,9 @@ impl Execution {
                 NodeOp::UV => {
                     self.stack.push(self.uv);
                 }
+                NodeOp::SetUV => {
+                    self.uv = self.stack.pop().unwrap();
+                }
                 NodeOp::Normal => {
                     self.stack.push(self.normal);
                 }
@@ -626,7 +629,7 @@ impl Execution {
                     let b = self.stack.pop().unwrap();
                     let a = self.stack.pop().unwrap();
                     if let Some(tex) = pattern_safe(b.x as usize) {
-                        self.stack.push(tex.sample(a));
+                        self.stack.push(tex.sample(a / 4.0));
                     } else {
                         self.stack.push(Vec3::zero());
                     }

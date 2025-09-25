@@ -587,11 +587,11 @@ impl CellItem {
                     *value_name = v;
                 }
             }
-            Str(value_name) => {
+            Str(value_name) | Value(value_name) => {
                 if let Some(v) = value.to_string()
                     && name == "cgfxValue"
                 {
-                    *value_name = v.clone(); //replace("\"", "");
+                    *value_name = v.clone();
                 }
             }
             Boolean(v) => {
@@ -626,7 +626,7 @@ impl CellItem {
     }
 
     /// Inserts the item at the given position.
-    pub fn insert_at(mut self, pos: (u32, u32), grid: &mut Grid, _old_item: CellItem) {
+    pub fn insert_at(mut self, pos: (u32, u32), grid: &mut Grid) {
         match &self.cell {
             Cell::ConstructAssignBlock => {
                 if pos.0 == 0 {

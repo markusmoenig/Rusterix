@@ -471,6 +471,11 @@ impl Visitor for CompileVisitor {
                 load: NodeOp::Color,
                 store: NodeOp::SetColor,
             })
+        } else if name == "uv" {
+            Some(Target::Builtin {
+                load: NodeOp::UV,
+                store: NodeOp::SetUV,
+            })
         } else if name == "roughness" {
             Some(Target::Builtin {
                 load: NodeOp::Roughness,

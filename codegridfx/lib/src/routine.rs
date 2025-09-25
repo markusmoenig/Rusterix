@@ -12,6 +12,9 @@ pub struct Routine {
     pub visible: bool,
     pub folded: bool,
 
+    #[serde(default)]
+    pub pixelization: i32,
+
     pub screen_width: u32,
 
     #[serde(skip)]
@@ -33,6 +36,7 @@ impl Routine {
             screen_width: 100,
             buffer: TheRGBABuffer::new(TheDim::sized(100, 100)),
             grid,
+            pixelization: 0,
         }
     }
 
@@ -233,6 +237,20 @@ impl Routine {
                 }
 
                 if insert {
+                    if matches!(item.cell, Cell::Arithmetic(_)) {
+                        let right_pos = (pos.0 + 1, pos.1);
+                        // For arithmetic make sure we insert a value to the right
+                        if !self.grid.grid.contains_key(&(pos.0 + 1, pos.1)) {
+                            if module_type.is_shader() {
+                                let value = CellItem::new(Cell::Value("1".to_string()));
+                                value.insert_at(right_pos, &mut self.grid);
+                            } else {
+                                let value = CellItem::new(Cell::Integer("1".to_string()));
+                                value.insert_at(right_pos, &mut self.grid);
+                            }
+                        }
+                    }
+
                     if item.cell.role() == CellRole::Value {
                         item.description = old_item.description.clone();
                         item.replaceable = old_item.replaceable.clone();
@@ -242,7 +260,7 @@ impl Routine {
                     }
 
                     self.grid.remove_dependencies_for(old_item.id);
-                    item.insert_at(pos, &mut self.grid, old_item);
+                    item.insert_at(pos, &mut self.grid);
                 }
             }
         }
@@ -350,12 +368,28 @@ impl Routine {
         *out += "fn shade() {\n";
         indent += 4;
 
+        if self.pixelization > 0 {
+            *out += &format!(
+                "    uv = floor(uv * {}) / {};\n",
+                self.pixelization, self.pixelization
+            );
+        }
+        //let color_steps = 16.0;
+        //color = floor(color * color_steps) / color_steps;
+
+        let reserved_vars = vec![
+            "color",
+            "roughness",
+            "metallic",
+            "uv",
+            "normal",
+            "bump",
+            "opacity",
+        ];
+
         let rows = self.grid.grid_by_rows();
 
-        // If empty just add a "pass" statement
-        if rows.len() <= 1 {
-            *out += &format!("{:indent$}pass\n", "");
-        }
+        let mut var_lookup: FxHashSet<String> = FxHashSet::default();
 
         for row in rows {
             let mut row_code = String::new();
@@ -365,7 +399,17 @@ impl Routine {
             let mut ind = indent;
 
             for (index, (item, pos)) in row.iter().enumerate() {
+                let item_code = item.code();
                 if index == 0 {
+                    // Add a let for a variable definition
+                    if matches!(item.cell, Cell::Variable(_))
+                        && !reserved_vars.contains(&item_code.as_str())
+                        && !var_lookup.contains(&item_code)
+                    {
+                        row_code += "let ";
+                        var_lookup.insert(item.code());
+                    }
+
                     if matches!(item.cell, Cell::If) {
                         is_if = true;
                     }
@@ -378,7 +422,7 @@ impl Routine {
                     }
                 }
 
-                row_code += &item.code();
+                row_code += &item_code;
                 if item.cell.role() == CellRole::Function && item.form == CellItemForm::Rounded {
                     row_code += ")";
                 }

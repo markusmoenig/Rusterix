@@ -77,6 +77,7 @@ pub enum NodeOp {
     Not,
     Neg,
     UV,
+    SetUV,
     Normal,
     Hitpoint,
     Time,

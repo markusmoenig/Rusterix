@@ -597,6 +597,24 @@ impl Module {
                             }
                         }
                     }
+                }
+                if id.name == "cgfxPixelization" {
+                    let prev = self.to_json();
+                    if let Some(value) = value.to_i32() {
+                        if let Some(event) = self.get_selected_routine_mut() {
+                            event.pixelization = value;
+
+                            ctx.ui.send(TheEvent::Custom(
+                                TheId::named("ModuleChanged"),
+                                TheValue::Bool(true),
+                            ));
+                            ctx.ui.send(TheEvent::CustomUndo(
+                                TheId::named("ModuleUndo"),
+                                prev,
+                                self.to_json(),
+                            ));
+                        }
+                    }
                 } else if id.name.starts_with("cgfx") {
                     let prev = self.to_json();
                     let mut needs_update = true;
@@ -816,8 +834,10 @@ impl Module {
     /// Show the settings for the current event.
     fn show_event_settings(&mut self, ui: &mut TheUI, ctx: &mut TheContext) {
         let mut name = "".into();
+        let mut pixelization = 0;
         if let Some(r) = self.get_selected_routine_mut() {
             name = r.name.clone();
+            pixelization = r.pixelization;
         }
 
         let mut nodeui: TheNodeUI = TheNodeUI::default();
@@ -831,6 +851,28 @@ impl Module {
             false,
         );
         nodeui.add_item(item);
+
+        if self.module_type.is_shader() {
+            let item = TheNodeUIItem::Text(
+                "cgfxEventName".into(),
+                "Event Name".into(),
+                "Set the event name.".into(),
+                name.clone(),
+                None,
+                false,
+            );
+            nodeui.add_item(item);
+
+            let item = TheNodeUIItem::IntEditSlider(
+                "cgfxPixelization".into(),
+                "Pixelization".into(),
+                "Set the pixelization for this shader. A value of 0 disables pixelization.".into(),
+                pixelization,
+                0..=16,
+                false,
+            );
+            nodeui.add_item(item);
+        }
 
         if let Some(layout) = ui.get_text_layout("Node Settings") {
             nodeui.apply_to_text_layout(layout);
