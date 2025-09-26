@@ -629,7 +629,7 @@ impl Execution {
                     let b = self.stack.pop().unwrap();
                     let a = self.stack.pop().unwrap();
                     if let Some(tex) = pattern_safe(b.x as usize) {
-                        self.stack.push(tex.sample(a / 4.0));
+                        self.stack.push(tex.sample(a));
                     } else {
                         self.stack.push(Vec3::zero());
                     }

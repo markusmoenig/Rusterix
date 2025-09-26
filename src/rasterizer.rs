@@ -691,8 +691,8 @@ impl Rasterizer {
                                                     let mut color: Vec4<f32> =
                                                         pixel_to_vec4(&texel);
 
-                                                    execution.uv.x = u;
-                                                    execution.uv.y = v;
+                                                    execution.uv.x = u / 4.0;
+                                                    execution.uv.y = v / 4.0;
                                                     execution.color.x = color.x;
                                                     execution.color.y = color.y;
                                                     execution.color.z = color.z;
@@ -1134,8 +1134,8 @@ impl Rasterizer {
                                                 if let Some(program) = program {
                                                     if let Some(sh) = program.shade_index {
                                                         execution.normal = normal;
-                                                        execution.uv.x = interpolated_u;
-                                                        execution.uv.y = interpolated_v;
+                                                        execution.uv.x = interpolated_u / 4.0;
+                                                        execution.uv.y = interpolated_v / 4.0;
 
                                                         execution.hitpoint = world;
                                                         execution.time.x = self.time;

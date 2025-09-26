@@ -82,7 +82,6 @@ pub enum ModuleType {
     CharacterTemplate,
     ItemTemplate,
     Sector,
-    Wall,
     Material,
 }
 
@@ -96,7 +95,7 @@ impl ModuleType {
 
     pub fn is_shader(&self) -> bool {
         match self {
-            ModuleType::Sector | ModuleType::Wall | ModuleType::Material => true,
+            ModuleType::Sector | ModuleType::Material => true,
             _ => false,
         }
     }
@@ -104,6 +103,8 @@ impl ModuleType {
 
 #[derive(Serialize, Deserialize, Debug, Default, Clone)]
 pub struct Module {
+    #[serde(default)]
+    pub id: Uuid,
     pub module_type: ModuleType,
     pub name: String,
     pub routines: IndexMap<Uuid, Routine>,
@@ -118,6 +119,7 @@ pub struct Module {
 impl Module {
     pub fn new(name: &str) -> Self {
         Self {
+            id: Uuid::new_v4(),
             name: name.into(),
             grid_ctx: GridCtx::new(),
             ..Default::default()
@@ -126,6 +128,7 @@ impl Module {
 
     pub fn as_type(t: ModuleType) -> Self {
         Self {
+            id: Uuid::new_v4(),
             module_type: t,
             ..Default::default()
         }
