@@ -430,6 +430,25 @@ impl Module {
         None
     }
 
+    /// Copy a library module into the routine t the given position.
+    pub fn insert_module(&mut self, module: &Module, coord: Vec2<i32>) -> bool {
+        let header_height = 35;
+
+        for r in self.routines.values_mut() {
+            if r.visible {
+                let loc = Vec2::new(coord.x as u32, coord.y as u32 - r.module_offset);
+                // TODO: Check for body hit too
+                if loc.y < header_height {
+                    if let Some(shader) = module.routines.get_index(0) {
+                        r.grid = shader.1.grid.clone();
+                        return true;
+                    }
+                }
+            }
+        }
+        false
+    }
+
     /// Handle events
     pub fn handle_event(
         &mut self,
@@ -875,6 +894,16 @@ impl Module {
                 false,
             );
             nodeui.add_item(item);
+
+            if matches!(self.module_type, ModuleType::Sector) {
+                let item = TheNodeUIItem::Button(
+                    "cgfxAddToShaderLibrary".into(),
+                    "Shader Library".into(),
+                    "Adds the shader to your projects shader library. Making it reusable.".into(),
+                    "Add To".into(),
+                );
+                nodeui.add_item(item);
+            }
         }
 
         if let Some(layout) = ui.get_text_layout("Node Settings") {
