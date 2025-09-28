@@ -440,6 +440,7 @@ impl Module {
                 // TODO: Check for body hit too
                 if loc.y < header_height {
                     if let Some(shader) = module.routines.get_index(0) {
+                        r.id = *shader.0;
                         r.grid = shader.1.grid.clone();
                         return true;
                     }
@@ -898,8 +899,8 @@ impl Module {
             if matches!(self.module_type, ModuleType::Sector) {
                 let item = TheNodeUIItem::Button(
                     "cgfxAddToShaderLibrary".into(),
-                    "Shader Library".into(),
-                    "Adds the shader to your projects shader library. Making it reusable.".into(),
+                    "Material Library".into(),
+                    "Adds the shader to your projects material library. Making it reusable.".into(),
                     "Add To".into(),
                 );
                 nodeui.add_item(item);

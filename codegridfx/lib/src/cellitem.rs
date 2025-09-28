@@ -1,5 +1,5 @@
 use crate::{
-    Cell, DebugModule, Grid, GridCtx, ModuleType,
+    AssignmentOp, Cell, DebugModule, Grid, GridCtx, ModuleType,
     cell::{ArithmeticOp, CellRole, ComparisonOp},
 };
 use Cell::*;
@@ -169,7 +169,7 @@ impl CellItem {
                     }
                 }
             }
-            Cell::Assignment | Cell::Comparison(_) | Cell::If | Arithmetic(_) | Cell::Else => {
+            Cell::Comparison(_) | Cell::If | Arithmetic(_) | Cell::Else => {
                 if let Some(font) = &ctx.ui.font {
                     ctx.draw.text_rect_blend(
                         buffer.pixels_mut(),
@@ -178,6 +178,27 @@ impl CellItem {
                         font,
                         font_size * 2.0,
                         &self.cell.to_string(),
+                        color,
+                        TheHorizontalAlign::Center,
+                        TheVerticalAlign::Center,
+                    );
+                }
+            }
+            Cell::Assignment => {
+                if let Some(font) = &ctx.ui.font {
+                    let text = if let Some(op) = AssignmentOp::from_i32(self.option) {
+                        op.describe().to_string()
+                    } else {
+                        "=".to_string()
+                    };
+
+                    ctx.draw.text_rect_blend(
+                        buffer.pixels_mut(),
+                        &rect.to_buffer_utuple(),
+                        stride,
+                        font,
+                        font_size * 2.0,
+                        &text,
                         color,
                         TheHorizontalAlign::Center,
                         TheVerticalAlign::Center,
@@ -362,7 +383,12 @@ impl CellItem {
             }
             Assignment => {
                 if let Some(font) = &ctx.ui.font {
-                    size.x = ctx.draw.get_text_size(font, font_size, "=").0 as u32 + 20;
+                    if let Some(op) = AssignmentOp::from_i32(self.option) {
+                        size.x =
+                            ctx.draw.get_text_size(font, font_size, op.describe()).0 as u32 + 20;
+                    } else {
+                        size.x = ctx.draw.get_text_size(font, font_size, "=").0 as u32 + 20;
+                    }
                 }
             }
             If | Else | Comparison(_) => {
@@ -516,6 +542,22 @@ impl CellItem {
                 );
                 nodeui.add_item(item);
             }
+            Assignment => {
+                let item = TheNodeUIItem::Selector(
+                    "cgfxAssignmentOp".into(),
+                    "Operator".into(),
+                    "Select the arithmetic operator".into(),
+                    vec![
+                        "=".to_string(),
+                        "+=".to_string(),
+                        "-=".to_string(),
+                        "*=".to_string(),
+                        "/=".to_string(),
+                    ],
+                    self.option,
+                );
+                nodeui.add_item(item);
+            }
             Textures(name) => {
                 let mut index = 0;
                 if let Some(kind) = PatternKind::from_name(name) {
@@ -611,6 +653,11 @@ impl CellItem {
                     if let Some(o) = ArithmeticOp::from_index(val as usize) {
                         *op = o;
                     }
+                }
+            }
+            Assignment => {
+                if let Some(val) = value.to_i32() {
+                    self.option = val;
                 }
             }
             Textures(str) => {
@@ -1906,6 +1953,13 @@ impl CellItem {
                 }
                 _ => self.cell.to_string(),
             },
+            Assignment => {
+                if let Some(op) = AssignmentOp::from_i32(self.option) {
+                    op.describe().to_string()
+                } else {
+                    "=".to_string()
+                }
+            }
             _ => self.cell.to_string(),
         }
     }

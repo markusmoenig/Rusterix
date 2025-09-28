@@ -1,5 +1,61 @@
 use theframework::prelude::*;
 
+/// Assignment operators in the AST
+#[derive(Clone, PartialEq, Debug)]
+pub enum AssignmentOp{
+    Assign,
+    AddAssign,
+    SubtractAssign,
+    MultiplyAssign,
+    DivideAssign,
+}
+
+impl AssignmentOp {
+    pub fn describe(&self) -> &str {
+        match self {
+            AssignmentOp::Assign => "=",
+            AssignmentOp::AddAssign => "+=",
+            AssignmentOp::SubtractAssign => "-=",
+            AssignmentOp::MultiplyAssign => "*=",
+            AssignmentOp::DivideAssign => "/=",
+        }
+    }
+
+    pub fn to_i32(&self) -> i32 {
+        match self {
+            AssignmentOp::Assign => 0,
+            AssignmentOp::AddAssign => 1,
+            AssignmentOp::SubtractAssign => 2,
+            AssignmentOp::MultiplyAssign => 3,
+            AssignmentOp::DivideAssign => 4,
+        }
+    }
+
+    pub fn from_i32(idx: i32) -> Option<Self> {
+        match idx {
+            0 => Some(AssignmentOp::Assign),
+            1 => Some(AssignmentOp::AddAssign),
+            2 => Some(AssignmentOp::SubtractAssign),
+            3 => Some(AssignmentOp::MultiplyAssign),
+            4 => Some(AssignmentOp::DivideAssign),
+            _ => None,
+        }
+    }
+}
+
+impl core::convert::TryFrom<i32> for AssignmentOp {
+    type Error = ();
+    fn try_from(value: i32) -> Result<Self, Self::Error> {
+        AssignmentOp::from_i32(value).ok_or(())
+    }
+}
+
+impl From<AssignmentOp> for i32 {
+    fn from(op: AssignmentOp) -> Self {
+        op.to_i32()
+    }
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub enum ArithmeticOp {
     Add,
