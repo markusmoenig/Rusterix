@@ -940,9 +940,9 @@ impl Module {
             }
         }
 
-        if !out.is_empty() {
-            println!("{}", out);
-        }
+        // if !out.is_empty() {
+        //     println!("{}", out);
+        // }
 
         out
     }

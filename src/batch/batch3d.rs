@@ -253,11 +253,8 @@ impl Batch3D {
         }
     }
 
-    /// Add a thin world-space quad between two 3D points to visualize a line/edge.
-    /// `up_hint` is any non-parallel vector used to derive the quad thickness direction.
-    /// If `up_hint` is nearly parallel to the segment, a fallback axis is chosen.
-    pub fn add_line(&mut self, a: Vec3<f32>, b: Vec3<f32>, thickness: f32, up_hint: Vec3<f32>) {
-        #[inline]
+    /// Add a line quad based on thickness and a normal
+    pub fn add_line(&mut self, a: Vec3<f32>, b: Vec3<f32>, thickness: f32, normal: Vec3<f32>) {
         fn vec3_is_finite(v: &Vec3<f32>) -> bool {
             v.x.is_finite() && v.y.is_finite() && v.z.is_finite()
         }
@@ -267,30 +264,40 @@ impl Batch3D {
             return;
         }
         let dir_n = dir / dir_len;
-
-        // Derive a side vector perpendicular to the line using the hint.
-        let mut side = dir_n.cross(up_hint).normalized();
-        if !vec3_is_finite(&side) || side.magnitude() < 1e-6 {
-            // Fallback: choose an axis not parallel to dir
-            let fallback = if dir_n.x.abs() < 0.9 {
+        let mut n = if normal.magnitude() < 1e-6 {
+            Vec3::unit_y()
+        } else {
+            normal.normalized()
+        };
+        if (dir_n.dot(n)).abs() > 0.999 {
+            let ax = dir_n.x.abs();
+            let ay = dir_n.y.abs();
+            let az = dir_n.z.abs();
+            n = if ax <= ay && ax <= az {
                 Vec3::unit_x()
-            } else {
+            } else if ay <= az {
                 Vec3::unit_y()
+            } else {
+                Vec3::unit_z()
             };
-            side = dir_n.cross(fallback).normalized();
         }
-        let half = side * (thickness * 0.5);
-
-        // Quad corners
-        let v0 = a - half; // (a, left)
-        let v1 = a + half; // (a, right)
-        let v2 = b + half; // (b, right)
-        let v3 = b - half; // (b, left)
-
-        // Plane normal (for lighting/shading if used)
-        let n = dir_n.cross(side).normalized();
-
-        // Append geometry
+        let mut side = n.cross(dir_n);
+        if !vec3_is_finite(&side) || side.magnitude() < 1e-6 {
+            side = dir_n.cross(Vec3::unit_y());
+            if side.magnitude() < 1e-6 {
+                side = dir_n.cross(Vec3::unit_x());
+            }
+        }
+        let side_n = side.normalized();
+        let half = side_n * (thickness * 0.5);
+        let cap = dir_n * (thickness * 0.5);
+        let a_ext = a - cap;
+        let b_ext = b + cap;
+        let v0 = a_ext - half;
+        let v1 = a_ext + half;
+        let v2 = b_ext + half;
+        let v3 = b_ext - half;
+        let n_face = n;
         let base = self.vertices.len();
         self.vertices.extend_from_slice(&[
             [v0.x, v0.y, v0.z, 1.0],
@@ -300,22 +307,18 @@ impl Batch3D {
         ]);
         self.uvs
             .extend_from_slice(&[[0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]]);
-        // Two triangles: (0,1,2) (0,2,3)
         self.indices.push((base + 0, base + 1, base + 2));
         self.indices.push((base + 0, base + 2, base + 3));
-
-        // Ensure normals vector stays aligned with vertices
         if self.normals.len() < self.vertices.len() {
             let count_to_add = self.vertices.len() - self.normals.len();
             for _ in 0..count_to_add {
-                self.normals.push(n);
+                self.normals.push(n_face);
             }
         }
     }
 
-    /// Add a flat quad centered at `center`, oriented by a plane normal, used as a vertex gizmo.
-    /// The quad lies in the plane with the given `normal` and has edge length `size` (world units).
-    pub fn add_vertex_quad_on_plane(&mut self, center: Vec3<f32>, normal: Vec3<f32>, size: f32) {
+    /// Add a quad with a given size and a normal at a given position.
+    pub fn add_quad(&mut self, center: Vec3<f32>, normal: Vec3<f32>, size: f32) {
         let n = if normal.magnitude() < 1e-6 {
             Vec3::unit_y()
         } else {
@@ -356,9 +359,7 @@ impl Batch3D {
         }
     }
 
-    /// Add a camera-facing (billboard) square centered at `center`, useful for vertex gizmos.
-    /// Provide the camera basis vectors in world space (`view_right`, `view_up`).
-    /// The square edge length is `size` in world units.
+    /// Add a billboard quad of a given size.
     pub fn add_vertex_billboard(
         &mut self,
         center: Vec3<f32>,

@@ -316,6 +316,7 @@ impl Rasterizer {
                                 assets,
                                 Some(chunk),
                                 &mut execution,
+                                false,
                             );
                         }
                         if let Some(terrain_chunk) = &chunk.terrain_batch3d {
@@ -328,6 +329,7 @@ impl Rasterizer {
                                 assets,
                                 Some(chunk),
                                 &mut execution,
+                                false,
                             );
                         }
                     }
@@ -343,6 +345,7 @@ impl Rasterizer {
                             assets,
                             None,
                             &mut execution,
+                            false,
                         );
                     }
 
@@ -357,6 +360,22 @@ impl Rasterizer {
                             assets,
                             None,
                             &mut execution,
+                            false,
+                        );
+                    }
+
+                    // Editing Overlay
+                    for batch in scene.d3_overlay.iter() {
+                        self.d3_rasterize(
+                            &mut buffer,
+                            &mut z_buffer,
+                            tile,
+                            batch,
+                            scene,
+                            assets,
+                            None,
+                            &mut execution,
+                            true,
                         );
                     }
 
@@ -884,6 +903,7 @@ impl Rasterizer {
         assets: &Assets,
         chunk: Option<&Chunk>,
         execution: &mut Execution,
+        overlay: bool,
     ) {
         // Bounding box check for the tile with the batch bbox
         if let Some(bbox) = batch.bounding_box {
@@ -937,6 +957,20 @@ impl Rasterizer {
 
                                     // Evaluate the edges
                                     if edges.evaluate(p) {
+                                        // Overlay check
+                                        if overlay {
+                                            let texel = match &batch.source {
+                                                PixelSource::Color(col) => col.to_u8_array(),
+                                                PixelSource::Pixel(col) => *col,
+                                                _ => [0, 0, 0, 255],
+                                            };
+                                            let idx =
+                                                ((ty - tile.y) * tile.width + (tx - tile.x)) * 4;
+                                            buffer[idx..idx + 4].copy_from_slice(&texel);
+
+                                            continue;
+                                        }
+
                                         // Interpolate barycentric coordinates
                                         let [alpha, beta, gamma] =
                                             self.barycentric_weights_3d(&v0, &v1, &v2, &p);

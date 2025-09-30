@@ -21,6 +21,9 @@ pub struct Scene {
     /// 3D dynamic batches which can be updated dynamically.
     pub d3_dynamic: Vec<Batch3D>,
 
+    /// 3D overlay batches.
+    pub d3_overlay: Vec<Batch3D>,
+
     /// The 2D batches get rendered on top of the 3D batches (2D game or UI).
     /// Static 2D batches.
     pub d2_static: Vec<Batch2D>,
@@ -58,6 +61,7 @@ impl Scene {
             dynamic_lights: vec![],
             d3_static: vec![],
             d3_dynamic: vec![],
+            d3_overlay: vec![],
             d2_static: vec![],
             d2_dynamic: vec![],
             dynamic_textures: vec![],
@@ -79,6 +83,7 @@ impl Scene {
             dynamic_lights: vec![],
             d3_static: d3,
             d3_dynamic: vec![],
+            d3_overlay: vec![],
             d2_static: d2,
             d2_dynamic: vec![],
             dynamic_textures: vec![],
@@ -176,6 +181,10 @@ impl Scene {
         self.d3_dynamic.par_iter_mut().for_each(|batch| {
             batch.clip_and_project(view_matrix_3d, projection_matrix_3d, width, height);
         });
+
+        self.d3_overlay.iter_mut().for_each(|batch| {
+            batch.clip_and_project(view_matrix_3d, projection_matrix_3d, width, height);
+        });
     }
 
     /// Computes the normals for the static models
@@ -230,6 +239,13 @@ impl Scene {
                 if hit.t < hitinfo.t {
                     hitinfo = hit;
                 }
+            }
+        }
+
+        // Evaluate overlay
+        for batch in self.d3_overlay.iter() {
+            if let Some(hit) = batch.intersect(&ray, true) {
+                hitinfo = hit;
             }
         }
 
