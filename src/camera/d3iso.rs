@@ -1,6 +1,24 @@
 use crate::{D3Camera, Ray};
 use vek::{FrustumPlanes, Mat4, Vec2, Vec3};
 
+impl D3IsoCamera {
+    #[inline]
+    fn compute_dir_and_pos(&self) -> (Vec3<f32>, Vec3<f32>) {
+        let (base, x_dir) = if self.tilted {
+            (self.tilt_dir, -self.x_dir)
+        } else {
+            (self.iso_dir, self.x_dir)
+        };
+        let dir = Vec3::new(base.x * x_dir, base.y, base.z).normalized();
+        let pos = if self.tilted {
+            self.center - dir * self.distance
+        } else {
+            self.center + dir * self.distance
+        };
+        (dir, pos)
+    }
+}
+
 #[derive(Clone)]
 pub struct D3IsoCamera {
     pub center: Vec3<f32>,
@@ -35,19 +53,18 @@ impl D3Camera for D3IsoCamera {
         "iso".to_string()
     }
 
-    fn view_matrix(&self) -> Mat4<f32> {
-        let (base, x_dir) = if self.tilted {
-            (self.tilt_dir, -self.x_dir)
-        } else {
-            (self.iso_dir, self.x_dir)
-        };
-        let dir = Vec3::new(base.x * x_dir, base.y, base.z).normalized();
+    /// Zoom the camera in or out based on vertical mouse delta
+    fn zoom(&mut self, delta: f32) {
+        let zoom_sensitivity = 0.05;
 
-        let pos = if self.tilted {
-            self.center - dir * self.distance
-        } else {
-            self.center + dir * self.distance
-        };
+        let zoom_factor = (1.0 - delta * zoom_sensitivity).clamp(0.5, 2.0);
+
+        self.scale *= zoom_factor;
+        self.scale = self.scale.clamp(2.0, 70.0);
+    }
+
+    fn view_matrix(&self) -> Mat4<f32> {
+        let (_dir, pos) = self.compute_dir_and_pos();
         Mat4::look_at_rh(pos, self.center, Vec3::unit_y())
     }
 
@@ -89,34 +106,40 @@ impl D3Camera for D3IsoCamera {
     }
 
     fn position(&self) -> Vec3<f32> {
-        self.center + self.iso_dir * self.distance
+        let (_dir, pos) = self.compute_dir_and_pos();
+        pos
     }
 
     fn create_ray(&self, uv: Vec2<f32>, screen: Vec2<f32>, jitter: Vec2<f32>) -> Ray {
-        // constant orthographic direction
-        let d = if self.tilted {
-            self.tilt_dir // (-0.5,-1,-0.5).norm()
-        } else {
-            -self.iso_dir // ( 1,-1,-1).norm()
-        };
-
-        // film-plane basis
-        let mut r = d.cross(Vec3::unit_y()); // right  (screen +X)
-        if r.magnitude_squared() < 1e-6 {
-            // extreme edge case guard
-            r = Vec3::unit_x();
-        }
-        r = r.normalized();
-        let s = r.cross(d).normalized(); // screen-up (+Y)
-
         // extents
         let half_h = self.scale;
         let half_w = half_h * (screen.x / screen.y);
 
-        // slide origin across plane
-        let o = Vec2::new(uv.x + jitter.x - 0.5, uv.y + jitter.y - 0.5);
-        let origin = self.center + r * o.x * half_w * 2.0 + s * o.y * half_h * 2.0;
+        // Match view_matrix()/position() exactly
+        let cam_origin = self.position();
 
-        Ray::new(origin, d) // d already normalised
+        let cam_look_at = self.center;
+
+        let w = (cam_origin - cam_look_at).normalized();
+        // Right-handed basis matching look_at_rh:
+        // forward (into scene) = -w; right = forward × up; up' = right × forward
+        let forward = (-w).normalized();
+        let mut right = forward.cross(Vec3::unit_y());
+        if right.magnitude_squared() < 1e-6 {
+            right = Vec3::unit_x();
+        }
+        right = right.normalized();
+        let up2 = right.cross(forward).normalized();
+
+        let horizontal = right * half_w * 2.0;
+        let vertical = up2 * half_h * 2.0;
+
+        let pixel_size = Vec2::new(1.0 / screen.x, 1.0 / screen.y);
+
+        let origin = cam_origin
+            + horizontal * (pixel_size.x * jitter.x + uv.x - 0.5)
+            + vertical * (pixel_size.y * jitter.y + uv.y - 0.5);
+
+        Ray::new(origin, forward)
     }
 }

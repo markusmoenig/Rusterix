@@ -3,6 +3,10 @@ pub mod trace;
 
 use vek::{Vec2, Vec3};
 
+use theframework::prelude::*;
+
+use crate::GeometrySource;
+
 #[derive(Debug)]
 pub struct Ray {
     pub origin: Vec3<f32>,
@@ -40,6 +44,9 @@ pub struct HitInfo {
     pub albedo: Vec3<f32>,
     pub emissive: Vec3<f32>,
     pub specular_weight: f32,
+
+    pub map_id: Uuid,
+    pub geometry_source: GeometrySource,
 }
 
 impl Default for HitInfo {
@@ -59,6 +66,13 @@ impl HitInfo {
             albedo: Vec3::zero(),
             emissive: Vec3::zero(),
             specular_weight: 0.0,
+
+            map_id: Uuid::nil(),
+            geometry_source: GeometrySource::Unknown,
         }
+    }
+
+    pub fn has_hit(&self) -> bool {
+        self.t < f32::MAX
     }
 }

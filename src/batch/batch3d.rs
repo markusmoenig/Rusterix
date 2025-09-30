@@ -9,6 +9,7 @@ use vek::{Mat4, Vec2, Vec3, Vec4};
 use CullMode::*;
 use PrimitiveMode::*;
 use RepeatMode::*;
+use theframework::prelude::*;
 
 /// A batch of vertices, indices and their UVs which make up 3D polygons.
 #[derive(Debug, Clone)]
@@ -45,6 +46,7 @@ pub struct Batch3D {
 
     /// Output after clipping and projection
     pub clipped_indices: Vec<(usize, usize, usize)>,
+
     /// Output after clipping and projection
     pub clipped_uvs: Vec<[f32; 2]>,
 
@@ -68,6 +70,12 @@ pub struct Batch3D {
 
     /// Shader
     pub shader: Option<usize>,
+
+    /// Map Id
+    pub map_id: Uuid,
+
+    /// Geometry Source
+    pub geometry_source: GeometrySource,
 }
 
 /// A batch of 4D vertices, indices and their UVs which make up a 3D mesh.
@@ -94,6 +102,8 @@ impl Batch3D {
             material: None,
             ambient_color: Vec3::zero(),
             shader: None,
+            map_id: Uuid::nil(),
+            geometry_source: GeometrySource::Unknown,
         }
     }
 
@@ -122,6 +132,8 @@ impl Batch3D {
             material: None,
             ambient_color: Vec3::zero(),
             shader: None,
+            map_id: Uuid::nil(),
+            geometry_source: GeometrySource::Unknown,
         }
     }
 
@@ -241,6 +253,156 @@ impl Batch3D {
         }
     }
 
+    /// Add a thin world-space quad between two 3D points to visualize a line/edge.
+    /// `up_hint` is any non-parallel vector used to derive the quad thickness direction.
+    /// If `up_hint` is nearly parallel to the segment, a fallback axis is chosen.
+    pub fn add_line(&mut self, a: Vec3<f32>, b: Vec3<f32>, thickness: f32, up_hint: Vec3<f32>) {
+        #[inline]
+        fn vec3_is_finite(v: &Vec3<f32>) -> bool {
+            v.x.is_finite() && v.y.is_finite() && v.z.is_finite()
+        }
+        let dir = b - a;
+        let dir_len = dir.magnitude();
+        if dir_len < 1e-6 {
+            return;
+        }
+        let dir_n = dir / dir_len;
+
+        // Derive a side vector perpendicular to the line using the hint.
+        let mut side = dir_n.cross(up_hint).normalized();
+        if !vec3_is_finite(&side) || side.magnitude() < 1e-6 {
+            // Fallback: choose an axis not parallel to dir
+            let fallback = if dir_n.x.abs() < 0.9 {
+                Vec3::unit_x()
+            } else {
+                Vec3::unit_y()
+            };
+            side = dir_n.cross(fallback).normalized();
+        }
+        let half = side * (thickness * 0.5);
+
+        // Quad corners
+        let v0 = a - half; // (a, left)
+        let v1 = a + half; // (a, right)
+        let v2 = b + half; // (b, right)
+        let v3 = b - half; // (b, left)
+
+        // Plane normal (for lighting/shading if used)
+        let n = dir_n.cross(side).normalized();
+
+        // Append geometry
+        let base = self.vertices.len();
+        self.vertices.extend_from_slice(&[
+            [v0.x, v0.y, v0.z, 1.0],
+            [v1.x, v1.y, v1.z, 1.0],
+            [v2.x, v2.y, v2.z, 1.0],
+            [v3.x, v3.y, v3.z, 1.0],
+        ]);
+        self.uvs
+            .extend_from_slice(&[[0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]]);
+        // Two triangles: (0,1,2) (0,2,3)
+        self.indices.push((base + 0, base + 1, base + 2));
+        self.indices.push((base + 0, base + 2, base + 3));
+
+        // Ensure normals vector stays aligned with vertices
+        if self.normals.len() < self.vertices.len() {
+            let count_to_add = self.vertices.len() - self.normals.len();
+            for _ in 0..count_to_add {
+                self.normals.push(n);
+            }
+        }
+    }
+
+    /// Add a flat quad centered at `center`, oriented by a plane normal, used as a vertex gizmo.
+    /// The quad lies in the plane with the given `normal` and has edge length `size` (world units).
+    pub fn add_vertex_quad_on_plane(&mut self, center: Vec3<f32>, normal: Vec3<f32>, size: f32) {
+        let n = if normal.magnitude() < 1e-6 {
+            Vec3::unit_y()
+        } else {
+            normal.normalized()
+        };
+        // Build a tangent basis (u,v) for the plane
+        let helper = if n.x.abs() < 0.9 {
+            Vec3::unit_x()
+        } else {
+            Vec3::unit_y()
+        };
+        let u = n.cross(helper).normalized();
+        let v = n.cross(u).normalized();
+        let h = size * 0.5;
+        let p0 = center - u * h - v * h;
+        let p1 = center + u * h - v * h;
+        let p2 = center + u * h + v * h;
+        let p3 = center - u * h + v * h;
+
+        let base = self.vertices.len();
+        self.vertices.extend_from_slice(&[
+            [p0.x, p0.y, p0.z, 1.0],
+            [p1.x, p1.y, p1.z, 1.0],
+            [p2.x, p2.y, p2.z, 1.0],
+            [p3.x, p3.y, p3.z, 1.0],
+        ]);
+        self.uvs
+            .extend_from_slice(&[[0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]]);
+        self.indices.push((base + 0, base + 1, base + 2));
+        self.indices.push((base + 0, base + 2, base + 3));
+
+        // Per-vertex normals: all equal to plane normal
+        if self.normals.len() < self.vertices.len() {
+            let count_to_add = self.vertices.len() - self.normals.len();
+            for _ in 0..count_to_add {
+                self.normals.push(n);
+            }
+        }
+    }
+
+    /// Add a camera-facing (billboard) square centered at `center`, useful for vertex gizmos.
+    /// Provide the camera basis vectors in world space (`view_right`, `view_up`).
+    /// The square edge length is `size` in world units.
+    pub fn add_vertex_billboard(
+        &mut self,
+        center: Vec3<f32>,
+        view_right: Vec3<f32>,
+        view_up: Vec3<f32>,
+        size: f32,
+    ) {
+        let r = if view_right.magnitude() < 1e-6 {
+            Vec3::unit_x()
+        } else {
+            view_right.normalized()
+        };
+        let u = if view_up.magnitude() < 1e-6 {
+            Vec3::unit_y()
+        } else {
+            view_up.normalized()
+        };
+        let n = r.cross(u).normalized();
+        let h = size * 0.5;
+        let p0 = center - r * h - u * h;
+        let p1 = center + r * h - u * h;
+        let p2 = center + r * h + u * h;
+        let p3 = center - r * h + u * h;
+
+        let base = self.vertices.len();
+        self.vertices.extend_from_slice(&[
+            [p0.x, p0.y, p0.z, 1.0],
+            [p1.x, p1.y, p1.z, 1.0],
+            [p2.x, p2.y, p2.z, 1.0],
+            [p3.x, p3.y, p3.z, 1.0],
+        ]);
+        self.uvs
+            .extend_from_slice(&[[0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]]);
+        self.indices.push((base + 0, base + 1, base + 2));
+        self.indices.push((base + 0, base + 2, base + 3));
+
+        if self.normals.len() < self.vertices.len() {
+            let count_to_add = self.vertices.len() - self.normals.len();
+            for _ in 0..count_to_add {
+                self.normals.push(n);
+            }
+        }
+    }
+
     /// Load a Batch from an OBJ file using the Wavefront struct.
     pub fn from_obj(input: impl IntoDataInput) -> Self {
         // Load data using the flexible input trait
@@ -301,6 +463,18 @@ impl Batch3D {
     /// Set if this batch receives light.
     pub fn receives_light(mut self, receives_light: bool) -> Self {
         self.receives_light = receives_light;
+        self
+    }
+
+    /// Set the map_id for this batch.
+    pub fn map_id(mut self, map_id: Uuid) -> Self {
+        self.map_id = map_id;
+        self
+    }
+
+    /// Set the source of the geometry for this batch.
+    pub fn geometry_source(mut self, geometry_source: GeometrySource) -> Self {
+        self.geometry_source = geometry_source;
         self
     }
 
@@ -724,6 +898,8 @@ impl Batch3D {
                                 t,
                                 uv: Vec2::zero(),
                                 triangle_index: i,
+                                map_id: self.map_id,
+                                geometry_source: self.geometry_source,
                                 ..Default::default()
                             });
                         } else {
@@ -755,6 +931,8 @@ impl Batch3D {
                                 uv,
                                 triangle_index: i,
                                 normal: Some(normal),
+                                map_id: self.map_id,
+                                geometry_source: self.geometry_source,
                                 ..Default::default()
                             });
                         }

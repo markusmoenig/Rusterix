@@ -449,6 +449,8 @@ impl Tracer {
             }
         }
 
+        texel[3] = 1.0;
+
         if texel[3] == 1.0 {
             hit.albedo = Vec3::new(tex_lin.x, tex_lin.y, tex_lin.z);
             true

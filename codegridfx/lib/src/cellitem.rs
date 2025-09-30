@@ -186,7 +186,7 @@ impl CellItem {
             }
             Cell::Assignment => {
                 if let Some(font) = &ctx.ui.font {
-                    let text = if let Some(op) = AssignmentOp::from_i32(self.option) {
+                    let text = if let Some(op) = AssignmentOp::from_index(self.option) {
                         op.describe().to_string()
                     } else {
                         "=".to_string()
@@ -383,7 +383,7 @@ impl CellItem {
             }
             Assignment => {
                 if let Some(font) = &ctx.ui.font {
-                    if let Some(op) = AssignmentOp::from_i32(self.option) {
+                    if let Some(op) = AssignmentOp::from_index(self.option) {
                         size.x =
                             ctx.draw.get_text_size(font, font_size, op.describe()).0 as u32 + 20;
                     } else {
@@ -1954,7 +1954,7 @@ impl CellItem {
                 _ => self.cell.to_string(),
             },
             Assignment => {
-                if let Some(op) = AssignmentOp::from_i32(self.option) {
+                if let Some(op) = AssignmentOp::from_index(self.option) {
                     op.describe().to_string()
                 } else {
                     "=".to_string()

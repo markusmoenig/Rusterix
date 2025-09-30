@@ -1,4 +1,4 @@
-use crate::{Batch2D, Batch3D, Chunk, CompiledLight, MapMini, Shader, Tile};
+use crate::{Batch2D, Batch3D, Chunk, CompiledLight, HitInfo, MapMini, Ray, Shader, Tile};
 use rayon::prelude::*;
 use rusteria::{Program, Rusteria};
 use theframework::prelude::*;
@@ -190,5 +190,49 @@ impl Scene {
         self.d3_dynamic.par_iter_mut().for_each(|batch| {
             batch.compute_vertex_normals();
         });
+    }
+
+    /// Intersect the ray with the scene.
+    pub fn intersect(&self, ray: &Ray) -> HitInfo {
+        let mut hitinfo = HitInfo::default();
+
+        // Evaluate chunks
+        for (_coord, chunk) in self.chunks.iter() {
+            for batch in &chunk.batches3d {
+                if let Some(hit) = batch.intersect(&ray, true) {
+                    if hit.t < hitinfo.t {
+                        hitinfo = hit;
+                    }
+                }
+            }
+
+            if let Some(batch) = &chunk.terrain_batch3d {
+                if let Some(hit) = batch.intersect(&ray, true) {
+                    if hit.t < hitinfo.t {
+                        hitinfo = hit;
+                    }
+                }
+            }
+        }
+
+        // Evaluate static
+        for batch in self.d3_static.iter() {
+            if let Some(hit) = batch.intersect(&ray, true) {
+                if hit.t < hitinfo.t {
+                    hitinfo = hit;
+                }
+            }
+        }
+
+        // Evaluate dynamic
+        for batch in self.d3_dynamic.iter() {
+            if let Some(hit) = batch.intersect(&ray, true) {
+                if hit.t < hitinfo.t {
+                    hitinfo = hit;
+                }
+            }
+        }
+
+        hitinfo
     }
 }

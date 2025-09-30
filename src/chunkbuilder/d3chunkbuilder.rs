@@ -114,7 +114,9 @@ impl ChunkBuilder for D3ChunkBuilder {
                                             floor_uvs.clone(),
                                         )
                                         .repeat_mode(crate::RepeatMode::RepeatXY)
-                                        .source(PixelSource::StaticTileIndex(texture_index));
+                                        .source(PixelSource::StaticTileIndex(texture_index))
+                                        .map_id(map.id)
+                                        .geometry_source(crate::GeometrySource::Sector(sector.id));
                                         batch.shader = shader_index;
                                         chunk.batches3d.push(batch);
                                         processed = true;
@@ -127,7 +129,9 @@ impl ChunkBuilder for D3ChunkBuilder {
                             {
                                 let batch =
                                     Batch3D::new(floor_vertices, indices.clone(), floor_uvs)
-                                        .shader(shader_index);
+                                        .shader(shader_index)
+                                        .map_id(map.id)
+                                        .geometry_source(crate::GeometrySource::Sector(sector.id));
                                 chunk.batches3d.push(batch);
                             }
                         }

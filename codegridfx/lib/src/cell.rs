@@ -21,7 +21,7 @@ impl AssignmentOp {
         }
     }
 
-    pub fn to_i32(&self) -> i32 {
+    pub fn to_index(&self) -> i32 {
         match self {
             AssignmentOp::Assign => 0,
             AssignmentOp::AddAssign => 1,
@@ -31,7 +31,7 @@ impl AssignmentOp {
         }
     }
 
-    pub fn from_i32(idx: i32) -> Option<Self> {
+    pub fn from_index(idx: i32) -> Option<Self> {
         match idx {
             0 => Some(AssignmentOp::Assign),
             1 => Some(AssignmentOp::AddAssign),
@@ -40,19 +40,6 @@ impl AssignmentOp {
             4 => Some(AssignmentOp::DivideAssign),
             _ => None,
         }
-    }
-}
-
-impl core::convert::TryFrom<i32> for AssignmentOp {
-    type Error = ();
-    fn try_from(value: i32) -> Result<Self, Self::Error> {
-        AssignmentOp::from_i32(value).ok_or(())
-    }
-}
-
-impl From<AssignmentOp> for i32 {
-    fn from(op: AssignmentOp) -> Self {
-        op.to_i32()
     }
 }
 
