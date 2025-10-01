@@ -901,6 +901,7 @@ impl Batch3D {
                                 triangle_index: i,
                                 map_id: self.map_id,
                                 geometry_source: self.geometry_source,
+                                hitpoint: ray.at(t),
                                 ..Default::default()
                             });
                         } else {
@@ -934,6 +935,7 @@ impl Batch3D {
                                 normal: Some(normal),
                                 map_id: self.map_id,
                                 geometry_source: self.geometry_source,
+                                hitpoint: ray.at(t),
                                 ..Default::default()
                             });
                         }

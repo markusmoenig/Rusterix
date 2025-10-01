@@ -40,6 +40,7 @@ pub struct HitInfo {
     pub uv: Vec2<f32>,
     pub normal: Option<Vec3<f32>>,
     pub triangle_index: usize,
+    pub hitpoint: Vec3<f32>,
 
     pub albedo: Vec3<f32>,
     pub emissive: Vec3<f32>,
@@ -62,6 +63,7 @@ impl HitInfo {
             uv: Vec2::zero(),
             normal: None,
             triangle_index: 0,
+            hitpoint: Vec3::zero(),
 
             albedo: Vec3::zero(),
             emissive: Vec3::zero(),

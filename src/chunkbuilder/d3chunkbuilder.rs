@@ -631,7 +631,9 @@ fn build_profile_wall(map: &Map, assets: &Assets, chunk: &mut Chunk, linedef: &L
                             let mut batch =
                                 Batch3D::new(world_vertices.clone(), pindices.clone(), uvs.clone())
                                     .repeat_mode(crate::RepeatMode::RepeatXY)
-                                    .source(PixelSource::StaticTileIndex(texture_index));
+                                    .source(PixelSource::StaticTileIndex(texture_index))
+                                    .map_id(linedef.profile.id)
+                                    .geometry_source(crate::GeometrySource::Sector(sector.id));
                             batch.shader = shader_index;
                             chunk.batches3d.push(batch);
                             pushed = true;
@@ -640,7 +642,9 @@ fn build_profile_wall(map: &Map, assets: &Assets, chunk: &mut Chunk, linedef: &L
                 }
 
                 if !pushed {
-                    let mut batch = Batch3D::new(world_vertices, pindices, uvs);
+                    let mut batch = Batch3D::new(world_vertices, pindices, uvs)
+                        .map_id(linedef.profile.id)
+                        .geometry_source(crate::GeometrySource::Sector(sector.id));
                     if let Some(si) = shader_index {
                         batch.shader = Some(si);
                     }
