@@ -115,7 +115,6 @@ impl ChunkBuilder for D3ChunkBuilder {
                                         )
                                         .repeat_mode(crate::RepeatMode::RepeatXY)
                                         .source(PixelSource::StaticTileIndex(texture_index))
-                                        .map_id(map.id)
                                         .geometry_source(crate::GeometrySource::Sector(sector.id));
                                         batch.shader = shader_index;
                                         chunk.batches3d.push(batch);
@@ -130,7 +129,6 @@ impl ChunkBuilder for D3ChunkBuilder {
                                 let batch =
                                     Batch3D::new(floor_vertices, indices.clone(), floor_uvs)
                                         .shader(shader_index)
-                                        .map_id(map.id)
                                         .geometry_source(crate::GeometrySource::Sector(sector.id));
                                 chunk.batches3d.push(batch);
                             }
@@ -632,7 +630,7 @@ fn build_profile_wall(map: &Map, assets: &Assets, chunk: &mut Chunk, linedef: &L
                                 Batch3D::new(world_vertices.clone(), pindices.clone(), uvs.clone())
                                     .repeat_mode(crate::RepeatMode::RepeatXY)
                                     .source(PixelSource::StaticTileIndex(texture_index))
-                                    .map_id(linedef.profile.id)
+                                    .profile_id(linedef.id)
                                     .geometry_source(crate::GeometrySource::Sector(sector.id));
                             batch.shader = shader_index;
                             chunk.batches3d.push(batch);
@@ -643,7 +641,7 @@ fn build_profile_wall(map: &Map, assets: &Assets, chunk: &mut Chunk, linedef: &L
 
                 if !pushed {
                     let mut batch = Batch3D::new(world_vertices, pindices, uvs)
-                        .map_id(linedef.profile.id)
+                        .profile_id(linedef.id)
                         .geometry_source(crate::GeometrySource::Sector(sector.id));
                     if let Some(si) = shader_index {
                         batch.shader = Some(si);

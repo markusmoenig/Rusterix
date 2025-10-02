@@ -3,8 +3,6 @@ pub mod trace;
 
 use vek::{Vec2, Vec3};
 
-use theframework::prelude::*;
-
 use crate::GeometrySource;
 
 #[derive(Debug)]
@@ -46,7 +44,7 @@ pub struct HitInfo {
     pub emissive: Vec3<f32>,
     pub specular_weight: f32,
 
-    pub map_id: Uuid,
+    pub profile_id: Option<u32>,
     pub geometry_source: GeometrySource,
 }
 
@@ -69,7 +67,7 @@ impl HitInfo {
             emissive: Vec3::zero(),
             specular_weight: 0.0,
 
-            map_id: Uuid::nil(),
+            profile_id: None,
             geometry_source: GeometrySource::Unknown,
         }
     }

@@ -9,7 +9,6 @@ use vek::{Mat4, Vec2, Vec3, Vec4};
 use CullMode::*;
 use PrimitiveMode::*;
 use RepeatMode::*;
-use theframework::prelude::*;
 
 /// A batch of vertices, indices and their UVs which make up 3D polygons.
 #[derive(Debug, Clone)]
@@ -71,8 +70,8 @@ pub struct Batch3D {
     /// Shader
     pub shader: Option<usize>,
 
-    /// Map Id
-    pub map_id: Uuid,
+    /// Optional Wall Profile Id
+    pub profile_id: Option<u32>,
 
     /// Geometry Source
     pub geometry_source: GeometrySource,
@@ -102,7 +101,7 @@ impl Batch3D {
             material: None,
             ambient_color: Vec3::zero(),
             shader: None,
-            map_id: Uuid::nil(),
+            profile_id: None,
             geometry_source: GeometrySource::Unknown,
         }
     }
@@ -132,7 +131,7 @@ impl Batch3D {
             material: None,
             ambient_color: Vec3::zero(),
             shader: None,
-            map_id: Uuid::nil(),
+            profile_id: None,
             geometry_source: GeometrySource::Unknown,
         }
     }
@@ -467,9 +466,9 @@ impl Batch3D {
         self
     }
 
-    /// Set the map_id for this batch.
-    pub fn map_id(mut self, map_id: Uuid) -> Self {
-        self.map_id = map_id;
+    /// Set the profile for this batch.
+    pub fn profile_id(mut self, profile_id: u32) -> Self {
+        self.profile_id = Some(profile_id);
         self
     }
 
@@ -899,7 +898,7 @@ impl Batch3D {
                                 t,
                                 uv: Vec2::zero(),
                                 triangle_index: i,
-                                map_id: self.map_id,
+                                profile_id: self.profile_id,
                                 geometry_source: self.geometry_source,
                                 hitpoint: ray.at(t),
                                 ..Default::default()
@@ -933,7 +932,7 @@ impl Batch3D {
                                 uv,
                                 triangle_index: i,
                                 normal: Some(normal),
-                                map_id: self.map_id,
+                                profile_id: self.profile_id,
                                 geometry_source: self.geometry_source,
                                 hitpoint: ray.at(t),
                                 ..Default::default()

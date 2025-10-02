@@ -912,387 +912,361 @@ impl Rasterizer {
                 && bbox.y < (tile.y + tile.height) as f32
                 && (bbox.y + bbox.height) > tile.y as f32
             {
-                match batch.mode {
-                    PrimitiveMode::Triangles => {
-                        // Process each triangle in the batch
-                        for (triangle_index, edges) in batch.edges.iter().enumerate() {
-                            if !edges.visible {
-                                continue;
-                            }
+                // match batch.mode {
+                //     PrimitiveMode::Triangles => {
+                // Process each triangle in the batch
+                for (triangle_index, edges) in batch.edges.iter().enumerate() {
+                    if !edges.visible {
+                        continue;
+                    }
 
-                            let (i0, i1, i2) = batch.clipped_indices[triangle_index];
-                            let v0 = batch.projected_vertices[i0];
-                            let v1 = batch.projected_vertices[i1];
-                            let v2 = batch.projected_vertices[i2];
-                            let uv0 = batch.clipped_uvs[i0];
-                            let uv1 = batch.clipped_uvs[i1];
-                            let uv2 = batch.clipped_uvs[i2];
+                    let (i0, i1, i2) = batch.clipped_indices[triangle_index];
+                    let v0 = batch.projected_vertices[i0];
+                    let v1 = batch.projected_vertices[i1];
+                    let v2 = batch.projected_vertices[i2];
+                    let uv0 = batch.clipped_uvs[i0];
+                    let uv1 = batch.clipped_uvs[i1];
+                    let uv2 = batch.clipped_uvs[i2];
 
-                            // Compute bounding box of the triangle
-                            let (min_xf, max_xf) = {
-                                let ax = v0[0];
-                                let bx = v1[0];
-                                let cx = v2[0];
-                                let minx = ax.min(bx.min(cx));
-                                let maxx = ax.max(bx.max(cx));
-                                (minx, maxx)
-                            };
-                            let (min_yf, max_yf) = {
-                                let ay = v0[1];
-                                let by = v1[1];
-                                let cy = v2[1];
-                                let miny = ay.min(by.min(cy));
-                                let maxy = ay.max(by.max(cy));
-                                (miny, maxy)
-                            };
-                            let min_x = min_xf.floor().max(tile.x as f32) as usize;
-                            let max_x = max_xf.ceil().min((tile.x + tile.width) as f32) as usize;
-                            let min_y = min_yf.floor().max(tile.y as f32) as usize;
-                            let max_y = max_yf.ceil().min((tile.y + tile.height) as f32) as usize;
+                    // Compute bounding box of the triangle
+                    let (min_xf, max_xf) = {
+                        let ax = v0[0];
+                        let bx = v1[0];
+                        let cx = v2[0];
+                        let minx = ax.min(bx.min(cx));
+                        let maxx = ax.max(bx.max(cx));
+                        (minx, maxx)
+                    };
+                    let (min_yf, max_yf) = {
+                        let ay = v0[1];
+                        let by = v1[1];
+                        let cy = v2[1];
+                        let miny = ay.min(by.min(cy));
+                        let maxy = ay.max(by.max(cy));
+                        (miny, maxy)
+                    };
+                    let min_x = min_xf.floor().max(tile.x as f32) as usize;
+                    let max_x = max_xf.ceil().min((tile.x + tile.width) as f32) as usize;
+                    let min_y = min_yf.floor().max(tile.y as f32) as usize;
+                    let max_y = max_yf.ceil().min((tile.y + tile.height) as f32) as usize;
 
-                            // Rasterize the triangle within its bounding box
-                            for ty in min_y..max_y {
-                                for tx in min_x..max_x {
-                                    let p = [tx as f32 + 0.5, ty as f32 + 0.5];
+                    // Rasterize the triangle within its bounding box
+                    for ty in min_y..max_y {
+                        for tx in min_x..max_x {
+                            let p = [tx as f32 + 0.5, ty as f32 + 0.5];
 
-                                    // Evaluate the edges
-                                    if edges.evaluate(p) {
-                                        // Overlay check
-                                        if overlay {
-                                            let texel = match &batch.source {
-                                                PixelSource::Color(col) => col.to_u8_array(),
-                                                PixelSource::Pixel(col) => *col,
-                                                _ => [0, 0, 0, 255],
-                                            };
-                                            let idx =
-                                                ((ty - tile.y) * tile.width + (tx - tile.x)) * 4;
-                                            buffer[idx..idx + 4].copy_from_slice(&texel);
+                            // Evaluate the edges
+                            if edges.evaluate(p) {
+                                // Overlay check
+                                if overlay {
+                                    let texel = match &batch.source {
+                                        PixelSource::Color(col) => col.to_u8_array(),
+                                        PixelSource::Pixel(col) => *col,
+                                        _ => [0, 0, 0, 255],
+                                    };
+                                    let idx = ((ty - tile.y) * tile.width + (tx - tile.x)) * 4;
+                                    buffer[idx..idx + 4].copy_from_slice(&texel);
 
-                                            continue;
+                                    continue;
+                                }
+
+                                // Interpolate barycentric coordinates
+                                let [alpha, beta, gamma] =
+                                    self.barycentric_weights_3d(&v0, &v1, &v2, &p);
+
+                                let one_over_z =
+                                    1.0 / v0[2] * alpha + 1.0 / v1[2] * beta + 1.0 / v2[2] * gamma;
+                                let z = 1.0 / one_over_z;
+
+                                let zidx = (ty - tile.y) * tile.width + (tx - tile.x);
+
+                                if z < z_buffer[zidx] {
+                                    // Perform the interpolation of all U/w and V/w values using barycentric weights and a factor of 1/w
+                                    let mut interpolated_u = (uv0[0] / v0[3]) * alpha
+                                        + (uv1[0] / v1[3]) * beta
+                                        + (uv2[0] / v2[3]) * gamma;
+                                    let mut interpolated_v = (uv0[1] / v0[3]) * alpha
+                                        + (uv1[1] / v1[3]) * beta
+                                        + (uv2[1] / v2[3]) * gamma;
+
+                                    // Interpolate reciprocal depth
+                                    let interpolated_reciprocal_w = (1.0 / v0[3]) * alpha
+                                        + (1.0 / v1[3]) * beta
+                                        + (1.0 / v2[3]) * gamma;
+
+                                    // Now we can divide back both interpolated values by 1/w
+                                    interpolated_u /= interpolated_reciprocal_w;
+                                    interpolated_v /= interpolated_reciprocal_w;
+
+                                    // Get the screen coordinates of the hitpoint
+                                    let world = self.screen_to_world(p[0], p[1], z);
+                                    let world_2d = Vec2::new(world.x, world.z);
+
+                                    let (mut texel, _is_terrain) = match batch.source {
+                                        PixelSource::StaticTileIndex(index) => {
+                                            let textile = &assets.tile_list[index as usize];
+                                            let index =
+                                                scene.animation_frame % textile.textures.len();
+                                            (
+                                                textile.textures[index].sample(
+                                                    interpolated_u,
+                                                    interpolated_v,
+                                                    self.sample_mode,
+                                                    batch.repeat_mode,
+                                                ),
+                                                false,
+                                            )
+                                        }
+                                        PixelSource::DynamicTileIndex(index) => {
+                                            let textile = &scene.dynamic_textures[index as usize];
+                                            let index =
+                                                scene.animation_frame % textile.textures.len();
+                                            (
+                                                textile.textures[index].sample(
+                                                    interpolated_u,
+                                                    interpolated_v,
+                                                    self.sample_mode,
+                                                    batch.repeat_mode,
+                                                ),
+                                                false,
+                                            )
+                                        }
+                                        PixelSource::Pixel(col) => (col, false),
+                                        PixelSource::EntityTile(id, index) => {
+                                            if let Some(entity_sequences) =
+                                                assets.entity_tiles.get(&id)
+                                            {
+                                                if let Some(textile) =
+                                                    entity_sequences.get_index(index as usize)
+                                                {
+                                                    let index = scene.animation_frame
+                                                        % textile.1.textures.len();
+                                                    (
+                                                        textile.1.textures[index].sample(
+                                                            interpolated_u,
+                                                            interpolated_v,
+                                                            self.sample_mode,
+                                                            batch.repeat_mode,
+                                                        ),
+                                                        false,
+                                                    )
+                                                } else {
+                                                    ([0, 0, 0, 0], false)
+                                                }
+                                            } else {
+                                                ([0, 0, 0, 0], false)
+                                            }
+                                        }
+                                        PixelSource::ItemTile(id, index) => {
+                                            if let Some(item_sequences) = assets.item_tiles.get(&id)
+                                            {
+                                                if let Some(textile) =
+                                                    item_sequences.get_index(index as usize)
+                                                {
+                                                    let index = scene.animation_frame
+                                                        % textile.1.textures.len();
+                                                    (
+                                                        textile.1.textures[index].sample(
+                                                            interpolated_u,
+                                                            interpolated_v,
+                                                            self.sample_mode,
+                                                            batch.repeat_mode,
+                                                        ),
+                                                        false,
+                                                    )
+                                                } else {
+                                                    ([0, 0, 0, 0], false)
+                                                }
+                                            } else {
+                                                ([0, 0, 0, 0], false)
+                                            }
+                                        }
+                                        PixelSource::Terrain => {
+                                            if let Some(chunk) = chunk {
+                                                let mut texel = chunk
+                                                    .sample_terrain_texture(world_2d, Vec2::one());
+                                                if let Some(brush_preview) = &self.brush_preview {
+                                                    let dist = (world - brush_preview.position)
+                                                        .magnitude();
+
+                                                    if dist < brush_preview.radius {
+                                                        let normalized =
+                                                            dist / brush_preview.radius;
+                                                        let falloff =
+                                                            brush_preview.falloff.clamp(0.001, 1.0); // avoid divide-by-zero
+                                                        let fade = ((1.0 - normalized) / falloff)
+                                                            .clamp(0.0, 1.0);
+
+                                                        let blend = 0.2 + 0.6 * fade; // blend between 20% and 80% white
+
+                                                        for channel in &mut texel[..3] {
+                                                            *channel = ((*channel as f32)
+                                                                * (1.0 - blend)
+                                                                + 255.0 * blend)
+                                                                .min(255.0)
+                                                                as u8;
+                                                        }
+                                                    }
+                                                }
+                                                (texel, true)
+                                            } else {
+                                                ([255, 0, 0, 255], false)
+                                            }
+                                        }
+                                        _ => ([0, 0, 0, 255], false),
+                                    };
+
+                                    let normal = if !batch.normals.is_empty() {
+                                        let n0 = batch.clipped_normals[i0];
+                                        let n1 = batch.clipped_normals[i1];
+                                        let n2 = batch.clipped_normals[i2];
+
+                                        let mut normal =
+                                            (n0 * alpha + n1 * beta + n2 * gamma).normalized();
+
+                                        let view_dir = (self.camera_pos - world).normalized();
+                                        if normal.dot(view_dir) < 0.0 {
+                                            normal = -normal;
                                         }
 
-                                        // Interpolate barycentric coordinates
-                                        let [alpha, beta, gamma] =
-                                            self.barycentric_weights_3d(&v0, &v1, &v2, &p);
+                                        normal
+                                    } else {
+                                        Vec3::zero()
+                                    };
 
-                                        let one_over_z = 1.0 / v0[2] * alpha
-                                            + 1.0 / v1[2] * beta
-                                            + 1.0 / v2[2] * gamma;
-                                        let z = 1.0 / one_over_z;
+                                    let mut color: Vec4<f32> = pixel_to_vec4(&texel);
+                                    color.x = srgb_to_linear_fast(color.x);
+                                    color.y = srgb_to_linear_fast(color.y);
+                                    color.z = srgb_to_linear_fast(color.z);
 
-                                        let zidx = (ty - tile.y) * tile.width + (tx - tile.x);
+                                    execution.color.x = color.x;
+                                    execution.color.y = color.y;
+                                    execution.color.z = color.z;
 
-                                        if z < z_buffer[zidx] {
-                                            // Perform the interpolation of all U/w and V/w values using barycentric weights and a factor of 1/w
-                                            let mut interpolated_u = (uv0[0] / v0[3]) * alpha
-                                                + (uv1[0] / v1[3]) * beta
-                                                + (uv2[0] / v2[3]) * gamma;
-                                            let mut interpolated_v = (uv0[1] / v0[3]) * alpha
-                                                + (uv1[1] / v1[3]) * beta
-                                                + (uv2[1] / v2[3]) * gamma;
+                                    // Execute the batch shader (if any)
+                                    if let Some(shader_index) = batch.shader {
+                                        let program = if let Some(chunk) = chunk {
+                                            chunk.shaders.get(shader_index)
+                                        } else {
+                                            scene.shaders.get(shader_index)
+                                        };
 
-                                            // Interpolate reciprocal depth
-                                            let interpolated_reciprocal_w = (1.0 / v0[3]) * alpha
-                                                + (1.0 / v1[3]) * beta
-                                                + (1.0 / v2[3]) * gamma;
+                                        if let Some(program) = program {
+                                            if let Some(sh) = program.shade_index {
+                                                execution.normal = normal;
+                                                execution.uv.x = interpolated_u / 4.0;
+                                                execution.uv.y = interpolated_v / 4.0;
 
-                                            // Now we can divide back both interpolated values by 1/w
-                                            interpolated_u /= interpolated_reciprocal_w;
-                                            interpolated_v /= interpolated_reciprocal_w;
+                                                execution.hitpoint = world;
+                                                execution.time.x = self.time;
+                                                execution.time.y = self.time;
+                                                execution.time.z = self.time;
 
-                                            // Get the screen coordinates of the hitpoint
-                                            let world = self.screen_to_world(p[0], p[1], z);
-                                            let world_2d = Vec2::new(world.x, world.z);
+                                                execution.roughness.x = 0.5;
+                                                execution.metallic.x = 0.0;
 
-                                            let (mut texel, _is_terrain) = match batch.source {
-                                                PixelSource::StaticTileIndex(index) => {
-                                                    let textile = &assets.tile_list[index as usize];
-                                                    let index = scene.animation_frame
-                                                        % textile.textures.len();
-                                                    (
-                                                        textile.textures[index].sample(
-                                                            interpolated_u,
-                                                            interpolated_v,
-                                                            self.sample_mode,
-                                                            batch.repeat_mode,
-                                                        ),
-                                                        false,
-                                                    )
-                                                }
-                                                PixelSource::DynamicTileIndex(index) => {
-                                                    let textile =
-                                                        &scene.dynamic_textures[index as usize];
-                                                    let index = scene.animation_frame
-                                                        % textile.textures.len();
-                                                    (
-                                                        textile.textures[index].sample(
-                                                            interpolated_u,
-                                                            interpolated_v,
-                                                            self.sample_mode,
-                                                            batch.repeat_mode,
-                                                        ),
-                                                        false,
-                                                    )
-                                                }
-                                                PixelSource::Pixel(col) => (col, false),
-                                                PixelSource::EntityTile(id, index) => {
-                                                    if let Some(entity_sequences) =
-                                                        assets.entity_tiles.get(&id)
-                                                    {
-                                                        if let Some(textile) = entity_sequences
-                                                            .get_index(index as usize)
-                                                        {
-                                                            let index = scene.animation_frame
-                                                                % textile.1.textures.len();
-                                                            (
-                                                                textile.1.textures[index].sample(
-                                                                    interpolated_u,
-                                                                    interpolated_v,
-                                                                    self.sample_mode,
-                                                                    batch.repeat_mode,
-                                                                ),
-                                                                false,
-                                                            )
-                                                        } else {
-                                                            ([0, 0, 0, 0], false)
-                                                        }
-                                                    } else {
-                                                        ([0, 0, 0, 0], false)
-                                                    }
-                                                }
-                                                PixelSource::ItemTile(id, index) => {
-                                                    if let Some(item_sequences) =
-                                                        assets.item_tiles.get(&id)
-                                                    {
-                                                        if let Some(textile) =
-                                                            item_sequences.get_index(index as usize)
-                                                        {
-                                                            let index = scene.animation_frame
-                                                                % textile.1.textures.len();
-                                                            (
-                                                                textile.1.textures[index].sample(
-                                                                    interpolated_u,
-                                                                    interpolated_v,
-                                                                    self.sample_mode,
-                                                                    batch.repeat_mode,
-                                                                ),
-                                                                false,
-                                                            )
-                                                        } else {
-                                                            ([0, 0, 0, 0], false)
-                                                        }
-                                                    } else {
-                                                        ([0, 0, 0, 0], false)
-                                                    }
-                                                }
-                                                PixelSource::Terrain => {
-                                                    if let Some(chunk) = chunk {
-                                                        let mut texel = chunk
-                                                            .sample_terrain_texture(
-                                                                world_2d,
-                                                                Vec2::one(),
-                                                            );
-                                                        if let Some(brush_preview) =
-                                                            &self.brush_preview
-                                                        {
-                                                            let dist = (world
-                                                                - brush_preview.position)
-                                                                .magnitude();
+                                                execution.opacity.x = 1.0;
 
-                                                            if dist < brush_preview.radius {
-                                                                let normalized =
-                                                                    dist / brush_preview.radius;
-                                                                let falloff = brush_preview
-                                                                    .falloff
-                                                                    .clamp(0.001, 1.0); // avoid divide-by-zero
-                                                                let fade = ((1.0 - normalized)
-                                                                    / falloff)
-                                                                    .clamp(0.0, 1.0);
-
-                                                                let blend = 0.2 + 0.6 * fade; // blend between 20% and 80% white
-
-                                                                for channel in &mut texel[..3] {
-                                                                    *channel = ((*channel as f32)
-                                                                        * (1.0 - blend)
-                                                                        + 255.0 * blend)
-                                                                        .min(255.0)
-                                                                        as u8;
-                                                                }
-                                                            }
-                                                        }
-                                                        (texel, true)
-                                                    } else {
-                                                        ([255, 0, 0, 255], false)
-                                                    }
-                                                }
-                                                _ => ([0, 0, 0, 255], false),
-                                            };
-
-                                            let normal = if !batch.normals.is_empty() {
-                                                let n0 = batch.clipped_normals[i0];
-                                                let n1 = batch.clipped_normals[i1];
-                                                let n2 = batch.clipped_normals[i2];
-
-                                                let mut normal =
-                                                    (n0 * alpha + n1 * beta + n2 * gamma)
-                                                        .normalized();
-
-                                                let view_dir =
-                                                    (self.camera_pos - world).normalized();
-                                                if normal.dot(view_dir) < 0.0 {
-                                                    normal = -normal;
-                                                }
-
-                                                normal
-                                            } else {
-                                                Vec3::zero()
-                                            };
-
-                                            let mut color: Vec4<f32> = pixel_to_vec4(&texel);
-                                            color.x = srgb_to_linear_fast(color.x);
-                                            color.y = srgb_to_linear_fast(color.y);
-                                            color.z = srgb_to_linear_fast(color.z);
-
-                                            execution.color.x = color.x;
-                                            execution.color.y = color.y;
-                                            execution.color.z = color.z;
-
-                                            // Execute the batch shader (if any)
-                                            if let Some(shader_index) = batch.shader {
-                                                let program = if let Some(chunk) = chunk {
-                                                    chunk.shaders.get(shader_index)
-                                                } else {
-                                                    scene.shaders.get(shader_index)
-                                                };
-
-                                                if let Some(program) = program {
-                                                    if let Some(sh) = program.shade_index {
-                                                        execution.normal = normal;
-                                                        execution.uv.x = interpolated_u / 4.0;
-                                                        execution.uv.y = interpolated_v / 4.0;
-
-                                                        execution.hitpoint = world;
-                                                        execution.time.x = self.time;
-                                                        execution.time.y = self.time;
-                                                        execution.time.z = self.time;
-
-                                                        execution.roughness.x = 0.5;
-                                                        execution.metallic.x = 0.0;
-
-                                                        execution.opacity.x = 1.0;
-
-                                                        execution.reset(program.globals);
-                                                        execution.shade(
-                                                            sh,
-                                                            program,
-                                                            &assets.palette,
-                                                        );
-                                                    }
-                                                }
+                                                execution.reset(program.globals);
+                                                execution.shade(sh, program, &assets.palette);
                                             }
+                                        }
+                                    }
 
-                                            let mat_base = execution.color;
-                                            let mat_roughness =
-                                                execution.roughness.x.clamp(0.0, 1.0);
-                                            let mat_metallic = execution.metallic.x.clamp(0.0, 1.0);
-                                            let mat_emissive = execution.emissive;
+                                    let mat_base = execution.color;
+                                    let mat_roughness = execution.roughness.x.clamp(0.0, 1.0);
+                                    let mat_metallic = execution.metallic.x.clamp(0.0, 1.0);
+                                    let mat_emissive = execution.emissive;
 
-                                            let mut lit = Vec3::<f32>::zero();
+                                    let mut lit = Vec3::<f32>::zero();
 
-                                            let occlusion = self.mapmini.get_occlusion(world_2d);
-                                            // Sky hemisphere + directional sun
-                                            if occlusion > 0.0 {
-                                                if let Some(sky) = &self.ambient_color {
-                                                    let hemi = 0.5 * (normal.y + 1.0);
-                                                    // ambient only affects diffuse path
-                                                    let kd = mat_base
-                                                        * (1.0 - mat_metallic)
-                                                        * (1.0 - 0.04);
-                                                    lit += sky.xyz() * kd * hemi;
-                                                }
-
-                                                if let Some(sun_dir) = self.sun_dir {
-                                                    if self.day_factor > 0.0 {
-                                                        // Sun is directional: light vector is opposite to sun_dir
-                                                        let ldir = (-sun_dir).normalized();
-                                                        let sun_radiance = Vec3::broadcast(
-                                                            self.day_factor.max(0.0),
-                                                        );
-                                                        lit += self.shade_fast_brdf(
-                                                            mat_base,
-                                                            mat_roughness,
-                                                            mat_metallic,
-                                                            Vec3::zero(),
-                                                            normal,
-                                                            (self.camera_pos - world).normalized(),
-                                                            ldir,
-                                                            sun_radiance,
-                                                        );
-                                                    }
-                                                }
-
-                                                // Apply sector based occlusion
-                                                // lit[0] *= occlusion;
-                                                // lit[1] *= occlusion;
-                                                // lit[2] *= occlusion;
-                                            }
-
-                                            // Non-terrain: batch ambient + all scene lights
+                                    let occlusion = self.mapmini.get_occlusion(world_2d);
+                                    // Sky hemisphere + directional sun
+                                    if occlusion > 0.0 {
+                                        if let Some(sky) = &self.ambient_color {
                                             let hemi = 0.5 * (normal.y + 1.0);
-                                            let kd = mat_base * (1.0 - mat_metallic) * (1.0 - 0.04); // cheap F0 reduction
-                                            lit += batch.ambient_color * kd * hemi;
+                                            // ambient only affects diffuse path
+                                            let kd = mat_base * (1.0 - mat_metallic) * (1.0 - 0.04);
+                                            lit += sky.xyz() * kd * hemi;
+                                        }
 
-                                            // Direct lights
-                                            for light in
-                                                scene.lights.iter().chain(&scene.dynamic_lights)
-                                            {
-                                                let Some(radiance) =
-                                                    light.radiance_at(world, None, self.hash_anim)
-                                                else {
-                                                    continue;
-                                                };
-                                                let ldir = (light.position - world).normalized();
-
+                                        if let Some(sun_dir) = self.sun_dir {
+                                            if self.day_factor > 0.0 {
+                                                // Sun is directional: light vector is opposite to sun_dir
+                                                let ldir = (-sun_dir).normalized();
+                                                let sun_radiance =
+                                                    Vec3::broadcast(self.day_factor.max(0.0));
                                                 lit += self.shade_fast_brdf(
                                                     mat_base,
                                                     mat_roughness,
                                                     mat_metallic,
-                                                    Vec3::zero(), // emissive added after loop for stability
+                                                    Vec3::zero(),
                                                     normal,
                                                     (self.camera_pos - world).normalized(),
                                                     ldir,
-                                                    radiance,
+                                                    sun_radiance,
                                                 );
                                             }
-
-                                            // Add emissive unshadowed at the end
-                                            lit += mat_emissive;
-
-                                            // color.x = lit.x.powf(1.0 / 2.2);
-                                            // color.y = lit.y.powf(1.0 / 2.2);
-                                            // color.z = lit.z.powf(1.0 / 2.2);
-
-                                            color.x = linear_to_srgb_fast(lit.x);
-                                            color.y = linear_to_srgb_fast(lit.y);
-                                            color.z = linear_to_srgb_fast(lit.z);
-                                            color.w = execution.opacity.x;
-                                            texel = vec4_to_pixel(&color);
-
-                                            // ---
-
-                                            if texel[3] == 255 {
-                                                let idx = ((ty - tile.y) * tile.width
-                                                    + (tx - tile.x))
-                                                    * 4;
-                                                buffer[idx..idx + 4].copy_from_slice(&texel);
-                                                z_buffer[zidx] = z;
-                                            }
                                         }
+
+                                        // Apply sector based occlusion
+                                        // lit[0] *= occlusion;
+                                        // lit[1] *= occlusion;
+                                        // lit[2] *= occlusion;
+                                    }
+
+                                    // Non-terrain: batch ambient + all scene lights
+                                    let hemi = 0.5 * (normal.y + 1.0);
+                                    let kd = mat_base * (1.0 - mat_metallic) * (1.0 - 0.04); // cheap F0 reduction
+                                    lit += batch.ambient_color * kd * hemi;
+
+                                    // Direct lights
+                                    for light in scene.lights.iter().chain(&scene.dynamic_lights) {
+                                        let Some(radiance) =
+                                            light.radiance_at(world, None, self.hash_anim)
+                                        else {
+                                            continue;
+                                        };
+                                        let ldir = (light.position - world).normalized();
+
+                                        lit += self.shade_fast_brdf(
+                                            mat_base,
+                                            mat_roughness,
+                                            mat_metallic,
+                                            Vec3::zero(), // emissive added after loop for stability
+                                            normal,
+                                            (self.camera_pos - world).normalized(),
+                                            ldir,
+                                            radiance,
+                                        );
+                                    }
+
+                                    // Add emissive unshadowed at the end
+                                    lit += mat_emissive;
+
+                                    // color.x = lit.x.powf(1.0 / 2.2);
+                                    // color.y = lit.y.powf(1.0 / 2.2);
+                                    // color.z = lit.z.powf(1.0 / 2.2);
+
+                                    color.x = linear_to_srgb_fast(lit.x);
+                                    color.y = linear_to_srgb_fast(lit.y);
+                                    color.z = linear_to_srgb_fast(lit.z);
+                                    color.w = execution.opacity.x;
+                                    texel = vec4_to_pixel(&color);
+
+                                    // ---
+
+                                    if texel[3] == 255 {
+                                        let idx = ((ty - tile.y) * tile.width + (tx - tile.x)) * 4;
+                                        buffer[idx..idx + 4].copy_from_slice(&texel);
+                                        z_buffer[zidx] = z;
                                     }
                                 }
                             }
                         }
                     }
+                }
+                /*}
                     PrimitiveMode::Lines => {
                         for &(i0, i1, _) in batch.indices.iter() {
                             let p0 = batch.projected_vertices[i0];
@@ -1349,7 +1323,7 @@ impl Rasterizer {
                             );
                         }
                     }
-                }
+                }*/
             }
         }
     }
