@@ -228,6 +228,9 @@ impl SceneManager {
 
                             if let Some(cb_d3) = &mut chunk_builder_d3 {
                                 cb_d3.build(&map, &assets, &mut chunk);
+                                for chunk3d in &mut chunk.batches3d_opacity {
+                                    chunk3d.compute_vertex_normals();
+                                }
                                 for chunk3d in &mut chunk.batches3d {
                                     chunk3d.compute_vertex_normals();
                                 }

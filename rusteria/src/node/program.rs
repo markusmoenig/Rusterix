@@ -1,7 +1,7 @@
 use rustc_hash::FxHashMap;
 
 use crate::NodeOp;
-use std::sync::Arc;
+use std::{ops::Deref, sync::Arc};
 
 #[derive(Clone)]
 pub struct Program {
@@ -38,5 +38,19 @@ impl Program {
             shade_locals: 0,
             strings: vec![],
         }
+    }
+
+    /// Returns true if the shader changes opacity
+    pub fn shader_supports_opacity(&self) -> bool {
+        if let Some(index) = self.user_functions_name_map.get("shade") {
+            if let Some(func) = self.user_functions.get(*index) {
+                for n in func.deref() {
+                    if matches!(n, NodeOp::SetOpacity) {
+                        return true;
+                    }
+                }
+            }
+        }
+        false
     }
 }

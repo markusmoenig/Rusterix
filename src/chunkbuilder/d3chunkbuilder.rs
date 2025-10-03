@@ -632,8 +632,14 @@ fn build_profile_wall(map: &Map, assets: &Assets, chunk: &mut Chunk, linedef: &L
                                     .source(PixelSource::StaticTileIndex(texture_index))
                                     .profile_id(linedef.id)
                                     .geometry_source(crate::GeometrySource::Sector(sector.id));
-                            batch.shader = shader_index;
-                            chunk.batches3d.push(batch);
+                            if let Some(si) = shader_index {
+                                batch.shader = Some(si);
+                                if chunk.shaders_with_opacity[si] {
+                                    chunk.batches3d_opacity.push(batch);
+                                } else {
+                                    chunk.batches3d.push(batch);
+                                }
+                            }
                             pushed = true;
                         }
                     }
@@ -645,8 +651,12 @@ fn build_profile_wall(map: &Map, assets: &Assets, chunk: &mut Chunk, linedef: &L
                         .geometry_source(crate::GeometrySource::Sector(sector.id));
                     if let Some(si) = shader_index {
                         batch.shader = Some(si);
+                        if chunk.shaders_with_opacity[si] {
+                            chunk.batches3d_opacity.push(batch);
+                        } else {
+                            chunk.batches3d.push(batch);
+                        }
                     }
-                    chunk.batches3d.push(batch);
                 }
             }
         }

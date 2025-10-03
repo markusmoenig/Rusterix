@@ -10,6 +10,7 @@ pub struct Chunk {
 
     // Geometry
     pub batches2d: Vec<Batch2D>,
+    pub batches3d_opacity: Vec<Batch3D>,
     pub batches3d: Vec<Batch3D>,
 
     // Terrain
@@ -22,6 +23,9 @@ pub struct Chunk {
 
     /// The list of shaders for the Batches
     pub shaders: Vec<Program>,
+
+    /// The list of shaders which have opacity
+    pub shaders_with_opacity: Vec<bool>,
 }
 
 impl Chunk {
@@ -33,12 +37,14 @@ impl Chunk {
             size,
             bbox,
             batches2d: vec![],
+            batches3d_opacity: vec![],
             batches3d: vec![],
             terrain_batch2d: None,
             terrain_batch3d: None,
             terrain_texture: None,
             lights: vec![],
             shaders: vec![],
+            shaders_with_opacity: vec![],
         }
     }
 
@@ -64,6 +70,8 @@ impl Chunk {
         };
 
         let index = self.shaders.len();
+        self.shaders_with_opacity
+            .push(rs.context.program.shader_supports_opacity());
         self.shaders.push(rs.context.program.clone());
 
         Some(index)

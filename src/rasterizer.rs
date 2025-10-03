@@ -273,7 +273,7 @@ impl Rasterizer {
         let tile_buffers: Vec<Vec<u8>> = tiles
             .par_iter()
             .map(|tile| {
-                // Local tile buffer, fill with background color if needed
+                // Local tile color buffer
                 let mut buffer = vec![0; tile.width * tile.height * 4];
                 if let Some(background_color) = &self.background_color {
                     for chunk in buffer.chunks_exact_mut(4) {
@@ -281,7 +281,13 @@ impl Rasterizer {
                     }
                 }
 
+                // Local opacity color buffer
+                let mut buffer_opacity = vec![0; tile.width * tile.height * 4];
+
                 let mut z_buffer = vec![1.0_f32; tile.width * tile.height];
+                let mut z_buffer_opacity = vec![1.0_f32; tile.width * tile.height];
+
+                let mut surface_id: Vec<Option<u32>> = vec![None; tile.width * tile.height];
 
                 if !self.render_mode.ignore_background_shader {
                     if let Some(shader) = &scene.background {
@@ -306,10 +312,25 @@ impl Rasterizer {
                 if self.render_mode.supports3d() {
                     // Chunks
                     for chunk in scene.chunks.values() {
+                        // Opacity pass
+                        for batch3d in &chunk.batches3d_opacity {
+                            self.d3_rasterize_opacity(
+                                &mut buffer_opacity,
+                                &mut z_buffer_opacity,
+                                &mut surface_id,
+                                tile,
+                                batch3d,
+                                scene,
+                                assets,
+                                Some(chunk),
+                                &mut execution,
+                            );
+                        }
                         for batch3d in &chunk.batches3d {
                             self.d3_rasterize(
                                 &mut buffer,
                                 &mut z_buffer,
+                                &surface_id,
                                 tile,
                                 batch3d,
                                 scene,
@@ -323,6 +344,7 @@ impl Rasterizer {
                             self.d3_rasterize(
                                 &mut buffer,
                                 &mut z_buffer,
+                                &surface_id,
                                 tile,
                                 terrain_chunk,
                                 scene,
@@ -339,6 +361,7 @@ impl Rasterizer {
                         self.d3_rasterize(
                             &mut buffer,
                             &mut z_buffer,
+                            &surface_id,
                             tile,
                             batch,
                             scene,
@@ -354,6 +377,7 @@ impl Rasterizer {
                         self.d3_rasterize(
                             &mut buffer,
                             &mut z_buffer,
+                            &surface_id,
                             tile,
                             batch,
                             scene,
@@ -369,6 +393,7 @@ impl Rasterizer {
                         self.d3_rasterize(
                             &mut buffer,
                             &mut z_buffer,
+                            &surface_id,
                             tile,
                             batch,
                             scene,
@@ -380,62 +405,97 @@ impl Rasterizer {
                     }
 
                     // Call post-processing for missed geometry hits
-                    if !self.render_miss.is_empty() || self.brush_preview.is_some() {
-                        for ty in 0..tile.height {
-                            for tx in 0..tile.width {
-                                let uv = Vec2::new(
-                                    (tile.x + tx) as f32 / self.width,
-                                    (tile.y + ty) as f32 / self.height,
-                                );
-                                let z_idx = ty * tile.width + tx;
-                                if z_buffer[z_idx] == 1.0 {
-                                    let mut color = Vec4::new(0.0, 0.0, 0.0, 1.0);
-                                    let ray =
-                                        self.screen_ray((tile.x + tx) as f32, (tile.y + ty) as f32);
-                                    for node in &self.render_miss {
-                                        self.render_graph.nodes[*node as usize].render_miss_d3(
-                                            &mut color,
-                                            &self.camera_pos,
-                                            &ray,
-                                            &uv,
-                                            self.hour,
-                                        );
-                                    }
+                    //if !self.render_miss.is_empty() || self.brush_preview.is_some() {
+                    for ty in 0..tile.height {
+                        for tx in 0..tile.width {
+                            let uv = Vec2::new(
+                                (tile.x + tx) as f32 / self.width,
+                                (tile.y + ty) as f32 / self.height,
+                            );
 
-                                    // Brush preview
-                                    if let Some(brush_preview) = &self.brush_preview {
-                                        if ray.dir.y.abs() > 1e-5 {
-                                            // Intersect with y=0 plane
-                                            let t = -ray.origin.y / ray.dir.y;
-                                            if t > 0.0 {
-                                                let world = ray.origin + ray.dir * t;
-                                                let dist =
-                                                    (world - brush_preview.position).magnitude();
-                                                if dist < brush_preview.radius {
-                                                    let normalized = dist / brush_preview.radius;
-                                                    let falloff =
-                                                        brush_preview.falloff.clamp(0.001, 1.0);
-                                                    let fade = ((1.0 - normalized) / falloff)
-                                                        .clamp(0.0, 1.0);
+                            let idx = (ty * tile.width + tx) * 4;
+                            let z_idx = ty * tile.width + tx;
 
-                                                    let blend = 0.2 + 0.6 * fade;
+                            // If nothing was hit
+                            if z_buffer[z_idx] == 1.0 {
+                                let mut color = Vec4::new(0.0, 0.0, 0.0, 1.0);
+                                let ray =
+                                    self.screen_ray((tile.x + tx) as f32, (tile.y + ty) as f32);
+                                for node in &self.render_miss {
+                                    self.render_graph.nodes[*node as usize].render_miss_d3(
+                                        &mut color,
+                                        &self.camera_pos,
+                                        &ray,
+                                        &uv,
+                                        self.hour,
+                                    );
+                                }
 
-                                                    for i in 0..3 {
-                                                        color[i] = (color[i] * (1.0 - blend)
-                                                            + blend)
-                                                            .min(1.0);
-                                                    }
+                                // Brush preview
+                                if let Some(brush_preview) = &self.brush_preview {
+                                    if ray.dir.y.abs() > 1e-5 {
+                                        // Intersect with y=0 plane
+                                        let t = -ray.origin.y / ray.dir.y;
+                                        if t > 0.0 {
+                                            let world = ray.origin + ray.dir * t;
+                                            let dist = (world - brush_preview.position).magnitude();
+                                            if dist < brush_preview.radius {
+                                                let normalized = dist / brush_preview.radius;
+                                                let falloff =
+                                                    brush_preview.falloff.clamp(0.001, 1.0);
+                                                let fade =
+                                                    ((1.0 - normalized) / falloff).clamp(0.0, 1.0);
+
+                                                let blend = 0.2 + 0.6 * fade;
+
+                                                for i in 0..3 {
+                                                    color[i] =
+                                                        (color[i] * (1.0 - blend) + blend).min(1.0);
                                                 }
                                             }
                                         }
                                     }
-
-                                    let idx = (ty * tile.width + tx) * 4;
-                                    buffer[idx..idx + 4].copy_from_slice(&vec4_to_pixel(&color));
                                 }
+
+                                buffer[idx..idx + 4].copy_from_slice(&vec4_to_pixel(&color));
+                            }
+
+                            // Blend Opacity
+                            if z_buffer_opacity[z_idx] < 1.0
+                                && z_buffer[z_idx] > z_buffer_opacity[z_idx]
+                            {
+                                // Source: opacity/color from the opacity pass
+                                let src_r = buffer_opacity[idx] as f32;
+                                let src_g = buffer_opacity[idx + 1] as f32;
+                                let src_b = buffer_opacity[idx + 2] as f32;
+                                let src_a = buffer_opacity[idx + 3] as f32 / 255.0;
+
+                                // Destination: current color buffer (opaque + anything drawn so far)
+                                let dst_r = buffer[idx] as f32;
+                                let dst_g = buffer[idx + 1] as f32;
+                                let dst_b = buffer[idx + 2] as f32;
+                                let dst_a = buffer[idx + 3] as f32 / 255.0;
+
+                                let inv_a = 1.0 - src_a;
+
+                                // Standard src-over blending: out = src + dst * (1 - src_a)
+                                let out_r = src_r * src_a + dst_r * inv_a;
+                                let out_g = src_g * src_a + dst_g * inv_a;
+                                let out_b = src_b * src_a + dst_b * inv_a;
+                                let out_a = if !self.preserve_transparency {
+                                    1.0
+                                } else {
+                                    (src_a + dst_a * inv_a).clamp(0.0, 1.0)
+                                };
+
+                                buffer[idx] = out_r.clamp(0.0, 255.0) as u8;
+                                buffer[idx + 1] = out_g.clamp(0.0, 255.0) as u8;
+                                buffer[idx + 2] = out_b.clamp(0.0, 255.0) as u8;
+                                buffer[idx + 3] = (out_a * 255.0).clamp(0.0, 255.0) as u8;
                             }
                         }
                     }
+                    //}
                 }
 
                 if self.render_mode.supports2d() {
@@ -897,6 +957,7 @@ impl Rasterizer {
         &self,
         buffer: &mut [u8],
         z_buffer: &mut [f32],
+        surface_id: &[Option<u32>],
         tile: &TileRect,
         batch: &Batch3D,
         scene: &Scene,
@@ -912,9 +973,6 @@ impl Rasterizer {
                 && bbox.y < (tile.y + tile.height) as f32
                 && (bbox.y + bbox.height) > tile.y as f32
             {
-                // match batch.mode {
-                //     PrimitiveMode::Triangles => {
-                // Process each triangle in the batch
                 for (triangle_index, edges) in batch.edges.iter().enumerate() {
                     if !edges.visible {
                         continue;
@@ -964,9 +1022,18 @@ impl Rasterizer {
                                         PixelSource::Pixel(col) => *col,
                                         _ => [0, 0, 0, 255],
                                     };
-                                    let idx = ((ty - tile.y) * tile.width + (tx - tile.x)) * 4;
+                                    let idx: usize =
+                                        ((ty - tile.y) * tile.width + (tx - tile.x)) * 4;
                                     buffer[idx..idx + 4].copy_from_slice(&texel);
 
+                                    continue;
+                                }
+
+                                // If the surface_id of the batch is the same as the opacity surface_id it means that this is
+                                // wall geometry behind the opacity batch, skip it
+                                let idx: usize = (ty - tile.y) * tile.width + (tx - tile.x);
+                                if surface_id[idx].is_some() && surface_id[idx] == batch.profile_id
+                                {
                                     continue;
                                 }
 
@@ -1266,64 +1333,277 @@ impl Rasterizer {
                         }
                     }
                 }
-                /*}
-                    PrimitiveMode::Lines => {
-                        for &(i0, i1, _) in batch.indices.iter() {
-                            let p0 = batch.projected_vertices[i0];
-                            let p1 = batch.projected_vertices[i1];
+            }
+        }
+    }
 
-                            self.rasterize_line_bresenham(
-                                &[p0[0], p0[1]],
-                                &[p1[0], p1[1]],
-                                &mut buffer[..],
-                                tile,
-                                &if let PixelSource::Pixel(color) = &batch.source {
-                                    *color
-                                } else {
-                                    crate::WHITE
-                                },
-                            );
-                        }
-                    }
-                    PrimitiveMode::LineStrip => {
-                        for i in 0..(batch.projected_vertices.len() - 1) {
-                            let p0 = batch.projected_vertices[i];
-                            let p1 = batch.projected_vertices[i + 1];
-
-                            self.rasterize_line_bresenham(
-                                &[p0[0], p0[1]],
-                                &[p1[0], p1[1]],
-                                &mut buffer[..],
-                                tile,
-                                &if let PixelSource::Pixel(color) = &batch.source {
-                                    *color
-                                } else {
-                                    crate::WHITE
-                                },
-                            );
-                        }
+    /// Rasterizes a 3D opacity batch
+    #[inline(always)]
+    #[allow(clippy::too_many_arguments)]
+    fn d3_rasterize_opacity(
+        &self,
+        buffer: &mut [u8],
+        z_buffer: &mut [f32],
+        surface_id: &mut [Option<u32>],
+        tile: &TileRect,
+        batch: &Batch3D,
+        scene: &Scene,
+        assets: &Assets,
+        chunk: Option<&Chunk>,
+        execution: &mut Execution,
+    ) {
+        // Bounding box check for the tile with the batch bbox
+        if let Some(bbox) = batch.bounding_box {
+            if bbox.x < (tile.x + tile.width) as f32
+                && (bbox.x + bbox.width) > tile.x as f32
+                && bbox.y < (tile.y + tile.height) as f32
+                && (bbox.y + bbox.height) > tile.y as f32
+            {
+                for (triangle_index, edges) in batch.edges.iter().enumerate() {
+                    if !edges.visible {
+                        continue;
                     }
 
-                    PrimitiveMode::LineLoop => {
-                        for i in 0..batch.projected_vertices.len() {
-                            let p0 = batch.projected_vertices[i];
-                            let p1 =
-                                batch.projected_vertices[(i + 1) % batch.projected_vertices.len()];
+                    let (i0, i1, i2) = batch.clipped_indices[triangle_index];
+                    let v0 = batch.projected_vertices[i0];
+                    let v1 = batch.projected_vertices[i1];
+                    let v2 = batch.projected_vertices[i2];
+                    let uv0 = batch.clipped_uvs[i0];
+                    let uv1 = batch.clipped_uvs[i1];
+                    let uv2 = batch.clipped_uvs[i2];
 
-                            self.rasterize_line_bresenham(
-                                &[p0[0], p0[1]],
-                                &[p1[0], p1[1]],
-                                &mut buffer[..],
-                                tile,
-                                &if let PixelSource::Pixel(color) = &batch.source {
-                                    *color
-                                } else {
-                                    crate::WHITE
-                                },
-                            );
+                    // Compute bounding box of the triangle
+                    let (min_xf, max_xf) = {
+                        let ax = v0[0];
+                        let bx = v1[0];
+                        let cx = v2[0];
+                        let minx = ax.min(bx.min(cx));
+                        let maxx = ax.max(bx.max(cx));
+                        (minx, maxx)
+                    };
+                    let (min_yf, max_yf) = {
+                        let ay = v0[1];
+                        let by = v1[1];
+                        let cy = v2[1];
+                        let miny = ay.min(by.min(cy));
+                        let maxy = ay.max(by.max(cy));
+                        (miny, maxy)
+                    };
+                    let min_x = min_xf.floor().max(tile.x as f32) as usize;
+                    let max_x = max_xf.ceil().min((tile.x + tile.width) as f32) as usize;
+                    let min_y = min_yf.floor().max(tile.y as f32) as usize;
+                    let max_y = max_yf.ceil().min((tile.y + tile.height) as f32) as usize;
+
+                    // Rasterize the triangle within its bounding box
+                    for ty in min_y..max_y {
+                        for tx in min_x..max_x {
+                            let p = [tx as f32 + 0.5, ty as f32 + 0.5];
+
+                            // Evaluate the edges
+                            if edges.evaluate(p) {
+                                // Interpolate barycentric coordinates
+                                let [alpha, beta, gamma] =
+                                    self.barycentric_weights_3d(&v0, &v1, &v2, &p);
+
+                                let one_over_z =
+                                    1.0 / v0[2] * alpha + 1.0 / v1[2] * beta + 1.0 / v2[2] * gamma;
+                                let z = 1.0 / one_over_z;
+
+                                let zidx = (ty - tile.y) * tile.width + (tx - tile.x);
+
+                                if z < z_buffer[zidx] {
+                                    // Perform the interpolation of all U/w and V/w values using barycentric weights and a factor of 1/w
+                                    let mut interpolated_u = (uv0[0] / v0[3]) * alpha
+                                        + (uv1[0] / v1[3]) * beta
+                                        + (uv2[0] / v2[3]) * gamma;
+                                    let mut interpolated_v = (uv0[1] / v0[3]) * alpha
+                                        + (uv1[1] / v1[3]) * beta
+                                        + (uv2[1] / v2[3]) * gamma;
+
+                                    // Interpolate reciprocal depth
+                                    let interpolated_reciprocal_w = (1.0 / v0[3]) * alpha
+                                        + (1.0 / v1[3]) * beta
+                                        + (1.0 / v2[3]) * gamma;
+
+                                    // Now we can divide back both interpolated values by 1/w
+                                    interpolated_u /= interpolated_reciprocal_w;
+                                    interpolated_v /= interpolated_reciprocal_w;
+
+                                    // Get the screen coordinates of the hitpoint
+                                    let world = self.screen_to_world(p[0], p[1], z);
+                                    let world_2d = Vec2::new(world.x, world.z);
+
+                                    let (mut texel, _is_terrain) = match batch.source {
+                                        PixelSource::StaticTileIndex(index) => {
+                                            let textile = &assets.tile_list[index as usize];
+                                            let index =
+                                                scene.animation_frame % textile.textures.len();
+                                            (
+                                                textile.textures[index].sample(
+                                                    interpolated_u,
+                                                    interpolated_v,
+                                                    self.sample_mode,
+                                                    batch.repeat_mode,
+                                                ),
+                                                false,
+                                            )
+                                        }
+                                        PixelSource::DynamicTileIndex(index) => {
+                                            let textile = &scene.dynamic_textures[index as usize];
+                                            let index =
+                                                scene.animation_frame % textile.textures.len();
+                                            (
+                                                textile.textures[index].sample(
+                                                    interpolated_u,
+                                                    interpolated_v,
+                                                    self.sample_mode,
+                                                    batch.repeat_mode,
+                                                ),
+                                                false,
+                                            )
+                                        }
+                                        PixelSource::Pixel(col) => (col, false),
+                                        PixelSource::EntityTile(id, index) => {
+                                            if let Some(entity_sequences) =
+                                                assets.entity_tiles.get(&id)
+                                            {
+                                                if let Some(textile) =
+                                                    entity_sequences.get_index(index as usize)
+                                                {
+                                                    let index = scene.animation_frame
+                                                        % textile.1.textures.len();
+                                                    (
+                                                        textile.1.textures[index].sample(
+                                                            interpolated_u,
+                                                            interpolated_v,
+                                                            self.sample_mode,
+                                                            batch.repeat_mode,
+                                                        ),
+                                                        false,
+                                                    )
+                                                } else {
+                                                    ([0, 0, 0, 0], false)
+                                                }
+                                            } else {
+                                                ([0, 0, 0, 0], false)
+                                            }
+                                        }
+                                        PixelSource::ItemTile(id, index) => {
+                                            if let Some(item_sequences) = assets.item_tiles.get(&id)
+                                            {
+                                                if let Some(textile) =
+                                                    item_sequences.get_index(index as usize)
+                                                {
+                                                    let index = scene.animation_frame
+                                                        % textile.1.textures.len();
+                                                    (
+                                                        textile.1.textures[index].sample(
+                                                            interpolated_u,
+                                                            interpolated_v,
+                                                            self.sample_mode,
+                                                            batch.repeat_mode,
+                                                        ),
+                                                        false,
+                                                    )
+                                                } else {
+                                                    ([0, 0, 0, 0], false)
+                                                }
+                                            } else {
+                                                ([0, 0, 0, 0], false)
+                                            }
+                                        }
+                                        PixelSource::Terrain => {
+                                            if let Some(chunk) = chunk {
+                                                let mut texel = chunk
+                                                    .sample_terrain_texture(world_2d, Vec2::one());
+                                                if let Some(brush_preview) = &self.brush_preview {
+                                                    let dist = (world - brush_preview.position)
+                                                        .magnitude();
+
+                                                    if dist < brush_preview.radius {
+                                                        let normalized =
+                                                            dist / brush_preview.radius;
+                                                        let falloff =
+                                                            brush_preview.falloff.clamp(0.001, 1.0); // avoid divide-by-zero
+                                                        let fade = ((1.0 - normalized) / falloff)
+                                                            .clamp(0.0, 1.0);
+
+                                                        let blend = 0.2 + 0.6 * fade; // blend between 20% and 80% white
+
+                                                        for channel in &mut texel[..3] {
+                                                            *channel = ((*channel as f32)
+                                                                * (1.0 - blend)
+                                                                + 255.0 * blend)
+                                                                .min(255.0)
+                                                                as u8;
+                                                        }
+                                                    }
+                                                }
+                                                (texel, true)
+                                            } else {
+                                                ([255, 0, 0, 255], false)
+                                            }
+                                        }
+                                        _ => ([0, 0, 0, 255], false),
+                                    };
+
+                                    let mut color: Vec4<f32> = pixel_to_vec4(&texel);
+                                    color.x = srgb_to_linear_fast(color.x);
+                                    color.y = srgb_to_linear_fast(color.y);
+                                    color.z = srgb_to_linear_fast(color.z);
+
+                                    execution.color.x = color.x;
+                                    execution.color.y = color.y;
+                                    execution.color.z = color.z;
+
+                                    // Execute the batch shader (if any)
+                                    if let Some(shader_index) = batch.shader {
+                                        let program = if let Some(chunk) = chunk {
+                                            chunk.shaders.get(shader_index)
+                                        } else {
+                                            scene.shaders.get(shader_index)
+                                        };
+
+                                        if let Some(program) = program {
+                                            if let Some(sh) = program.shade_index {
+                                                execution.normal = Vec3::zero();
+                                                execution.uv.x = interpolated_u / 4.0;
+                                                execution.uv.y = interpolated_v / 4.0;
+
+                                                execution.hitpoint = world;
+                                                execution.time.x = self.time;
+                                                execution.time.y = self.time;
+                                                execution.time.z = self.time;
+
+                                                execution.roughness.x = 0.5;
+                                                execution.metallic.x = 0.0;
+
+                                                execution.opacity.x = 1.0;
+
+                                                execution.reset(program.globals);
+                                                execution.shade(sh, program, &assets.palette);
+                                            }
+                                        }
+                                    }
+
+                                    color.x = linear_to_srgb_fast(execution.color.x);
+                                    color.y = linear_to_srgb_fast(execution.color.y);
+                                    color.z = linear_to_srgb_fast(execution.color.z);
+                                    color.w = execution.opacity.x;
+                                    texel = vec4_to_pixel(&color);
+
+                                    // ---
+
+                                    let idx = ((ty - tile.y) * tile.width + (tx - tile.x)) * 4;
+                                    buffer[idx..idx + 4].copy_from_slice(&texel);
+                                    z_buffer[zidx] = z;
+
+                                    surface_id[zidx] = batch.profile_id;
+                                }
+                            }
                         }
                     }
-                }*/
+                }
             }
         }
     }

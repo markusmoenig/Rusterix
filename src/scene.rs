@@ -42,6 +42,9 @@ pub struct Scene {
     /// The list of shaders for the Batches
     pub shaders: Vec<Program>,
 
+    /// The list of shaders which have opacity
+    pub shaders_with_opacity: Vec<bool>,
+
     /// The build chunks
     pub chunks: FxHashMap<(i32, i32), Chunk>,
 }
@@ -69,7 +72,9 @@ impl Scene {
             animation_frame: 1,
 
             mapmini: MapMini::default(),
+
             shaders: vec![],
+            shaders_with_opacity: vec![],
 
             chunks: FxHashMap::default(),
         }
@@ -91,7 +96,9 @@ impl Scene {
             animation_frame: 1,
 
             mapmini: MapMini::default(),
+
             shaders: vec![],
+            shaders_with_opacity: vec![],
 
             chunks: FxHashMap::default(),
         }
@@ -119,6 +126,8 @@ impl Scene {
         };
 
         let index = self.shaders.len();
+        self.shaders_with_opacity
+            .push(rs.context.program.shader_supports_opacity());
         self.shaders.push(rs.context.program.clone());
 
         Some(index)
@@ -158,6 +167,9 @@ impl Scene {
                 terrain2d.project(projection_matrix_2d);
             }
 
+            for chunk3d in &mut chunk.1.batches3d_opacity {
+                chunk3d.clip_and_project(view_matrix_3d, projection_matrix_3d, width, height);
+            }
             for chunk3d in &mut chunk.1.batches3d {
                 chunk3d.clip_and_project(view_matrix_3d, projection_matrix_3d, width, height);
             }
@@ -207,10 +219,21 @@ impl Scene {
 
         // Evaluate chunks
         for (_coord, chunk) in self.chunks.iter() {
-            for batch in &chunk.batches3d {
+            for batch in &chunk.batches3d_opacity {
                 if let Some(hit) = batch.intersect(&ray, true) {
                     if hit.t < hitinfo.t {
                         hitinfo = hit;
+                    }
+                }
+            }
+
+            for batch in &chunk.batches3d {
+                if let Some(hit) = batch.intersect(&ray, true) {
+                    if hit.t < hitinfo.t {
+                        if hit.profile_id.is_some() && hit.profile_id == hitinfo.profile_id {
+                        } else {
+                            hitinfo = hit;
+                        }
                     }
                 }
             }

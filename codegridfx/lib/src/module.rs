@@ -948,12 +948,12 @@ impl Module {
     }
 
     /// Build shader code: ceiling
-    pub fn build_ceiling_shader(&self) -> String {
+    pub fn build_custom_shader(&self, name: &str) -> String {
         let mut out = String::new();
 
         if self.module_type.is_shader() {
             for r in self.routines.values() {
-                if r.name == "ceiling_shader" {
+                if r.name == name {
                     r.build_shader(&mut out, 0);
                     break;
                 }
