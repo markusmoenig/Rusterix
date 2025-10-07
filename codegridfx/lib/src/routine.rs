@@ -3,6 +3,14 @@ use crate::{
 };
 use theframework::prelude::*;
 
+fn default_scale() -> f32 {
+    1.0
+}
+
+fn default_rotation() -> f32 {
+    0.0
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Routine {
     pub id: Uuid,
@@ -14,6 +22,15 @@ pub struct Routine {
 
     #[serde(default)]
     pub pixelization: i32,
+
+    #[serde(default = "default_scale")]
+    pub scale: f32,
+
+    #[serde(default = "default_rotation")]
+    pub rotation: f32,
+
+    #[serde(default)]
+    pub color_steps: i32,
 
     pub screen_width: u32,
 
@@ -37,6 +54,9 @@ impl Routine {
             buffer: TheRGBABuffer::new(TheDim::sized(100, 100)),
             grid,
             pixelization: 0,
+            color_steps: 0,
+            scale: default_scale(),
+            rotation: default_rotation(),
         }
     }
 
@@ -368,14 +388,20 @@ impl Routine {
         *out += "fn shade() {\n";
         indent += 4;
 
+        if self.scale != 1.0 {
+            *out += &format!("    uv /= {};\n", self.scale);
+        }
+
+        if self.rotation != 0.0 {
+            *out += &format!("    uv = rotate2d(uv, {});\n", self.rotation);
+        }
+
         if self.pixelization > 0 {
             *out += &format!(
                 "    uv = floor(uv * {}) / {};\n",
                 self.pixelization, self.pixelization
             );
         }
-        //let color_steps = 16.0;
-        //color = floor(color * color_steps) / color_steps;
 
         let reserved_vars = vec![
             "color",
@@ -453,6 +479,13 @@ impl Routine {
 
             row_code += ";";
             *out += &format!("{:ind$}{}\n", "", row_code);
+        }
+
+        if self.color_steps > 0 {
+            *out += &format!(
+                "    color = floor(color * {}) / {};\n",
+                self.color_steps, self.color_steps
+            );
         }
 
         *out += "}\n";

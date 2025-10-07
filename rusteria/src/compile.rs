@@ -313,6 +313,14 @@ impl Visitor for CompileVisitor {
                 op: NodeOp::Sample,
             },
         );
+        functions.insert(
+            "sample_normal".to_string(),
+            ASTFunction {
+                name: "sample_normal".to_string(),
+                arguments: 2,
+                op: NodeOp::SampleNormal,
+            },
+        );
 
         functions.insert(
             "alloc".to_string(),
@@ -475,6 +483,11 @@ impl Visitor for CompileVisitor {
             Some(Target::Builtin {
                 load: NodeOp::UV,
                 store: NodeOp::SetUV,
+            })
+        } else if name == "normal" {
+            Some(Target::Builtin {
+                load: NodeOp::Normal,
+                store: NodeOp::SetNormal,
             })
         } else if name == "roughness" {
             Some(Target::Builtin {
@@ -804,7 +817,7 @@ impl Visitor for CompileVisitor {
         let callee = callee.accept(self, ctx)?;
 
         if let ASTValue::Function(name, _func_args, _returns) = callee {
-            if name == "sample" {
+            if name == "sample" || name == "sample_normal" {
                 if 2 == args.len() {
                     _ = args[0].accept(self, ctx)?;
 
@@ -830,7 +843,12 @@ impl Visitor for CompileVisitor {
                         }
                     }
 
-                    ctx.emit(NodeOp::Sample);
+                    if name == "sample" {
+                        ctx.emit(NodeOp::Sample);
+                    } else {
+                        ctx.emit(NodeOp::SampleNormal);
+                    }
+
                     if !swizzle.is_empty() {
                         ctx.emit(NodeOp::GetComponents(swizzle.to_vec()));
                     }

@@ -139,4 +139,66 @@ impl TexStorage {
 
         (x as usize, y as usize)
     }
+
+    /// Get pixel at integer coordinates with wrap-around (tiled addressing).
+    #[inline]
+    fn get_pixel_wrapped(&self, x: i32, y: i32) -> Value {
+        let xx = self.rem_i32(x, self.width as i32) as usize;
+        let yy = self.rem_i32(y, self.height as i32) as usize;
+        // Safe because we wrap into bounds
+        self.data[yy * self.width + xx]
+    }
+
+    /// Perceptual luminance from RGB Value in [0,1].
+    #[inline]
+    fn luminance(v: Value) -> f32 {
+        // Use Rec. 709 weights
+        0.2126 * v.x + 0.7152 * v.y + 0.0722 * v.z
+    }
+
+    /// Generate a tangent-space normal map from this texture treated as a height field.
+    /// The result is tile-safe (wraps neighbors) and encoded as RGB in [0,1], Z-up.
+    /// `strength` scales the slope sensitivity (try 1.0..5.0).
+    pub fn to_normal_map(&self, strength: f32) -> Self {
+        let mut out = TexStorage::new(self.width, self.height);
+
+        // Parallelize per row
+        out.data
+            .par_chunks_mut(self.width)
+            .enumerate()
+            .for_each(|(y, row)| {
+                let y_i = y as i32;
+                for x in 0..self.width {
+                    let x_i = x as i32;
+
+                    // Central differences on luminance with wrap-around
+                    let h_l = Self::luminance(self.get_pixel_wrapped(x_i - 1, y_i));
+                    let h_r = Self::luminance(self.get_pixel_wrapped(x_i + 1, y_i));
+                    let h_u = Self::luminance(self.get_pixel_wrapped(x_i, y_i - 1));
+                    let h_d = Self::luminance(self.get_pixel_wrapped(x_i, y_i + 1));
+
+                    let dx = (h_r - h_l) * 0.5 * strength; // dH/du
+                    let dy = (h_d - h_u) * 0.5 * strength; // dH/dv
+
+                    // Tangent-space normal, Z-up. Negate to follow standard convention.
+                    let mut n = Value::new(-dx, -dy, 1.0);
+                    let len = (n.x * n.x + n.y * n.y + n.z * n.z).sqrt();
+                    if len > 0.0 {
+                        n = Value::new(n.x / len, n.y / len, n.z / len);
+                    }
+
+                    // Pack to [0,1]
+                    row[x] = Value::new(0.5 * (n.x + 1.0), 0.5 * (n.y + 1.0), 0.5 * (n.z + 1.0));
+                }
+            });
+
+        out
+    }
+
+    /// Convenience: generate and save a normal map PNG derived from this texture.
+    /// Returns the image::ImageResult from saving.
+    pub fn save_normal_map_png(&self, path: &PathBuf, strength: f32) -> image::ImageResult<()> {
+        let nm = self.to_normal_map(strength);
+        nm.save_png(path)
+    }
 }

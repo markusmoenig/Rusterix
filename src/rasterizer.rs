@@ -1183,7 +1183,7 @@ impl Rasterizer {
                                         _ => ([0, 0, 0, 255], false),
                                     };
 
-                                    let normal = if !batch.normals.is_empty() {
+                                    let mut normal = if !batch.normals.is_empty() {
                                         let n0 = batch.clipped_normals[i0];
                                         let n1 = batch.clipped_normals[i1];
                                         let n2 = batch.clipped_normals[i2];
@@ -1210,6 +1210,11 @@ impl Rasterizer {
                                     execution.color.y = color.y;
                                     execution.color.z = color.z;
 
+                                    execution.normal = normal;
+
+                                    execution.roughness.x = 0.5;
+                                    execution.metallic.x = 0.0;
+
                                     // Execute the batch shader (if any)
                                     if let Some(shader_index) = batch.shader {
                                         let program = if let Some(chunk) = chunk {
@@ -1220,7 +1225,6 @@ impl Rasterizer {
 
                                         if let Some(program) = program {
                                             if let Some(sh) = program.shade_index {
-                                                execution.normal = normal;
                                                 execution.uv.x = interpolated_u / 4.0;
                                                 execution.uv.y = interpolated_v / 4.0;
 
@@ -1228,9 +1232,6 @@ impl Rasterizer {
                                                 execution.time.x = self.time;
                                                 execution.time.y = self.time;
                                                 execution.time.z = self.time;
-
-                                                execution.roughness.x = 0.5;
-                                                execution.metallic.x = 0.0;
 
                                                 execution.opacity.x = 1.0;
 
@@ -1241,6 +1242,7 @@ impl Rasterizer {
                                     }
 
                                     let mat_base = execution.color;
+                                    normal = execution.normal.normalized();
                                     let mat_roughness = execution.roughness.x.clamp(0.0, 1.0);
                                     let mat_metallic = execution.metallic.x.clamp(0.0, 1.0);
                                     let mat_emissive = execution.emissive;
@@ -1811,13 +1813,20 @@ impl Rasterizer {
     }
 
     #[inline(always)]
+    fn pow32_fast(&self, x: f32, y: f32) -> f32 {
+        if x <= 0.0 {
+            return 0.0;
+        }
+        // approximate pow(x, y) using exp2/log2
+        (y * x.log2()).exp2()
+    }
+
+    #[inline(always)]
     fn blinn_phong_spec(&self, n: Vec3<f32>, l: Vec3<f32>, v: Vec3<f32>, shininess: f32) -> f32 {
         let h = (l + v).normalized();
         let n_dot_h = n.dot(h).max(0.0);
-        // Use your fast pow approx to keep it cheap
-        // pow32_fast approximates x^32; generalize with exp/log or use n^k fit:
-        // We'll keep a standard powf for clarity; you can plug your approx if desired.
-        n_dot_h.powf(shininess)
+        // n_dot_h.powf(shininess)
+        self.pow32_fast(n_dot_h, shininess)
     }
 
     #[inline(always)]
@@ -1860,6 +1869,64 @@ impl Rasterizer {
 
         // Lighted color
         (diffuse + specular) * light_radiance + emissive
+    }
+
+    #[inline(always)]
+    fn _shade_brdf(
+        &self,
+        base: Vec3<f32>, // linear
+        rough: f32,      // 0..1
+        metal: f32,      // 0..1
+        emissive: Vec3<f32>,
+        n_in: Vec3<f32>,
+        v_in: Vec3<f32>,
+        l_in: Vec3<f32>,
+        radiance: Vec3<f32>, // light color/intensity (linear)
+    ) -> Vec3<f32> {
+        let n = n_in.normalized();
+        let v = v_in.normalized();
+        let l = l_in.normalized();
+        let h = (v + l).normalized();
+
+        let ndotl = n.dot(l).max(0.0);
+        let ndotv = n.dot(v).max(0.0);
+        if ndotl <= 0.0 || ndotv <= 0.0 {
+            return emissive;
+        }
+
+        // Fresnel base reflectance
+        let f0 = Vec3::lerp(Vec3::broadcast(0.04), base, metal);
+
+        // GGX params
+        let r = rough.clamp(0.045, 1.0);
+        let a = r * r;
+        let a2 = a * a;
+
+        // d (GGX/Trowbridge-Reitz)
+        let ndoth = n.dot(h).max(0.0);
+        let denom_d = ndoth * ndoth * (a2 - 1.0) + 1.0;
+        let d = a2 / (std::f32::consts::PI * denom_d * denom_d + 1e-7);
+
+        // Smith g (height-correlated Schlick-GGX)
+        let k = (r + 1.0) * (r + 1.0) * 0.125; // (a+1)^2 / 8
+        let gv = ndotv / (ndotv * (1.0 - k) + k + 1e-7);
+        let gl = ndotl / (ndotl * (1.0 - k) + k + 1e-7);
+        let g = gv * gl;
+
+        // Fresnel (Schlick)
+        let x = 1.0 - h.dot(v).max(0.0);
+        let x2 = x * x;
+        let x5 = x2 * x2 * x;
+        let f = f0 + (Vec3::one() - f0) * x5;
+
+        // Specular
+        let spec = (d * g) * f / (4.0 * ndotl * ndotv + 1e-7);
+
+        // Diffuse (Lambert) – metals get little/no diffuse
+        let kd = (Vec3::one() - f) * (1.0 - metal);
+        let diffuse = kd * base * (ndotl / std::f32::consts::PI);
+
+        (diffuse + spec) * radiance + emissive
     }
 }
 

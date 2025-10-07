@@ -68,6 +68,7 @@ impl IdVerifier {
             "log",
             "print",
             "sample",
+            "sample_normal",
             "alloc",
             "iterate",
             "save",

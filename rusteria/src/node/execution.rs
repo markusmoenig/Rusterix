@@ -1,4 +1,4 @@
-use crate::textures::patterns::pattern_safe;
+use crate::textures::patterns::{pattern_normal_safe, pattern_safe};
 use crate::{NodeOp, Program, TexStorage, Value};
 use std::path::PathBuf;
 use theframework::thepalette::ThePalette;
@@ -583,6 +583,9 @@ impl Execution {
                 NodeOp::Normal => {
                     self.stack.push(self.normal);
                 }
+                NodeOp::SetNormal => {
+                    self.normal = self.stack.pop().unwrap().normalized();
+                }
                 NodeOp::Hitpoint => {
                     self.stack.push(self.hitpoint);
                 }
@@ -630,6 +633,22 @@ impl Execution {
                     let a = self.stack.pop().unwrap();
                     if let Some(tex) = pattern_safe(b.x as usize) {
                         self.stack.push(tex.sample(a));
+                    } else {
+                        self.stack.push(Vec3::zero());
+                    }
+                }
+                NodeOp::SampleNormal => {
+                    let b = self.stack.pop().unwrap();
+                    let a = self.stack.pop().unwrap();
+                    if let Some(tex) = pattern_normal_safe(b.x as usize) {
+                        let nm = tex.sample(a);
+                        let nmp = nm * 2.0 - 1.0;
+
+                        // let strength = 1.0; // tweak 0.2..2.0
+                        //self.normal = (self.normal + nmp * strength).normalized();
+
+                        // self.stack.push(self.normal);
+                        self.stack.push(nmp);
                     } else {
                         self.stack.push(Vec3::zero());
                     }
@@ -700,6 +719,21 @@ impl Execution {
                     if let Some(tex) = self.textures.get(a.x as usize) {
                         if let Some(p) = program.strings.get(b.x as usize) {
                             if let Err(err) = tex.save_png(&PathBuf::from(p)) {
+                                println!("{}", err.to_string());
+                            }
+                            let normal = tex.to_normal_map(5.0);
+                            let orig = PathBuf::from(p);
+                            let mut normal_path = orig.clone();
+                            let stem = orig
+                                .file_stem()
+                                .and_then(|s| s.to_str())
+                                .unwrap_or("texture");
+                            if let Some(ext) = orig.extension().and_then(|e| e.to_str()) {
+                                normal_path.set_file_name(format!("{}_normal.{}", stem, ext));
+                            } else {
+                                normal_path.set_file_name(format!("{}_normal", stem));
+                            }
+                            if let Err(err) = normal.save_png(&normal_path) {
                                 println!("{}", err.to_string());
                             }
                         }

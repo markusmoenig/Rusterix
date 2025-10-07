@@ -41,7 +41,7 @@ const FUNCTIONS: [&str; 30] = [
 
 const SHADER_BLOCKS: [&str; 3] = ["Event", "Color = ..", "If .. == .."];
 const SHADER_VALUES: [&str; 4] = ["Boolean", "Palette Color", "Value", "Variable"];
-const SHADER_FUNCTIONS: [&str; 30] = [
+const SHADER_FUNCTIONS: [&str; 31] = [
     "abs",
     "atan",
     "atan2",
@@ -69,6 +69,7 @@ const SHADER_FUNCTIONS: [&str; 30] = [
     "sin",
     "smoothstep",
     "sample",
+    "sample_normal",
     "sqrt",
     "step",
     "tan",
@@ -638,6 +639,57 @@ impl Module {
                             ));
                         }
                     }
+                } else if id.name == "cgfxColorSteps" {
+                    let prev = self.to_json();
+                    if let Some(value) = value.to_i32() {
+                        if let Some(event) = self.get_selected_routine_mut() {
+                            event.color_steps = value;
+
+                            ctx.ui.send(TheEvent::Custom(
+                                TheId::named("ModuleChanged"),
+                                TheValue::Bool(true),
+                            ));
+                            ctx.ui.send(TheEvent::CustomUndo(
+                                TheId::named("ModuleUndo"),
+                                prev,
+                                self.to_json(),
+                            ));
+                        }
+                    }
+                } else if id.name == "cgfxRotation" {
+                    let prev = self.to_json();
+                    if let Some(value) = value.to_f32() {
+                        if let Some(event) = self.get_selected_routine_mut() {
+                            event.rotation = value;
+
+                            ctx.ui.send(TheEvent::Custom(
+                                TheId::named("ModuleChanged"),
+                                TheValue::Bool(true),
+                            ));
+                            ctx.ui.send(TheEvent::CustomUndo(
+                                TheId::named("ModuleUndo"),
+                                prev,
+                                self.to_json(),
+                            ));
+                        }
+                    }
+                } else if id.name == "cgfxScale" {
+                    let prev = self.to_json();
+                    if let Some(value) = value.to_f32() {
+                        if let Some(event) = self.get_selected_routine_mut() {
+                            event.scale = value;
+
+                            ctx.ui.send(TheEvent::Custom(
+                                TheId::named("ModuleChanged"),
+                                TheValue::Bool(true),
+                            ));
+                            ctx.ui.send(TheEvent::CustomUndo(
+                                TheId::named("ModuleUndo"),
+                                prev,
+                                self.to_json(),
+                            ));
+                        }
+                    }
                 } else if id.name.starts_with("cgfx") {
                     let prev = self.to_json();
                     let mut needs_update = true;
@@ -858,9 +910,15 @@ impl Module {
     fn show_event_settings(&mut self, ui: &mut TheUI, ctx: &mut TheContext) {
         let mut name = "".into();
         let mut pixelization = 0;
+        let mut color_steps = 0;
+        let mut rotation = 0.0;
+        let mut scale = 1.0;
         if let Some(r) = self.get_selected_routine_mut() {
             name = r.name.clone();
             pixelization = r.pixelization;
+            rotation = r.rotation;
+            scale = r.scale;
+            color_steps = r.color_steps;
         }
 
         let mut nodeui: TheNodeUI = TheNodeUI::default();
@@ -886,12 +944,42 @@ impl Module {
             );
             nodeui.add_item(item);
 
+            let item = TheNodeUIItem::FloatEditSlider(
+                "cgfxScale".into(),
+                "Scale".into(),
+                "Set the scale for this shader. Scales the UV component.".into(),
+                scale,
+                0.1..=4.0,
+                false,
+            );
+            nodeui.add_item(item);
+
+            let item = TheNodeUIItem::FloatEditSlider(
+                "cgfxRotation".into(),
+                "Rotatation".into(),
+                "Set the rotation for this shader. Rotates the UV component.".into(),
+                rotation,
+                0.0..=360.0,
+                false,
+            );
+            nodeui.add_item(item);
+
             let item = TheNodeUIItem::IntEditSlider(
                 "cgfxPixelization".into(),
                 "Pixelization".into(),
                 "Set the pixelization for this shader. A value of 0 disables pixelization.".into(),
                 pixelization,
-                0..=16,
+                0..=256,
+                false,
+            );
+            nodeui.add_item(item);
+
+            let item = TheNodeUIItem::IntEditSlider(
+                "cgfxColorSteps".into(),
+                "Color Steps".into(),
+                "Set the color steps for this shader. A value of 0 disables color stepping.".into(),
+                color_steps,
+                0..=256,
                 false,
             );
             nodeui.add_item(item);

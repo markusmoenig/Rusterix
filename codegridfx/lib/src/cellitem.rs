@@ -1904,7 +1904,7 @@ impl CellItem {
                 self.form = CellItemForm::LeftRounded;
                 grid.insert(pos, self)
             }
-            Cell::Sample => {
+            Cell::Sample | Cell::SampleNormal => {
                 grid.insert(
                     (pos.0 + 1, pos.1),
                     CellItem::new_dependency(
