@@ -639,6 +639,9 @@ fn build_profile_wall(map: &Map, assets: &Assets, chunk: &mut Chunk, linedef: &L
                                 } else {
                                     chunk.batches3d.push(batch);
                                 }
+                            } else {
+                                batch.source = PixelSource::Pixel(crate::WHITE);
+                                chunk.batches3d.push(batch);
                             }
                             pushed = true;
                         }
@@ -647,6 +650,7 @@ fn build_profile_wall(map: &Map, assets: &Assets, chunk: &mut Chunk, linedef: &L
 
                 if !pushed {
                     let mut batch = Batch3D::new(world_vertices, pindices, uvs)
+                        .repeat_mode(crate::RepeatMode::RepeatXY)
                         .profile_id(linedef.id)
                         .geometry_source(crate::GeometrySource::Sector(sector.id));
                     if let Some(si) = shader_index {
@@ -656,6 +660,9 @@ fn build_profile_wall(map: &Map, assets: &Assets, chunk: &mut Chunk, linedef: &L
                         } else {
                             chunk.batches3d.push(batch);
                         }
+                    } else {
+                        batch.source = PixelSource::Pixel(crate::WHITE);
+                        chunk.batches3d.push(batch);
                     }
                 }
             }

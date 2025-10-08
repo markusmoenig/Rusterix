@@ -77,6 +77,7 @@ const SHADER_FUNCTIONS: [&str; 31] = [
 
 #[derive(Serialize, Deserialize, Debug, Default, PartialEq, Clone, Copy)]
 pub enum ModuleType {
+    Unknown,
     #[default]
     CharacterInstance,
     ItemInstance,

@@ -1209,6 +1209,7 @@ impl Rasterizer {
                                     execution.color.x = color.x;
                                     execution.color.y = color.y;
                                     execution.color.z = color.z;
+                                    execution.opacity.x = 1.0;
 
                                     execution.normal = normal;
 
@@ -1232,8 +1233,6 @@ impl Rasterizer {
                                                 execution.time.x = self.time;
                                                 execution.time.y = self.time;
                                                 execution.time.z = self.time;
-
-                                                execution.opacity.x = 1.0;
 
                                                 execution.reset(program.globals);
                                                 execution.shade(sh, program, &assets.palette);
@@ -1557,6 +1556,7 @@ impl Rasterizer {
                                     execution.color.x = color.x;
                                     execution.color.y = color.y;
                                     execution.color.z = color.z;
+                                    execution.opacity.x = 1.0;
 
                                     // Execute the batch shader (if any)
                                     if let Some(shader_index) = batch.shader {
@@ -1579,8 +1579,6 @@ impl Rasterizer {
 
                                                 execution.roughness.x = 0.5;
                                                 execution.metallic.x = 0.0;
-
-                                                execution.opacity.x = 1.0;
 
                                                 execution.reset(program.globals);
                                                 execution.shade(sh, program, &assets.palette);
