@@ -21,6 +21,9 @@ pub struct Chunk {
     // Lights
     pub lights: Vec<CompiledLight>,
 
+    // Occluded Sectors
+    pub occluded_sectors: Vec<(BBox, f32)>,
+
     /// The list of shaders for the Batches
     pub shaders: Vec<Program>,
 
@@ -43,6 +46,7 @@ impl Chunk {
             terrain_batch3d: None,
             terrain_texture: None,
             lights: vec![],
+            occluded_sectors: vec![],
             shaders: vec![],
             shaders_with_opacity: vec![],
         }
@@ -94,5 +98,15 @@ impl Chunk {
             return texture.get_pixel(px, py);
         }
         [0, 0, 0, 0]
+    }
+
+    /// Returns the sector occlusion at the given position.
+    pub fn get_occlusion(&self, at: Vec2<f32>) -> f32 {
+        for (bbox, occlusion) in &self.occluded_sectors {
+            if bbox.contains(at) {
+                return *occlusion;
+            }
+        }
+        1.0
     }
 }

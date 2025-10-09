@@ -22,6 +22,15 @@ impl ChunkBuilder for D2ChunkBuilder {
         let sectors = map.sorted_sectors_by_area();
         for sector in &sectors {
             let bbox = sector.bounding_box(map);
+
+            // Collect occluded sectors and store them in the chunk
+            let occlusion = sector.properties.get_float_default("occlusion", 1.0);
+            if occlusion < 1.0 {
+                let mut occl_bbox = bbox.clone();
+                occl_bbox.expand(Vec2::new(0.1, 0.1));
+                chunk.occluded_sectors.push((occl_bbox, occlusion));
+            }
+
             if bbox.intersects(&chunk.bbox) && chunk.bbox.contains(bbox.center()) {
                 if let Some(geo) = sector.generate_geometry(map) {
                     let shader_index = chunk.add_shader(&sector.module.build_shader());

@@ -804,7 +804,11 @@ impl Rasterizer {
                                             let mut accumulated_light = [0.0, 0.0, 0.0];
 
                                             if let Some(ambient) = &self.ambient_color {
-                                                let occlusion = self.mapmini.get_occlusion(world);
+                                                let occlusion = if let Some(chunk) = chunk {
+                                                    chunk.get_occlusion(world)
+                                                } else {
+                                                    self.mapmini.get_occlusion(world)
+                                                };
                                                 accumulated_light[0] += ambient.x * occlusion;
                                                 accumulated_light[1] += ambient.y * occlusion;
                                                 accumulated_light[2] += ambient.z * occlusion;
@@ -824,8 +828,11 @@ impl Rasterizer {
                                                     if light.light_type
                                                         == LightType::AmbientDaylight
                                                     {
-                                                        let occlusion =
-                                                            self.mapmini.get_occlusion(world);
+                                                        let occlusion = if let Some(chunk) = chunk {
+                                                            chunk.get_occlusion(world)
+                                                        } else {
+                                                            self.mapmini.get_occlusion(world)
+                                                        };
                                                         light_color[0] *= occlusion;
                                                         light_color[1] *= occlusion;
                                                         light_color[2] *= occlusion;
@@ -1248,7 +1255,11 @@ impl Rasterizer {
 
                                     let mut lit = Vec3::<f32>::zero();
 
-                                    let occlusion = self.mapmini.get_occlusion(world_2d);
+                                    let occlusion = if let Some(chunk) = chunk {
+                                        chunk.get_occlusion(world_2d)
+                                    } else {
+                                        self.mapmini.get_occlusion(world_2d)
+                                    };
                                     // Sky hemisphere + directional sun
                                     if occlusion > 0.0 {
                                         if let Some(sky) = &self.ambient_color {
@@ -1278,9 +1289,9 @@ impl Rasterizer {
                                         }
 
                                         // Apply sector based occlusion
-                                        // lit[0] *= occlusion;
-                                        // lit[1] *= occlusion;
-                                        // lit[2] *= occlusion;
+                                        lit[0] *= occlusion;
+                                        lit[1] *= occlusion;
+                                        lit[2] *= occlusion;
                                     }
 
                                     // Non-terrain: batch ambient + all scene lights
