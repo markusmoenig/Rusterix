@@ -4,7 +4,7 @@ use codegridfx::Module;
 use earcutr::earcut;
 use theframework::prelude::*;
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Sector {
     pub id: u32,
 
@@ -511,3 +511,19 @@ impl Sector {
         Some(result)
     }
 }
+
+impl PartialEq for Sector {
+    fn eq(&self, other: &Self) -> bool {
+        // Compare sectors by their geometry: same set of linedef IDs,
+        // ignoring order (and ignoring duplicate IDs if any).
+        let mut a = self.linedefs.clone();
+        let mut b = other.linedefs.clone();
+        a.sort_unstable();
+        a.dedup();
+        b.sort_unstable();
+        b.dedup();
+        a == b
+    }
+}
+
+impl Eq for Sector {}

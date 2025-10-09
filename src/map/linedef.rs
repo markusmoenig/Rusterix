@@ -1,7 +1,7 @@
 use crate::{BBox, Map, ValueContainer};
 use theframework::prelude::*;
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Linedef {
     pub id: u32,
 
@@ -24,13 +24,6 @@ pub struct Linedef {
 impl Linedef {
     pub fn new(id: u32, start_vertex: u32, end_vertex: u32) -> Self {
         let properties = ValueContainer::default();
-        // properties.set("wall_width", Value::Float(0.0));
-        // properties.set("wall_height", Value::Float(0.0));
-        // properties.set("row1_source", Value::Source(PixelSource::Off));
-        // properties.set("row2_source", Value::Source(PixelSource::Off));
-        // properties.set("row3_source", Value::Source(PixelSource::Off));
-        // properties.set("row4_source", Value::Source(PixelSource::Off));
-        // properties.set("subdivisions", Value::Int(0));
         Self {
             id,
             creator_id: Uuid::new_v4(),
@@ -91,6 +84,14 @@ impl Linedef {
         BBox::new(min, max)
     }
 }
+
+impl PartialEq for Linedef {
+    fn eq(&self, other: &Self) -> bool {
+        (self.start_vertex == other.start_vertex && self.end_vertex == other.end_vertex)
+            || (self.start_vertex == other.end_vertex && self.end_vertex == other.start_vertex)
+    }
+}
+impl Eq for Linedef {}
 
 /// A "compiled" version which is used in MapMini for lighting, navigation etc
 #[derive(Clone)]
