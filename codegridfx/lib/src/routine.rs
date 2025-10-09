@@ -616,6 +616,11 @@ impl Routine {
             "left" => "`value` is the sector name".into(),
             "key_down" => "'key' contains the pressed key string".into(),
             "key_up" => "'key' contains the released key string".into(),
+
+            "shader" | "ceiling_shader" => {
+                "Adjust 'color', 'roughness', 'metallic', 'normal' variables".into()
+            }
+
             _ => "custom event".into(),
         }
     }

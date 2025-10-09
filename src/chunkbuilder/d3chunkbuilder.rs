@@ -1,6 +1,4 @@
-use crate::{
-    Assets, Batch3D, Chunk, ChunkBuilder, Linedef, Map, Material, PixelSource, Tile, Value,
-};
+use crate::{Assets, Batch3D, Chunk, ChunkBuilder, Linedef, Map, Material, PixelSource, Value};
 use vek::Vec2;
 
 pub struct D3ChunkBuilder {}
@@ -24,6 +22,15 @@ impl ChunkBuilder for D3ChunkBuilder {
         // Create sectors
         for sector in &map.sectors {
             let bbox = sector.bounding_box(map);
+
+            // Collect occluded sectors and store them in the chunk
+            let occlusion = sector.properties.get_float_default("occlusion", 1.0);
+            if occlusion < 1.0 {
+                let mut occl_bbox = bbox.clone();
+                occl_bbox.expand(Vec2::new(0.1, 0.1));
+                chunk.occluded_sectors.push((occl_bbox, occlusion));
+            }
+
             if bbox.intersects(&chunk.bbox) && chunk.bbox.contains(bbox.center()) {
                 let mut add_it = true;
 
@@ -274,61 +281,6 @@ impl ChunkBuilder for D3ChunkBuilder {
                                     if !linedef.profile.vertices.is_empty() {
                                         // Profile Wall
                                         build_profile_wall(map, assets, chunk, linedef);
-                                    } else if let Some(start_vertex) =
-                                        map.find_vertex(linedef.start_vertex)
-                                    {
-                                        if let Some(end_vertex) =
-                                            map.find_vertex(linedef.end_vertex)
-                                        {
-                                            // Check for wall lights
-                                            for i in 1..=4 {
-                                                if let Some(light) =
-                                                crate::scenebuilder::get_linedef_light_from_geo_graph(
-                                                    &linedef.properties,
-                                                    i,
-                                                    map,
-                                                    start_vertex.as_vec2(),
-                                                    end_vertex.as_vec2(),
-                                                    i as f32 - 0.5,
-                                                )
-                                            {
-                                                chunk.lights.push(light);
-                                            }
-                                            }
-                                            // --
-
-                                            let repeat_sources = linedef
-                                                .properties
-                                                .get_int_default("source_repeat", 0)
-                                                == 0;
-                                            add_wall(
-                                                sector_elevation,
-                                                &start_vertex.as_vec2(),
-                                                &end_vertex.as_vec2(),
-                                                linedef
-                                                    .properties
-                                                    .get_float_default("wall_height", 0.0),
-                                                linedef
-                                                    .properties
-                                                    .get("row1_source")
-                                                    .and_then(|v| v.to_source()),
-                                                linedef
-                                                    .properties
-                                                    .get("row2_source")
-                                                    .and_then(|v| v.to_source()),
-                                                linedef
-                                                    .properties
-                                                    .get("row3_source")
-                                                    .and_then(|v| v.to_source()),
-                                                linedef
-                                                    .properties
-                                                    .get("row4_source")
-                                                    .and_then(|v| v.to_source()),
-                                                repeat_sources,
-                                                assets,
-                                                chunk,
-                                            );
-                                        }
                                     }
                                 }
                             }
@@ -338,6 +290,7 @@ impl ChunkBuilder for D3ChunkBuilder {
             }
         }
 
+        /*
         // Add standalone walls
         for linedef in &map.linedefs {
             let bbox = linedef.bounding_box(map);
@@ -378,116 +331,7 @@ impl ChunkBuilder for D3ChunkBuilder {
                     }
                 }
             }
-        }
-    }
-}
-
-/// Adds a wall to the appropriate batch based on up to 4 input textures.
-#[allow(clippy::too_many_arguments)]
-fn add_wall(
-    sector_elevation: f32,
-    start_vertex: &Vec2<f32>,
-    end_vertex: &Vec2<f32>,
-    wall_height: f32,
-    row1_source: Option<&PixelSource>,
-    row2_source: Option<&PixelSource>,
-    row3_source: Option<&PixelSource>,
-    row4_source: Option<&PixelSource>,
-    repeat_last_row: bool,
-    assets: &Assets,
-    chunk: &mut Chunk,
-) {
-    let row_heights = if wall_height <= 1.0 {
-        vec![wall_height]
-    } else if wall_height <= 2.0 {
-        vec![1.0, wall_height - 1.0]
-    } else if wall_height <= 3.0 {
-        vec![1.0, 1.0, wall_height - 2.0]
-    } else {
-        vec![1.0, 1.0, 1.0, wall_height - 3.0]
-    };
-
-    let mut add_row = |start_height: f32, end_height: f32, tile: &Tile| {
-        let row_vertices = vec![
-            [start_vertex.x, start_height, start_vertex.y, 1.0],
-            [start_vertex.x, end_height, start_vertex.y, 1.0],
-            [end_vertex.x, end_height, end_vertex.y, 1.0],
-            [end_vertex.x, start_height, end_vertex.y, 1.0],
-        ];
-
-        let row_uvs =
-            if (end_vertex.x - start_vertex.x).abs() > (end_vertex.y - start_vertex.y).abs() {
-                vec![
-                    [start_vertex.x, end_height],
-                    [start_vertex.x, start_height],
-                    [end_vertex.x, start_height],
-                    [end_vertex.x, end_height],
-                ]
-            } else {
-                vec![
-                    [start_vertex.y, end_height],
-                    [start_vertex.y, start_height],
-                    [end_vertex.y, start_height],
-                    [end_vertex.y, end_height],
-                ]
-            };
-
-        let row_indices = vec![(0, 1, 2), (0, 2, 3)];
-
-        if let Some(texture_index) = assets.tile_index(&tile.id) {
-            let batch = Batch3D::new(row_vertices, row_indices, row_uvs)
-                .repeat_mode(crate::RepeatMode::RepeatXY)
-                .source(PixelSource::StaticTileIndex(texture_index));
-            chunk.batches3d.push(batch);
-        }
-    };
-
-    let sources = [row1_source, row2_source, row3_source, row4_source];
-    let mut current_height = 0.0;
-    let mut last_tile: Option<Tile> = None;
-
-    for (i, height) in row_heights.iter().enumerate() {
-        if current_height >= wall_height {
-            break;
-        }
-
-        let source_tile = sources[i].and_then(|source| source.tile_from_tile_list(assets));
-
-        let tile_to_use = if let Some(tile) = source_tile {
-            last_tile = Some(tile.clone());
-            Some(tile)
-        } else if repeat_last_row {
-            last_tile.clone()
-        } else {
-            None
-        };
-
-        if let Some(tile) = tile_to_use {
-            let next_height = (current_height + height).min(wall_height);
-            add_row(
-                sector_elevation + current_height,
-                sector_elevation + next_height,
-                &tile,
-            );
-            current_height = next_height;
-        } else {
-            current_height += height;
-        }
-    }
-
-    // Fill to the top with the last tile if repeat_last_row is enabled
-    if repeat_last_row {
-        if let Some(tile) = last_tile {
-            while current_height < wall_height {
-                let next_height = (current_height + 1.0).min(wall_height);
-                add_row(
-                    sector_elevation + current_height,
-                    sector_elevation + next_height,
-                    &tile,
-                );
-                current_height = next_height;
-            }
-        }
+        }*/
     }
 }
 
@@ -584,7 +428,8 @@ fn build_profile_wall(map: &Map, assets: &Assets, chunk: &mut Chunk, linedef: &L
                         }
                         let along = t * len;
                         let pos2 = start + dir * along + offset2; // XZ plane mapping with slight inward offset
-                        [pos2.x, base_elevation + y, pos2.y, 1.0]
+                        // Profile Y grows downward (0 at bottom, -1, -2 ...). Build upward in world by negating Y.
+                        [pos2.x, base_elevation - y, pos2.y, 1.0]
                     })
                     .collect();
 
@@ -623,7 +468,7 @@ fn build_profile_wall(map: &Map, assets: &Assets, chunk: &mut Chunk, linedef: &L
 
                 // Try a tile/source from the profile sector; fall back to shader-only
                 let mut pushed = false;
-                if let Some(Value::Source(pixelsource)) = sector.properties.get("source") {
+                if let Some(Value::Source(pixelsource)) = sector.properties.get("floor_source") {
                     if let Some(tile) = pixelsource.tile_from_tile_list(assets) {
                         if let Some(texture_index) = assets.tile_index(&tile.id) {
                             let mut batch =
@@ -640,7 +485,6 @@ fn build_profile_wall(map: &Map, assets: &Assets, chunk: &mut Chunk, linedef: &L
                                     chunk.batches3d.push(batch);
                                 }
                             } else {
-                                batch.source = PixelSource::Pixel(crate::WHITE);
                                 chunk.batches3d.push(batch);
                             }
                             pushed = true;
@@ -661,7 +505,7 @@ fn build_profile_wall(map: &Map, assets: &Assets, chunk: &mut Chunk, linedef: &L
                             chunk.batches3d.push(batch);
                         }
                     } else {
-                        batch.source = PixelSource::Pixel(crate::WHITE);
+                        batch.source = PixelSource::Pixel([128, 128, 128, 255]);
                         chunk.batches3d.push(batch);
                     }
                 }
