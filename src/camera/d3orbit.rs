@@ -140,4 +140,16 @@ impl D3Camera for D3OrbitCamera {
             dir,
         }
     }
+
+    fn basis_vectors(&self) -> (Vec3<f32>, Vec3<f32>, Vec3<f32>) {
+        let x = self.distance * self.azimuth.cos() * self.elevation.cos();
+        let y = self.distance * self.elevation.sin();
+        let z = self.distance * self.azimuth.sin() * self.elevation.cos();
+        let position = Vec3::new(x, y, z) + self.center;
+
+        let forward = (self.center - position).normalized();
+        let right = forward.cross(self.up).normalized();
+        let up = right.cross(forward).normalized();
+        (forward, right, up)
+    }
 }

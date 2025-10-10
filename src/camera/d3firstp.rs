@@ -69,6 +69,13 @@ impl D3Camera for D3FirstPCamera {
         self.position
     }
 
+    fn basis_vectors(&self) -> (Vec3<f32>, Vec3<f32>, Vec3<f32>) {
+        let forward = (self.center - self.position).normalized();
+        let right = forward.cross(Vec3::unit_y()).normalized();
+        let up = right.cross(forward).normalized();
+        (forward, right, up)
+    }
+
     fn create_ray(&self, uv: Vec2<f32>, screen: Vec2<f32>, offset: Vec2<f32>) -> Ray {
         let aspect = screen.x / screen.y;
         let pixel_size = Vec2::new(1.0 / screen.x, 1.0 / screen.y);

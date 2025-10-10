@@ -1,51 +1,85 @@
 use crate::{D3Camera, Ray};
 use vek::{FrustumPlanes, Mat4, Vec2, Vec3};
 
-impl D3IsoCamera {
-    #[inline]
-    fn compute_dir_and_pos(&self) -> (Vec3<f32>, Vec3<f32>) {
-        let (base, x_dir) = if self.tilted {
-            (self.tilt_dir, -self.x_dir)
-        } else {
-            (self.iso_dir, self.x_dir)
-        };
-        let dir = Vec3::new(base.x * x_dir, base.y, base.z).normalized();
-        let pos = if self.tilted {
-            self.center - dir * self.distance
-        } else {
-            self.center + dir * self.distance
-        };
-        (dir, pos)
-    }
-}
+// // Classic ISO
+// camera.set_parameter_f32("azimuth_deg", 135.0); // 45.0
+// camera.set_parameter_f32("elevation_deg", 35.2643897);
 
+// // Ultima Online
+// camera.set_parameter_f32("azimuth_deg", 135.0); // 45.0
+// camera.set_parameter_f32("elevation_deg", 25.0);
+
+// // Top-Down
+// camera.set_parameter_f32("azimuth_deg", 0.0);
+// camera.set_parameter_f32("elevation_deg", 90.0);
+
+/// A configurable orthographic isometric camera.
 #[derive(Clone)]
 pub struct D3IsoCamera {
     pub center: Vec3<f32>,
 
-    iso_dir: Vec3<f32>,
-    tilt_dir: Vec3<f32>,
+    /// Azimuth (yaw) around +Y in **degrees** (0° = +X, 90° = +Z)
+    pub azimuth_deg: f32,
+    /// Elevation (pitch) from the XZ-plane in **degrees** (0° = horizontal, +90° = +Y)
+    pub elevation_deg: f32,
 
+    /// Distance from the center along -forward to the camera position
     pub distance: f32,
+    /// Half-height of the ortho frustum in world units
     pub scale: f32,
 
-    pub tilted: bool,
-    x_dir: f32, // (−1 = left, +1 = right)
+    /// Ortho near/far planes
+    pub near: f32,
+    pub far: f32,
+}
+
+impl D3IsoCamera {
+    #[inline]
+    fn basis(&self) -> (Vec3<f32>, Vec3<f32>, Vec3<f32>) {
+        // Convert angles to radians
+        let yaw = self.azimuth_deg.to_radians();
+        let pitch = self.elevation_deg.to_radians();
+
+        // Forward: standard yaw/pitch with Y as up
+        // yaw=0 -> +X, yaw=90 -> +Z; pitch=0 -> horizontal, pitch=+90 -> +Y
+        let cp = pitch.cos();
+        let sp = pitch.sin();
+        let cy = yaw.cos();
+        let sy = yaw.sin();
+        let forward = Vec3::new(cy * cp, sp, sy * cp).normalized();
+
+        // Build right/up to match a right-handed look_at_rh basis
+        let mut right = forward.cross(Vec3::unit_y());
+        if right.magnitude_squared() < 1e-6 {
+            right = Vec3::unit_x();
+        }
+        let right = right.normalized();
+        let up = right.cross(forward).normalized();
+
+        (forward, right, up)
+    }
+
+    #[inline]
+    fn position(&self) -> Vec3<f32> {
+        let (forward, _right, _up) = self.basis();
+        // Camera position is behind the center along -forward
+        self.center + forward * self.distance
+    }
 }
 
 impl D3Camera for D3IsoCamera {
     fn new() -> Self {
         Self {
             center: Vec3::zero(),
-
-            iso_dir: Vec3::new(-1.0, 1.0, 1.0).normalized(),
-            tilt_dir: Vec3::new(-0.5, -1.0, -0.5).normalized(),
+            // Classic isometric defaults: yaw=135°, pitch≈35.264° (atan(1/sqrt(2)))
+            azimuth_deg: 135.0, //45.0,
+            elevation_deg: 35.2643897,
 
             distance: 20.0,
             scale: 4.0,
 
-            tilted: true,
-            x_dir: 1.0, // right view
+            near: 0.1,
+            far: 100.0,
         }
     }
 
@@ -53,93 +87,82 @@ impl D3Camera for D3IsoCamera {
         "iso".to_string()
     }
 
-    /// Zoom the camera in or out based on vertical mouse delta
+    /// Zoom the camera in or out based on vertical mouse delta (changes ortho half-height)
     fn zoom(&mut self, delta: f32) {
         let zoom_sensitivity = 0.05;
-
         let zoom_factor = (1.0 - delta * zoom_sensitivity).clamp(0.5, 2.0);
-
         self.scale *= zoom_factor;
         self.scale = self.scale.clamp(2.0, 70.0);
     }
 
     fn view_matrix(&self) -> Mat4<f32> {
-        let (_dir, pos) = self.compute_dir_and_pos();
-        Mat4::look_at_rh(pos, self.center, Vec3::unit_y())
+        let (_forward, _right, up) = self.basis();
+        let pos = self.position();
+        let target = self.center; // pos + forward * self.distance also equals center
+        Mat4::look_at_rh(pos, target, up)
     }
 
     fn projection_matrix(&self, width: f32, height: f32) -> Mat4<f32> {
         let half_h = self.scale;
-        let half_w = half_h * (width / height);
-
+        let half_w = half_h * (width / height).max(1e-6);
         Mat4::orthographic_rh_no(FrustumPlanes {
             left: -half_w,
             right: half_w,
             bottom: -half_h,
             top: half_h,
-            near: 0.1,
-            far: 100.0,
+            near: self.near,
+            far: self.far,
         })
     }
 
     fn set_parameter_f32(&mut self, key: &str, value: f32) {
-        #[allow(clippy::single_match)]
         match key {
-            "scale" => {
-                self.scale = value;
-            }
-            "distance" => self.distance = value.max(0.1),
-            "right" => self.x_dir = 1.0,
-            "left" => self.x_dir = -1.0,
+            "scale" => self.scale = value.max(0.001),
+            "distance" => self.distance = value.max(0.001),
+            "azimuth_deg" | "yaw_deg" => self.azimuth_deg = value,
+            "elevation_deg" | "pitch_deg" => self.elevation_deg = value.clamp(-89.9, 89.9),
+            "near" => self.near = value.max(1e-4),
+            "far" => self.far = value.max(self.near + 1e-3),
             _ => {}
         }
     }
 
     fn set_parameter_vec3(&mut self, key: &str, value: Vec3<f32>) {
-        #[allow(clippy::single_match)]
-        match key {
-            "center" => {
-                self.center = value;
-            }
-            _ => {}
+        if key == "center" {
+            self.center = value;
         }
     }
 
     fn position(&self) -> Vec3<f32> {
-        let (_dir, pos) = self.compute_dir_and_pos();
-        pos
+        self.position()
+    }
+
+    fn basis_vectors(&self) -> (Vec3<f32>, Vec3<f32>, Vec3<f32>) {
+        self.basis()
     }
 
     fn create_ray(&self, uv: Vec2<f32>, screen: Vec2<f32>, jitter: Vec2<f32>) -> Ray {
-        // extents
-        let half_h = self.scale;
-        let half_w = half_h * (screen.x / screen.y);
-
-        // Match view_matrix()/position() exactly
+        // Build the exact same basis & position used by view_matrix()
+        let (_forward, right, up) = self.basis();
         let cam_origin = self.position();
 
-        let cam_look_at = self.center;
+        // Orthographic extents
+        let half_h = self.scale;
+        let half_w = half_h * (screen.x / screen.y).max(1e-6);
 
-        let w = (cam_origin - cam_look_at).normalized();
-        // Right-handed basis matching look_at_rh:
-        // forward (into scene) = -w; right = forward × up; up' = right × forward
-        let forward = (-w).normalized();
-        let mut right = forward.cross(Vec3::unit_y());
-        if right.magnitude_squared() < 1e-6 {
-            right = Vec3::unit_x();
-        }
-        right = right.normalized();
-        let up2 = right.cross(forward).normalized();
+        // Full-viewport vectors in world space
+        let horizontal = -right * (2.0 * half_w);
+        let vertical = up * (2.0 * half_h);
 
-        let horizontal = right * half_w * 2.0;
-        let vertical = up2 * half_h * 2.0;
+        // Pixel scale for TAA/jitter
+        let pixel_size = Vec2::new(1.0 / screen.x.max(1.0), 1.0 / screen.y.max(1.0));
 
-        let pixel_size = Vec2::new(1.0 / screen.x, 1.0 / screen.y);
-
+        // Map uv in [0,1]² to world-space offset on the ortho plane, centered at 0.5
         let origin = cam_origin
             + horizontal * (pixel_size.x * jitter.x + uv.x - 0.5)
             + vertical * (pixel_size.y * jitter.y + uv.y - 0.5);
 
-        Ray::new(origin, forward)
+        // Orthographic rays share the same direction
+        Ray::new(origin, (self.center - cam_origin).normalized())
     }
 }
