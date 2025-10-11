@@ -312,7 +312,7 @@ impl Shape {
                 &ValueContainer::default(),
                 false,
             );
-            builder.build_entities_items(&map, assets, &mut scene, Vec2::new(width, height));
+            builder.build_entities_items(&map, assets, &mut scene, Vec2::new(width, height), &None);
             scene.background = None;
 
             let mut rast = Rasterizer::setup(None, Mat4::identity(), Mat4::identity());

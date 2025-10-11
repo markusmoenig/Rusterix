@@ -119,6 +119,7 @@ pub use crate::{
         pixelsource::PixelSource,
         sector::Sector,
         softrig::{Keyform, SoftRig, SoftRigAnimator},
+        surface::Surface,
         tile::Tile,
         vertex::Vertex,
     },

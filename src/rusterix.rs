@@ -1,4 +1,4 @@
-use crate::{AccumBuffer, Command, PlayerCamera, prelude::*};
+use crate::{AccumBuffer, Command, PlayerCamera, Surface, prelude::*};
 use vek::Vec2;
 
 #[derive(PartialEq)]
@@ -122,7 +122,12 @@ impl Rusterix {
     }*/
 
     /// Apply the entities to the 3D scene.
-    pub fn apply_entities_items(&mut self, screen_size: Vec2<f32>, map: &Map) {
+    pub fn apply_entities_items(
+        &mut self,
+        screen_size: Vec2<f32>,
+        map: &Map,
+        edit_surface: &Option<Surface>,
+    ) {
         for e in map.entities.iter() {
             if e.is_player() {
                 if let Some(Value::PlayerCamera(camera)) = e.attributes.get("player_camera") {
@@ -140,7 +145,7 @@ impl Rusterix {
         }
         if self.draw_mode == ClientDrawMode::D2 {
             self.client
-                .apply_entities_items_d2(screen_size, map, &self.assets);
+                .apply_entities_items_d2(screen_size, map, &self.assets, edit_surface);
         } else if self.draw_mode == ClientDrawMode::D3 {
             self.client.apply_entities_items_d3(map, &self.assets);
         }
@@ -153,9 +158,16 @@ impl Rusterix {
         map: &Map,
         values: &ValueContainer,
         build_it: bool,
+        edit_surface: &Option<Surface>,
     ) {
-        self.client
-            .build_custom_scene_d2(screen_size, map, &self.assets, values, build_it);
+        self.client.build_custom_scene_d2(
+            screen_size,
+            map,
+            &self.assets,
+            values,
+            build_it,
+            edit_surface,
+        );
     }
 
     /// Builds the entities and items w/o changing char positions

@@ -12,7 +12,7 @@ use std::str::FromStr;
 use crate::prelude::*;
 use crate::{
     AccumBuffer, BrushPreview, Command, D2PreviewBuilder, EntityAction, Rect, RenderMode,
-    ShapeFXGraph, Tracer, Value,
+    ShapeFXGraph, Surface, Tracer, Value,
     client::action::ClientAction,
     client::widget::{
         Widget, deco::DecoWidget, game::GameWidget, messages::MessagesWidget, screen::ScreenWidget,
@@ -212,19 +212,36 @@ impl Client {
         assets: &Assets,
         values: &ValueContainer,
         build_it: bool,
+        edit_surface: &Option<Surface>,
     ) {
         self.curr_map_id = map.id;
         self.scene_d2 = self
             .builder_d2
             .build(map, assets, screen_size, values, build_it);
-        self.builder_d2
-            .build_entities_items(map, assets, &mut self.scene_d2, screen_size);
+        self.builder_d2.build_entities_items(
+            map,
+            assets,
+            &mut self.scene_d2,
+            screen_size,
+            edit_surface,
+        );
     }
 
     /// Apply the entities to the 2D scene.
-    pub fn apply_entities_items_d2(&mut self, screen_size: Vec2<f32>, map: &Map, assets: &Assets) {
-        self.builder_d2
-            .build_entities_items(map, assets, &mut self.scene, screen_size);
+    pub fn apply_entities_items_d2(
+        &mut self,
+        screen_size: Vec2<f32>,
+        map: &Map,
+        assets: &Assets,
+        edit_surface: &Option<Surface>,
+    ) {
+        self.builder_d2.build_entities_items(
+            map,
+            assets,
+            &mut self.scene,
+            screen_size,
+            edit_surface,
+        );
     }
 
     /// Build the 3D scene from the map.

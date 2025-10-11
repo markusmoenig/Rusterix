@@ -1260,6 +1260,7 @@ impl Rasterizer {
                                     } else {
                                         self.mapmini.get_occlusion(world_2d)
                                     };
+
                                     // Sky hemisphere + directional sun
                                     if occlusion > 0.0 {
                                         if let Some(sky) = &self.ambient_color {

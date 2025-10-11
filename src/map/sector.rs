@@ -15,7 +15,6 @@ pub struct Sector {
     pub linedefs: Vec<u32>,
 
     pub properties: ValueContainer,
-    pub neighbours: Vec<u32>,
 
     #[serde(default)]
     pub module: Module,
@@ -39,11 +38,26 @@ impl Sector {
             name: String::new(),
             linedefs,
             properties,
-            neighbours: vec![],
 
             module: Module::as_type(codegridfx::ModuleType::Sector),
             layer: None,
         }
+    }
+
+    /// Returns the sector's vertices in world space as Vec<Vec3<f32>>, deduplicated (preserving winding).
+    pub fn vertices_world(&self, map: &Map) -> Option<Vec<Vec3<f32>>> {
+        let mut verts = Vec::new();
+        for &linedef_id in &self.linedefs {
+            let ld = map.find_linedef(linedef_id)?;
+            let v = map.find_vertex(ld.start_vertex)?;
+            verts.push(Vec3::new(v.x, v.z, v.y));
+        }
+        // Deduplicate immediate repeats (preserve winding)
+        verts.dedup_by(|a, b| (a.x == b.x) && (a.y == b.y) && (a.z == b.z));
+        if verts.len() < 3 {
+            return None;
+        }
+        Some(verts)
     }
 
     // Generate a bounding box for the sector

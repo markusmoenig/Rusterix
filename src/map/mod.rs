@@ -8,12 +8,13 @@ pub mod particle;
 pub mod pixelsource;
 pub mod sector;
 pub mod softrig;
+pub mod surface;
 pub mod tile;
 pub mod vertex;
 
 use crate::{
-    BBox, Keyform, MapMini, PixelSource, ShapeFXGraph, SoftRig, SoftRigAnimator, Terrain, Value,
-    ValueContainer,
+    BBox, Keyform, MapMini, PixelSource, ShapeFXGraph, SoftRig, SoftRigAnimator, Surface, Terrain,
+    Value, ValueContainer,
 };
 use indexmap::IndexMap;
 use ordered_float::NotNan;
@@ -124,6 +125,14 @@ pub struct Map {
     #[serde(skip)]
     pub soft_animator: Option<SoftRigAnimator>,
 
+    /// The surfaces of the 3D meshes.
+    #[serde(default)]
+    pub surfaces: IndexMap<Uuid, Surface>,
+
+    /// The optional profile of surfaces.
+    #[serde(default)]
+    pub profiles: FxHashMap<Uuid, Map>,
+
     // Change counter, right now only used for materials
     // to indicate when to refresh live updates
     #[serde(default)]
@@ -180,6 +189,9 @@ impl Map {
             editing_rig: None,
             soft_animator: None,
 
+            surfaces: IndexMap::default(),
+            profiles: FxHashMap::default(),
+
             changed: 0,
         }
     }
@@ -199,6 +211,22 @@ impl Map {
         self.selected_sectors = vec![];
         self.selected_light = None;
         self.selected_entity_item = None;
+    }
+
+    /// Returns the surface for the given sector_id
+    pub fn get_surface_for_sector_id(&self, sector_id: u32) -> Option<&Surface> {
+        self.surfaces
+            .values()
+            .find(|surface| surface.sector_id == sector_id)
+    }
+
+    /// Updates the geometry of all surfaces
+    pub fn update_surfaces(&mut self) {
+        let mut surfaces = std::mem::take(&mut self.surfaces);
+        for (_id, surface) in surfaces.iter_mut() {
+            surface.calculate_geometry(self);
+        }
+        self.surfaces = surfaces;
     }
 
     /// Return the Map as MapMini
@@ -486,6 +514,38 @@ impl Map {
         }
     }
 
+    /// Add a 3D vertex (x,y on the 2D grid; z is up).
+    pub fn add_vertex_at_3d(&mut self, mut x: f32, mut y: f32, mut z: f32) -> u32 {
+        // Snap X/Y using the same 2D grid/subdivision logic as add_vertex_at
+        let subdivisions = 1.0 / self.subdivisions;
+        x = (x / subdivisions).round() * subdivisions;
+        y = (y / subdivisions).round() * subdivisions;
+        z = (z / subdivisions).round() * subdivisions;
+
+        // Check if a vertex at (x,y,z) already exists
+        if let Some(id) = self.find_vertex_at_3d(x, y, z) {
+            return id;
+        }
+
+        // Allocate a new vertex id and insert
+        if let Some(id) = self.find_free_vertex_id() {
+            let vertex = Vertex::new_3d(id, x, y, z);
+            self.vertices.push(vertex);
+            id
+        } else {
+            println!("No free vertex ID available");
+            0
+        }
+    }
+
+    /// Finds a vertex exactly at (x,y,z) and returns its ID if it exists
+    pub fn find_vertex_at_3d(&self, x: f32, y: f32, z: f32) -> Option<u32> {
+        self.vertices
+            .iter()
+            .find(|v| v.x == x && v.y == y && v.z == z)
+            .map(|v| v.id)
+    }
+
     /// Finds a vertex at the given position and returns its ID if it exists
     pub fn find_vertex_at(&self, x: f32, y: f32) -> Option<u32> {
         self.vertices
@@ -524,8 +584,20 @@ impl Map {
         self.sectors.iter_mut().find(|sector| sector.id == id)
     }
 
-    // Create a new (or use an existing) linedef for the given vertices.
+    // Create a new (or use an existing) linedef for the given vertices and closes a polygon sector if it detects a loop.
     pub fn create_linedef(&mut self, start_vertex: u32, end_vertex: u32) -> (u32, Option<u32>) {
+        // Check if a linedef with these endpoints (in either direction) already exists,
+        if let Some(existing) = self.linedefs.iter().find(|l| {
+            (l.start_vertex == start_vertex && l.end_vertex == end_vertex)
+                || (l.start_vertex == end_vertex && l.end_vertex == start_vertex)
+        }) {
+            let id = existing.id;
+            self.possible_polygon.push(id);
+            let sector_id = self.create_sector_from_polygon();
+            return (id, sector_id);
+        }
+
+        // Create a new linedef as before and try to close a sector.
         let mut sector_id: Option<u32> = None;
 
         if let Some(id) = self.find_free_linedef_id() {
@@ -535,7 +607,11 @@ impl Map {
 
             if let Some(sid) = self.create_sector_from_polygon() {
                 if let Some(linedef) = self.find_linedef_mut(id) {
-                    linedef.front_sector = Some(sid);
+                    // Assign the new sector on the freshly created edge if possible; the full
+                    // assignment across the ring is handled inside create_sector_from_polygon.
+                    if linedef.front_sector.is_none() {
+                        linedef.front_sector = Some(sid);
+                    }
                 }
                 sector_id = Some(sid);
             }
@@ -1355,6 +1431,9 @@ impl Map {
             softrigs: IndexMap::default(),
             editing_rig: None,
             soft_animator: None,
+
+            surfaces: IndexMap::default(),
+            profiles: FxHashMap::default(),
 
             changed: 0,
         }

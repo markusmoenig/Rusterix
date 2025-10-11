@@ -29,7 +29,23 @@ impl Vertex {
         }
     }
 
+    pub fn new_3d(id: u32, x: f32, y: f32, z: f32) -> Self {
+        Self {
+            id,
+            name: "".into(),
+            x,
+            y,
+            z,
+            properties: ValueContainer::default(),
+        }
+    }
+
     pub fn as_vec2(&self) -> vek::Vec2<f32> {
         vek::Vec2::new(self.x, self.y)
+    }
+
+    /// Returns a Vec3 in world coordinates, that means z is used as y-up.
+    pub fn as_vec3_world(&self) -> vek::Vec3<f32> {
+        vek::Vec3::new(self.x, self.z, self.y)
     }
 }

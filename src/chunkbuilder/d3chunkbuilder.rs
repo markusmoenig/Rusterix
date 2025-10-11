@@ -1,4 +1,4 @@
-use crate::{Assets, Batch3D, Chunk, ChunkBuilder, Linedef, Map, Material, PixelSource, Value};
+use crate::{Assets, Batch3D, Chunk, ChunkBuilder, Map, PixelSource, Value};
 use vek::Vec2;
 
 pub struct D3ChunkBuilder {}
@@ -18,6 +18,101 @@ impl ChunkBuilder for D3ChunkBuilder {
         Box::new(self.clone())
     }
 
+    fn build(&mut self, map: &Map, assets: &Assets, chunk: &mut Chunk) {
+        // For each surface in the map
+        for surface in map.surfaces.values() {
+            let Some(sector) = map.find_sector(surface.sector_id) else {
+                continue;
+            };
+
+            let bbox = sector.bounding_box(map);
+            // Cull with the sector bbox: only use intersection
+            if !bbox.intersects(&chunk.bbox) || !chunk.bbox.contains(bbox.center()) {
+                continue;
+            }
+            // Collect occluded sectors and store them in the chunk
+            let occlusion = sector.properties.get_float_default("occlusion", 1.0);
+            if occlusion < 1.0 {
+                let mut occl_bbox = bbox.clone();
+                occl_bbox.expand(Vec2::new(0.1, 0.1));
+                // chunk.occluded_sectors.push((occl_bbox, occlusion));
+            }
+
+            // Triangulate this surface in its own UV plane and map to world
+            if let Some((world_vertices, indices, verts_uv)) = surface.triangulate(sector, map) {
+                // Build UVs with tile_mode and texture_scale_x/y from the sector
+                let tile_mode = sector.properties.get_int_default("tile_mode", 1);
+                let mut minx = f32::INFINITY;
+                let mut miny = f32::INFINITY;
+                let mut maxx = f32::NEG_INFINITY;
+                let mut maxy = f32::NEG_INFINITY;
+                for v in &verts_uv {
+                    minx = minx.min(v[0]);
+                    maxx = maxx.max(v[0]);
+                    miny = miny.min(v[1]);
+                    maxy = maxy.max(v[1]);
+                }
+                let sx = (maxx - minx).max(1e-6);
+                let sy = (maxy - miny).max(1e-6);
+                let mut uvs: Vec<[f32; 2]> = Vec::with_capacity(verts_uv.len());
+                if tile_mode == 0 {
+                    for v in &verts_uv {
+                        uvs.push([(v[0] - minx) / sx, (v[1] - miny) / sy]);
+                    }
+                } else {
+                    let tex_scale_x = sector.properties.get_float_default("texture_scale_x", 1.0);
+                    let tex_scale_y = sector.properties.get_float_default("texture_scale_y", 1.0);
+                    for v in &verts_uv {
+                        uvs.push([(v[0] - minx) / tex_scale_x, (v[1] - miny) / tex_scale_y]);
+                    }
+                }
+
+                let shader_index = chunk.add_shader(&sector.module.build_shader());
+                let mut pushed = false;
+                if let Some(Value::Source(pixelsource)) = sector.properties.get("source") {
+                    if let Some(tile) = pixelsource.tile_from_tile_list(assets) {
+                        if let Some(texture_index) = assets.tile_index(&tile.id) {
+                            let mut batch =
+                                Batch3D::new(world_vertices.clone(), indices.clone(), uvs.clone())
+                                    .repeat_mode(crate::RepeatMode::RepeatXY)
+                                    .source(PixelSource::StaticTileIndex(texture_index))
+                                    .geometry_source(crate::GeometrySource::Sector(sector.id));
+                            if let Some(si) = shader_index {
+                                batch.shader = Some(si);
+                                if chunk.shaders_with_opacity[si] {
+                                    chunk.batches3d_opacity.push(batch);
+                                } else {
+                                    chunk.batches3d.push(batch);
+                                }
+                            } else {
+                                chunk.batches3d.push(batch);
+                            }
+                            pushed = true;
+                        }
+                    }
+                }
+                if !pushed {
+                    let mut batch = Batch3D::new(world_vertices, indices, uvs)
+                        .repeat_mode(crate::RepeatMode::RepeatXY)
+                        .geometry_source(crate::GeometrySource::Sector(sector.id));
+                    if let Some(si) = shader_index {
+                        batch.shader = Some(si);
+                        if chunk.shaders_with_opacity[si] {
+                            chunk.batches3d_opacity.push(batch);
+                        } else {
+                            chunk.batches3d.push(batch);
+                        }
+                    } else {
+                        batch.source = PixelSource::Pixel([128, 128, 128, 255]);
+                        chunk.batches3d.push(batch);
+                    }
+                }
+            }
+            // Profile geometry is skipped for now
+        }
+    }
+
+    /*
     fn build(&mut self, map: &Map, assets: &Assets, chunk: &mut Chunk) {
         // Create sectors
         for sector in &map.sectors {
@@ -332,9 +427,10 @@ impl ChunkBuilder for D3ChunkBuilder {
                 }
             }
         }*/
-    }
+    }*/
 }
 
+/*
 fn build_profile_wall(map: &Map, assets: &Assets, chunk: &mut Chunk, linedef: &Linedef) {
     if let (Some(start_vertex), Some(end_vertex)) = (
         map.find_vertex(linedef.start_vertex),
@@ -513,3 +609,4 @@ fn build_profile_wall(map: &Map, assets: &Assets, chunk: &mut Chunk, linedef: &L
         }
     }
 }
+*/

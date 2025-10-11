@@ -2,8 +2,8 @@
 
 use crate::Texture;
 use crate::{
-    Assets, Batch2D, GridShader, Map, MapToolType, Pixel, PixelSource, Rect, Scene, Shader, Tile,
-    Value, ValueContainer, WHITE,
+    Assets, Batch2D, GridShader, Map, MapToolType, Pixel, PixelSource, Rect, Scene, Shader,
+    Surface, Tile, Value, ValueContainer, WHITE,
 };
 use theframework::prelude::*;
 use vek::Vec2;
@@ -304,6 +304,7 @@ impl D2PreviewBuilder {
         assets: &Assets,
         scene: &mut Scene,
         screen_size: Vec2<f32>,
+        editing_surface: &Option<Surface>,
     ) {
         let screen_aspect = screen_size.x / screen_size.y;
         let screen_pixel_size = 4.0;
@@ -340,6 +341,27 @@ impl D2PreviewBuilder {
             let tl = Vec2::new(clip_rect.x, clip_rect.y);
             let batch = Batch2D::from_rectangle(tl.x, tl.y, size.x, size.y)
                 .source(PixelSource::Pixel([255, 255, 255, 30]));
+            scene.d2_dynamic.push(batch);
+        }
+
+        // If this is an editing surface, add the outline
+        if let Some(surface) = editing_surface {
+            // Project into the surface’s profile 2D space
+            let ring2d: Vec<Vec2<f32>> = surface
+                .world_vertices
+                .iter()
+                .map(|p| surface.world_to_uv(*p))
+                .collect();
+
+            let mut batch = Batch2D::empty()
+                .source(PixelSource::Pixel(self.unselected_with_same_geometry))
+                .mode(crate::PrimitiveMode::Lines);
+
+            for i in 0..ring2d.len() {
+                let a = ring2d[i];
+                let b = ring2d[(i + 1) % ring2d.len()];
+                batch.add_line(a, b, 0.05);
+            }
             scene.d2_dynamic.push(batch);
         }
 
