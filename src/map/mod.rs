@@ -255,8 +255,8 @@ impl Map {
                     add_it = false;
                 }
                 // If the tile is explicitly set to blocking we have to add the geometry
-                match sector.properties.get("floor_source") {
-                    Some(Value::Source(PixelSource::TileId(id))) => {
+                match sector.properties.get_default_source() {
+                    Some(PixelSource::TileId(id)) => {
                         if blocking_tiles.contains(id) {
                             add_it = true;
                             if let Some(center) = sector.center(self) {
@@ -264,7 +264,7 @@ impl Map {
                             }
                         }
                     }
-                    Some(Value::Source(PixelSource::MaterialId(id))) => {
+                    Some(PixelSource::MaterialId(id)) => {
                         if blocking_tiles.contains(id) {
                             add_it = true;
                         }

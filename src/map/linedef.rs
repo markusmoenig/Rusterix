@@ -15,9 +15,6 @@ pub struct Linedef {
     pub front_sector: Option<u32>,
     pub back_sector: Option<u32>,
 
-    #[serde(default)]
-    pub profile: Map,
-
     pub properties: ValueContainer,
 }
 
@@ -32,8 +29,6 @@ impl Linedef {
             end_vertex,
             front_sector: None,
             back_sector: None,
-
-            profile: Map::default(),
 
             properties,
         }

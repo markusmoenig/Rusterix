@@ -54,12 +54,12 @@ impl D2Builder {
                 // }
 
                 // Use the floor or ceiling source
-                let mut source = sector.properties.get("floor_source");
-                if source.is_none() || self.activated_widgets.contains(&sector.id) {
-                    source = sector.properties.get("ceiling_source");
-                }
+                let source = sector.properties.get_default_source();
+                // if source.is_none() || self.activated_widgets.contains(&sector.id) {
+                //     source = sector.properties.get("ceiling_source");
+                // }
 
-                if let Some(Value::Source(pixelsource)) = source {
+                if let Some(pixelsource) = source {
                     if let Some(tile) = pixelsource.tile_from_tile_list(assets) {
                         for vertex in &geo.0 {
                             let local = self.map_grid_to_local(

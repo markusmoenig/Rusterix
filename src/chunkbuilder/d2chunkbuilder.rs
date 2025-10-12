@@ -44,11 +44,11 @@ impl ChunkBuilder for D2ChunkBuilder {
                     }
 
                     // Use the floor or ceiling source
-                    let mut source = sector.properties.get("floor_source");
-                    if source.is_none() {
-                        //|| self.activated_widgets.contains(&sector.id) {
-                        source = sector.properties.get("ceiling_source");
-                    }
+                    let source = sector.properties.get_default_source();
+                    // if source.is_none() {
+                    //     //|| self.activated_widgets.contains(&sector.id) {
+                    //     source = sector.properties.get("ceiling_source");
+                    // }
 
                     let mut processed = false;
                     for vertex in &geo.0 {
@@ -71,7 +71,7 @@ impl ChunkBuilder for D2ChunkBuilder {
                         vertices.push([local.x, local.y]);
                     }
 
-                    if let Some(Value::Source(pixelsource)) = source {
+                    if let Some(pixelsource) = source {
                         if let Some(tile) = pixelsource.tile_from_tile_list(assets) {
                             if let Some(texture_index) = assets.tile_index(&tile.id) {
                                 let mut batch =

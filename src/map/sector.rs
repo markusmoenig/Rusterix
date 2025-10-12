@@ -27,10 +27,10 @@ pub struct Sector {
 impl Sector {
     pub fn new(id: u32, linedefs: Vec<u32>) -> Self {
         let mut properties = ValueContainer::default();
-        properties.set("floor_height", Value::Float(0.0));
-        properties.set("ceiling_height", Value::Float(0.0));
-        properties.set("floor_source", Value::Source(PixelSource::Off));
-        properties.set("ceiling_source", Value::Source(PixelSource::Off));
+        // properties.set("floor_height", Value::Float(0.0));
+        // properties.set("ceiling_height", Value::Float(0.0));
+        properties.set("source", Value::Source(PixelSource::Off));
+        // properties.set("ceiling_source", Value::Source(PixelSource::Off));
 
         Self {
             id,

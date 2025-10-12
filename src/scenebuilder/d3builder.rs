@@ -401,7 +401,7 @@ impl D3Builder {
             if sector.layer.is_some() {
                 let render_mode = sector.properties.get_int_default("rect_rendering", 0);
 
-                if let Some(Value::Source(source)) = sector.properties.get("floor_source") {
+                if let Some(source) = sector.properties.get_default_source() {
                     if render_mode == 0 {
                         // Billboard
                         let mut scale = 1.0;

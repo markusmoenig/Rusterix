@@ -299,7 +299,7 @@ impl Shape {
         for sector_id in &ids {
             if let Some(sector) = map.find_sector_mut(*sector_id) {
                 sector.properties.set(
-                    "floor_source",
+                    "source",
                     Value::Source(PixelSource::Color(TheColor::white())),
                 );
             }

@@ -127,7 +127,7 @@ impl D2PreviewBuilder {
                 }
 
                 // Use the floor or ceiling source
-                let source = sector.properties.get("floor_source");
+                let source = sector.properties.get_default_source();
 
                 let mut processed = false;
                 for vertex in &geo.0 {
@@ -151,7 +151,7 @@ impl D2PreviewBuilder {
                     vertices.push([local.x, local.y]);
                 }
 
-                if let Some(Value::Source(pixelsource)) = source {
+                if let Some(pixelsource) = source {
                     if let Some(tile) = pixelsource.tile_from_tile_list(assets) {
                         if let Some(texture_index) = assets.tile_index(&tile.id) {
                             let mut batch =
@@ -467,8 +467,8 @@ impl D2PreviewBuilder {
                         {
                             selected_graph = Some(*id);
                             break;
-                        } else if let Some(Value::Source(PixelSource::ShapeFXGraphId(id))) =
-                            sector.properties.get("floor_source")
+                        } else if let Some(PixelSource::ShapeFXGraphId(id)) =
+                            sector.properties.get_default_source()
                         {
                             selected_graph = Some(*id);
                             break;
@@ -625,9 +625,8 @@ impl D2PreviewBuilder {
                                                     .push((start_pos, end_pos));
                                                 added_it = true;
                                             }
-                                        } else if let Some(Value::Source(
-                                            PixelSource::ShapeFXGraphId(id),
-                                        )) = sector.properties.get("floor_source")
+                                        } else if let Some(PixelSource::ShapeFXGraphId(id)) =
+                                            sector.properties.get_default_source()
                                         {
                                             if selected_graph == Some(*id) {
                                                 non_selected_lines_with_selected_graph

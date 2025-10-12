@@ -34,7 +34,7 @@ impl ShapeStack {
         let area_size = self.area_max - self.area_min;
 
         let sector_graph_name = if material_mode {
-            "floor_source"
+            "source"
         } else {
             "shape_graph"
         };

@@ -241,7 +241,7 @@ fn set(key: PyObjectRef, value: PyObjectRef, vm: &VirtualMachine) -> PyResult<()
                         if let Some(sector) = map.find_sector_mut(sectori_id) {
                             sector
                                 .properties
-                                .set("floor_source", Value::Source(PixelSource::TileId(id)));
+                                .set("source", Value::Source(PixelSource::TileId(id)));
                         }
                         Ok(())
                     } else {
@@ -448,7 +448,7 @@ fn wall(value: PyObjectRef, vm: &VirtualMachine) -> PyResult<()> {
     if let Some(sector_id) = sector_id {
         if let Some(sector) = map.find_sector_mut(sector_id) {
             sector.properties.set(
-                "floor_source",
+                "source",
                 Value::Source(if let Some(id) = *DEFAULT_FLOOR_TEXTURE.read().unwrap() {
                     PixelSource::TileId(id)
                 } else {

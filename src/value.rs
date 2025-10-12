@@ -339,8 +339,20 @@ impl ValueContainer {
         })
     }
 
+    /// Get a source of the given key.
     pub fn get_source(&self, key: &str) -> Option<&PixelSource> {
         self.values.get(key).and_then(|v| {
+            if let Value::Source(val) = v {
+                Some(val)
+            } else {
+                None
+            }
+        })
+    }
+
+    /// Get the default source. "floor_source" is just for compatibility.
+    pub fn get_default_source(&self) -> Option<&PixelSource> {
+        self.values.get("source").and_then(|v| {
             if let Value::Source(val) = v {
                 Some(val)
             } else {
