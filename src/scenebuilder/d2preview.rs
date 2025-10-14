@@ -106,20 +106,22 @@ impl D2PreviewBuilder {
         assets: &Assets,
         screen_size: Vec2<f32>,
         _properties: &ValueContainer,
-        _build_it: bool,
     ) -> Scene {
         let mut scene = Scene::empty();
-
-        // if !build_it {
-        //     return scene;
-        // }
 
         for sector in &map.sectors {
             if let Some(geo) = sector.generate_geometry(map) {
                 let mut vertices: Vec<[f32; 2]> = vec![];
                 let mut uvs: Vec<[f32; 2]> = vec![];
                 let bbox = sector.bounding_box(map);
-                let shader_index = scene.add_shader(&sector.module.build_shader());
+                let shader_index = sector
+                    .shader
+                    .and_then(|shader_id| {
+                        map.shaders
+                            .get(&shader_id)
+                            .map(|m| scene.add_shader(&m.build_shader()))
+                    })
+                    .flatten();
 
                 let mut repeat = true;
                 if sector.properties.get_int_default("tile_mode", 1) == 0 {

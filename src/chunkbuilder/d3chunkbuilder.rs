@@ -67,7 +67,14 @@ impl ChunkBuilder for D3ChunkBuilder {
                     }
                 }
 
-                let shader_index = chunk.add_shader(&sector.module.build_shader());
+                let shader_index = sector
+                    .shader
+                    .and_then(|shader_id| {
+                        map.shaders
+                            .get(&shader_id)
+                            .map(|m| chunk.add_shader(&m.build_shader()))
+                    })
+                    .flatten();
                 let mut pushed = false;
                 if let Some(Value::Source(pixelsource)) = sector.properties.get("source") {
                     if let Some(tile) = pixelsource.tile_from_tile_list(assets) {

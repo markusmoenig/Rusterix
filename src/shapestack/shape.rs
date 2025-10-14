@@ -310,7 +310,6 @@ impl Shape {
                 assets,
                 Vec2::new(width, height),
                 &ValueContainer::default(),
-                false,
             );
             builder.build_entities_items(&map, assets, &mut scene, Vec2::new(width, height), &None);
             scene.background = None;

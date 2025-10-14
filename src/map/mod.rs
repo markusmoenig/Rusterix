@@ -16,6 +16,7 @@ use crate::{
     BBox, Keyform, MapMini, PixelSource, ShapeFXGraph, SoftRig, SoftRigAnimator, Surface, Terrain,
     Value, ValueContainer,
 };
+use codegridfx::Module;
 use indexmap::IndexMap;
 use ordered_float::NotNan;
 use pathfinding::prelude::astar;
@@ -106,7 +107,6 @@ pub struct Map {
     pub selected_linedefs: Vec<u32>,
     pub selected_sectors: Vec<u32>,
 
-    pub selected_light: Option<u32>,
     pub selected_entity_item: Option<Uuid>,
 
     // Meta Data
@@ -132,6 +132,10 @@ pub struct Map {
     /// The optional profile of surfaces.
     #[serde(default)]
     pub profiles: FxHashMap<Uuid, Map>,
+
+    /// The shaders used in the map.
+    #[serde(default)]
+    pub shaders: IndexMap<Uuid, Module>,
 
     // Change counter, right now only used for materials
     // to indicate when to refresh live updates
@@ -181,7 +185,6 @@ impl Map {
             selected_linedefs: vec![],
             selected_sectors: vec![],
 
-            selected_light: None,
             selected_entity_item: None,
 
             properties: ValueContainer::default(),
@@ -191,6 +194,7 @@ impl Map {
 
             surfaces: IndexMap::default(),
             profiles: FxHashMap::default(),
+            shaders: IndexMap::default(),
 
             changed: 0,
         }
@@ -201,7 +205,6 @@ impl Map {
         self.possible_polygon = vec![];
         self.curr_grid_pos = None;
         self.curr_rectangle = None;
-        self.selected_light = None;
     }
 
     /// Clear the selection
@@ -209,7 +212,6 @@ impl Map {
         self.selected_vertices = vec![];
         self.selected_linedefs = vec![];
         self.selected_sectors = vec![];
-        self.selected_light = None;
         self.selected_entity_item = None;
     }
 
@@ -1424,7 +1426,6 @@ impl Map {
             selected_linedefs: vec![],
             selected_sectors: vec![],
 
-            selected_light: None,
             selected_entity_item: None,
 
             properties: ValueContainer::default(),
@@ -1434,6 +1435,7 @@ impl Map {
 
             surfaces: IndexMap::default(),
             profiles: FxHashMap::default(),
+            shaders: IndexMap::default(),
 
             changed: 0,
         }
@@ -1514,28 +1516,5 @@ impl Map {
         }
 
         result
-    }
-}
-
-use std::cmp::PartialEq;
-
-impl PartialEq for Map {
-    fn eq(&self, other: &Self) -> bool {
-        let mut v1 = self.vertices.clone();
-        let mut v2 = other.vertices.clone();
-        v1.sort_by_key(|v| v.id);
-        v2.sort_by_key(|v| v.id);
-
-        let mut l1 = self.linedefs.clone();
-        let mut l2 = other.linedefs.clone();
-        l1.sort_by_key(|l| l.id);
-        l2.sort_by_key(|l| l.id);
-
-        let mut s1 = self.sectors.clone();
-        let mut s2 = other.sectors.clone();
-        s1.sort_by_key(|s| s.id);
-        s2.sort_by_key(|s| s.id);
-
-        v1 == v2 && l1 == l2 && s1 == s2
     }
 }

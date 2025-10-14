@@ -1,6 +1,5 @@
 use super::pixelsource::PixelSource;
 use crate::{BBox, Map, Value, ValueContainer};
-use codegridfx::Module;
 use earcutr::earcut;
 use theframework::prelude::*;
 
@@ -17,7 +16,7 @@ pub struct Sector {
     pub properties: ValueContainer,
 
     #[serde(default)]
-    pub module: Module,
+    pub shader: Option<Uuid>,
 
     /// The rect tool layer for this sector (if created by the rect tool).
     #[serde(default)]
@@ -39,7 +38,7 @@ impl Sector {
             linedefs,
             properties,
 
-            module: Module::as_type(codegridfx::ModuleType::Sector),
+            shader: None,
             layer: None,
         }
     }

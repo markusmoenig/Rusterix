@@ -211,13 +211,10 @@ impl Client {
         map: &Map,
         assets: &Assets,
         values: &ValueContainer,
-        build_it: bool,
         edit_surface: &Option<Surface>,
     ) {
         self.curr_map_id = map.id;
-        self.scene_d2 = self
-            .builder_d2
-            .build(map, assets, screen_size, values, build_it);
+        self.scene_d2 = self.builder_d2.build(map, assets, screen_size, values);
         self.builder_d2.build_entities_items(
             map,
             assets,

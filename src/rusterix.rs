@@ -157,17 +157,10 @@ impl Rusterix {
         screen_size: Vec2<f32>,
         map: &Map,
         values: &ValueContainer,
-        build_it: bool,
         edit_surface: &Option<Surface>,
     ) {
-        self.client.build_custom_scene_d2(
-            screen_size,
-            map,
-            &self.assets,
-            values,
-            build_it,
-            edit_surface,
-        );
+        self.client
+            .build_custom_scene_d2(screen_size, map, &self.assets, values, edit_surface);
     }
 
     /// Builds the entities and items w/o changing char positions
