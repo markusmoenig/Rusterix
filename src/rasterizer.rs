@@ -1032,6 +1032,8 @@ impl Rasterizer {
                                     let idx: usize =
                                         ((ty - tile.y) * tile.width + (tx - tile.x)) * 4;
                                     buffer[idx..idx + 4].copy_from_slice(&texel);
+                                    let zidx = (ty - tile.y) * tile.width + (tx - tile.x);
+                                    z_buffer[zidx] = 0.0;
 
                                     continue;
                                 }
