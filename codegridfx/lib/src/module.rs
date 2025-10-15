@@ -83,8 +83,7 @@ pub enum ModuleType {
     ItemInstance,
     CharacterTemplate,
     ItemTemplate,
-    Sector,
-    Material,
+    Shader,
 }
 
 impl ModuleType {
@@ -97,7 +96,7 @@ impl ModuleType {
 
     pub fn is_shader(&self) -> bool {
         match self {
-            ModuleType::Sector | ModuleType::Material => true,
+            ModuleType::Shader => true,
             _ => false,
         }
     }
@@ -154,24 +153,18 @@ impl Module {
 
     /// Add/ Update the routines of the module
     pub fn update_routines(&mut self) {
+        println!("{:?}", self.module_type);
         if self.module_type.is_shader() {
-            if matches!(self.module_type, ModuleType::Sector) {
-                if !self.contains("shader") {
-                    let routine = Routine::new("shader".into());
-                    self.routines.insert(routine.id, routine);
-                }
-            } else {
-                if !self.contains("shader") {
-                    let routine = Routine::new("shader".into());
-                    self.routines.insert(routine.id, routine);
-                }
+            if !self.contains("shader") {
+                let routine = Routine::new("shader".into());
+                self.routines.insert(routine.id, routine);
             }
         } else if self.module_type.is_instance() {
             if !self.contains("instantiation") {
                 let routine = Routine::new("instantiation".into());
                 self.routines.insert(routine.id, routine);
             }
-        } else {
+        } else if self.module_type != ModuleType::Unknown {
             if !self.contains("startup") {
                 let routine = Routine::new("startup".into());
                 self.routines.insert(routine.id, routine);
@@ -985,7 +978,7 @@ impl Module {
             );
             nodeui.add_item(item);
 
-            if matches!(self.module_type, ModuleType::Sector) {
+            if matches!(self.module_type, ModuleType::Shader) {
                 let item = TheNodeUIItem::Button(
                     "cgfxAddToShaderLibrary".into(),
                     "Material Library".into(),
@@ -1014,6 +1007,21 @@ impl Module {
             height += r.buffer.dim().height as u32;
         }
         height
+    }
+
+    /// Set the backround for a shader
+    pub fn set_shader_background(
+        &mut self,
+        buffer: TheRGBABuffer,
+        ui: &mut TheUI,
+        ctx: &TheContext,
+    ) {
+        if self.module_type == ModuleType::Shader {
+            if let Some((_, routine)) = self.routines.first_mut() {
+                routine.shader_background = buffer;
+                self.redraw(ui, ctx);
+            }
+        }
     }
 
     /// Build shader code
@@ -1094,7 +1102,7 @@ impl Module {
 
     /// Returns the view name for the module type
     pub fn get_view_name(&self) -> &'static str {
-        if self.module_type == ModuleType::Sector {
+        if self.module_type == ModuleType::Shader {
             return "ShadeModuleView";
         }
         "CodeModuleView"

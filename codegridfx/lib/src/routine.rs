@@ -37,6 +37,9 @@ pub struct Routine {
     #[serde(skip)]
     pub buffer: TheRGBABuffer,
 
+    #[serde(skip)]
+    pub shader_background: TheRGBABuffer,
+
     pub grid: Grid,
 }
 
@@ -52,6 +55,7 @@ impl Routine {
             folded: false,
             screen_width: 100,
             buffer: TheRGBABuffer::new(TheDim::sized(100, 100)),
+            shader_background: TheRGBABuffer::empty(),
             grid,
             pixelization: 0,
             color_steps: 0,
@@ -86,12 +90,30 @@ impl Routine {
         }
 
         self.buffer.fill([116, 116, 116, 255]);
+        let header_height: i32 = 35;
+
+        // Copy the shader background if available
+        if !self.shader_background.is_empty() {
+            let render_buffer = &mut self.buffer;
+            let dest_width = render_buffer.dim().width;
+            let dest_height = render_buffer.dim().height;
+
+            let shader_buffer = &mut self.shader_background;
+            let source_width = shader_buffer.dim().width;
+            let source_height = shader_buffer.dim().height;
+
+            // Tile the shader_buffer across the entire destination buffer
+            for y in (header_height..dest_height).step_by(source_height as usize) {
+                for x in (400..dest_width).step_by(source_width as usize) {
+                    render_buffer.copy_into(x, y, &*shader_buffer);
+                }
+            }
+        }
 
         let folded_corners = if !self.folded { 0.0 } else { 12.0 };
         let is_selected = Some(self.id) == grid_ctx.selected_routine;
         let normal_color = CellRole::Event.to_color();
         let text_color = [85, 81, 85, 255];
-        let header_height = 35;
 
         self.buffer.draw_rounded_rect(
             &TheDim::rect(0, 0, self.screen_width as i32, header_height as i32),
