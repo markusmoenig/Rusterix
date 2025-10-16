@@ -29,6 +29,10 @@ impl D3Camera for D3FirstPCamera {
         "firstp".to_string()
     }
 
+    fn fov(&self) -> f32 {
+        self.fov
+    }
+
     fn view_matrix(&self) -> Mat4<f32> {
         vek::Mat4::look_at_rh(self.position, self.center, Vec3::unit_y())
     }
@@ -70,9 +74,33 @@ impl D3Camera for D3FirstPCamera {
     }
 
     fn basis_vectors(&self) -> (Vec3<f32>, Vec3<f32>, Vec3<f32>) {
-        let forward = (self.center - self.position).normalized();
-        let right = forward.cross(Vec3::unit_y()).normalized();
-        let up = right.cross(forward).normalized();
+        let eps = 1e-8_f32;
+
+        // Forward: from position to center. Fallback if zero.
+        let mut forward = self.center - self.position;
+        if forward.magnitude_squared() < eps {
+            forward = Vec3::unit_z(); // default look direction
+        }
+        forward = forward.normalized();
+
+        // Choose an up reference. If forward is nearly parallel to world up, pick Z as up ref.
+        let world_up = Vec3::unit_y();
+        let mut right = forward.cross(world_up);
+        if right.magnitude_squared() < eps {
+            // forward parallel to Y; use Z to compute a stable right
+            right = forward.cross(Vec3::unit_z());
+        }
+        right = right.normalized();
+
+        // True camera up from the orthonormal triad
+        let mut up = right.cross(forward);
+        if up.magnitude_squared() < eps {
+            // As a last resort, recompute using X axis
+            right = forward.cross(Vec3::unit_x()).normalized();
+            up = right.cross(forward);
+        }
+        up = up.normalized();
+
         (forward, right, up)
     }
 
