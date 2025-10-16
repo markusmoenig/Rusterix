@@ -588,8 +588,7 @@ impl Map {
 
     // Create a new (or use an existing) linedef for the given vertices and closes a polygon sector if it detects a loop.
     pub fn create_linedef(&mut self, start_vertex: u32, end_vertex: u32) -> (u32, Option<u32>) {
-        // Reuse an existing linedef only if it matches the requested direction exactly.
-        // We do not reuse reversed edges to preserve winding.
+        // Reuse an existing linedef only if it matches the requested winding direction exactly.
         if let Some(existing) = self
             .linedefs
             .iter()

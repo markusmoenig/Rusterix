@@ -87,6 +87,10 @@ impl D3Camera for D3IsoCamera {
         "iso".to_string()
     }
 
+    fn scale(&self) -> f32 {
+        self.scale
+    }
+
     /// Zoom the camera in or out based on vertical mouse delta (changes ortho half-height)
     fn zoom(&mut self, delta: f32) {
         let zoom_sensitivity = 0.05;

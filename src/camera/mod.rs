@@ -23,6 +23,10 @@ pub trait D3Camera: Send + Sync {
         Vec3::zero()
     }
 
+    fn scale(&self) -> f32 {
+        1.0
+    }
+
     fn basis_vectors(&self) -> (Vec3<f32>, Vec3<f32>, Vec3<f32>);
 
     fn projection_matrix(&self, width: f32, height: f32) -> Mat4<f32>;
