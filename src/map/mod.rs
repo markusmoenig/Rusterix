@@ -588,11 +588,13 @@ impl Map {
 
     // Create a new (or use an existing) linedef for the given vertices and closes a polygon sector if it detects a loop.
     pub fn create_linedef(&mut self, start_vertex: u32, end_vertex: u32) -> (u32, Option<u32>) {
-        // Check if a linedef with these endpoints (in either direction) already exists,
-        if let Some(existing) = self.linedefs.iter().find(|l| {
-            (l.start_vertex == start_vertex && l.end_vertex == end_vertex)
-                || (l.start_vertex == end_vertex && l.end_vertex == start_vertex)
-        }) {
+        // Reuse an existing linedef only if it matches the requested direction exactly.
+        // We do not reuse reversed edges to preserve winding.
+        if let Some(existing) = self
+            .linedefs
+            .iter()
+            .find(|l| l.start_vertex == start_vertex && l.end_vertex == end_vertex)
+        {
             let id = existing.id;
             self.possible_polygon.push(id);
             let sector_id = self.create_sector_from_polygon();
