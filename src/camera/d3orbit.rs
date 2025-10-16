@@ -111,6 +111,9 @@ impl D3Camera for D3OrbitCamera {
         let aspect = screen.x / screen.y;
         let pixel_size = Vec2::new(1.0 / screen.x, 1.0 / screen.y);
 
+        let mut uv = uv;
+        uv.y = 1.0 - uv.y;
+
         // Orbit camera position
         let x = self.distance * self.azimuth.cos() * self.elevation.cos();
         let y = self.distance * self.elevation.sin();
