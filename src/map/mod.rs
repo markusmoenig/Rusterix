@@ -26,7 +26,7 @@ use linedef::*;
 use sector::*;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
-use vek::{Vec2, Vec4};
+use vek::{Vec2, Vec3, Vec4};
 use vertex::*;
 
 use crate::{Entity, Item, Light};
@@ -941,13 +941,14 @@ impl Map {
         let end_vertex = self.find_vertex(linedef.end_vertex)?.clone();
 
         // Step 2: Calculate the midpoint
-        let midpoint = Vec2::new(
+        let midpoint = Vec3::new(
             (start_vertex.x + end_vertex.x) / 2.0,
             (start_vertex.y + end_vertex.y) / 2.0,
+            (start_vertex.z + end_vertex.z) / 2.0,
         );
 
         // Step 3: Add the midpoint as a new vertex
-        let new_vertex_id = self.add_vertex_at(midpoint.x, midpoint.y);
+        let new_vertex_id = self.add_vertex_at_3d(midpoint.x, midpoint.y, midpoint.z);
 
         // Step 4: Create new linedefs
         let mut new_linedef_1 = Linedef::new(

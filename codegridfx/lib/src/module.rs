@@ -977,16 +977,6 @@ impl Module {
                 false,
             );
             nodeui.add_item(item);
-
-            if matches!(self.module_type, ModuleType::Shader) {
-                let item = TheNodeUIItem::Button(
-                    "cgfxAddToShaderLibrary".into(),
-                    "Material Library".into(),
-                    "Adds the shader to your projects material library. Making it reusable.".into(),
-                    "Add To".into(),
-                );
-                nodeui.add_item(item);
-            }
         }
 
         if let Some(layout) = ui.get_text_layout("Node Settings") {
