@@ -5,6 +5,21 @@ use vek::{Vec2, Vec3};
 
 use earcutr::earcut;
 
+/// Operation applied to a profile loop on this surface (non-destructive).
+#[derive(Serialize, Deserialize, Clone, Copy, Debug)]
+pub enum LoopOp {
+    None,
+    Relief { height: f32 }, // positive outward along surface normal
+    Recess { depth: f32 },  // positive inward along surface normal
+}
+
+/// One closed loop in the surface's UV/profile space.
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct ProfileLoop {
+    pub path: Vec<Vec2<f32>>, // points in UV space, assumed to be simple polygon
+    pub op: LoopOp,           // optional loop-specific op
+}
+
 /// Represents a geometric plane defined by an origin and a normal vector.
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, Default)]
 pub struct Plane {
@@ -126,16 +141,32 @@ impl Surface {
         self.edit_uv = Default::default();
     }
 
-    pub fn uv_to_world(&self, uv: Vec2<f32>, w: f32) -> Vec3<f32> {
+    /// Map a UV point on the surface plane to world space (w = 0 plane).
+    pub fn uv_to_world(&self, uv: Vec2<f32>) -> Vec3<f32> {
         self.edit_uv.origin
             + self.edit_uv.right * uv.x * self.edit_uv.scale
             + self.edit_uv.up * uv.y * self.edit_uv.scale
-            + self.frame.normal * w
+    }
+
+    /// Map a UVW point (UV on the surface, W along the surface normal) to world space.
+    pub fn uvw_to_world(&self, uv: Vec2<f32>, w: f32) -> Vec3<f32> {
+        self.uv_to_world(uv) + self.frame.normal * w
     }
 
     pub fn world_to_uv(&self, p: Vec3<f32>) -> Vec2<f32> {
         let rel = p - self.edit_uv.origin;
         Vec2::new(rel.dot(self.edit_uv.right), rel.dot(self.edit_uv.up)) / self.edit_uv.scale
+    }
+
+    /// Normalized surface normal.
+    pub fn normal(&self) -> Vec3<f32> {
+        let n = self.plane.normal;
+        let m = n.magnitude();
+        if m > 1e-6 {
+            n / m
+        } else {
+            Vec3::new(0.0, 1.0, 0.0)
+        }
     }
 
     /// Triangulate the owning sector in this surface's local UV space and return world vertices, indices, and UVs.
@@ -176,7 +207,7 @@ impl Surface {
         let world_vertices: Vec<[f32; 4]> = verts_uv
             .iter()
             .map(|v| {
-                let p = self.uv_to_world(vek::Vec2::new(v[0], v[1]), 0.0);
+                let p = self.uv_to_world(vek::Vec2::new(v[0], v[1]));
                 [p.x, p.y, p.z, 1.0]
             })
             .collect();

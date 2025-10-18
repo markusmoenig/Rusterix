@@ -222,6 +222,13 @@ impl Map {
             .find(|surface| surface.sector_id == sector_id)
     }
 
+    /// Returns the mutable surface for the given sector_id
+    pub fn get_surface_for_sector_id_mut(&mut self, sector_id: u32) -> Option<&mut Surface> {
+        self.surfaces
+            .values_mut()
+            .find(|surface| surface.sector_id == sector_id)
+    }
+
     /// Updates the geometry of all surfaces
     pub fn update_surfaces(&mut self) {
         let mut surfaces = std::mem::take(&mut self.surfaces);
@@ -454,6 +461,46 @@ impl Map {
                 }
             }
         }
+
+        // 3. Fallback to base
+        Some(base_pos)
+    }
+
+    /// Get the current position of a vertex, using any keyform override in the current SoftRig.
+    pub fn get_vertex_3d(&self, vertex_id: u32) -> Option<Vec3<f32>> {
+        // Base vertex lookup
+        let base = self.vertices.iter().find(|v| v.id == vertex_id)?;
+        let base_pos = Vec3::new(base.x, base.z, base.y);
+
+        // 1. Try runtime animation
+        // if let Some(animator) = &self.soft_animator {
+        //     if let Some(rig) = animator.get_blended_rig(self) {
+        //         if let Some((_, pos)) = rig
+        //             .keyforms
+        //             .first()
+        //             .and_then(|key| key.vertex_positions.iter().find(|(id, _)| *id == vertex_id))
+        //         {
+        //             return Some(*pos);
+        //         }
+        //     }
+        // }
+
+        // 2. Try editing override (if not currently animating)
+        // if self.soft_animator.is_none() {
+        //     if let Some(rig_id) = self.editing_rig {
+        //         if let Some(rig) = self.softrigs.get(&rig_id) {
+        //             for keyform in &rig.keyforms {
+        //                 if let Some((_, pos)) = keyform
+        //                     .vertex_positions
+        //                     .iter()
+        //                     .find(|(id, _)| *id == vertex_id)
+        //                 {
+        //                     return Some(*pos);
+        //                 }
+        //             }
+        //         }
+        //     }
+        // }
 
         // 3. Fallback to base
         Some(base_pos)
