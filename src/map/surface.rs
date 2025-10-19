@@ -18,6 +18,8 @@ pub enum LoopOp {
 pub struct ProfileLoop {
     pub path: Vec<Vec2<f32>>, // points in UV space, assumed to be simple polygon
     pub op: LoopOp,           // optional loop-specific op
+    /// The profile-map sector this loop came from. `None` for the outer host loop.
+    pub origin_profile_sector: Option<u32>,
 }
 
 /// Represents a geometric plane defined by an origin and a normal vector.

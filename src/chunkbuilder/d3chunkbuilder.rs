@@ -230,16 +230,22 @@ impl ChunkBuilder for D3ChunkBuilder {
                                 let mut batch = Batch3D::new(cap_v, cap_i, cap_uv)
                                     .repeat_mode(RepeatMode::RepeatXY)
                                     .geometry_source(GeometrySource::Sector(sector.id));
-                                if let Some(shader_id) = sector.shader {
-                                    if let Some(m) = map.shaders.get(&shader_id) {
-                                        if let Some(si) = chunk.add_shader(&m.build_shader()) {
-                                            batch.shader = Some(si);
-                                        }
-                                    }
+                                if let Some(si) = feature_shader_index(
+                                    surface,
+                                    map,
+                                    sector,
+                                    fl.origin_profile_sector,
+                                    chunk,
+                                ) {
+                                    batch.shader = Some(si);
                                 }
-                                if let Some(Value::Source(pixelsource)) =
-                                    sector.properties.get("relief_source")
-                                {
+                                if let Some(Value::Source(pixelsource)) = feature_pixelsource(
+                                    surface,
+                                    map,
+                                    sector,
+                                    fl.origin_profile_sector,
+                                    "relief_source",
+                                ) {
                                     if let Some(tile) = pixelsource.tile_from_tile_list(assets) {
                                         if let Some(tex) = assets.tile_index(&tile.id) {
                                             batch.source = PixelSource::StaticTileIndex(tex);
@@ -255,16 +261,22 @@ impl ChunkBuilder for D3ChunkBuilder {
                             let mut batch = Batch3D::new(ring_v, ring_i, ring_uv)
                                 .repeat_mode(RepeatMode::RepeatXY)
                                 .geometry_source(GeometrySource::Sector(sector.id));
-                            if let Some(shader_id) = sector.shader {
-                                if let Some(m) = map.shaders.get(&shader_id) {
-                                    if let Some(si) = chunk.add_shader(&m.build_shader()) {
-                                        batch.shader = Some(si);
-                                    }
-                                }
+                            if let Some(si) = feature_shader_index(
+                                surface,
+                                map,
+                                sector,
+                                fl.origin_profile_sector,
+                                chunk,
+                            ) {
+                                batch.shader = Some(si);
                             }
-                            if let Some(Value::Source(pixelsource)) =
-                                sector.properties.get("relief_jamb_source")
-                            {
+                            if let Some(Value::Source(pixelsource)) = feature_pixelsource(
+                                surface,
+                                map,
+                                sector,
+                                fl.origin_profile_sector,
+                                "relief_jamb_source",
+                            ) {
                                 if let Some(tile) = pixelsource.tile_from_tile_list(assets) {
                                     if let Some(tex) = assets.tile_index(&tile.id) {
                                         batch.source = PixelSource::StaticTileIndex(tex);
@@ -293,16 +305,22 @@ impl ChunkBuilder for D3ChunkBuilder {
                                 let mut batch = Batch3D::new(cap_v, cap_i, cap_uv)
                                     .repeat_mode(RepeatMode::RepeatXY)
                                     .geometry_source(GeometrySource::Sector(sector.id));
-                                if let Some(shader_id) = sector.shader {
-                                    if let Some(m) = map.shaders.get(&shader_id) {
-                                        if let Some(si) = chunk.add_shader(&m.build_shader()) {
-                                            batch.shader = Some(si);
-                                        }
-                                    }
+                                if let Some(si) = feature_shader_index(
+                                    surface,
+                                    map,
+                                    sector,
+                                    fl.origin_profile_sector,
+                                    chunk,
+                                ) {
+                                    batch.shader = Some(si);
                                 }
-                                if let Some(Value::Source(pixelsource)) =
-                                    sector.properties.get("recess_source")
-                                {
+                                if let Some(Value::Source(pixelsource)) = feature_pixelsource(
+                                    surface,
+                                    map,
+                                    sector,
+                                    fl.origin_profile_sector,
+                                    "recess_source",
+                                ) {
                                     if let Some(tile) = pixelsource.tile_from_tile_list(assets) {
                                         if let Some(tex) = assets.tile_index(&tile.id) {
                                             batch.source = PixelSource::StaticTileIndex(tex);
@@ -317,16 +335,22 @@ impl ChunkBuilder for D3ChunkBuilder {
                             let mut batch = Batch3D::new(ring_v, ring_i, ring_uv)
                                 .repeat_mode(RepeatMode::RepeatXY)
                                 .geometry_source(GeometrySource::Sector(sector.id));
-                            if let Some(shader_id) = sector.shader {
-                                if let Some(m) = map.shaders.get(&shader_id) {
-                                    if let Some(si) = chunk.add_shader(&m.build_shader()) {
-                                        batch.shader = Some(si);
-                                    }
-                                }
+                            if let Some(si) = feature_shader_index(
+                                surface,
+                                map,
+                                sector,
+                                fl.origin_profile_sector,
+                                chunk,
+                            ) {
+                                batch.shader = Some(si);
                             }
-                            if let Some(Value::Source(pixelsource)) =
-                                sector.properties.get("recess_jamb_source")
-                            {
+                            if let Some(Value::Source(pixelsource)) = feature_pixelsource(
+                                surface,
+                                map,
+                                sector,
+                                fl.origin_profile_sector,
+                                "recess_jamb_source",
+                            ) {
                                 if let Some(tile) = pixelsource.tile_from_tile_list(assets) {
                                     if let Some(tex) = assets.tile_index(&tile.id) {
                                         batch.source = PixelSource::StaticTileIndex(tex);
@@ -586,6 +610,7 @@ fn read_profile_loops(
     let outer = ProfileLoop {
         path: outer_path,
         op: outer_op,
+        origin_profile_sector: None,
     };
 
     // 2) HOLES from the profile map for this surface
@@ -628,7 +653,11 @@ fn read_profile_loops(
                     },
                     _ => LoopOp::None,
                 };
-                holes.push(ProfileLoop { path: uv_path, op });
+                holes.push(ProfileLoop {
+                    path: uv_path,
+                    op,
+                    origin_profile_sector: Some(ps.id as u32),
+                });
             }
         }
     }
@@ -792,4 +821,55 @@ fn polygon_area(poly: &[vek::Vec2<f32>]) -> f32 {
         a2 += p.x * q.y - q.x * p.y;
     }
     0.5 * a2
+}
+
+fn feature_pixelsource(
+    surface: &crate::Surface,
+    map: &Map,
+    host_sector: &Sector,
+    loop_origin: Option<u32>,
+    key: &str,
+) -> Option<Value> {
+    // Prefer per-feature property on the originating profile sector
+    if let (Some(profile_id), Some(origin_id)) = (surface.profile, loop_origin) {
+        if let Some(profile_map) = map.profiles.get(&profile_id) {
+            if let Some(ps) = profile_map.find_sector(origin_id) {
+                if let Some(v) = ps.properties.get(key) {
+                    return Some(v.clone());
+                }
+            }
+        }
+    }
+    // Fallback to host sector property
+    host_sector.properties.get(key).cloned()
+}
+
+fn feature_shader_index(
+    surface: &crate::Surface,
+    map: &Map,
+    host_sector: &Sector,
+    loop_origin: Option<u32>,
+    chunk: &mut Chunk,
+) -> Option<usize> {
+    // Prefer per-feature shader on the originating profile sector
+    if let (Some(profile_id), Some(origin_id)) = (surface.profile, loop_origin) {
+        if let Some(profile_map) = map.profiles.get(&profile_id) {
+            if let Some(ps) = profile_map.find_sector(origin_id) {
+                if let Some(shader_id) = ps.shader {
+                    if let Some(m) = map.shaders.get(&shader_id) {
+                        if let Some(si) = chunk.add_shader(&m.build_shader()) {
+                            return Some(si);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    // Fallback to host sector shader
+    if let Some(shader_id) = host_sector.shader {
+        if let Some(m) = map.shaders.get(&shader_id) {
+            return chunk.add_shader(&m.build_shader());
+        }
+    }
+    None
 }
