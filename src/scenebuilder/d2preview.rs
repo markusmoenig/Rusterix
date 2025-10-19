@@ -360,8 +360,10 @@ impl D2PreviewBuilder {
                 .mode(crate::PrimitiveMode::Lines);
 
             for i in 0..ring2d.len() {
-                let a = ring2d[i];
-                let b = ring2d[(i + 1) % ring2d.len()];
+                let mut a = ring2d[i];
+                let mut b = ring2d[(i + 1) % ring2d.len()];
+                a.y = -a.y;
+                b.y = -b.y;
                 batch.add_line(a, b, 0.05);
             }
             scene.d2_dynamic.push(batch);

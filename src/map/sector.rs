@@ -115,6 +115,32 @@ impl Sector {
         Some(sum / count)
     }
 
+    /// Calculate the center of the sector using 3D coords.
+    pub fn center_3d(&self, map: &Map) -> Option<Vec3<f32>> {
+        // Collect all vertices for the sector
+        let mut vertices = Vec::new();
+        for &linedef_id in &self.linedefs {
+            if let Some(linedef) = map.find_linedef(linedef_id) {
+                if let Some(start_vertex) = map.find_vertex(linedef.start_vertex) {
+                    vertices.push(Vec2::new(start_vertex.x, start_vertex.y));
+                    if let Some(end_vertex) = map.find_vertex(linedef.end_vertex) {
+                        vertices.push(Vec2::new(end_vertex.x, end_vertex.y));
+                    }
+                }
+            }
+        }
+
+        // Ensure we have vertices to calculate the center
+        if vertices.is_empty() {
+            return None;
+        }
+
+        // Calculate the average x and y coordinates
+        let sum = vertices.iter().fold(Vec3::zero(), |acc, v| acc + *v);
+        let count = vertices.len() as f32;
+        Some(sum / count)
+    }
+
     /// Calculate the area of the sector (for sorting).
     pub fn area(&self, map: &Map) -> f32 {
         // Generate geometry for the sector
