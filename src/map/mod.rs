@@ -564,12 +564,14 @@ impl Map {
     }
 
     /// Add a 3D vertex (x,y on the 2D grid; z is up).
-    pub fn add_vertex_at_3d(&mut self, mut x: f32, mut y: f32, mut z: f32) -> u32 {
+    pub fn add_vertex_at_3d(&mut self, mut x: f32, mut y: f32, mut z: f32, snap: bool) -> u32 {
         // Snap X/Y using the same 2D grid/subdivision logic as add_vertex_at
-        let subdivisions = 1.0 / self.subdivisions;
-        x = (x / subdivisions).round() * subdivisions;
-        y = (y / subdivisions).round() * subdivisions;
-        z = (z / subdivisions).round() * subdivisions;
+        if snap {
+            let subdivisions = 1.0 / self.subdivisions;
+            x = (x / subdivisions).round() * subdivisions;
+            y = (y / subdivisions).round() * subdivisions;
+            z = (z / subdivisions).round() * subdivisions;
+        }
 
         // Check if a vertex at (x,y,z) already exists
         if let Some(id) = self.find_vertex_at_3d(x, y, z) {
@@ -935,7 +937,7 @@ impl Map {
         );
 
         // Step 3: Add the midpoint as a new vertex
-        let new_vertex_id = self.add_vertex_at_3d(midpoint.x, midpoint.y, midpoint.z);
+        let new_vertex_id = self.add_vertex_at_3d(midpoint.x, midpoint.y, midpoint.z, false);
 
         // Step 4: Create new linedefs
         let mut new_linedef_1 = Linedef::new(
