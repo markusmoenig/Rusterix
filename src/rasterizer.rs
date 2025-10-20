@@ -1218,7 +1218,7 @@ impl Rasterizer {
                                     execution.color.x = color.x;
                                     execution.color.y = color.y;
                                     execution.color.z = color.z;
-                                    execution.opacity.x = 1.0;
+                                    execution.opacity.x = texel[3] as f32 / 255.0;
 
                                     execution.normal = normal;
 
@@ -1297,7 +1297,7 @@ impl Rasterizer {
                                         lit[2] *= occlusion;
                                     }
 
-                                    // Non-terrain: batch ambient + all scene lights
+                                    // Batch ambient + all scene lights
                                     let hemi = 0.5 * (normal.y + 1.0);
                                     let kd = mat_base * (1.0 - mat_metallic) * (1.0 - 0.04); // cheap F0 reduction
                                     lit += batch.ambient_color * kd * hemi;
@@ -1305,7 +1305,7 @@ impl Rasterizer {
                                     // Direct lights
                                     for light in scene.lights.iter().chain(&scene.dynamic_lights) {
                                         let Some(radiance) =
-                                            light.radiance_at(world, None, self.hash_anim)
+                                            light.radiance_at(world, Some(normal), self.hash_anim)
                                         else {
                                             continue;
                                         };
@@ -1570,7 +1570,7 @@ impl Rasterizer {
                                     execution.color.x = color.x;
                                     execution.color.y = color.y;
                                     execution.color.z = color.z;
-                                    execution.opacity.x = 1.0;
+                                    execution.opacity.x = texel[3] as f32 / 255.0;
 
                                     // Execute the batch shader (if any)
                                     if let Some(shader_index) = batch.shader {

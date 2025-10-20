@@ -1,5 +1,5 @@
 use crate::{Assets, Batch3D, D3Camera, Map, PixelSource, Scene, Value, ValueContainer};
-use vek::Vec2;
+use vek::{Vec2, Vec3};
 
 pub struct D3Builder {
     map: Map,
@@ -375,26 +375,10 @@ impl D3Builder {
         scene.dynamic_lights = vec![];
         let mut batches = vec![];
 
-        fn add_billboard(
-            start_vertex: &Vec2<f32>,
-            end_vertex: &Vec2<f32>,
-            scale: f32,
-            batch: &mut Batch3D,
-        ) {
-            let wall_vertices = vec![
-                [start_vertex.x, 0.0, start_vertex.y, 1.0],
-                [start_vertex.x, scale, start_vertex.y, 1.0],
-                [end_vertex.x, scale, end_vertex.y, 1.0],
-                [end_vertex.x, 0.0, end_vertex.y, 1.0],
-            ];
-
-            let wall_uvs = vec![[0.0, 1.0], [0.0, 0.0], [1.0, 0.0], [1.0, 1.0]];
-
-            let wall_indices = vec![(0, 1, 2), (0, 2, 3)];
-            batch.add(wall_vertices, wall_indices, wall_uvs);
+        fn add_billboard(center: Vec3<f32>, size: f32, camera: &dyn D3Camera, batch: &mut Batch3D) {
+            let (_view_forward, view_right, view_up) = camera.basis_vectors();
+            batch.add_vertex_billboard(center, view_right, view_up, size);
         }
-
-        let camera_pos = Vec2::new(camera.position().x, camera.position().z);
 
         // Billboard sectors (Rect)
         for sector in self.map.sectors.iter() {
@@ -411,19 +395,14 @@ impl D3Builder {
                             }
                         }
                         if let Some(position) = sector.center(&self.map) {
-                            let direction_to_camera = (camera_pos - position).normalized();
-                            let perpendicular =
-                                Vec2::new(-direction_to_camera.y, direction_to_camera.x);
-                            let start = position + perpendicular * 0.5 * scale;
-                            let end = position - perpendicular * 0.5 * scale;
-
+                            let center3 = Vec3::new(position.x, scale * 0.5, position.y);
                             if let Some(tile) = source.tile_from_tile_list(assets) {
                                 if let Some(texture_index) = assets.tile_index(&tile.id) {
                                     let mut batch = Batch3D::empty()
                                         .repeat_mode(crate::RepeatMode::RepeatXY)
                                         .source(PixelSource::StaticTileIndex(texture_index));
 
-                                    add_billboard(&start, &end, scale, &mut batch);
+                                    add_billboard(center3, scale, camera, &mut batch);
                                     batches.push(batch);
                                 }
                             }
@@ -456,43 +435,29 @@ impl D3Builder {
 
                 if let Some(Value::Source(source)) = entity.attributes.get("source") {
                     if entity.attributes.get_bool_default("visible", false) {
-                        let entity_pos = Vec2::new(entity.position.x, entity.position.z);
-                        let direction_to_camera = (camera_pos - entity_pos).normalized();
-
-                        // Calculate perpendicular vector on the XZ plane
-                        let perpendicular =
-                            Vec2::new(-direction_to_camera.y, direction_to_camera.x);
-                        let start = entity_pos + perpendicular * 0.5;
-                        let end = entity_pos - perpendicular * 0.5;
-
+                        let size = 2.0;
+                        let center3 = Vec3::new(entity.position.x, size * 0.5, entity.position.z);
                         if let Some(tile) = source.tile_from_tile_list(assets) {
                             if let Some(texture_index) = assets.tile_index(&tile.id) {
                                 let mut batch = Batch3D::empty()
                                     .repeat_mode(crate::RepeatMode::RepeatXY)
                                     .source(PixelSource::StaticTileIndex(texture_index));
 
-                                add_billboard(&start, &end, 2.0, &mut batch);
+                                add_billboard(center3, size, camera, &mut batch);
                                 batches.push(batch);
                             }
                         }
                     }
                 } else if let Some(Value::Source(source)) = entity.attributes.get("_source_seq") {
                     if entity.attributes.get_bool_default("visible", false) {
-                        let entity_pos = Vec2::new(entity.position.x, entity.position.z);
-                        let direction_to_camera = (camera_pos - entity_pos).normalized();
-
-                        // Calculate perpendicular vector on the XZ plane
-                        let perpendicular =
-                            Vec2::new(-direction_to_camera.y, direction_to_camera.x);
-                        let start = entity_pos + perpendicular * 0.5;
-                        let end = entity_pos - perpendicular * 0.5;
-
+                        let size = 2.0;
+                        let center3 = Vec3::new(entity.position.x, size * 0.5, entity.position.z);
                         if let Some(entity_tile) = source.entity_tile_id(entity.id, assets) {
                             let mut batch = Batch3D::empty()
                                 .repeat_mode(crate::RepeatMode::RepeatXY)
                                 .source(entity_tile);
 
-                            add_billboard(&start, &end, 2.0, &mut batch);
+                            add_billboard(center3, size, camera, &mut batch);
                             batches.push(batch);
                         }
                     }
@@ -513,43 +478,29 @@ impl D3Builder {
 
                 if let Some(Value::Source(source)) = item.attributes.get("source") {
                     if item.attributes.get_bool_default("visible", false) {
-                        let item_pos = Vec2::new(item.position.x, item.position.z);
-                        let direction_to_camera = (camera_pos - item_pos).normalized();
-
-                        // Calculate perpendicular vector on the XZ plane
-                        let perpendicular =
-                            Vec2::new(-direction_to_camera.y, direction_to_camera.x);
-                        let start = item_pos + perpendicular * 0.5;
-                        let end = item_pos - perpendicular * 0.5;
-
+                        let size = 1.0;
+                        let center3 = Vec3::new(item.position.x, size * 0.5, item.position.z);
                         if let Some(tile) = source.tile_from_tile_list(assets) {
                             if let Some(texture_index) = assets.tile_index(&tile.id) {
                                 let mut batch = Batch3D::empty()
                                     .repeat_mode(crate::RepeatMode::RepeatXY)
                                     .source(PixelSource::StaticTileIndex(texture_index));
 
-                                add_billboard(&start, &end, 1.0, &mut batch);
+                                add_billboard(center3, size, camera, &mut batch);
                                 batches.push(batch);
                             }
                         }
                     }
                 } else if let Some(Value::Source(source)) = item.attributes.get("_source_seq") {
                     if item.attributes.get_bool_default("visible", false) {
-                        let item_pos = Vec2::new(item.position.x, item.position.z);
-                        let direction_to_camera = (camera_pos - item_pos).normalized();
-
-                        // Calculate perpendicular vector on the XZ plane
-                        let perpendicular =
-                            Vec2::new(-direction_to_camera.y, direction_to_camera.x);
-                        let start = item_pos + perpendicular * 0.5;
-                        let end = item_pos - perpendicular * 0.5;
-
+                        let size = 2.0;
+                        let center3 = Vec3::new(item.position.x, size * 0.5, item.position.z);
                         if let Some(item_tile) = source.item_tile_id(item.id, assets) {
                             let mut batch = Batch3D::empty()
                                 .repeat_mode(crate::RepeatMode::RepeatXY)
                                 .source(item_tile);
 
-                            add_billboard(&start, &end, 2.0, &mut batch);
+                            add_billboard(center3, size, camera, &mut batch);
                             batches.push(batch);
                         }
                     }
