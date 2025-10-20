@@ -194,9 +194,10 @@ impl ChunkBuilder for D3ChunkBuilder {
                         }
                     }
                     if !pushed {
-                        let mut batch = Batch3D::new(world_vertices, indices, uvs)
-                            .repeat_mode(RepeatMode::RepeatXY)
-                            .geometry_source(GeometrySource::Sector(sector.id));
+                        let mut batch =
+                            Batch3D::new(world_vertices.clone(), indices.clone(), uvs.clone())
+                                .repeat_mode(RepeatMode::RepeatXY)
+                                .geometry_source(GeometrySource::Sector(sector.id));
                         if let Some(si) = shader_index {
                             batch.shader = Some(si);
                             if chunk.shaders_with_opacity[si] {
@@ -207,6 +208,94 @@ impl ChunkBuilder for D3ChunkBuilder {
                         } else {
                             batch.source = PixelSource::Pixel([128, 128, 128, 255]);
                             chunk.batches3d.push(batch);
+                        }
+                    }
+
+                    // --- Extrusion: thickness, back cap, side bands ---
+                    if surface.extrusion.enabled && surface.extrusion.depth.abs() > 1e-6 {
+                        let depth = surface.extrusion.depth;
+                        let n = {
+                            let nn = surface.plane.normal;
+                            let l = nn.magnitude();
+                            if l > 1e-6 {
+                                nn / l
+                            } else {
+                                vek::Vec3::unit_y()
+                            }
+                        };
+
+                        // 1) Back cap at z = depth (offset along normal)
+                        {
+                            let back_world_vertices: Vec<[f32; 4]> = verts_uv
+                                .iter()
+                                .map(|uv| {
+                                    let p = surface.uv_to_world(vek::Vec2::new(uv[0], uv[1]))
+                                        + n * depth;
+                                    [p.x, p.y, p.z, 1.0]
+                                })
+                                .collect();
+
+                            let mut back_indices = indices.clone();
+                            // Faces should point opposite to front cap
+                            fix_winding(
+                                &back_world_vertices,
+                                &mut back_indices,
+                                -surface.plane.normal,
+                            );
+
+                            let back_uvs = uvs.clone();
+
+                            let mut back_batch =
+                                Batch3D::new(back_world_vertices, back_indices, back_uvs)
+                                    .repeat_mode(RepeatMode::RepeatXY)
+                                    .geometry_source(GeometrySource::Sector(sector.id));
+                            if let Some(si) = shader_index {
+                                back_batch.shader = Some(si);
+                                if chunk.shaders_with_opacity[si] {
+                                    chunk.batches3d_opacity.push(back_batch);
+                                } else {
+                                    chunk.batches3d.push(back_batch);
+                                }
+                            } else {
+                                back_batch.source = PixelSource::Pixel([128, 128, 128, 255]);
+                                chunk.batches3d.push(back_batch);
+                            }
+                        }
+
+                        // Helper to push a side band (outer ring or through-hole tube)
+                        let mut push_side_band = |loop_uv: &Vec<vek::Vec2<f32>>| {
+                            let (ring_v, mut ring_i, ring_uv) = build_jamb(surface, loop_uv, depth);
+                            fix_winding(&ring_v, &mut ring_i, surface.plane.normal);
+                            let mut band_batch = Batch3D::new(ring_v, ring_i, ring_uv)
+                                .repeat_mode(RepeatMode::RepeatXY)
+                                .geometry_source(GeometrySource::Sector(sector.id));
+                            if let Some(si) = shader_index {
+                                band_batch.shader = Some(si);
+                                if chunk.shaders_with_opacity[si] {
+                                    chunk.batches3d_opacity.push(band_batch);
+                                } else {
+                                    chunk.batches3d.push(band_batch);
+                                }
+                            } else {
+                                band_batch.source = PixelSource::Pixel([128, 128, 128, 255]);
+                                chunk.batches3d.push(band_batch);
+                            }
+                        };
+
+                        // 2) Outer perimeter side band
+                        push_side_band(&outer_loop.path);
+
+                        // 3) Through-hole tubes for holes that actually go through the thickness
+                        let eps = 1e-5f32;
+                        for h in &hole_loops {
+                            let through = match h.op {
+                                LoopOp::None => true,
+                                LoopOp::Recess { depth: d } => d + eps >= depth.abs(),
+                                LoopOp::Relief { .. } => false,
+                            };
+                            if through {
+                                push_side_band(&h.path);
+                            }
                         }
                     }
                 }

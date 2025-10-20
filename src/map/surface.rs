@@ -56,6 +56,48 @@ pub struct Attachment {
     pub proc_ref: Option<Uuid>,
 }
 
+/// UV mapping strategy for extruded side walls and caps.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug)]
+pub enum ExtrudeUV {
+    /// U follows edge length; V follows depth. Scales apply as multipliers.
+    Stretch { scale_u: f32, scale_v: f32 },
+    /// Planar UV for caps (using surface UV), stretch for sides with uniform scale.
+    PlanarFront { scale: f32 },
+}
+
+impl Default for ExtrudeUV {
+    fn default() -> Self {
+        Self::Stretch {
+            scale_u: 1.0,
+            scale_v: 1.0,
+        }
+    }
+}
+
+/// How this surface turns into 3D geometry.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug)]
+pub struct ExtrusionSpec {
+    pub enabled: bool,     // if false, flat cap only
+    pub depth: f32,        // thickness along +N (negative = -N)
+    pub cap_front: bool,   // cap at origin plane
+    pub cap_back: bool,    // cap at origin + depth
+    pub flip_normal: bool, // invert N at build-time if needed
+    pub uv: ExtrudeUV,     // UV mapping mode for sides/caps
+}
+
+impl Default for ExtrusionSpec {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            depth: 0.0,
+            cap_front: true,
+            cap_back: false,
+            flip_normal: false,
+            uv: ExtrudeUV::default(),
+        }
+    }
+}
+
 /// Represents a surface with the sector owner, geometry, and profile.
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Surface {
@@ -66,6 +108,10 @@ pub struct Surface {
     pub plane: Plane,
     pub frame: Basis3,
     pub edit_uv: EditPlane,
+
+    /// Extrusion parameters for this surface (depth, caps, UVs).
+    #[serde(default)]
+    pub extrusion: ExtrusionSpec,
 
     /// Uuid of the Profile
     pub profile: Option<Uuid>,
@@ -83,6 +129,7 @@ impl Surface {
             plane: Plane::default(),
             frame: Basis3::default(),
             edit_uv: EditPlane::default(),
+            extrusion: ExtrusionSpec::default(),
             profile: None,
             world_vertices: vec![],
         }
@@ -158,6 +205,79 @@ impl Surface {
     pub fn world_to_uv(&self, p: Vec3<f32>) -> Vec2<f32> {
         let rel = p - self.edit_uv.origin;
         Vec2::new(rel.dot(self.edit_uv.right), rel.dot(self.edit_uv.up)) / self.edit_uv.scale
+    }
+
+    /// Project the owning sector polygon into this surface's UV space (CCW ensured).
+    pub fn sector_loop_uv(&self, map: &Map) -> Option<Vec<Vec2<f32>>> {
+        let sector = map.find_sector(self.sector_id)?;
+        let pts3 = sector.vertices_world(map)?;
+        if pts3.len() < 3 {
+            return None;
+        }
+        let mut uv: Vec<Vec2<f32>> = pts3.iter().map(|p| self.world_to_uv(*p)).collect();
+        if polygon_signed_area_uv(&uv) < 0.0 {
+            uv.reverse();
+        }
+        Some(uv)
+    }
+
+    /// Triangulate a cap defined by an outer loop and optional hole loops in UV space.
+    /// Returns (world_positions, triangle_indices, uv_positions).
+    pub fn triangulate_cap_with_holes(
+        &self,
+        outer_uv: &[Vec2<f32>],
+        holes_uv: &[Vec<Vec2<f32>>],
+    ) -> Option<(Vec<[f32; 4]>, Vec<(usize, usize, usize)>, Vec<[f32; 2]>)> {
+        if outer_uv.len() < 3 {
+            return None;
+        }
+        // Build flattened buffer: outer first, then each hole
+        let mut verts: Vec<Vec2<f32>> =
+            Vec::with_capacity(outer_uv.len() + holes_uv.iter().map(|h| h.len()).sum::<usize>());
+        let mut holes_idx: Vec<usize> = Vec::with_capacity(holes_uv.len());
+
+        // Outer (ensure CCW)
+        if polygon_signed_area_uv(outer_uv) < 0.0 {
+            let mut ccw = outer_uv.to_vec();
+            ccw.reverse();
+            verts.extend(ccw);
+        } else {
+            verts.extend_from_slice(outer_uv);
+        }
+        // Holes (ensure CW per earcut convention)
+        let mut offset = outer_uv.len();
+        for h in holes_uv {
+            holes_idx.push(offset);
+            if polygon_signed_area_uv(h) > 0.0 {
+                // if CCW, flip to CW
+                let mut cw = h.clone();
+                cw.reverse();
+                verts.extend(cw);
+            } else {
+                verts.extend_from_slice(h);
+            }
+            offset += h.len();
+        }
+
+        // Flatten to f64 for earcut
+        let flat: Vec<f64> = verts
+            .iter()
+            .flat_map(|v| [v.x as f64, v.y as f64])
+            .collect();
+        let idx = earcut(&flat, &holes_idx, 2).ok()?;
+        let indices: Vec<(usize, usize, usize)> =
+            idx.chunks_exact(3).map(|c| (c[2], c[1], c[0])).collect();
+
+        let verts_uv: Vec<[f32; 2]> = verts.iter().map(|v| [v.x, v.y]).collect();
+        let world_vertices: Vec<[f32; 4]> = verts
+            .iter()
+            .map(|uv| {
+                let p = self.uv_to_world(*uv);
+                [p.x, p.y, p.z, 1.0]
+            })
+            .collect();
+
+        Some((world_vertices, indices, verts_uv))
     }
 
     /// Normalized surface normal.
@@ -269,4 +389,17 @@ fn stable_right(points: &[Vec3<f32>], normal: Vec3<f32>) -> Vec3<f32> {
         }
     }
     normalize_or_zero(right)
+}
+
+fn polygon_signed_area_uv(poly: &[Vec2<f32>]) -> f32 {
+    if poly.len() < 3 {
+        return 0.0;
+    }
+    let mut a = 0.0f32;
+    for i in 0..poly.len() {
+        let p = poly[i];
+        let q = poly[(i + 1) % poly.len()];
+        a += p.x * q.y - q.x * p.y;
+    }
+    0.5 * a
 }
