@@ -54,12 +54,52 @@ impl ChunkBuilder for D3ChunkBuilder {
                         dump_poly(&format!("hole[{}]", i), &h.path);
                     }
                 }
-                let (_base_holes, feature_loops) = split_loops_for_base(&outer_loop, &hole_loops);
+                let extrude_abs = surface.extrusion.depth.abs();
+                let (base_holes, feature_loops) =
+                    split_loops_for_base(&outer_loop, &hole_loops, extrude_abs);
+                if dbg {
+                    println!(
+                        "[DBG] classification: base_holes={}, feature_loops={}",
+                        base_holes.len(),
+                        feature_loops.len()
+                    );
+                }
 
                 // 1) BASE WALL from profile loops (outer with holes)
                 let mut outer_path = outer_loop.path.clone();
+
+                // Helper: read profile_target for a loop (profile sector → host fallback)
+                let loop_profile_target = |pl: &ProfileLoop| -> i32 {
+                    if let Some(origin) = pl.origin_profile_sector {
+                        if let Some(profile_id) = surface.profile {
+                            if let Some(profile_map) = map.profiles.get(&profile_id) {
+                                if let Some(ps) = profile_map.find_sector(origin) {
+                                    return ps.properties.get_int_default("profile_target", 0);
+                                }
+                            }
+                        }
+                    }
+                    sector.properties.get_int_default("profile_target", 0)
+                };
+
+                // Start with true base holes (cutouts + through recesses)
                 let mut holes_paths: Vec<Vec<vek::Vec2<f32>>> =
-                    hole_loops.iter().map(|h| h.path.clone()).collect();
+                    base_holes.iter().map(|h| h.path.clone()).collect();
+
+                // Symmetry: if extruded, also cut holes on the FRONT cap for shallow recesses
+                // that explicitly target the FRONT (profile_target == 0). This makes the pocket visible
+                // from the front when editing recess-on-front.
+                if surface.extrusion.enabled && extrude_abs > 1e-6 {
+                    for h in &hole_loops {
+                        if loop_profile_target(h) == 0 {
+                            if let LoopOp::Recess { depth: d } = h.op {
+                                if d + 1e-5f32 < extrude_abs {
+                                    holes_paths.push(h.path.clone());
+                                }
+                            }
+                        }
+                    }
+                }
 
                 if dbg {
                     let total_pts: usize =
@@ -167,20 +207,51 @@ impl ChunkBuilder for D3ChunkBuilder {
                                 .map(|m| chunk.add_shader(&m.build_shader()))
                         })
                         .flatten();
-                    let mut pushed = false;
-                    if let Some(Value::Source(pixelsource)) = sector.properties.get("source") {
-                        if let Some(tile) = pixelsource.tile_from_tile_list(assets) {
-                            if let Some(texture_index) = assets.tile_index(&tile.id) {
-                                let mut batch = Batch3D::new(
-                                    world_vertices.clone(),
-                                    indices.clone(),
-                                    uvs.clone(),
-                                )
-                                .repeat_mode(RepeatMode::RepeatXY)
-                                .source(PixelSource::StaticTileIndex(texture_index))
-                                .geometry_source(GeometrySource::Sector(sector.id));
-                                if let Some(si) = shader_index {
-                                    batch.shader = Some(si);
+                    #[derive(Clone, Copy)]
+                    enum MaterialKind {
+                        Cap,
+                        Side,
+                    }
+
+                    // Helper function (no captures): push a batch with sector material. Side prefers `side_source`.
+                    fn push_with_material_kind_local(
+                        kind: MaterialKind,
+                        sector: &Sector,
+                        shader_index: Option<usize>,
+                        assets: &Assets,
+                        chunk: &mut Chunk,
+                        verts: Vec<[f32; 4]>,
+                        inds: Vec<(usize, usize, usize)>,
+                        uvs_in: Vec<[f32; 2]>,
+                    ) {
+                        let mut batch = Batch3D::new(verts, inds, uvs_in)
+                            .repeat_mode(RepeatMode::RepeatXY)
+                            .geometry_source(GeometrySource::Sector(sector.id));
+
+                        let source_key = match kind {
+                            MaterialKind::Side => "side_source",
+                            MaterialKind::Cap => "source",
+                        };
+                        let fallback_key = "source";
+
+                        if let Some(Value::Source(pixelsource)) = sector
+                            .properties
+                            .get(source_key)
+                            .or_else(|| sector.properties.get(fallback_key))
+                        {
+                            if let Some(tile) = pixelsource.tile_from_tile_list(assets) {
+                                if let Some(texture_index) = assets.tile_index(&tile.id) {
+                                    batch.source = PixelSource::StaticTileIndex(texture_index);
+                                }
+                            }
+                        }
+
+                        if let Some(si) = shader_index {
+                            batch.shader = Some(si);
+                            if chunk.shaders_with_opacity[si] {
+                                chunk.batches3d_opacity.push(batch);
+                            } else {
+                                if let Some(si) = batch.shader {
                                     if chunk.shaders_with_opacity[si] {
                                         chunk.batches3d_opacity.push(batch);
                                     } else {
@@ -189,27 +260,140 @@ impl ChunkBuilder for D3ChunkBuilder {
                                 } else {
                                     chunk.batches3d.push(batch);
                                 }
-                                pushed = true;
                             }
-                        }
-                    }
-                    if !pushed {
-                        let mut batch =
-                            Batch3D::new(world_vertices.clone(), indices.clone(), uvs.clone())
-                                .repeat_mode(RepeatMode::RepeatXY)
-                                .geometry_source(GeometrySource::Sector(sector.id));
-                        if let Some(si) = shader_index {
-                            batch.shader = Some(si);
-                            if chunk.shaders_with_opacity[si] {
-                                chunk.batches3d_opacity.push(batch);
+                        } else {
+                            if matches!(batch.source, PixelSource::Pixel(_)) {
+                                batch.source = PixelSource::Pixel([128, 128, 128, 255]);
+                            }
+                            if let Some(si) = batch.shader {
+                                if chunk.shaders_with_opacity[si] {
+                                    chunk.batches3d_opacity.push(batch);
+                                } else {
+                                    chunk.batches3d.push(batch);
+                                }
                             } else {
                                 chunk.batches3d.push(batch);
                             }
-                        } else {
-                            batch.source = PixelSource::Pixel([128, 128, 128, 255]);
-                            chunk.batches3d.push(batch);
                         }
                     }
+
+                    // Build a side band (jamb) with UVs: U=perimeter distance normalized, V=0..1 across depth
+                    let build_jamb_uv = |loop_uv: &Vec<vek::Vec2<f32>>,
+                                         depth: f32|
+                     -> (
+                        Vec<[f32; 4]>,
+                        Vec<(usize, usize, usize)>,
+                        Vec<[f32; 2]>,
+                    ) {
+                        let m = loop_uv.len();
+                        if m < 2 {
+                            return (vec![], vec![], vec![]);
+                        }
+
+                        // Accumulate perimeter distances in **world space** on the front plane (offset 0)
+                        let mut n = surface.plane.normal;
+                        let l = n.magnitude();
+                        if l > 1e-6 {
+                            n /= l;
+                        } else {
+                            n = vek::Vec3::unit_y();
+                        }
+
+                        let mut front_ws: Vec<vek::Vec3<f32>> = Vec::with_capacity(m);
+                        for i in 0..m {
+                            let p = surface.uv_to_world(loop_uv[i]);
+                            front_ws.push(p);
+                        }
+                        let mut dists = vec![0.0f32; m + 1];
+                        for i in 0..m {
+                            let a = front_ws[i];
+                            let b = front_ws[(i + 1) % m];
+                            dists[i + 1] = dists[i] + (b - a).magnitude();
+                        }
+                        let perim = dists[m].max(1e-6);
+
+                        // --- UVs: follow sector tiling rules for sides ---
+                        let tile_mode_side = sector.properties.get_int_default(
+                            "side_tile_mode",
+                            sector.properties.get_int_default("tile_mode", 1),
+                        );
+                        let tex_scale_u = sector.properties.get_float_default(
+                            "side_texture_scale_x",
+                            sector.properties.get_float_default("texture_scale_x", 1.0),
+                        );
+                        let tex_scale_v = sector.properties.get_float_default(
+                            "side_texture_scale_y",
+                            sector.properties.get_float_default("texture_scale_y", 1.0),
+                        );
+                        let depth_abs = depth.abs().max(1e-6);
+
+                        // Geometry: independent quad per edge (two triangles)
+                        let mut verts: Vec<[f32; 4]> = Vec::with_capacity(m * 4);
+                        let mut uvs: Vec<[f32; 2]> = Vec::with_capacity(m * 4);
+                        let mut inds: Vec<(usize, usize, usize)> = Vec::with_capacity(m * 2);
+
+                        // Use surface normal each time so this helper is independent
+                        let mut n = surface.plane.normal;
+                        let l = n.magnitude();
+                        if l > 1e-6 {
+                            n /= l;
+                        } else {
+                            n = vek::Vec3::unit_y();
+                        }
+
+                        for i in 0..m {
+                            let ia = i;
+                            let ib = (i + 1) % m;
+                            let a_uv = loop_uv[ia];
+                            let b_uv = loop_uv[ib];
+                            let a_world = surface.uv_to_world(a_uv);
+                            let b_world = surface.uv_to_world(b_uv);
+                            let a_back = a_world + n * depth;
+                            let b_back = b_world + n * depth;
+
+                            let base = verts.len();
+                            verts.push([a_world.x, a_world.y, a_world.z, 1.0]);
+                            verts.push([b_world.x, b_world.y, b_world.z, 1.0]);
+                            verts.push([b_back.x, b_back.y, b_back.z, 1.0]);
+                            verts.push([a_back.x, a_back.y, a_back.z, 1.0]);
+
+                            // U along perimeter, V across depth
+                            let ua_raw = dists[ia];
+                            let ub_raw = dists[ib];
+                            let (ua, ub, v0, v1) = if tile_mode_side == 0 {
+                                // Fit: normalize to 0..1 in both axes
+                                (ua_raw / perim, ub_raw / perim, 0.0, 1.0)
+                            } else {
+                                // Repeat: scale in world units by texture scales
+                                (
+                                    ua_raw / tex_scale_u.max(1e-6),
+                                    ub_raw / tex_scale_u.max(1e-6),
+                                    0.0,
+                                    depth_abs / tex_scale_v.max(1e-6),
+                                )
+                            };
+                            uvs.push([ua, v0]);
+                            uvs.push([ub, v0]);
+                            uvs.push([ub, v1]);
+                            uvs.push([ua, v1]);
+
+                            inds.push((base + 0, base + 1, base + 2));
+                            inds.push((base + 0, base + 2, base + 3));
+                        }
+
+                        (verts, inds, uvs)
+                    };
+
+                    push_with_material_kind_local(
+                        MaterialKind::Cap,
+                        sector,
+                        shader_index,
+                        assets,
+                        chunk,
+                        world_vertices.clone(),
+                        indices.clone(),
+                        uvs.clone(),
+                    );
 
                     // --- Extrusion: thickness, back cap, side bands ---
                     if surface.extrusion.enabled && surface.extrusion.depth.abs() > 1e-6 {
@@ -224,98 +408,333 @@ impl ChunkBuilder for D3ChunkBuilder {
                             }
                         };
 
-                        // 1) Back cap at z = depth (offset along normal)
+                        // 1) Back cap at z = depth (offset along normal), with its OWN holes
                         {
-                            let back_world_vertices: Vec<[f32; 4]> = verts_uv
-                                .iter()
-                                .map(|uv| {
-                                    let p = surface.uv_to_world(vek::Vec2::new(uv[0], uv[1]))
-                                        + n * depth;
-                                    [p.x, p.y, p.z, 1.0]
-                                })
-                                .collect();
-
-                            let mut back_indices = indices.clone();
-                            // Faces should point opposite to front cap
-                            fix_winding(
-                                &back_world_vertices,
-                                &mut back_indices,
-                                -surface.plane.normal,
-                            );
-
-                            let back_uvs = uvs.clone();
-
-                            let mut back_batch =
-                                Batch3D::new(back_world_vertices, back_indices, back_uvs)
-                                    .repeat_mode(RepeatMode::RepeatXY)
-                                    .geometry_source(GeometrySource::Sector(sector.id));
-                            if let Some(si) = shader_index {
-                                back_batch.shader = Some(si);
-                                if chunk.shaders_with_opacity[si] {
-                                    chunk.batches3d_opacity.push(back_batch);
-                                } else {
-                                    chunk.batches3d.push(back_batch);
+                            // Helper: read profile_target for a loop (profile sector → host fallback)
+                            let loop_profile_target = |pl: &ProfileLoop| -> i32 {
+                                if let Some(origin) = pl.origin_profile_sector {
+                                    if let Some(profile_id) = surface.profile {
+                                        if let Some(profile_map) = map.profiles.get(&profile_id) {
+                                            if let Some(ps) = profile_map.find_sector(origin) {
+                                                return ps
+                                                    .properties
+                                                    .get_int_default("profile_target", 0);
+                                            }
+                                        }
+                                    }
                                 }
-                            } else {
-                                back_batch.source = PixelSource::Pixel([128, 128, 128, 255]);
-                                chunk.batches3d.push(back_batch);
+                                sector.properties.get_int_default("profile_target", 0)
+                            };
+
+                            // Decide which holes must be subtracted from the BACK cap:
+                            //  - pure cutouts (None)
+                            //  - through recesses (depth >= thickness)
+                            //  - shallow recesses that TARGET THE BACK CAP (profile_target==1)
+                            let eps = 1e-5f32;
+                            let extrude_abs = surface.extrusion.depth.abs();
+                            let mut back_holes_paths: Vec<Vec<vek::Vec2<f32>>> = Vec::new();
+                            for h in &hole_loops {
+                                let to_back = loop_profile_target(h) == 1;
+                                match h.op {
+                                    LoopOp::None => {
+                                        back_holes_paths.push(h.path.clone());
+                                    }
+                                    LoopOp::Recess { depth: d } => {
+                                        if d + eps >= extrude_abs {
+                                            // through recess → hole on both caps
+                                            back_holes_paths.push(h.path.clone());
+                                        } else if to_back {
+                                            // shallow recess targeted to the BACK cap → visible pocket → cut a hole on BACK
+                                            back_holes_paths.push(h.path.clone());
+                                        }
+                                    }
+                                    LoopOp::Relief { .. } => { /* no hole */ }
+                                }
+                            }
+
+                            // Triangulate back cap with its holes
+                            let mut back_outer = outer_loop.path.clone();
+                            if let Some((back_verts_uv, mut back_indices)) =
+                                earcut_with_holes(&mut back_outer, &mut back_holes_paths)
+                            {
+                                // Map UV to world on back plane
+                                let back_world_vertices: Vec<[f32; 4]> = back_verts_uv
+                                    .iter()
+                                    .map(|uv| {
+                                        let p = surface.uv_to_world(vek::Vec2::new(uv[0], uv[1]))
+                                            + n * depth;
+                                        [p.x, p.y, p.z, 1.0]
+                                    })
+                                    .collect();
+
+                                // Faces should point opposite to front cap on the back
+                                fix_winding(
+                                    &back_world_vertices,
+                                    &mut back_indices,
+                                    -surface.plane.normal,
+                                );
+
+                                // Build UVs same as front (scale/tiling based on sector props)
+                                let tile_mode = sector.properties.get_int_default("tile_mode", 1);
+                                let mut minx = f32::INFINITY;
+                                let mut miny = f32::INFINITY;
+                                let mut maxx = f32::NEG_INFINITY;
+                                let mut maxy = f32::NEG_INFINITY;
+                                for v in &back_verts_uv {
+                                    minx = minx.min(v[0]);
+                                    maxx = maxx.max(v[0]);
+                                    miny = miny.min(v[1]);
+                                    maxy = maxy.max(v[1]);
+                                }
+                                let sx = (maxx - minx).max(1e-6);
+                                let sy = (maxy - miny).max(1e-6);
+                                let mut back_uvs: Vec<[f32; 2]> =
+                                    Vec::with_capacity(back_verts_uv.len());
+                                if tile_mode == 0 {
+                                    for v in &back_verts_uv {
+                                        back_uvs.push([(v[0] - minx) / sx, (v[1] - miny) / sy]);
+                                    }
+                                } else {
+                                    let tex_scale_x =
+                                        sector.properties.get_float_default("texture_scale_x", 1.0);
+                                    let tex_scale_y =
+                                        sector.properties.get_float_default("texture_scale_y", 1.0);
+                                    for v in &back_verts_uv {
+                                        back_uvs.push([
+                                            (v[0] - minx) / tex_scale_x,
+                                            (v[1] - miny) / tex_scale_y,
+                                        ]);
+                                    }
+                                }
+
+                                push_with_material_kind_local(
+                                    MaterialKind::Cap,
+                                    sector,
+                                    shader_index,
+                                    assets,
+                                    chunk,
+                                    back_world_vertices,
+                                    back_indices,
+                                    back_uvs,
+                                );
                             }
                         }
 
                         // Helper to push a side band (outer ring or through-hole tube)
                         let mut push_side_band = |loop_uv: &Vec<vek::Vec2<f32>>| {
-                            let (ring_v, mut ring_i, ring_uv) = build_jamb(surface, loop_uv, depth);
+                            let (ring_v, mut ring_i, ring_uv) = build_jamb_uv(loop_uv, depth);
                             fix_winding(&ring_v, &mut ring_i, surface.plane.normal);
-                            let mut band_batch = Batch3D::new(ring_v, ring_i, ring_uv)
-                                .repeat_mode(RepeatMode::RepeatXY)
-                                .geometry_source(GeometrySource::Sector(sector.id));
-                            if let Some(si) = shader_index {
-                                band_batch.shader = Some(si);
-                                if chunk.shaders_with_opacity[si] {
-                                    chunk.batches3d_opacity.push(band_batch);
-                                } else {
-                                    chunk.batches3d.push(band_batch);
-                                }
-                            } else {
-                                band_batch.source = PixelSource::Pixel([128, 128, 128, 255]);
-                                chunk.batches3d.push(band_batch);
-                            }
+                            push_with_material_kind_local(
+                                MaterialKind::Side,
+                                sector,
+                                shader_index,
+                                assets,
+                                chunk,
+                                ring_v,
+                                ring_i,
+                                ring_uv,
+                            );
                         };
 
                         // 2) Outer perimeter side band
                         push_side_band(&outer_loop.path);
 
-                        // 3) Through-hole tubes for holes that actually go through the thickness
-                        let eps = 1e-5f32;
-                        for h in &hole_loops {
-                            let through = match h.op {
-                                LoopOp::None => true,
-                                LoopOp::Recess { depth: d } => d + eps >= depth.abs(),
-                                LoopOp::Relief { .. } => false,
-                            };
-                            if through {
-                                push_side_band(&h.path);
-                            }
+                        // 3) Through-hole tubes for **actual** base holes (cutouts + through-recesses)
+                        for h in &base_holes {
+                            push_side_band(&h.path);
                         }
                     }
                 }
 
                 // 2) FEATURE LOOPS: build caps + jambs
                 for fl in feature_loops {
+                    // Helper: read an int property from the originating profile sector; fallback to host sector
+                    let feature_int_default =
+                        |key: &str, origin: Option<u32>, default: i32| -> i32 {
+                            if let (Some(profile_id), Some(origin_id)) = (surface.profile, origin) {
+                                if let Some(profile_map) = map.profiles.get(&profile_id) {
+                                    if let Some(ps) = profile_map.find_sector(origin_id) {
+                                        return ps.properties.get_int_default(key, default);
+                                    }
+                                }
+                            }
+                            sector.properties.get_int_default(key, default)
+                        };
+                    // Helper: read a float property from the originating profile sector; fallback to host sector
+                    let feature_float_default =
+                        |key: &str, origin: Option<u32>, default: f32| -> f32 {
+                            if let (Some(profile_id), Some(origin_id)) = (surface.profile, origin) {
+                                if let Some(profile_map) = map.profiles.get(&profile_id) {
+                                    if let Some(ps) = profile_map.find_sector(origin_id) {
+                                        return ps.properties.get_float_default(key, default);
+                                    }
+                                }
+                            }
+                            sector.properties.get_float_default(key, default)
+                        };
+                    // Local UV jamb builder for feature loops (U = perimeter distance, V = depth 0..1), starting from a base plane offset
+                    let build_jamb_uv = |loop_uv: &Vec<vek::Vec2<f32>>,
+                                         base_offset: f32,
+                                         depth: f32,
+                                         origin: Option<u32>,
+                                         prefix: &str|
+                     -> (
+                        Vec<[f32; 4]>,
+                        Vec<(usize, usize, usize)>,
+                        Vec<[f32; 2]>,
+                    ) {
+                        let m = loop_uv.len();
+                        if m < 2 {
+                            return (vec![], vec![], vec![]);
+                        }
+
+                        // Accumulate perimeter distances in **world space** on the selected cap plane
+                        let mut n = surface.plane.normal;
+                        let l = n.magnitude();
+                        if l > 1e-6 {
+                            n /= l;
+                        } else {
+                            n = vek::Vec3::unit_y();
+                        }
+
+                        let mut front_ws: Vec<vek::Vec3<f32>> = Vec::with_capacity(m);
+                        for i in 0..m {
+                            let p = surface.uv_to_world(loop_uv[i]) + n * base_offset;
+                            front_ws.push(p);
+                        }
+                        let mut dists = vec![0.0f32; m + 1];
+                        for i in 0..m {
+                            let a = front_ws[i];
+                            let b = front_ws[(i + 1) % m];
+                            dists[i + 1] = dists[i] + (b - a).magnitude();
+                        }
+                        let perim = dists[m].max(1e-6);
+
+                        // --- UVs: follow sector tiling rules for sides with per-feature overrides ---
+                        let tile_mode_side = sector.properties.get_int_default(
+                            "side_tile_mode",
+                            sector.properties.get_int_default("tile_mode", 1),
+                        );
+                        // Allow per-feature overrides, e.g. "relief_jamb_texture_scale_x/y" or "recess_jamb_texture_scale_x/y"
+                        let ov_u_key = format!("{}_jamb_texture_scale_x", prefix);
+                        let ov_v_key = format!("{}_jamb_texture_scale_y", prefix);
+                        let ov_u = feature_float_default(&ov_u_key, origin, f32::NAN);
+                        let ov_v = feature_float_default(&ov_v_key, origin, f32::NAN);
+
+                        let tex_scale_u = if ov_u.is_nan() {
+                            sector.properties.get_float_default(
+                                "side_texture_scale_x",
+                                sector.properties.get_float_default("texture_scale_x", 1.0),
+                            )
+                        } else {
+                            ov_u
+                        };
+                        // For RELIEF jambs, default V-scale to the CAP’s scale so vertical tiling matches the face.
+                        // For other jambs (e.g. RECESS), keep the side default unless overridden per-feature.
+                        let tex_scale_v = if ov_v.is_nan() {
+                            if prefix == "relief" {
+                                sector.properties.get_float_default("texture_scale_y", 1.0)
+                            } else {
+                                sector.properties.get_float_default(
+                                    "side_texture_scale_y",
+                                    sector.properties.get_float_default("texture_scale_y", 1.0),
+                                )
+                            }
+                        } else {
+                            ov_v
+                        };
+                        let depth_abs = depth.abs().max(1e-6);
+
+                        // Surface normal
+                        let mut n = surface.plane.normal;
+                        let l = n.magnitude();
+                        if l > 1e-6 {
+                            n /= l;
+                        } else {
+                            n = vek::Vec3::unit_y();
+                        }
+
+                        // Geometry: independent quad per edge (two triangles)
+                        let mut verts: Vec<[f32; 4]> = Vec::with_capacity(m * 4);
+                        let mut uvs: Vec<[f32; 2]> = Vec::with_capacity(m * 4);
+                        let mut inds: Vec<(usize, usize, usize)> = Vec::with_capacity(m * 2);
+
+                        for i in 0..m {
+                            let ia = i;
+                            let ib = (i + 1) % m;
+                            let a_uv = loop_uv[ia];
+                            let b_uv = loop_uv[ib];
+
+                            // Start at the chosen base plane (front or back cap), then extrude by `depth`
+                            let a_front = surface.uv_to_world(a_uv) + n * base_offset;
+                            let b_front = surface.uv_to_world(b_uv) + n * base_offset;
+                            let a_back = a_front + n * depth;
+                            let b_back = b_front + n * depth;
+
+                            let base = verts.len();
+                            verts.push([a_front.x, a_front.y, a_front.z, 1.0]);
+                            verts.push([b_front.x, b_front.y, b_front.z, 1.0]);
+                            verts.push([b_back.x, b_back.y, b_back.z, 1.0]);
+                            verts.push([a_back.x, a_back.y, a_back.z, 1.0]);
+
+                            // U along perimeter, V across depth
+                            let ua_raw = dists[ia];
+                            let ub_raw = dists[ib];
+                            let (ua, ub, v0, v1) = if tile_mode_side == 0 {
+                                // Fit: normalize to 0..1 in both axes
+                                (ua_raw / perim, ub_raw / perim, 0.0, 1.0)
+                            } else {
+                                // Repeat: scale in world units by texture scales
+                                (
+                                    ua_raw / tex_scale_u.max(1e-6),
+                                    ub_raw / tex_scale_u.max(1e-6),
+                                    0.0,
+                                    depth_abs / tex_scale_v.max(1e-6),
+                                )
+                            };
+                            uvs.push([ua, v0]);
+                            uvs.push([ub, v0]);
+                            uvs.push([ub, v1]);
+                            uvs.push([ua, v1]);
+
+                            inds.push((base + 0, base + 1, base + 2));
+                            inds.push((base + 0, base + 2, base + 3));
+                        }
+                        (verts, inds, uvs)
+                    };
+
                     match fl.op {
                         LoopOp::Relief { height } if height > 0.0 => {
+                            // Decide which cap to attach this feature to: 0=front, 1=back (per-profile-sector)
+                            let profile_target =
+                                feature_int_default("profile_target", fl.origin_profile_sector, 0);
+                            let mut n = surface.plane.normal;
+                            let ln = n.magnitude();
+                            if ln > 1e-6 {
+                                n /= ln;
+                            } else {
+                                n = vek::Vec3::unit_y();
+                            }
+
+                            let cap_offset = if profile_target == 1 {
+                                surface.extrusion.depth
+                            } else {
+                                0.0
+                            };
+
+                            // Relief should bulge **outward** from the chosen cap:
+                            // For FRONT (0): outward is along -n  → dir_sign = -1
+                            // For BACK  (1): outward is along +n  → dir_sign = +1
+                            let dir_sign = if profile_target == 0 { -1.0 } else { 1.0 };
+
+                            // Place relief cap by shifting from chosen cap plane along dir_sign * height
+                            let offset_scalar = cap_offset + dir_sign * height;
                             if let Some((cap_v, cap_i, cap_uv)) =
-                                build_cap(surface, &fl.path, height)
+                                build_cap(surface, &fl.path, offset_scalar)
                             {
                                 let mut cap_i = cap_i;
-                                // Relief cap faces along +normal; recess cap faces along -normal
-                                let desired_n = match fl.op {
-                                    LoopOp::Relief { .. } => surface.plane.normal,
-                                    LoopOp::Recess { .. } => -surface.plane.normal,
-                                    _ => surface.plane.normal,
-                                };
+                                let desired_n: Vec3<f32> = if profile_target == 0 { -n } else { n }; // face outward
                                 fix_winding(&cap_v, &mut cap_i, desired_n);
-
                                 let mut batch = Batch3D::new(cap_v, cap_i, cap_uv)
                                     .repeat_mode(RepeatMode::RepeatXY)
                                     .geometry_source(GeometrySource::Sector(sector.id));
@@ -341,12 +760,38 @@ impl ChunkBuilder for D3ChunkBuilder {
                                         }
                                     }
                                 }
-                                chunk.batches3d.push(batch);
+                                // Inherit host material if nothing set by per-feature keys
+                                if matches!(batch.source, PixelSource::Pixel(_)) {
+                                    if let Some(Value::Source(pixelsource)) =
+                                        sector.properties.get("source")
+                                    {
+                                        if let Some(tile) = pixelsource.tile_from_tile_list(assets)
+                                        {
+                                            if let Some(tex) = assets.tile_index(&tile.id) {
+                                                batch.source = PixelSource::StaticTileIndex(tex);
+                                            }
+                                        }
+                                    }
+                                }
+                                if let Some(si) = batch.shader {
+                                    if chunk.shaders_with_opacity[si] {
+                                        chunk.batches3d_opacity.push(batch);
+                                    } else {
+                                        chunk.batches3d.push(batch);
+                                    }
+                                } else {
+                                    chunk.batches3d.push(batch);
+                                }
                             }
-                            let (ring_v, ring_i, ring_uv) = build_jamb(surface, &fl.path, height);
+                            let (ring_v, ring_i, ring_uv) = build_jamb_uv(
+                                &fl.path,
+                                cap_offset,
+                                dir_sign * height,
+                                fl.origin_profile_sector,
+                                "relief",
+                            );
                             let mut ring_i = ring_i;
                             fix_winding(&ring_v, &mut ring_i, surface.plane.normal);
-
                             let mut batch = Batch3D::new(ring_v, ring_i, ring_uv)
                                 .repeat_mode(RepeatMode::RepeatXY)
                                 .geometry_source(GeometrySource::Sector(sector.id));
@@ -372,25 +817,69 @@ impl ChunkBuilder for D3ChunkBuilder {
                                     }
                                 }
                             }
-                            chunk.batches3d.push(batch);
+                            // Inherit host material if nothing set by per-feature keys
+                            if matches!(batch.source, PixelSource::Pixel(_)) {
+                                if let Some(Value::Source(pixelsource)) =
+                                    sector.properties.get("source")
+                                {
+                                    if let Some(tile) = pixelsource.tile_from_tile_list(assets) {
+                                        if let Some(tex) = assets.tile_index(&tile.id) {
+                                            batch.source = PixelSource::StaticTileIndex(tex);
+                                        }
+                                    }
+                                }
+                            }
+                            if let Some(si) = batch.shader {
+                                if chunk.shaders_with_opacity[si] {
+                                    chunk.batches3d_opacity.push(batch);
+                                } else {
+                                    chunk.batches3d.push(batch);
+                                }
+                            } else {
+                                chunk.batches3d.push(batch);
+                            }
                         }
                         LoopOp::Recess { depth } if depth > 0.0 => {
+                            // Determine which cap we recess into and the direction for that cap
+                            let profile_target =
+                                feature_int_default("profile_target", fl.origin_profile_sector, 0);
+                            let mut n = surface.plane.normal;
+                            let ln = n.magnitude();
+                            if ln > 1e-6 {
+                                n /= ln;
+                            } else {
+                                n = vek::Vec3::unit_y();
+                            }
+
+                            // Cap selection: front (0) or back (1)
+                            let cap_offset = if profile_target == 1 {
+                                surface.extrusion.depth
+                            } else {
+                                0.0
+                            };
+
+                            // FRONT (0): recess must move **toward back**, i.e. along +n by `depth`
+                            // BACK  (1): recess must move **toward front**, i.e. along -n by `depth`
+                            let dir_sign = if profile_target == 0 { 1.0 } else { -1.0 };
+
+                            // --- Cap (recess plane) ---
+                            // Place recess cap by shifting from chosen cap plane along dir_sign * depth
+                            let offset_scalar = cap_offset + dir_sign * depth;
                             if let Some((cap_v, cap_i, cap_uv)) =
-                                build_cap(surface, &fl.path, -depth)
+                                build_cap(surface, &fl.path, offset_scalar)
                             {
                                 let mut cap_i = cap_i;
-                                // Recess cap faces along -normal
-                                let desired_n = -surface.plane.normal;
+                                // Recess cap faces into the pocket: opposite of the shift direction
+                                let desired_n: Vec3<f32> = if profile_target == 0 { -n } else { n };
                                 fix_winding(&cap_v, &mut cap_i, desired_n);
-
                                 if dbg {
                                     println!(
-                                        "[DBG] recess cap: verts={}, tris={}",
+                                        "[DBG] recess cap: verts={}, tris={}, target={} (0=front,1=back)",
                                         cap_v.len(),
-                                        cap_i.len()
+                                        cap_i.len(),
+                                        profile_target
                                     );
                                 }
-
                                 let mut batch = Batch3D::new(cap_v, cap_i, cap_uv)
                                     .repeat_mode(RepeatMode::RepeatXY)
                                     .geometry_source(GeometrySource::Sector(sector.id));
@@ -416,9 +905,40 @@ impl ChunkBuilder for D3ChunkBuilder {
                                         }
                                     }
                                 }
-                                chunk.batches3d.push(batch);
+                                // Inherit host material if nothing set by per-feature keys
+                                if matches!(batch.source, PixelSource::Pixel(_)) {
+                                    if let Some(Value::Source(pixelsource)) =
+                                        sector.properties.get("source")
+                                    {
+                                        if let Some(tile) = pixelsource.tile_from_tile_list(assets)
+                                        {
+                                            if let Some(tex) = assets.tile_index(&tile.id) {
+                                                batch.source = PixelSource::StaticTileIndex(tex);
+                                            }
+                                        }
+                                    }
+                                }
+                                if let Some(si) = batch.shader {
+                                    if chunk.shaders_with_opacity[si] {
+                                        chunk.batches3d_opacity.push(batch);
+                                    } else {
+                                        chunk.batches3d.push(batch);
+                                    }
+                                } else {
+                                    chunk.batches3d.push(batch);
+                                }
                             }
-                            let (ring_v, ring_i, ring_uv) = build_jamb(surface, &fl.path, -depth);
+
+                            // --- Jamb (side band into the pocket) ---
+                            // build_jamb_uv extrudes along +n by the provided depth from base_offset.
+                            // Use the same signed direction as the cap shift
+                            let (ring_v, ring_i, ring_uv) = build_jamb_uv(
+                                &fl.path,
+                                cap_offset,
+                                dir_sign * depth,
+                                fl.origin_profile_sector,
+                                "recess",
+                            );
                             let mut ring_i = ring_i;
                             fix_winding(&ring_v, &mut ring_i, surface.plane.normal);
                             let mut batch = Batch3D::new(ring_v, ring_i, ring_uv)
@@ -446,7 +966,27 @@ impl ChunkBuilder for D3ChunkBuilder {
                                     }
                                 }
                             }
-                            chunk.batches3d.push(batch);
+                            // Inherit host material if nothing set by per-feature keys
+                            if matches!(batch.source, PixelSource::Pixel(_)) {
+                                if let Some(Value::Source(pixelsource)) =
+                                    sector.properties.get("source")
+                                {
+                                    if let Some(tile) = pixelsource.tile_from_tile_list(assets) {
+                                        if let Some(tex) = assets.tile_index(&tile.id) {
+                                            batch.source = PixelSource::StaticTileIndex(tex);
+                                        }
+                                    }
+                                }
+                            }
+                            if let Some(si) = batch.shader {
+                                if chunk.shaders_with_opacity[si] {
+                                    chunk.batches3d_opacity.push(batch);
+                                } else {
+                                    chunk.batches3d.push(batch);
+                                }
+                            } else {
+                                chunk.batches3d.push(batch);
+                            }
                         }
                         _ => {}
                     }
@@ -490,36 +1030,47 @@ impl ChunkBuilder for D3ChunkBuilder {
                                 .map(|m| chunk.add_shader(&m.build_shader()))
                         })
                         .flatten();
-                    let mut pushed = false;
-                    if let Some(Value::Source(pixelsource)) = sector.properties.get("source") {
-                        if let Some(tile) = pixelsource.tile_from_tile_list(assets) {
-                            if let Some(texture_index) = assets.tile_index(&tile.id) {
-                                let mut batch = Batch3D::new(
-                                    world_vertices.clone(),
-                                    indices.clone(),
-                                    uvs.clone(),
-                                )
-                                .repeat_mode(RepeatMode::RepeatXY)
-                                .source(PixelSource::StaticTileIndex(texture_index))
-                                .geometry_source(GeometrySource::Sector(sector.id));
-                                if let Some(si) = shader_index {
-                                    batch.shader = Some(si);
-                                    if chunk.shaders_with_opacity[si] {
-                                        chunk.batches3d_opacity.push(batch);
-                                    } else {
-                                        chunk.batches3d.push(batch);
-                                    }
-                                } else {
-                                    chunk.batches3d.push(batch);
-                                }
-                                pushed = true;
-                            }
-                        }
+
+                    #[allow(dead_code)]
+                    #[derive(Clone, Copy)]
+                    enum MaterialKind {
+                        Cap,
+                        Side,
                     }
-                    if !pushed {
-                        let mut batch = Batch3D::new(world_vertices, indices, uvs)
+
+                    // Helper function (no captures): push a batch with sector material. Side prefers `side_source`.
+                    fn push_with_material_kind_local(
+                        kind: MaterialKind,
+                        sector: &Sector,
+                        shader_index: Option<usize>,
+                        assets: &Assets,
+                        chunk: &mut Chunk,
+                        verts: Vec<[f32; 4]>,
+                        inds: Vec<(usize, usize, usize)>,
+                        uvs_in: Vec<[f32; 2]>,
+                    ) {
+                        let mut batch = Batch3D::new(verts, inds, uvs_in)
                             .repeat_mode(RepeatMode::RepeatXY)
                             .geometry_source(GeometrySource::Sector(sector.id));
+
+                        let source_key = match kind {
+                            MaterialKind::Side => "side_source",
+                            MaterialKind::Cap => "source",
+                        };
+                        let fallback_key = "source";
+
+                        if let Some(Value::Source(pixelsource)) = sector
+                            .properties
+                            .get(source_key)
+                            .or_else(|| sector.properties.get(fallback_key))
+                        {
+                            if let Some(tile) = pixelsource.tile_from_tile_list(assets) {
+                                if let Some(texture_index) = assets.tile_index(&tile.id) {
+                                    batch.source = PixelSource::StaticTileIndex(texture_index);
+                                }
+                            }
+                        }
+
                         if let Some(si) = shader_index {
                             batch.shader = Some(si);
                             if chunk.shaders_with_opacity[si] {
@@ -528,10 +1079,23 @@ impl ChunkBuilder for D3ChunkBuilder {
                                 chunk.batches3d.push(batch);
                             }
                         } else {
-                            batch.source = PixelSource::Pixel([128, 128, 128, 255]);
+                            if matches!(batch.source, PixelSource::Pixel(_)) {
+                                batch.source = PixelSource::Pixel([128, 128, 128, 255]);
+                            }
                             chunk.batches3d.push(batch);
                         }
                     }
+
+                    push_with_material_kind_local(
+                        MaterialKind::Cap,
+                        sector,
+                        shader_index,
+                        assets,
+                        chunk,
+                        world_vertices,
+                        indices,
+                        uvs,
+                    );
                 }
             }
         }
@@ -539,19 +1103,40 @@ impl ChunkBuilder for D3ChunkBuilder {
 }
 
 // --- Relief/recess pipeline helpers ---
-/// Classify profile loops: all holes go into the base as holes; only Relief/Recess loops
-/// also produce feature meshes (cap + jamb ring).
+/// Classify profile loops: only true holes (cutouts and through-recesses) are subtracted from the base;
+/// shallow recesses and reliefs are handled as feature meshes.
 fn split_loops_for_base<'a>(
     _outer: &'a ProfileLoop,
     holes: &'a [ProfileLoop],
+    extrude_depth_abs: f32,
 ) -> (Vec<&'a ProfileLoop>, Vec<&'a ProfileLoop>) {
     let mut base_holes = Vec::new();
     let mut feature_loops = Vec::new();
+    let eps = 1e-5f32;
     for h in holes {
-        base_holes.push(h);
         match h.op {
-            LoopOp::Relief { .. } | LoopOp::Recess { .. } => feature_loops.push(h),
-            LoopOp::None => {}
+            LoopOp::None => {
+                // Pure cutout → subtract from base; no feature meshes needed
+                base_holes.push(h);
+            }
+            LoopOp::Recess { depth } => {
+                if extrude_depth_abs <= eps {
+                    // Zero-thickness surface: we need a visible hole in the base cap
+                    // *and* a recessed pocket (cap + jamb). Put it in **both** buckets.
+                    base_holes.push(h); // subtract from base
+                    feature_loops.push(h); // build recess cap + jamb
+                } else if depth + eps >= extrude_depth_abs {
+                    // Through recess on a thick surface ⇒ just a hole; extrusion pass builds tube
+                    base_holes.push(h);
+                } else {
+                    // Shallow recess on a thick surface ⇒ feature only; base stays intact
+                    feature_loops.push(h);
+                }
+            }
+            LoopOp::Relief { .. } => {
+                // Relief never subtracts from the base; purely additive feature
+                feature_loops.push(h);
+            }
         }
     }
     (base_holes, feature_loops)
@@ -596,77 +1181,6 @@ fn build_cap(
     let tris = earcut_simple(loop_uv)?;
     let uvs: Vec<[f32; 2]> = loop_uv.iter().map(|p| [p.x, p.y]).collect();
     Some((verts_world, tris, uvs))
-}
-
-/// Build the jamb (side ring) that connects the base plane loop to the displaced cap loop.
-fn build_jamb(
-    surface: &crate::Surface,
-    loop_uv: &[vek::Vec2<f32>],
-    offset: f32,
-) -> (Vec<[f32; 4]>, Vec<(usize, usize, usize)>, Vec<[f32; 2]>) {
-    let n = {
-        let nn = surface.plane.normal;
-        let len = nn.magnitude();
-        if len > 1e-6 {
-            nn / len
-        } else {
-            vek::Vec3::unit_y()
-        }
-    };
-    let m = loop_uv.len();
-    let mut verts: Vec<[f32; 4]> = Vec::with_capacity(m * 2);
-    let mut uvs: Vec<[f32; 2]> = Vec::with_capacity(m * 2);
-
-    // Base ring then displaced ring
-    for uv in loop_uv {
-        let p0 = surface.uv_to_world(*uv);
-        verts.push([p0.x, p0.y, p0.z, 1.0]);
-        uvs.push([0.0, 0.0]);
-    }
-    for uv in loop_uv {
-        let p1 = surface.uv_to_world(*uv) + n * offset;
-        verts.push([p1.x, p1.y, p1.z, 1.0]);
-        uvs.push([0.0, 1.0]);
-    }
-
-    // Perimeter for U mapping
-    let mut perim = 0.0f32;
-    for i in 0..m {
-        let a = loop_uv[i];
-        let b = loop_uv[(i + 1) % m];
-        perim += (b - a).magnitude();
-    }
-
-    let mut idx: Vec<(usize, usize, usize)> = Vec::with_capacity(m * 2);
-    let mut cum = 0.0f32;
-    for i in 0..m {
-        let a = loop_uv[i];
-        let b = loop_uv[(i + 1) % m];
-        let seg = (b - a).magnitude();
-        let u0 = if perim > 1e-6 { cum / perim } else { 0.0 };
-        let u1 = if perim > 1e-6 {
-            (cum + seg) / perim
-        } else {
-            1.0
-        };
-
-        let i0 = i;
-        let i1 = (i + 1) % m;
-        let j0 = m + i;
-        let j1 = m + ((i + 1) % m);
-
-        idx.push((i0, i1, j1));
-        idx.push((i0, j1, j0));
-
-        uvs[i0][0] = u0;
-        uvs[j0][0] = u0;
-        uvs[i1][0] = u1;
-        uvs[j1][0] = u1;
-
-        cum += seg;
-    }
-
-    (verts, idx, uvs)
 }
 
 /// Read profile loops (outer + holes) for a surface from the profile map, using profile sectors.
@@ -919,18 +1433,35 @@ fn feature_pixelsource(
     loop_origin: Option<u32>,
     key: &str,
 ) -> Option<Value> {
-    // Prefer per-feature property on the originating profile sector
+    // Prefer per-feature explicit key on the originating profile sector
     if let (Some(profile_id), Some(origin_id)) = (surface.profile, loop_origin) {
         if let Some(profile_map) = map.profiles.get(&profile_id) {
             if let Some(ps) = profile_map.find_sector(origin_id) {
+                // 1) exact key on profile sector
                 if let Some(v) = ps.properties.get(key) {
+                    return Some(v.clone());
+                }
+                // 2) generic 'source' on profile sector
+                if let Some(v) = ps.properties.get("source") {
                     return Some(v.clone());
                 }
             }
         }
     }
-    // Fallback to host sector property
-    host_sector.properties.get(key).cloned()
+
+    // Fallback chain on host sector:
+    // 3) exact key on host
+    if let Some(v) = host_sector.properties.get(key) {
+        return Some(v.clone());
+    }
+    // 4) if this looks like a jamb key, try 'side_source'
+    if key.contains("jamb") {
+        if let Some(v) = host_sector.properties.get("side_source") {
+            return Some(v.clone());
+        }
+    }
+    // 5) generic 'source' on host
+    host_sector.properties.get("source").cloned()
 }
 
 fn feature_shader_index(
