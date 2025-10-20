@@ -290,15 +290,6 @@ impl ChunkBuilder for D3ChunkBuilder {
                             return (vec![], vec![], vec![]);
                         }
 
-                        // Accumulate perimeter distances in **world space** on the front plane (offset 0)
-                        let mut n = surface.plane.normal;
-                        let l = n.magnitude();
-                        if l > 1e-6 {
-                            n /= l;
-                        } else {
-                            n = vek::Vec3::unit_y();
-                        }
-
                         let mut front_ws: Vec<vek::Vec3<f32>> = Vec::with_capacity(m);
                         for i in 0..m {
                             let p = surface.uv_to_world(loop_uv[i]);

@@ -41,6 +41,11 @@ impl D3Camera for D3FirstPCamera {
         vek::Mat4::perspective_fov_rh_zo(self.fov.to_radians(), width, height, self.near, self.far)
     }
 
+    fn zoom(&mut self, delta: f32) {
+        let zoom_sensitivity = 0.5;
+        self.fov = (self.fov - delta * zoom_sensitivity).clamp(20.0, 120.0);
+    }
+
     fn set_parameter_f32(&mut self, key: &str, value: f32) {
         match key {
             "fov" => {
