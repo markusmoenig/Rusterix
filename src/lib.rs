@@ -9,6 +9,7 @@ pub mod client;
 pub mod edge;
 pub mod intodata;
 pub mod map;
+pub mod material_profile;
 pub mod rasterizer;
 pub mod rect;
 pub mod rendermode;
@@ -123,6 +124,7 @@ pub use crate::{
         tile::Tile,
         vertex::Vertex,
     },
+    material_profile::MaterialProfile,
     rasterizer::{BrushPreview, Rasterizer},
     rect::Rect,
     rendermode::RenderMode,

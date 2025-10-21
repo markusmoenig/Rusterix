@@ -1,4 +1,6 @@
-use crate::{Light, ParticleEmitter, Pixel, PixelSource, PlayerCamera, SampleMode, Texture};
+use crate::{
+    Light, MaterialProfile, ParticleEmitter, Pixel, PixelSource, PlayerCamera, SampleMode, Texture,
+};
 use rustpython::vm::*;
 use std::fmt;
 use theframework::prelude::*;
@@ -25,6 +27,7 @@ pub enum Value {
     Pixel(Pixel),
     Color(TheColor),
     ParticleEmitter(ParticleEmitter),
+    MaterialProfile(MaterialProfile),
 }
 
 impl Value {
@@ -166,6 +169,7 @@ impl fmt::Display for Value {
             Value::Pixel(_) => write!(f, "Pixel"),
             Value::Color(_) => write!(f, "Color"),
             Value::ParticleEmitter(_) => write!(f, "ParticleEmitter"),
+            Value::MaterialProfile(_) => write!(f, "MaterialProfile"),
         }
     }
 }
@@ -361,6 +365,17 @@ impl ValueContainer {
         })
     }
 
+    /// Get a material profile.
+    pub fn get_material_profile(&self, key: &str) -> Option<MaterialProfile> {
+        self.values.get(key).and_then(|v| {
+            if let Value::MaterialProfile(val) = v {
+                Some(*val)
+            } else {
+                None
+            }
+        })
+    }
+
     // Checks if the value exists
     pub fn contains(&self, key: &str) -> bool {
         self.values.contains_key(key)
@@ -416,7 +431,8 @@ impl ValueContainer {
             Some(Value::Pixel(_)) => 13,
             Some(Value::Color(_)) => 14,
             Some(Value::ParticleEmitter(_)) => 14,
-            Some(Value::NoValue) => 15,
+            Some(Value::MaterialProfile(_)) => 15,
+            Some(Value::NoValue) => 16,
             None => 99, // If key is missing, push to the end
         }
     }

@@ -1078,17 +1078,38 @@ impl Rasterizer {
                                     let world = self.screen_to_world(p[0], p[1], z);
                                     let world_2d = Vec2::new(world.x, world.z);
 
+                                    // Compute the normal
+                                    let mut normal = if !batch.normals.is_empty() {
+                                        let n0 = batch.clipped_normals[i0];
+                                        let n1 = batch.clipped_normals[i1];
+                                        let n2 = batch.clipped_normals[i2];
+
+                                        let mut normal =
+                                            (n0 * alpha + n1 * beta + n2 * gamma).normalized();
+
+                                        let view_dir = (self.camera_pos - world).normalized();
+                                        if normal.dot(view_dir) < 0.0 {
+                                            normal = -normal;
+                                        }
+
+                                        normal
+                                    } else {
+                                        Vec3::zero()
+                                    };
+
                                     let (mut texel, _is_terrain) = match batch.source {
                                         PixelSource::StaticTileIndex(index) => {
                                             let textile = &assets.tile_list[index as usize];
                                             let index =
                                                 scene.animation_frame % textile.textures.len();
                                             (
-                                                textile.textures[index].sample(
+                                                textile.textures[index].sample_with_normal(
                                                     interpolated_u,
                                                     interpolated_v,
                                                     self.sample_mode,
                                                     batch.repeat_mode,
+                                                    Some(&mut normal),
+                                                    0.2,
                                                 ),
                                                 false,
                                             )
@@ -1192,61 +1213,102 @@ impl Rasterizer {
                                         _ => ([0, 0, 0, 255], false),
                                     };
 
-                                    let mut normal = if !batch.normals.is_empty() {
-                                        let n0 = batch.clipped_normals[i0];
-                                        let n1 = batch.clipped_normals[i1];
-                                        let n2 = batch.clipped_normals[i2];
-
-                                        let mut normal =
-                                            (n0 * alpha + n1 * beta + n2 * gamma).normalized();
-
-                                        let view_dir = (self.camera_pos - world).normalized();
-                                        if normal.dot(view_dir) < 0.0 {
-                                            normal = -normal;
-                                        }
-
-                                        normal
-                                    } else {
-                                        Vec3::zero()
-                                    };
-
                                     let mut color: Vec4<f32> = pixel_to_vec4(&texel);
-                                    color.x = srgb_to_linear_fast(color.x);
-                                    color.y = srgb_to_linear_fast(color.y);
-                                    color.z = srgb_to_linear_fast(color.z);
 
-                                    execution.color.x = color.x;
-                                    execution.color.y = color.y;
-                                    execution.color.z = color.z;
-                                    execution.opacity.x = texel[3] as f32 / 255.0;
-
-                                    execution.normal = normal;
-
-                                    execution.roughness.x = 0.5;
-                                    execution.metallic.x = 0.0;
-
-                                    // Execute the batch shader (if any)
                                     if let Some(shader_index) = batch.shader {
-                                        let program = if let Some(chunk) = chunk {
-                                            chunk.shaders.get(shader_index)
+                                        let texture = if let Some(chunk) = chunk {
+                                            if let Some(tex) =
+                                                chunk.shader_textures.get(shader_index)
+                                            {
+                                                tex
+                                            } else {
+                                                &None
+                                            }
                                         } else {
-                                            scene.shaders.get(shader_index)
+                                            &None
                                         };
 
-                                        if let Some(program) = program {
-                                            if let Some(sh) = program.shade_index {
-                                                execution.uv.x = interpolated_u / 4.0;
-                                                execution.uv.y = interpolated_v / 4.0;
+                                        if let Some(texture) = texture {
+                                            let texel = texture.sample_with_normal(
+                                                interpolated_u,
+                                                interpolated_v,
+                                                self.sample_mode,
+                                                batch.repeat_mode,
+                                                Some(&mut normal),
+                                                0.2,
+                                            );
+                                            color = pixel_to_vec4(&texel);
+                                            color.x = srgb_to_linear_fast(color.x);
+                                            color.y = srgb_to_linear_fast(color.y);
+                                            color.z = srgb_to_linear_fast(color.z);
 
-                                                execution.hitpoint = world;
-                                                execution.time.x = self.time;
-                                                execution.time.y = self.time;
-                                                execution.time.z = self.time;
+                                            execution.color.x = color.x;
+                                            execution.color.y = color.y;
+                                            execution.color.z = color.z;
+                                            execution.opacity.x = color.w;
 
-                                                execution.reset(program.globals);
-                                                execution.shade(sh, program, &assets.palette);
+                                            execution.roughness.x = 0.5;
+                                            execution.metallic.x = 0.0;
+
+                                            execution.normal = normal;
+                                        } else {
+                                            color.x = srgb_to_linear_fast(color.x);
+                                            color.y = srgb_to_linear_fast(color.y);
+                                            color.z = srgb_to_linear_fast(color.z);
+
+                                            execution.color.x = color.x;
+                                            execution.color.y = color.y;
+                                            execution.color.z = color.z;
+                                            execution.opacity.x = texel[3] as f32 / 255.0;
+
+                                            execution.normal = normal;
+
+                                            execution.roughness.x = 0.5;
+                                            execution.metallic.x = 0.0;
+
+                                            // Execute the batch shader (if any)
+                                            let program = if let Some(chunk) = chunk {
+                                                chunk.shaders.get(shader_index)
+                                            } else {
+                                                scene.shaders.get(shader_index)
+                                            };
+
+                                            if let Some(program) = program {
+                                                if let Some(sh) = program.shade_index {
+                                                    execution.uv.x = interpolated_u / 4.0;
+                                                    execution.uv.y = interpolated_v / 4.0;
+
+                                                    execution.hitpoint = world;
+                                                    execution.time.x = self.time;
+                                                    execution.time.y = self.time;
+                                                    execution.time.z = self.time;
+
+                                                    execution.reset(program.globals);
+                                                    execution.shade(sh, program, &assets.palette);
+                                                }
                                             }
                                         }
+                                    } else {
+                                        color.x = srgb_to_linear_fast(color.x);
+                                        color.y = srgb_to_linear_fast(color.y);
+                                        color.z = srgb_to_linear_fast(color.z);
+
+                                        use crate::MaterialProfile;
+                                        let profile = MaterialProfile::Metal;
+
+                                        let rc = profile
+                                            .evaluate_target(Vec3::new(color.x, color.y, color.z));
+
+                                        execution.roughness.x = 1.0;
+                                        execution.metallic.x = 0.0;
+
+                                        execution.color.x = color.x;
+                                        execution.color.y = color.y;
+                                        execution.color.z = color.z;
+                                        execution.opacity.x = texel[3] as f32 / 255.0;
+                                        execution.normal = normal;
+                                        execution.roughness.x = 0.5;
+                                        execution.metallic.x = 0.0;
                                     }
 
                                     let mat_base = execution.color;

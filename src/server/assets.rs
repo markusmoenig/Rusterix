@@ -118,11 +118,12 @@ impl Assets {
         for (id, t) in textures.iter() {
             let mut texture_array: Vec<Texture> = vec![];
             for b in &t.buffer {
-                let texture = Texture::new(
+                let mut texture = Texture::new(
                     b.pixels().to_vec(),
                     b.dim().width as usize,
                     b.dim().height as usize,
                 );
+                texture.generate_normals(true);
                 texture_array.push(texture);
             }
             let tile = Tile {

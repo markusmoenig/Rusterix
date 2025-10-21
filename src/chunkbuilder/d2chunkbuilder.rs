@@ -38,7 +38,7 @@ impl ChunkBuilder for D2ChunkBuilder {
                         .and_then(|shader_id| {
                             map.shaders
                                 .get(&shader_id)
-                                .map(|m| chunk.add_shader(&m.build_shader()))
+                                .map(|m| chunk.add_shader(&m.build_shader(), assets))
                         })
                         .flatten();
 

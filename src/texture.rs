@@ -1,6 +1,12 @@
-use crate::IntoDataInput;
+use crate::{IntoDataInput, MaterialProfile};
 use std::io::Cursor;
 use theframework::prelude::*;
+use vek::Vec3;
+
+#[inline(always)]
+fn lerp(a: f32, b: f32, t: f32) -> f32 {
+    a + (b - a) * t
+}
 
 /// Sample mode for texture sampling.
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone, Copy)]
@@ -30,6 +36,10 @@ pub struct Texture {
     pub data: Vec<u8>,
     pub width: usize,
     pub height: usize,
+    /// Optional sub-texture that stores a generated normal map (RGBA8; XYZ in 0..255, A unused)
+    pub normal_map: Option<Box<Texture>>,
+    /// Optional sub-texture for per-pixel materials (RGBA8): R=roughness, G=metallic, B=opacity, A=unused
+    pub material_map: Option<Box<Texture>>,
 }
 
 impl Default for Texture {
@@ -46,6 +56,8 @@ impl Texture {
             data,
             width,
             height,
+            normal_map: None,
+            material_map: None,
         }
     }
 
@@ -55,6 +67,8 @@ impl Texture {
             data: vec![0; width * height * 4],
             width,
             height,
+            normal_map: None,
+            material_map: None,
         }
     }
 
@@ -82,6 +96,8 @@ impl Texture {
             data,
             width,
             height,
+            normal_map: None,
+            material_map: None,
         }
     }
 
@@ -91,6 +107,8 @@ impl Texture {
             data: color.to_vec(),
             width: 1,
             height: 1,
+            normal_map: None,
+            material_map: None,
         }
     }
 
@@ -100,6 +118,8 @@ impl Texture {
             data: vec![255, 255, 255, 255],
             width: 1,
             height: 1,
+            normal_map: None,
+            material_map: None,
         }
     }
 
@@ -109,6 +129,8 @@ impl Texture {
             data: vec![0, 0, 0, 255],
             width: 1,
             height: 1,
+            normal_map: None,
+            material_map: None,
         }
     }
 
@@ -117,6 +139,8 @@ impl Texture {
             data: buffer.pixels().to_vec(),
             width: buffer.dim().width as usize,
             height: buffer.dim().height as usize,
+            normal_map: None,
+            material_map: None,
         }
     }
 
@@ -141,6 +165,8 @@ impl Texture {
             data,
             width: width as usize,
             height: height as usize,
+            normal_map: None,
+            material_map: None,
         }
     }
 
@@ -165,6 +191,8 @@ impl Texture {
             data,
             width: width as usize,
             height: height as usize,
+            normal_map: None,
+            material_map: None,
         })
     }
 
@@ -199,6 +227,71 @@ impl Texture {
             SampleMode::Nearest => self.sample_nearest(u, v),
             SampleMode::Linear => self.sample_linear(u, v),
         }
+    }
+
+    /// Samples the texture and optionally perturbs a provided normal using this texture's normal_map.
+    #[inline(always)]
+    pub fn sample_with_normal(
+        &self,
+        u: f32,
+        v: f32,
+        sample_mode: SampleMode,
+        repeat_mode: RepeatMode,
+        mut normal: Option<&mut Vec3<f32>>,
+        normal_strength: f32,
+    ) -> [u8; 4] {
+        // Same UV handling and color sampling as sample()
+        let color = {
+            let (mut uu, mut vv) = (u, v);
+            match repeat_mode {
+                RepeatMode::ClampXY => {
+                    uu = uu.clamp(0.0, 1.0);
+                    vv = vv.clamp(0.0, 1.0);
+                }
+                RepeatMode::RepeatXY => {
+                    uu -= uu.floor();
+                    vv -= vv.floor();
+                }
+                RepeatMode::RepeatX => {
+                    uu -= uu.floor();
+                    vv = vv.clamp(0.0, 1.0);
+                }
+                RepeatMode::RepeatY => {
+                    uu = uu.clamp(0.0, 1.0);
+                    vv -= vv.floor();
+                }
+            }
+            match sample_mode {
+                SampleMode::Nearest => self.sample_nearest(uu, vv),
+                SampleMode::Linear => self.sample_linear(uu, vv),
+            }
+        };
+
+        if let (Some(n_ref), Some(norm_tex)) = (normal.as_deref_mut(), self.normal_map.as_deref()) {
+            // Decode tangent-space normal [-1,1]
+            let n_rgba = norm_tex.sample(u, v, sample_mode, repeat_mode);
+            let mut nx = (n_rgba[0] as f32 / 255.0) * 2.0 - 1.0;
+            let mut ny = (n_rgba[1] as f32 / 255.0) * 2.0 - 1.0;
+            let nz = (n_rgba[2] as f32 / 255.0) * 2.0 - 1.0;
+
+            // Apply strength at runtime: scale tangent XY, renormalize
+            nx *= normal_strength;
+            ny *= normal_strength;
+            let ts = Vec3::new(nx, ny, nz).normalized();
+
+            // Build TBN from current normal and transform
+            let n = (*n_ref).normalized();
+            let helper = if n.x.abs() < 0.5 {
+                Vec3::new(1.0, 0.0, 0.0)
+            } else {
+                Vec3::new(0.0, 1.0, 0.0)
+            };
+            let t = n.cross(helper).normalized();
+            let b = n.cross(t);
+            *n_ref = (t * ts.x + b * ts.y + n * ts.z).normalized();
+        }
+
+        color
     }
 
     /// Samples the texture using the specified sampling and repeat mode
@@ -458,6 +551,8 @@ impl Texture {
             data: new_data,
             width: new_width,
             height: new_height,
+            normal_map: None,
+            material_map: None,
         }
     }
 
@@ -482,5 +577,247 @@ impl Texture {
         let idx = (y * self.width + x) * 4;
 
         self.data[idx..idx + 4].copy_from_slice(&color);
+    }
+    /// Generates a normal-map subtexture from this texture's color data using a Sobel filter on luma.
+    /// The resulting normals are encoded as RGBA8 where XYZ are mapped from [-1,1] to [0,255] and A is 255.
+    ///
+    /// `wrap`: if true, samples wrap at edges (tiles nicely); if false, clamps at borders.
+    pub fn generate_normals(&mut self, wrap: bool) {
+        let w = self.width as i32;
+        let h = self.height as i32;
+        let mut out = vec![0u8; (w as usize) * (h as usize) * 4];
+
+        // Precompute luma (height) as f32 in [0,1]
+        let mut height = vec![0.0f32; (w as usize) * (h as usize)];
+        for y in 0..h {
+            for x in 0..w {
+                let idx = ((y as usize) * self.width + (x as usize)) * 4;
+                let r = self.data[idx] as f32 / 255.0;
+                let g = self.data[idx + 1] as f32 / 255.0;
+                let b = self.data[idx + 2] as f32 / 255.0;
+                // Perceptual luma
+                let l = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+                height[(y as usize) * self.width + (x as usize)] = l;
+            }
+        }
+
+        // Helper to read height with wrap/clamp
+        let sample_h = |xx: i32, yy: i32| -> f32 {
+            let (mut sx, mut sy) = (xx, yy);
+            if wrap {
+                sx = ((sx % w) + w) % w;
+                sy = ((sy % h) + h) % h;
+            } else {
+                if sx < 0 {
+                    sx = 0;
+                } else if sx >= w {
+                    sx = w - 1;
+                }
+                if sy < 0 {
+                    sy = 0;
+                } else if sy >= h {
+                    sy = h - 1;
+                }
+            }
+            height[(sy as usize) * self.width + (sx as usize)]
+        };
+
+        // Sobel kernels
+        for y in 0..h {
+            for x in 0..w {
+                let tl = sample_h(x - 1, y - 1);
+                let tc = sample_h(x + 0, y - 1);
+                let tr = sample_h(x + 1, y - 1);
+                let cl = sample_h(x - 1, y + 0);
+                let cr = sample_h(x + 1, y + 0);
+                let bl = sample_h(x - 1, y + 1);
+                let bc = sample_h(x + 0, y + 1);
+                let br = sample_h(x + 1, y + 1);
+
+                let gx = (-1.0 * tl)
+                    + (0.0 * tc)
+                    + (1.0 * tr)
+                    + (-2.0 * cl)
+                    + (0.0 * 0.0)
+                    + (2.0 * cr)
+                    + (-1.0 * bl)
+                    + (0.0 * bc)
+                    + (1.0 * br);
+
+                let gy = (-1.0 * tl)
+                    + (-2.0 * tc)
+                    + (-1.0 * tr)
+                    + (0.0 * cl)
+                    + (0.0 * 0.0)
+                    + (0.0 * cr)
+                    + (1.0 * bl)
+                    + (2.0 * bc)
+                    + (1.0 * br);
+
+                // Build normal; Z up, scale X/Y by strength
+                let nx = -gx;
+                let ny = -gy;
+                let nz = 1.0;
+                let len = (nx * nx + ny * ny + nz * nz).sqrt();
+                let (nx, ny, nz) = if len > 0.0 {
+                    (nx / len, ny / len, nz / len)
+                } else {
+                    (0.0, 0.0, 1.0)
+                };
+
+                // Pack to 0..255
+                let px = ((nx * 0.5 + 0.5) * 255.0).round() as u8;
+                let py = ((ny * 0.5 + 0.5) * 255.0).round() as u8;
+                let pz = ((nz * 0.5 + 0.5) * 255.0).round() as u8;
+
+                let o = ((y as usize) * self.width + (x as usize)) * 4;
+                out[o] = px;
+                out[o + 1] = py;
+                out[o + 2] = pz;
+                out[o + 3] = 255;
+            }
+        }
+
+        self.normal_map = Some(Box::new(Texture {
+            data: out,
+            width: self.width,
+            height: self.height,
+            normal_map: None,
+            material_map: None,
+        }));
+    }
+
+    /// Returns the normal-map subtexture if present.
+    pub fn normal_texture(&self) -> Option<&Texture> {
+        self.normal_map.as_deref()
+    }
+
+    /// Samples the generated normal map at UV if present; otherwise returns a flat normal (0,0,1) encoded in RGBA8.
+    pub fn sample_normal_rgba(
+        &self,
+        u: f32,
+        v: f32,
+        sample_mode: SampleMode,
+        repeat_mode: RepeatMode,
+    ) -> [u8; 4] {
+        if let Some(norm) = self.normal_map.as_deref() {
+            return norm.sample(u, v, sample_mode, repeat_mode);
+        }
+        [127, 127, 255, 255]
+    }
+
+    /// Sets the material map subtexture (R=roughness, G=metallic, B=opacity, A=unused)
+    pub fn set_material_map(&mut self, tex: Texture) {
+        self.material_map = Some(Box::new(tex));
+    }
+
+    /// Returns the material map subtexture if present.
+    pub fn material_texture(&self) -> Option<&Texture> {
+        self.material_map.as_deref()
+    }
+
+    /// Samples the material map at UV if present; returns (roughness, metallic, opacity) in 0..1.
+    /// If no map is present, returns sensible defaults: (roughness=0.5, metallic=0.0, opacity=1.0).
+    #[inline(always)]
+    pub fn sample_material(
+        &self,
+        u: f32,
+        v: f32,
+        sample_mode: SampleMode,
+        repeat_mode: RepeatMode,
+    ) -> (f32, f32, f32) {
+        if let Some(mat) = self.material_map.as_deref() {
+            let rgba = mat.sample(u, v, sample_mode, repeat_mode);
+            // R=roughness, G=metallic, B=opacity
+            let r = rgba[0] as f32 / 255.0;
+            let m = rgba[1] as f32 / 255.0;
+            let o = rgba[2] as f32 / 255.0;
+            (r, m, o)
+        } else {
+            (0.5, 0.0, 1.0)
+        }
+    }
+
+    /// Convenience: write a single (roughness, metallic, opacity) triplet into the material map at (x,y),
+    /// allocating a new material map if needed. Values are expected in 0..1 and are converted to RGBA8.
+    pub fn set_material_pixel(
+        &mut self,
+        x: u32,
+        y: u32,
+        roughness: f32,
+        metallic: f32,
+        opacity: f32,
+    ) {
+        if self.material_map.is_none() {
+            // allocate a sibling texture for the material map with same dimensions
+            let data = vec![0u8; self.width * self.height * 4];
+            self.material_map = Some(Box::new(Texture {
+                data,
+                width: self.width,
+                height: self.height,
+                normal_map: None,
+                material_map: None,
+            }));
+        }
+        if let Some(mat) = self.material_map.as_deref_mut() {
+            let x = x.min((self.width - 1) as u32) as usize;
+            let y = y.min((self.height - 1) as u32) as usize;
+            let idx = (y * self.width + x) * 4;
+            mat.data[idx] = (roughness * 255.0).round() as u8;
+            mat.data[idx + 1] = (metallic * 255.0).round() as u8;
+            mat.data[idx + 2] = (opacity * 255.0).round() as u8;
+            mat.data[idx + 3] = 255;
+        }
+    }
+
+    /// Applies a MaterialProfile across the texture and writes (roughness, metallic) into the material map.
+    pub fn bake_material_profile(&mut self, profile: MaterialProfile, k: f32) {
+        if self.material_map.is_none() {
+            let data = vec![0u8; self.width * self.height * 4];
+            self.material_map = Some(Box::new(Texture {
+                data,
+                width: self.width,
+                height: self.height,
+                normal_map: None,
+                material_map: None,
+            }));
+        }
+
+        // Iterate over pixels
+        let w = self.width as usize;
+        let h = self.height as usize;
+        for y in 0..h {
+            for x in 0..w {
+                let idx = (y * w + x) * 4;
+                // Base color → Vec3<f32>
+                let color = Vec3::new(
+                    self.data[idx] as f32 / 255.0,
+                    self.data[idx + 1] as f32 / 255.0,
+                    self.data[idx + 2] as f32 / 255.0,
+                );
+
+                // Read current base material (original) using direct access if available, else defaults
+                let (base_r, base_m, base_o) = if let Some(mat) = self.material_map.as_deref() {
+                    let m = &mat.data[idx..idx + 4];
+                    (
+                        m[0] as f32 / 255.0,
+                        m[1] as f32 / 255.0,
+                        m[2] as f32 / 255.0,
+                    )
+                } else {
+                    (0.5, 0.0, 0.0)
+                };
+
+                // Target from profile at full effect
+                let (target_m, target_r) = profile.evaluate_target(color);
+
+                // Blend according to k so k=0 keeps base, k=1 goes fully to profile
+                let r_final = lerp(base_r, target_r, k);
+                let m_final = lerp(base_m, target_m, k);
+
+                // Write back into material map
+                self.set_material_pixel(x as u32, y as u32, r_final, m_final, base_o);
+            }
+        }
     }
 }

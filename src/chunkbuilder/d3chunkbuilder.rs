@@ -204,7 +204,7 @@ impl ChunkBuilder for D3ChunkBuilder {
                         .and_then(|shader_id| {
                             map.shaders
                                 .get(&shader_id)
-                                .map(|m| chunk.add_shader(&m.build_shader()))
+                                .map(|m| chunk.add_shader(&m.build_shader(), assets))
                         })
                         .flatten();
                     #[derive(Clone, Copy)]
@@ -735,6 +735,7 @@ impl ChunkBuilder for D3ChunkBuilder {
                                     sector,
                                     fl.origin_profile_sector,
                                     chunk,
+                                    assets,
                                 ) {
                                     batch.shader = Some(si);
                                 }
@@ -792,6 +793,7 @@ impl ChunkBuilder for D3ChunkBuilder {
                                 sector,
                                 fl.origin_profile_sector,
                                 chunk,
+                                assets,
                             ) {
                                 batch.shader = Some(si);
                             }
@@ -880,6 +882,7 @@ impl ChunkBuilder for D3ChunkBuilder {
                                     sector,
                                     fl.origin_profile_sector,
                                     chunk,
+                                    assets,
                                 ) {
                                     batch.shader = Some(si);
                                 }
@@ -941,6 +944,7 @@ impl ChunkBuilder for D3ChunkBuilder {
                                 sector,
                                 fl.origin_profile_sector,
                                 chunk,
+                                assets,
                             ) {
                                 batch.shader = Some(si);
                             }
@@ -1018,7 +1022,7 @@ impl ChunkBuilder for D3ChunkBuilder {
                         .and_then(|shader_id| {
                             map.shaders
                                 .get(&shader_id)
-                                .map(|m| chunk.add_shader(&m.build_shader()))
+                                .map(|m| chunk.add_shader(&m.build_shader(), assets))
                         })
                         .flatten();
 
@@ -1458,17 +1462,18 @@ fn feature_pixelsource(
 fn feature_shader_index(
     surface: &crate::Surface,
     map: &Map,
-    host_sector: &Sector,
+    _host_sector: &Sector,
     loop_origin: Option<u32>,
     chunk: &mut Chunk,
+    assets: &Assets,
 ) -> Option<usize> {
     // Prefer per-feature shader on the originating profile sector
     if let (Some(profile_id), Some(origin_id)) = (surface.profile, loop_origin) {
         if let Some(profile_map) = map.profiles.get(&profile_id) {
             if let Some(ps) = profile_map.find_sector(origin_id) {
                 if let Some(shader_id) = ps.shader {
-                    if let Some(m) = map.shaders.get(&shader_id) {
-                        if let Some(si) = chunk.add_shader(&m.build_shader()) {
+                    if let Some(m) = profile_map.shaders.get(&shader_id) {
+                        if let Some(si) = chunk.add_shader(&m.build_shader(), assets) {
                             return Some(si);
                         }
                     }
@@ -1476,11 +1481,12 @@ fn feature_shader_index(
             }
         }
     }
+    /*
     // Fallback to host sector shader
     if let Some(shader_id) = host_sector.shader {
         if let Some(m) = map.shaders.get(&shader_id) {
-            return chunk.add_shader(&m.build_shader());
+            return chunk.add_shader(&m.build_shader(), assets);
         }
-    }
+    }*/
     None
 }
