@@ -400,7 +400,7 @@ impl Rasterizer {
                             assets,
                             None,
                             &mut execution,
-                            true,
+                            false,
                         );
                     }
 
