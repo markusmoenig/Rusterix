@@ -36,28 +36,13 @@ impl D2Builder {
                     repeat = false;
                 }
 
-                // // Add Floor Light
-                // if let Some(Value::Light(light)) = sector.properties.get("floor_light") {
-                //     if let Some(center) = sector.center(map) {
-                //         let light =
-                //             light.from_sector(Vec3::new(center.x, 0.0, center.y), bbox.size());
-                //         scene.lights.push(light);
-                //     }
-                // }
-                // // Add Ceiling Light
-                // if let Some(Value::Light(light)) = sector.properties.get("ceiling_light") {
-                //     if let Some(center) = sector.center(map) {
-                //         let light =
-                //             light.from_sector(Vec3::new(center.x, 0.0, center.y), bbox.size());
-                //         scene.lights.push(light);
-                //     }
-                // }
-
                 // Use the floor or ceiling source
-                let source = sector.properties.get_default_source();
-                // if source.is_none() || self.activated_widgets.contains(&sector.id) {
-                //     source = sector.properties.get("ceiling_source");
-                // }
+                let mut source = sector.properties.get_default_source();
+                if
+                /*source.is_none() ||*/
+                self.activated_widgets.contains(&sector.id) {
+                    source = sector.properties.get_source("ceiling_source");
+                }
 
                 if let Some(pixelsource) = source {
                     if let Some(tile) = pixelsource.tile_from_tile_list(assets) {

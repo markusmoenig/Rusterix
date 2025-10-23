@@ -1293,15 +1293,6 @@ impl Rasterizer {
                                         color.y = srgb_to_linear_fast(color.y);
                                         color.z = srgb_to_linear_fast(color.z);
 
-                                        use crate::MaterialProfile;
-                                        let profile = MaterialProfile::Metal;
-
-                                        let rc = profile
-                                            .evaluate_target(Vec3::new(color.x, color.y, color.z));
-
-                                        execution.roughness.x = 1.0;
-                                        execution.metallic.x = 0.0;
-
                                         execution.color.x = color.x;
                                         execution.color.y = color.y;
                                         execution.color.z = color.z;

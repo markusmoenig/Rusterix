@@ -82,6 +82,7 @@ impl ScreenWidget {
         let mut rast = Rasterizer::setup(Some(transform), Mat4::identity(), Mat4::identity());
         rast.preserve_transparency = true;
         rast.mapmini = self.scene.mapmini.clone();
+        rast.render_mode = RenderMode::render_2d();
 
         rast.rasterize(
             &mut self.scene,

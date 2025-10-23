@@ -78,6 +78,30 @@ impl Linedef {
 
         BBox::new(min, max)
     }
+
+    /// Returns the vertical span (min_y, max_y) of this linedef in world space (Y-up).
+    pub fn y_span_world(&self, map: &Map) -> Option<(f32, f32)> {
+        let a = map.get_vertex_3d(self.start_vertex)?;
+        let b = map.get_vertex_3d(self.end_vertex)?;
+        let min_y = a.y.min(b.y);
+        let max_y = a.y.max(b.y);
+        Some((min_y, max_y))
+    }
+
+    /// Checks whether this linedef intersects a vertical slice centered at `slice_y` with thickness `thickness`.
+    pub fn intersects_vertical_slice(&self, map: &Map, slice_y: f32, thickness: f32) -> bool {
+        if thickness <= 0.0 {
+            return false;
+        }
+        if let Some((min_y, max_y)) = self.y_span_world(map) {
+            let half = thickness * 0.5;
+            let y0 = slice_y - half;
+            let y1 = slice_y + half;
+            max_y >= y0 && min_y <= y1
+        } else {
+            false
+        }
+    }
 }
 
 impl PartialEq for Linedef {

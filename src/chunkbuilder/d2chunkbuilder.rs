@@ -21,6 +21,10 @@ impl ChunkBuilder for D2ChunkBuilder {
     fn build(&mut self, map: &Map, assets: &Assets, chunk: &mut Chunk) {
         let sectors = map.sorted_sectors_by_area();
         for sector in &sectors {
+            if !sector.intersects_vertical_slice(map, 0.0, 1.0) {
+                continue;
+            }
+
             let bbox = sector.bounding_box(map);
 
             // Collect occluded sectors and store them in the chunk

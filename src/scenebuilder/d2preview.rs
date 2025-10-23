@@ -380,6 +380,9 @@ impl D2PreviewBuilder {
             || self.map_tool_type == MapToolType::Linedef
         {
             for vertex in &map.vertices {
+                if !vertex.intersects_vertical_slice(0.0, 1.0) {
+                    continue;
+                }
                 if let Some(vertex_pos) = map.get_vertex(vertex.id) {
                     if self.map_tool_type == MapToolType::Linedef {
                         // In linedef mode, only show vertices that are part of selected linedefs
@@ -506,6 +509,10 @@ impl D2PreviewBuilder {
             }
 
             for linedef in &map.linedefs {
+                if !linedef.intersects_vertical_slice(map, 0.0, 1.0) {
+                    continue;
+                }
+
                 let mut draw = true;
 
                 // No outlines for the rect tool based sectors in the minimap or if no_rect_geo is enabled.

@@ -43,7 +43,7 @@ impl Sector {
         }
     }
 
-    /// Returns the sector's vertices in world space as Vec<Vec3<f32>>, deduplicated (preserving winding).
+    /// Returns the sector's vertices in world space as Vec<Vec3<f32>>.
     pub fn vertices_world(&self, map: &Map) -> Option<Vec<Vec3<f32>>> {
         let mut verts = Vec::new();
         for &linedef_id in &self.linedefs {
@@ -51,12 +51,42 @@ impl Sector {
             let v = map.find_vertex(ld.start_vertex)?;
             verts.push(Vec3::new(v.x, v.z, v.y));
         }
-        // Deduplicate immediate repeats (preserve winding)
         verts.dedup_by(|a, b| (a.x == b.x) && (a.y == b.y) && (a.z == b.z));
         if verts.len() < 3 {
             return None;
         }
         Some(verts)
+    }
+
+    /// Returns the vertical span (min_y, max_y) of this sector in world space.
+    pub fn y_span(&self, map: &Map) -> Option<(f32, f32)> {
+        let verts = self.vertices_world(map)?;
+        let mut min_y = f32::INFINITY;
+        let mut max_y = f32::NEG_INFINITY;
+        for p in verts {
+            min_y = min_y.min(p.y);
+            max_y = max_y.max(p.y);
+        }
+        if min_y.is_finite() && max_y.is_finite() {
+            Some((min_y, max_y))
+        } else {
+            None
+        }
+    }
+
+    /// Checks whether this sector intersects a vertical slice centered at `slice_y` with thickness `thickness`.
+    pub fn intersects_vertical_slice(&self, map: &Map, slice_y: f32, thickness: f32) -> bool {
+        if thickness <= 0.0 {
+            return false;
+        }
+        if let Some((min_y, max_y)) = self.y_span(map) {
+            let half = thickness * 0.5;
+            let y0 = slice_y - half;
+            let y1 = slice_y + half;
+            max_y >= y0 && min_y <= y1
+        } else {
+            false
+        }
     }
 
     // Generate a bounding box for the sector
