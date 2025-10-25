@@ -1,4 +1,6 @@
-use crate::{AccumBuffer, Command, PlayerCamera, Surface, prelude::*};
+use crate::{AccumBuffer, Command, PlayerCamera, SceneHandler, Surface, prelude::*};
+use scenevm::Atom;
+use theframework::prelude::*;
 use vek::Vec2;
 
 #[derive(PartialEq)]
@@ -20,6 +22,8 @@ pub struct Rusterix {
     pub draw_mode: ClientDrawMode,
 
     pub player_camera: PlayerCamera,
+
+    pub scene_handler: SceneHandler,
 }
 
 impl Default for Rusterix {
@@ -30,6 +34,14 @@ impl Default for Rusterix {
 
 impl Rusterix {
     pub fn new() -> Self {
+        let mut scene_handler = SceneHandler::default();
+
+        if let Some(bytes) = crate::Embedded::get("2d_shader.wgsl") {
+            if let Ok(source) = std::str::from_utf8(bytes.data.as_ref()) {
+                scene_handler.vm.execute(Atom::SetSource2D(source.into()));
+            }
+        }
+
         Self {
             assets: Assets::default(),
             server: Server::default(),
@@ -40,6 +52,8 @@ impl Rusterix {
             draw_mode: ClientDrawMode::D3,
 
             player_camera: PlayerCamera::D2,
+
+            scene_handler,
         }
     }
 
@@ -144,8 +158,13 @@ impl Rusterix {
             }
         }
         if self.draw_mode == ClientDrawMode::D2 {
-            self.client
-                .apply_entities_items_d2(screen_size, map, &self.assets, edit_surface);
+            self.client.apply_entities_items_d2(
+                screen_size,
+                map,
+                &self.assets,
+                edit_surface,
+                &mut self.scene_handler,
+            );
         } else if self.draw_mode == ClientDrawMode::D3 {
             self.client.apply_entities_items_d3(map, &self.assets);
         }
@@ -159,8 +178,14 @@ impl Rusterix {
         values: &ValueContainer,
         edit_surface: &Option<Surface>,
     ) {
-        self.client
-            .build_custom_scene_d2(screen_size, map, &self.assets, values, edit_surface);
+        self.client.build_custom_scene_d2(
+            screen_size,
+            map,
+            &self.assets,
+            values,
+            edit_surface,
+            &mut self.scene_handler,
+        );
     }
 
     /// Builds the entities and items w/o changing char positions
@@ -186,8 +211,14 @@ impl Rusterix {
 
     /// Draw the client scene in 2D.
     pub fn draw_d2(&mut self, map: &Map, pixels: &mut [u8], width: usize, height: usize) {
-        self.client
-            .draw_d2(map, pixels, width, height, &self.assets);
+        self.client.draw_d2(
+            map,
+            pixels,
+            width,
+            height,
+            &self.assets,
+            &mut self.scene_handler,
+        );
     }
 
     /// Draw the client scene in 3D
@@ -200,8 +231,14 @@ impl Rusterix {
     pub fn draw_scene(&mut self, map: &Map, pixels: &mut [u8], width: usize, height: usize) {
         match self.draw_mode {
             D2 => {
-                self.client
-                    .draw_d2(map, pixels, width, height, &self.assets);
+                self.client.draw_d2(
+                    map,
+                    pixels,
+                    width,
+                    height,
+                    &self.assets,
+                    &mut self.scene_handler,
+                );
             }
             D3 => {
                 self.client
@@ -232,5 +269,11 @@ impl Rusterix {
     /// Update the server messages.
     pub fn update_server(&mut self) -> Option<String> {
         self.server.update(&mut self.assets)
+    }
+
+    /// Update the tiles
+    pub fn set_rgba_tiles(&mut self, textures: FxHashMap<Uuid, TheRGBATile>) {
+        self.scene_handler.build_atlas(&textures);
+        self.assets.set_rgba_tiles(textures);
     }
 }

@@ -10,7 +10,14 @@ pub trait ChunkBuilder: Send + Sync {
     where
         Self: Sized;
 
-    fn build(&mut self, map: &Map, assets: &Assets, chunk: &mut Chunk) {}
+    fn build(
+        &mut self,
+        map: &Map,
+        assets: &Assets,
+        chunk: &mut Chunk,
+        vmchunk: &mut scenevm::Chunk,
+    ) {
+    }
 
     fn boxed_clone(&self) -> Box<dyn ChunkBuilder>;
 }

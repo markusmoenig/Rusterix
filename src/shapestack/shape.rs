@@ -287,7 +287,6 @@ impl Shape {
 
     pub fn preview(&mut self, buffer: &mut TheRGBABuffer, assets: &Assets) {
         buffer.fill(BLACK);
-
         let width = buffer.dim().width as f32;
         let height = buffer.dim().height as f32;
 
@@ -311,7 +310,7 @@ impl Shape {
                 Vec2::new(width, height),
                 &ValueContainer::default(),
             );
-            builder.build_entities_items(&map, assets, &mut scene, Vec2::new(width, height), &None);
+            // TODO  builder.build_entities_items(&map, assets, &mut scene, Vec2::new(width, height), &None);
             scene.background = None;
 
             let mut rast = Rasterizer::setup(None, Mat4::identity(), Mat4::identity());

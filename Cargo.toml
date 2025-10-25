@@ -17,12 +17,17 @@ theframework = { version = "0.1.40", features = [
 # theframework = "0.1.33"
 # theframework = { path = "../TheFramework", default-features = true }
 
+scenevm = { version = "0.1", git = "https://github.com/markusmoenig/SceneVM" }
+
 # theframework = { path = "../TheFramework", features = [
 #     "ui",
 # ], default-features = true }
 
+# scenevm = { path = "../SceneVM" }
+
 [dependencies]
 theframework.workspace = true
+scenevm.workspace = true
 
 codegridfx = { path = "codegridfx/lib", default-features = true }
 
@@ -95,6 +100,3 @@ harness = false
 [features]
 single_thread = []
 default = []
-
-[patch.crates-io]
-radium = { version = "1.1.0", git = "https://github.com/youknowone/ferrilab", branch = "fix-nightly" }

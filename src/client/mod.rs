@@ -9,7 +9,6 @@ pub mod widget;
 
 use std::str::FromStr;
 
-use crate::prelude::*;
 use crate::{
     AccumBuffer, BrushPreview, Command, D2PreviewBuilder, EntityAction, Rect, RenderMode,
     ShapeFXGraph, Surface, Tracer, Value,
@@ -19,6 +18,7 @@ use crate::{
         text::TextWidget,
     },
 };
+use crate::{SceneHandler, prelude::*};
 use draw2d::Draw2D;
 use fontdue::*;
 use std::sync::{Arc, Mutex};
@@ -212,6 +212,7 @@ impl Client {
         assets: &Assets,
         values: &ValueContainer,
         edit_surface: &Option<Surface>,
+        scene_handler: &mut SceneHandler,
     ) {
         self.curr_map_id = map.id;
         self.scene_d2 = self.builder_d2.build(map, assets, screen_size, values);
@@ -221,6 +222,7 @@ impl Client {
             &mut self.scene_d2,
             screen_size,
             edit_surface,
+            scene_handler,
         );
     }
 
@@ -231,6 +233,7 @@ impl Client {
         map: &Map,
         assets: &Assets,
         edit_surface: &Option<Surface>,
+        scene_handler: &mut SceneHandler,
     ) {
         self.builder_d2.build_entities_items(
             map,
@@ -238,6 +241,7 @@ impl Client {
             &mut self.scene,
             screen_size,
             edit_surface,
+            scene_handler,
         );
     }
 
@@ -369,6 +373,7 @@ impl Client {
         width: usize,
         height: usize,
         assets: &Assets,
+        scene_handler: &mut SceneHandler,
     ) {
         pub fn map_grid_to_local(
             screen_size: Vec2<f32>,
@@ -398,12 +403,28 @@ impl Client {
         );
         let transform = translation_matrix * scale_matrix;
 
-        let mut rast = Rasterizer::setup(Some(transform), Mat4::identity(), Mat4::identity())
-            .render_mode(RenderMode::render_2d());
-        rast.render_graph = self.global.clone();
-        rast.hour = self.server_time.to_f32();
-        rast.mapmini = self.scene.mapmini.clone();
-        rast.rasterize(&mut self.scene, pixels, width, height, 64, assets);
+        // let mut rast = Rasterizer::setup(Some(transform), Mat4::identity(), Mat4::identity())
+        //     .render_mode(RenderMode::render_2d());
+        // rast.render_graph = self.global.clone();
+        // rast.hour = self.server_time.to_f32();
+        // rast.mapmini = self.scene.mapmini.clone();
+        // rast.rasterize(&mut self.scene, pixels, width, height, 64, assets);
+
+        scene_handler
+            .vm
+            .execute(scenevm::Atom::SetTransform2D(transform));
+
+        scene_handler
+            .vm
+            .execute(scenevm::Atom::SetAnimationCounter(self.animation_frame));
+
+        scene_handler
+            .vm
+            .execute(scenevm::Atom::SetBackground(Vec4::zero()));
+
+        scene_handler
+            .vm
+            .render_frame(pixels, width as u32, height as u32);
 
         // Draw Messages
 

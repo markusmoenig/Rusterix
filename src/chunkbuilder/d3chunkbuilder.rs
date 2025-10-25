@@ -19,7 +19,13 @@ impl ChunkBuilder for D3ChunkBuilder {
         Box::new(self.clone())
     }
 
-    fn build(&mut self, map: &Map, assets: &Assets, chunk: &mut Chunk) {
+    fn build(
+        &mut self,
+        map: &Map,
+        assets: &Assets,
+        chunk: &mut Chunk,
+        vmchunk: &mut scenevm::Chunk,
+    ) {
         // For each surface in the map
         for surface in map.surfaces.values() {
             let Some(sector) = map.find_sector(surface.sector_id) else {

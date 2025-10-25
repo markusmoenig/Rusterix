@@ -2,13 +2,13 @@
 
 use crate::Texture;
 use crate::{
-    Assets, Batch2D, GridShader, Map, MapToolType, Pixel, PixelSource, Rect, Scene, Shader,
-    Surface, Tile, Value, ValueContainer, WHITE,
+    Assets, Batch2D, GridShader, Map, MapToolType, Pixel, PixelSource, Rect, Scene, SceneHandler,
+    Shader, Surface, Tile, Value, ValueContainer, WHITE,
 };
+use MapToolType::*;
+use scenevm::GeoId;
 use theframework::prelude::*;
 use vek::Vec2;
-
-use MapToolType::*;
 
 pub struct D2PreviewBuilder {
     selection_color: Pixel,
@@ -307,6 +307,7 @@ impl D2PreviewBuilder {
         scene: &mut Scene,
         screen_size: Vec2<f32>,
         editing_surface: &Option<Surface>,
+        scene_handler: &mut SceneHandler,
     ) {
         let screen_aspect = screen_size.x / screen_size.y;
         let screen_pixel_size = 4.0;
@@ -315,6 +316,8 @@ impl D2PreviewBuilder {
 
         scene.dynamic_lights = vec![];
         scene.d2_dynamic = vec![];
+
+        scene_handler.clear_overlay_2d();
 
         // Grid
         if self.draw_grid {
@@ -548,7 +551,11 @@ impl D2PreviewBuilder {
 
                             // Special color for wall profile
                             if linedef.properties.contains("profile") {
-                                non_selected_lines_with_selected_graph.push((start_pos, end_pos));
+                                non_selected_lines_with_selected_graph.push((
+                                    GeoId::Linedef(linedef.id),
+                                    start_pos,
+                                    end_pos,
+                                ));
                             }
 
                             // ---
@@ -598,31 +605,44 @@ impl D2PreviewBuilder {
                             }
 
                             if selected {
-                                selected_lines.push((start_pos, end_pos));
+                                selected_lines.push((
+                                    GeoId::Linedef(linedef.id),
+                                    start_pos,
+                                    end_pos,
+                                ));
                             } else {
                                 let mut added_it = false;
                                 if let Some(Value::Source(PixelSource::ShapeFXGraphId(id))) =
                                     linedef.properties.get("shape_graph")
                                 {
                                     if selected_graph == Some(*id) {
-                                        non_selected_lines_with_selected_graph
-                                            .push((start_pos, end_pos));
+                                        non_selected_lines_with_selected_graph.push((
+                                            GeoId::Linedef(linedef.id),
+                                            start_pos,
+                                            end_pos,
+                                        ));
                                         added_it = true;
                                     }
                                 } else if let Some(Value::Source(PixelSource::ShapeFXGraphId(id))) =
                                     linedef.properties.get("screen_graph")
                                 {
                                     if selected_graph == Some(*id) {
-                                        non_selected_lines_with_selected_graph
-                                            .push((start_pos, end_pos));
+                                        non_selected_lines_with_selected_graph.push((
+                                            GeoId::Linedef(linedef.id),
+                                            start_pos,
+                                            end_pos,
+                                        ));
                                         added_it = true;
                                     }
                                 } else if let Some(Value::Source(PixelSource::ShapeFXGraphId(id))) =
                                     linedef.properties.get("row1_source")
                                 {
                                     if selected_graph == Some(*id) {
-                                        non_selected_lines_with_selected_graph
-                                            .push((start_pos, end_pos));
+                                        non_selected_lines_with_selected_graph.push((
+                                            GeoId::Linedef(linedef.id),
+                                            start_pos,
+                                            end_pos,
+                                        ));
                                         added_it = true;
                                     }
                                 } else if let Some(sector_id) = linedef.front_sector {
@@ -632,16 +652,22 @@ impl D2PreviewBuilder {
                                         ))) = sector.properties.get("shape_graph")
                                         {
                                             if selected_graph == Some(*id) {
-                                                non_selected_lines_with_selected_graph
-                                                    .push((start_pos, end_pos));
+                                                non_selected_lines_with_selected_graph.push((
+                                                    GeoId::Linedef(linedef.id),
+                                                    start_pos,
+                                                    end_pos,
+                                                ));
                                                 added_it = true;
                                             }
                                         } else if let Some(PixelSource::ShapeFXGraphId(id)) =
                                             sector.properties.get_default_source()
                                         {
                                             if selected_graph == Some(*id) {
-                                                non_selected_lines_with_selected_graph
-                                                    .push((start_pos, end_pos));
+                                                non_selected_lines_with_selected_graph.push((
+                                                    GeoId::Linedef(linedef.id),
+                                                    start_pos,
+                                                    end_pos,
+                                                ));
                                                 added_it = true;
                                             }
                                         }
@@ -649,7 +675,11 @@ impl D2PreviewBuilder {
                                 }
 
                                 if !added_it {
-                                    non_selected_lines.push((start_pos, end_pos));
+                                    non_selected_lines.push((
+                                        GeoId::Linedef(linedef.id),
+                                        start_pos,
+                                        end_pos,
+                                    ));
                                 }
                             }
                         }
@@ -661,8 +691,9 @@ impl D2PreviewBuilder {
             let mut batch = Batch2D::empty()
                 .source(PixelSource::Pixel(WHITE))
                 .mode(crate::PrimitiveMode::Lines);
-            for (start_pos, end_pos) in non_selected_lines {
+            for (id, start_pos, end_pos) in non_selected_lines {
                 batch.add_line(start_pos, end_pos, 0.05);
+                scene_handler.add_overlay_2d_line(id, start_pos, end_pos, scene_handler.white, 900);
             }
             scene.d2_dynamic.push(batch);
 
@@ -670,20 +701,34 @@ impl D2PreviewBuilder {
                 let mut batch = Batch2D::empty()
                     .source(PixelSource::Pixel(self.unselected_with_same_geometry))
                     .mode(crate::PrimitiveMode::Lines);
-                for (start_pos, end_pos) in non_selected_lines_with_selected_graph {
+                for (id, start_pos, end_pos) in non_selected_lines_with_selected_graph {
                     batch.add_line(start_pos, end_pos, 0.05);
+                    scene_handler.add_overlay_2d_line(
+                        id,
+                        start_pos,
+                        end_pos,
+                        scene_handler.white,
+                        900,
+                    );
                 }
                 scene.d2_dynamic.push(batch);
             }
 
-            // Draw selected lines last
+            // Draw selected lines
             let mut batch = Batch2D::empty()
                 .source(PixelSource::Pixel(self.selection_color))
                 .mode(crate::PrimitiveMode::Lines);
-            for (start_pos, end_pos) in selected_lines {
+            for (id, start_pos, end_pos) in selected_lines {
                 batch.add_line(start_pos, end_pos, 0.05);
+                scene_handler.add_overlay_2d_line(
+                    id,
+                    start_pos,
+                    end_pos,
+                    scene_handler.selected,
+                    1000,
+                );
             }
-            scene.d2_dynamic.push(batch);
+            // scene.d2_dynamic.push(batch);
         }
 
         if self.map_tool_type != MapToolType::Effects {
@@ -881,6 +926,7 @@ impl D2PreviewBuilder {
         }
         */
 
+        scene_handler.set_overlay_2d();
         scene.dynamic_textures = self.textures.clone();
     }
 

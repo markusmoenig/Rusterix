@@ -15,6 +15,7 @@ pub mod rect;
 pub mod rendermode;
 pub mod rusterix;
 pub mod scene;
+pub mod scene_handler;
 pub mod scenebuilder;
 pub mod scenemanager;
 pub mod script;
@@ -130,6 +131,7 @@ pub use crate::{
     rendermode::RenderMode,
     rusterix::Rusterix,
     scene::Scene,
+    scene_handler::SceneHandler,
     scenebuilder::{
         d2builder::D2Builder, d2material::D2MaterialBuilder, d2preview::D2PreviewBuilder,
     },

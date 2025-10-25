@@ -4,6 +4,7 @@ use crate::{
 };
 use crossbeam::channel::{self, Receiver, Sender};
 // use rayon::prelude::*;
+use scenevm::Chunk as VMChunk;
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 use theframework::prelude::*;
@@ -25,7 +26,7 @@ pub enum SceneManagerCmd {
 pub enum SceneManagerResult {
     Startup,
     Clear,
-    Chunk(Chunk, i32, i32),
+    Chunk(VMChunk, i32, i32),
     ProcessedHeights(Vec2<i32>, FxHashMap<(i32, i32), f32>),
     UpdatedBatch3D((i32, i32), Batch3D),
     Quit,
@@ -221,11 +222,13 @@ impl SceneManager {
                             // println!("Processing chunk at {:?}", coord);
 
                             let mut chunk = Chunk::new(Vec2::new(coord.0, coord.1), chunk_size);
+                            let mut vmchunk = VMChunk::new(Vec2::new(coord.0, coord.1), chunk_size);
 
                             if let Some(cb_d2) = &mut chunk_builder_d2 {
-                                cb_d2.build(&map, &assets, &mut chunk);
+                                cb_d2.build(&map, &assets, &mut chunk, &mut vmchunk);
                             }
 
+                            /*
                             if let Some(cb_d3) = &mut chunk_builder_d3 {
                                 cb_d3.build(&map, &assets, &mut chunk);
                                 for chunk3d in &mut chunk.batches3d_opacity {
@@ -234,8 +237,9 @@ impl SceneManager {
                                 for chunk3d in &mut chunk.batches3d {
                                     chunk3d.compute_vertex_normals();
                                 }
-                            }
+                            }*/
 
+                            /*
                             let local = map.terrain.get_chunk_coords(coord.0, coord.1);
                             if map.terrain.chunks.contains_key(&local) {
                                 map.terrain.build_chunk_at(local, &assets, &map_geo, 32, &mut chunk, terrain_modifiers);
@@ -246,10 +250,10 @@ impl SceneManager {
                                         result_tx.send(SceneManagerResult::ProcessedHeights(Vec2::new(coord.0, coord.1), ph)).ok();
                                     }
                                 }
-                            }
+                            }*/
 
                             // Send the chunk
-                            result_tx.send(SceneManagerResult::Chunk(chunk, dirty.len() as i32, total_chunks)).ok();
+                            result_tx.send(SceneManagerResult::Chunk(vmchunk, dirty.len() as i32, total_chunks)).ok();
 
                             // Drain all queued up ticks to make sure messages are received first
                             while tick.try_recv().is_ok() {}

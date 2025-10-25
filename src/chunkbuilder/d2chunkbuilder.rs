@@ -1,4 +1,5 @@
 use crate::{Assets, Batch2D, Chunk, ChunkBuilder, Map, PixelSource, Value};
+use scenevm::GeoId;
 use vek::Vec2;
 
 pub struct D2ChunkBuilder {}
@@ -18,7 +19,13 @@ impl ChunkBuilder for D2ChunkBuilder {
         Box::new(self.clone())
     }
 
-    fn build(&mut self, map: &Map, assets: &Assets, chunk: &mut Chunk) {
+    fn build(
+        &mut self,
+        map: &Map,
+        assets: &Assets,
+        chunk: &mut Chunk,
+        vmchunk: &mut scenevm::Chunk,
+    ) {
         let sectors = map.sorted_sectors_by_area();
         for sector in &sectors {
             if !sector.intersects_vertical_slice(map, 0.0, 1.0) {
@@ -84,6 +91,14 @@ impl ChunkBuilder for D2ChunkBuilder {
 
                     if let Some(pixelsource) = source {
                         if let Some(tile) = pixelsource.tile_from_tile_list(assets) {
+                            vmchunk.add_poly_2d(
+                                GeoId::Sector(sector.id),
+                                tile.id,
+                                vertices.clone(),
+                                uvs.clone(),
+                                geo.1.clone(),
+                                0,
+                            );
                             if let Some(texture_index) = assets.tile_index(&tile.id) {
                                 let mut batch =
                                     Batch2D::new(vertices.clone(), geo.1.clone(), uvs.clone())
