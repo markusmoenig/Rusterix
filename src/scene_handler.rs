@@ -178,7 +178,7 @@ impl SceneHandler {
             id,
             color,
             vec![start.into_array(), end.into_array()],
-            0.1,
+            0.15,
             layer,
         );
     }

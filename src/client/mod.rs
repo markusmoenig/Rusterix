@@ -410,6 +410,35 @@ impl Client {
         // rast.mapmini = self.scene.mapmini.clone();
         // rast.rasterize(&mut self.scene, pixels, width, height, 64, assets);
 
+        scene_handler.vm.execute(scenevm::Atom::SetGP0(Vec4::new(
+            map.grid_size,
+            map.subdivisions,
+            map.offset.x,
+            -map.offset.y,
+        )));
+
+        let hour = self.server_time.to_f32();
+        let render_miss = self.global.collect_nodes_from(0, 1);
+
+        // Precompute missed node values
+        for node in &render_miss {
+            _ = self.global.nodes[*node as usize].render_setup(hour)
+
+            // if let Some(_(sun_dir, day_factor)) =
+            // self.global.nodes[*node as usize].render_setup(hour)
+            // {
+            // self.sun_dir = Some(sun_dir);
+            // self.day_factor = day_factor;
+            // }
+        }
+
+        scene_handler.vm.execute(scenevm::Atom::SetGP1(Vec4::one()));
+        for node in &render_miss {
+            if let Some(ambient) = self.global.nodes[*node as usize].render_ambient_color(hour) {
+                scene_handler.vm.execute(scenevm::Atom::SetGP1(ambient));
+            }
+        }
+
         scene_handler
             .vm
             .execute(scenevm::Atom::SetTransform2D(transform));

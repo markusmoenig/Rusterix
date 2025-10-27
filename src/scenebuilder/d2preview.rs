@@ -3,7 +3,7 @@ use crate::{
     Shader, Surface, Tile, Value, ValueContainer,
 };
 use MapToolType::*;
-use scenevm::GeoId;
+use scenevm::{Atom, GeoId, Light};
 use theframework::prelude::*;
 use vek::Vec2;
 
@@ -319,21 +319,21 @@ impl D2PreviewBuilder {
         scene_handler.clear_overlay_2d();
 
         // Grid
-        if self.draw_grid {
-            if scene.background.is_none() {
-                let grid_shader = GridShader::new();
-                scene.background = Some(Box::new(grid_shader));
-            }
-        } else {
-            scene.background = None;
-        }
+        // if self.draw_grid {
+        //     if scene.background.is_none() {
+        //         let grid_shader = GridShader::new();
+        //         scene.background = Some(Box::new(grid_shader));
+        //     }
+        // } else {
+        //     scene.background = None;
+        // }
 
         // Adjust the grid shader
-        if let Some(grid_shader) = &mut scene.background {
-            grid_shader.set_parameter_f32("grid_size", map.grid_size);
-            grid_shader.set_parameter_f32("subdivisions", map.subdivisions);
-            grid_shader.set_parameter_vec2("offset", Vec2::new(map.offset.x, -map.offset.y));
-        }
+        // if let Some(grid_shader) = &mut scene.background {
+        //     grid_shader.set_parameter_f32("grid_size", map.grid_size);
+        //     grid_shader.set_parameter_f32("subdivisions", map.subdivisions);
+        //     grid_shader.set_parameter_vec2("offset", Vec2::new(map.offset.x, -map.offset.y));
+        // }
 
         // Add the clipping area
         if let Some(clip_rect) = self.clip_rect {
@@ -748,11 +748,21 @@ impl D2PreviewBuilder {
                 let hsize = 0.5;
 
                 if let Some(Value::Light(light)) = item.attributes.get("light") {
-                    if light.active {
-                        let mut light = light.clone();
-                        light.set_position(item.position);
-                        scene.dynamic_lights.push(light.compile());
-                    }
+                    // if light.active {
+                    //     let mut light = light.clone();
+                    //     light.set_position(item.position);
+                    //     scene.dynamic_lights.push(light.compile());
+                    // }
+
+                    scene_handler.vm.execute(Atom::AddLight {
+                        id: Uuid::new_v4(),
+                        light: Light::new_pointlight(item.position)
+                            .with_color(Vec3::from(light.get_color()))
+                            .with_intensity(light.get_intensity())
+                            .with_emitting(true)
+                            .with_start_distance(light.get_start_distance())
+                            .with_end_distance(light.get_end_distance()),
+                    });
                 }
 
                 if let Some(Value::Source(source)) = item.attributes.get("source") {
@@ -766,16 +776,16 @@ impl D2PreviewBuilder {
                                 100,
                                 true,
                             );
-                            if let Some(texture_index) = assets.tile_index(&tile.id) {
-                                let batch = Batch2D::from_rectangle(
-                                    pos.x - hsize,
-                                    pos.y - hsize,
-                                    size,
-                                    size,
-                                )
-                                .source(PixelSource::StaticTileIndex(texture_index));
-                                scene.d2_dynamic.push(batch);
-                            }
+                            // if let Some(texture_index) = assets.tile_index(&tile.id) {
+                            //     let batch = Batch2D::from_rectangle(
+                            //         pos.x - hsize,
+                            //         pos.y - hsize,
+                            //         size,
+                            //         size,
+                            //     )
+                            //     .source(PixelSource::StaticTileIndex(texture_index));
+                            //     scene.d2_dynamic.push(batch);
+                            // }
                         }
                     }
                 } else if let Some(Value::Source(source)) = item.attributes.get("_source_seq") {
