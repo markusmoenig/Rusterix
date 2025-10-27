@@ -1,9 +1,6 @@
-// use crate::PrimitiveMode::*;
-
-use crate::Texture;
 use crate::{
     Assets, Batch2D, GridShader, Map, MapToolType, Pixel, PixelSource, Rect, Scene, SceneHandler,
-    Shader, Surface, Tile, Value, ValueContainer, WHITE,
+    Shader, Surface, Tile, Value, ValueContainer,
 };
 use MapToolType::*;
 use scenevm::GeoId;
@@ -74,6 +71,7 @@ impl D2PreviewBuilder {
         self.no_rect_geo = properties.get_bool_default("no_rect_geo", true);
         self.tile_size = properties.get_int_default("tile_size", 128);
 
+        /*
         self.textures.clear();
         if let Some(Value::Texture(tex)) = properties.get("character_on") {
             self.textures.push(Tile::from_texture(tex.clone()));
@@ -98,6 +96,7 @@ impl D2PreviewBuilder {
         } else {
             self.textures.push(Tile::from_texture(Texture::black()));
         }
+        */
     }
 
     pub fn build(
@@ -358,18 +357,25 @@ impl D2PreviewBuilder {
                 .map(|p| surface.world_to_uv(*p))
                 .collect();
 
-            let mut batch = Batch2D::empty()
-                .source(PixelSource::Pixel(self.unselected_with_same_geometry))
-                .mode(crate::PrimitiveMode::Lines);
+            // let mut batch = Batch2D::empty()
+            //     .source(PixelSource::Pixel(self.unselected_with_same_geometry))
+            //     .mode(crate::PrimitiveMode::Lines);
 
             for i in 0..ring2d.len() {
                 let mut a = ring2d[i];
                 let mut b = ring2d[(i + 1) % ring2d.len()];
                 a.y = -a.y;
                 b.y = -b.y;
-                batch.add_line(a, b, 0.05);
+                // batch.add_line(a, b, 0.05);
+                scene_handler.add_overlay_2d_line(
+                    GeoId::Unknown(i as u32),
+                    a,
+                    b,
+                    scene_handler.outline,
+                    1000,
+                );
             }
-            scene.d2_dynamic.push(batch);
+            // scene.d2_dynamic.push(batch);
         }
 
         // Add Vertices
@@ -688,14 +694,14 @@ impl D2PreviewBuilder {
             }
 
             // Draw non-selected lines first
-            let mut batch = Batch2D::empty()
-                .source(PixelSource::Pixel(WHITE))
-                .mode(crate::PrimitiveMode::Lines);
+            // let mut batch = Batch2D::empty()
+            //     .source(PixelSource::Pixel(WHITE))
+            //     .mode(crate::PrimitiveMode::Lines);
             for (id, start_pos, end_pos) in non_selected_lines {
-                batch.add_line(start_pos, end_pos, 0.05);
+                // batch.add_line(start_pos, end_pos, 0.05);
                 scene_handler.add_overlay_2d_line(id, start_pos, end_pos, scene_handler.white, 900);
             }
-            scene.d2_dynamic.push(batch);
+            // scene.d2_dynamic.push(batch);
 
             if !non_selected_lines_with_selected_graph.is_empty() {
                 let mut batch = Batch2D::empty()
@@ -715,11 +721,11 @@ impl D2PreviewBuilder {
             }
 
             // Draw selected lines
-            let mut batch = Batch2D::empty()
-                .source(PixelSource::Pixel(self.selection_color))
-                .mode(crate::PrimitiveMode::Lines);
+            // let mut batch = Batch2D::empty()
+            //     .source(PixelSource::Pixel(self.selection_color))
+            //     .mode(crate::PrimitiveMode::Lines);
             for (id, start_pos, end_pos) in selected_lines {
-                batch.add_line(start_pos, end_pos, 0.05);
+                // batch.add_line(start_pos, end_pos, 0.05);
                 scene_handler.add_overlay_2d_line(
                     id,
                     start_pos,
@@ -733,6 +739,7 @@ impl D2PreviewBuilder {
 
         if self.map_tool_type != MapToolType::Effects {
             // Items
+            let mut item_counter = 0;
             for item in &map.items {
                 let item_pos = Vec2::new(item.position.x, item.position.z);
                 let pos =
@@ -751,6 +758,14 @@ impl D2PreviewBuilder {
                 if let Some(Value::Source(source)) = item.attributes.get("source") {
                     if item.attributes.get_bool_default("visible", false) {
                         if let Some(tile) = source.tile_from_tile_list(assets) {
+                            scene_handler.overlay_2d.add_square_2d(
+                                GeoId::Character(item.id),
+                                tile.id,
+                                [pos.x, pos.y],
+                                size,
+                                100,
+                                true,
+                            );
                             if let Some(texture_index) = assets.tile_index(&tile.id) {
                                 let batch = Batch2D::from_rectangle(
                                     pos.x - hsize,
@@ -776,15 +791,35 @@ impl D2PreviewBuilder {
                     let batch = Batch2D::from_rectangle(pos.x - hsize, pos.y - hsize, size, size)
                         .source(PixelSource::DynamicTileIndex(2));
                     scene.d2_dynamic.push(batch);
+
+                    scene_handler.overlay_2d.add_square_2d(
+                        GeoId::Item(item_counter),
+                        scene_handler.item_on,
+                        [pos.x, pos.y],
+                        size,
+                        100,
+                        true,
+                    );
+                    item_counter += 1;
                 } else {
                     let batch = Batch2D::from_rectangle(pos.x - hsize, pos.y - hsize, size, size)
                         .source(PixelSource::DynamicTileIndex(3));
                     scene.d2_dynamic.push(batch);
+
+                    scene_handler.overlay_2d.add_square_2d(
+                        GeoId::Item(item_counter),
+                        scene_handler.item_off,
+                        [pos.x, pos.y],
+                        size,
+                        100,
+                        true,
+                    );
+                    item_counter += 1;
                 }
             }
 
-            // We dont show entities and items in Effects Mode to avoid overlapping icons
-            // Entities
+            // If the server is not running, entities do not have ids yet, so we give a fake one
+            let mut entity_counter = 0;
             for entity in &map.entities {
                 let entity_pos = Vec2::new(entity.position.x, entity.position.z);
                 let pos =
@@ -815,6 +850,15 @@ impl D2PreviewBuilder {
                 if let Some(Value::Source(source)) = entity.attributes.get("source") {
                     if entity.attributes.get_bool_default("visible", false) {
                         if let Some(tile) = source.tile_from_tile_list(assets) {
+                            scene_handler.overlay_2d.add_square_2d(
+                                GeoId::Character(entity.id),
+                                tile.id,
+                                [pos.x, pos.y],
+                                size,
+                                100,
+                                true,
+                            );
+
                             if let Some(texture_index) = assets.tile_index(&tile.id) {
                                 let batch = Batch2D::from_rectangle(
                                     pos.x - hsize,
@@ -837,23 +881,44 @@ impl D2PreviewBuilder {
                         }
                     }
                 } else if Some(entity.creator_id) == map.selected_entity_item {
-                    let batch = Batch2D::from_rectangle(pos.x - hsize, pos.y - hsize, size, size)
-                        .source(PixelSource::DynamicTileIndex(0));
-                    scene.d2_dynamic.push(batch);
+                    // let batch = Batch2D::from_rectangle(pos.x - hsize, pos.y - hsize, size, size)
+                    //     .source(PixelSource::DynamicTileIndex(0));
+                    // scene.d2_dynamic.push(batch);
+
+                    scene_handler.overlay_2d.add_square_2d(
+                        GeoId::Character(entity_counter),
+                        scene_handler.character_on,
+                        [pos.x, pos.y],
+                        size,
+                        100,
+                        true,
+                    );
+                    entity_counter += 1;
                 } else {
                     let batch = Batch2D::from_rectangle(pos.x - hsize, pos.y - hsize, size, size)
                         .source(PixelSource::DynamicTileIndex(1));
                     scene.d2_dynamic.push(batch);
+
+                    scene_handler.overlay_2d.add_square_2d(
+                        GeoId::Character(entity_counter),
+                        scene_handler.character_off,
+                        [pos.x, pos.y],
+                        size,
+                        100,
+                        true,
+                    );
+                    entity_counter += 1;
                 }
             }
         }
 
-        let mut white_batch = Batch2D::empty()
-            .source(PixelSource::Pixel(WHITE))
-            .mode(crate::PrimitiveMode::Lines);
+        // let mut white_batch = Batch2D::empty()
+        //     .source(PixelSource::Pixel(WHITE))
+        //     .mode(crate::PrimitiveMode::Lines);
 
         // For rectangle selection preview
         if let Some(rect) = map.curr_rectangle {
+            /*
             white_batch.add_line(
                 Vec2::new(rect.0.x, rect.0.y),
                 Vec2::new(rect.1.x, rect.0.y),
@@ -873,58 +938,76 @@ impl D2PreviewBuilder {
                 Vec2::new(rect.1.x, rect.1.y),
                 Vec2::new(rect.0.x, rect.1.y),
                 1.0,
+            );*/
+
+            scene_handler.add_overlay_2d_line(
+                GeoId::Unknown(20),
+                Vec2::new(rect.0.x, rect.0.y),
+                Vec2::new(rect.1.x, rect.0.y),
+                scene_handler.white,
+                1000,
+            );
+            scene_handler.add_overlay_2d_line(
+                GeoId::Unknown(21),
+                Vec2::new(rect.0.x, rect.0.y),
+                Vec2::new(rect.0.x, rect.1.y),
+                scene_handler.white,
+                1000,
+            );
+            scene_handler.add_overlay_2d_line(
+                GeoId::Unknown(22),
+                Vec2::new(rect.1.x, rect.1.y),
+                Vec2::new(rect.1.x, rect.0.y),
+                scene_handler.white,
+                1000,
+            );
+            scene_handler.add_overlay_2d_line(
+                GeoId::Unknown(23),
+                Vec2::new(rect.1.x, rect.1.y),
+                Vec2::new(rect.0.x, rect.1.y),
+                scene_handler.white,
+                1000,
             );
         }
 
         // For line action previews
         if let Some(grid_pos) = map.curr_grid_pos {
             if let Some(mouse_pos) = map.curr_mouse_pos {
-                white_batch.add_line(grid_pos, mouse_pos, 1.0)
+                // white_batch.add_line(grid_pos, mouse_pos, 1.0)
+                scene_handler.add_overlay_2d_line(
+                    GeoId::Unknown(25),
+                    grid_pos,
+                    mouse_pos,
+                    scene_handler.white,
+                    1000,
+                );
             }
         }
-        scene.d2_dynamic.push(white_batch);
+        // scene.d2_dynamic.push(white_batch);
 
         // Hover Cursor
         if self.map_tool_type != MapToolType::Rect {
             if let Some(hover_pos) = self.hover_cursor {
-                let mut yellow_batch =
-                    Batch2D::empty().source(PixelSource::Pixel(vek::Rgba::yellow().into_array()));
-                yellow_batch.add_rectangle(
-                    hover_pos.x - size_x,
-                    hover_pos.y - size_y,
-                    size_x * 2.0,
-                    size_y * 2.0,
-                );
-                scene.d2_dynamic.push(yellow_batch);
-            }
-        }
+                // let mut yellow_batch =
+                //     Batch2D::empty().source(PixelSource::Pixel(vek::Rgba::yellow().into_array()));
+                // yellow_batch.add_rectangle(
+                //     hover_pos.x - size_x,
+                //     hover_pos.y - size_y,
+                //     size_x * 2.0,
+                //     size_y * 2.0,
+                // );
+                // scene.d2_dynamic.push(yellow_batch);
 
-        /*
-        // Camera Pos
-        if let Some(camera_pos) = self.camera_pos {
-            let camera_grid_pos =
-                self.map_grid_to_local(screen_size, Vec2::new(camera_pos.x, camera_pos.z), map);
-            red_batch.add_rectangle(
-                camera_grid_pos.x - size_x,
-                camera_grid_pos.y - size_y,
-                size_x * 2.0,
-                size_y * 2.0,
-            );
-
-            // Look At Pos
-            if let Some(look_at) = self.look_at {
-                let look_at_grid_pos =
-                    self.map_grid_to_local(screen_size, Vec2::new(look_at.x, look_at.z), map);
-                gray_batch_lines.add_line(camera_grid_pos, look_at_grid_pos, 1.0);
-                yellow_batch.add_rectangle(
-                    look_at_grid_pos.x - size_x,
-                    look_at_grid_pos.y - size_y,
+                scene_handler.overlay_2d.add_square_2d(
+                    GeoId::Triangle(1000),
+                    scene_handler.yellow,
+                    [hover_pos.x, hover_pos.y],
                     size_x * 2.0,
-                    size_y * 2.0,
+                    10000,
+                    true,
                 );
             }
         }
-        */
 
         scene_handler.set_overlay_2d();
         scene.dynamic_textures = self.textures.clone();

@@ -4269,6 +4269,7 @@ dependencies = [
  "noiselib",
  "ordered-float",
  "pathfinding",
+ "png 0.17.16",
  "rand 0.9.2",
  "rayon",
  "regex",
@@ -4692,7 +4693,6 @@ dependencies = [
 [[package]]
 name = "scenevm"
 version = "0.1.0"
-source = "git+https://github.com/markusmoenig/SceneVM#37f89799be4d9992ea75ad25178d06d3e2d88813"
 dependencies = [
  "bytemuck",
  "image",
@@ -5201,7 +5201,6 @@ checksum = "c13547615a44dc9c452a8a534638acdf07120d4b6847c8178705da06306a3057"
 [[package]]
 name = "theframework"
 version = "0.1.40"
-source = "git+https://github.com/markusmoenig/theframework#b6d3b69cfc3fd0b8b02e30604862dea0fcf478e9"
 dependencies = [
  "arboard",
  "console_error_panic_hook",

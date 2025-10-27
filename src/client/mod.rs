@@ -372,7 +372,7 @@ impl Client {
         pixels: &mut [u8],
         width: usize,
         height: usize,
-        assets: &Assets,
+        _assets: &Assets,
         scene_handler: &mut SceneHandler,
     ) {
         pub fn map_grid_to_local(

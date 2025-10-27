@@ -98,6 +98,7 @@ impl ChunkBuilder for D2ChunkBuilder {
                                 uvs.clone(),
                                 geo.1.clone(),
                                 0,
+                                true,
                             );
                             if let Some(texture_index) = assets.tile_index(&tile.id) {
                                 let mut batch =

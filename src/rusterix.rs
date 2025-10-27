@@ -36,7 +36,7 @@ impl Rusterix {
     pub fn new() -> Self {
         let mut scene_handler = SceneHandler::default();
 
-        if let Some(bytes) = crate::Embedded::get("2d_shader.wgsl") {
+        if let Some(bytes) = crate::Embedded::get("shader/2d_shader.wgsl") {
             if let Ok(source) = std::str::from_utf8(bytes.data.as_ref()) {
                 scene_handler.vm.execute(Atom::SetSource2D(source.into()));
             }
@@ -272,8 +272,8 @@ impl Rusterix {
     }
 
     /// Update the tiles
-    pub fn set_rgba_tiles(&mut self, textures: FxHashMap<Uuid, TheRGBATile>) {
-        self.scene_handler.build_atlas(&textures);
+    pub fn set_rgba_tiles(&mut self, textures: FxHashMap<Uuid, TheRGBATile>, editor: bool) {
+        self.scene_handler.build_atlas(&textures, editor);
         self.assets.set_rgba_tiles(textures);
     }
 }
