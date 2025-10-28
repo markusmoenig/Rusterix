@@ -42,6 +42,12 @@ impl Rusterix {
             }
         }
 
+        if let Some(bytes) = crate::Embedded::get("shader/3d_shader.wgsl") {
+            if let Ok(source) = std::str::from_utf8(bytes.data.as_ref()) {
+                scene_handler.vm.execute(Atom::SetSource3D(source.into()));
+            }
+        }
+
         Self {
             assets: Assets::default(),
             server: Server::default(),

@@ -1,5 +1,6 @@
 use crate::{Assets, Batch3D, Chunk, ChunkBuilder, Map, PixelSource, Value};
 use crate::{GeometrySource, LoopOp, ProfileLoop, RepeatMode, Sector};
+use scenevm::GeoId;
 use vek::{Vec2, Vec3};
 
 pub struct D3ChunkBuilder {}
@@ -226,11 +227,12 @@ impl ChunkBuilder for D3ChunkBuilder {
                         shader_index: Option<usize>,
                         assets: &Assets,
                         chunk: &mut Chunk,
+                        vmchunk: &mut scenevm::Chunk,
                         verts: Vec<[f32; 4]>,
                         inds: Vec<(usize, usize, usize)>,
                         uvs_in: Vec<[f32; 2]>,
                     ) {
-                        let mut batch = Batch3D::new(verts, inds, uvs_in)
+                        let mut batch = Batch3D::new(verts.clone(), inds.clone(), uvs_in.clone())
                             .repeat_mode(RepeatMode::RepeatXY)
                             .geometry_source(GeometrySource::Sector(sector.id));
 
@@ -246,6 +248,17 @@ impl ChunkBuilder for D3ChunkBuilder {
                             .or_else(|| sector.properties.get(fallback_key))
                         {
                             if let Some(tile) = pixelsource.tile_from_tile_list(assets) {
+                                vmchunk.add_poly_3d(
+                                    GeoId::Sector(sector.id),
+                                    tile.id,
+                                    verts.clone(),
+                                    uvs_in.clone(),
+                                    inds.clone(),
+                                    0,
+                                    true,
+                                    None,
+                                );
+
                                 if let Some(texture_index) = assets.tile_index(&tile.id) {
                                     batch.source = PixelSource::StaticTileIndex(texture_index);
                                 }
@@ -387,6 +400,7 @@ impl ChunkBuilder for D3ChunkBuilder {
                         shader_index,
                         assets,
                         chunk,
+                        vmchunk,
                         world_vertices.clone(),
                         indices.clone(),
                         uvs.clone(),
@@ -510,6 +524,7 @@ impl ChunkBuilder for D3ChunkBuilder {
                                     shader_index,
                                     assets,
                                     chunk,
+                                    vmchunk,
                                     back_world_vertices,
                                     back_indices,
                                     back_uvs,
@@ -527,6 +542,7 @@ impl ChunkBuilder for D3ChunkBuilder {
                                 shader_index,
                                 assets,
                                 chunk,
+                                vmchunk,
                                 ring_v,
                                 ring_i,
                                 ring_uv,

@@ -44,14 +44,14 @@ impl ChunkBuilder for D2ChunkBuilder {
 
             if bbox.intersects(&chunk.bbox) && chunk.bbox.contains(bbox.center()) {
                 if let Some(geo) = sector.generate_geometry(map) {
-                    let shader_index = sector
-                        .shader
-                        .and_then(|shader_id| {
-                            map.shaders
-                                .get(&shader_id)
-                                .map(|m| chunk.add_shader(&m.build_shader(), assets))
-                        })
-                        .flatten();
+                    // let shader_index = sector
+                    //     .shader
+                    //     .and_then(|shader_id| {
+                    //         map.shaders
+                    //             .get(&shader_id)
+                    //             .map(|m| chunk.add_shader(&m.build_shader(), assets))
+                    //     })
+                    //     .flatten();
 
                     let mut vertices: Vec<[f32; 2]> = vec![];
                     let mut uvs: Vec<[f32; 2]> = vec![];

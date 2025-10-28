@@ -1,6 +1,6 @@
 use crate::{
-    Assets, Batch2D, GridShader, Map, MapToolType, Pixel, PixelSource, Rect, Scene, SceneHandler,
-    Shader, Surface, Tile, Value, ValueContainer,
+    Assets, Batch2D, Map, MapToolType, Pixel, PixelSource, Rect, Scene, SceneHandler, Surface,
+    Tile, Value, ValueContainer,
 };
 use MapToolType::*;
 use scenevm::{Atom, GeoId, Light};
