@@ -755,13 +755,14 @@ impl D2PreviewBuilder {
                     // }
 
                     scene_handler.vm.execute(Atom::AddLight {
-                        id: Uuid::new_v4(),
+                        id: GeoId::ItemLight(item.id),
                         light: Light::new_pointlight(item.position)
                             .with_color(Vec3::from(light.get_color()))
                             .with_intensity(light.get_intensity())
-                            .with_emitting(true)
+                            .with_emitting(light.active)
                             .with_start_distance(light.get_start_distance())
-                            .with_end_distance(light.get_end_distance()),
+                            .with_end_distance(light.get_end_distance())
+                            .with_flicker(light.get_flicker()),
                     });
                 }
 
@@ -775,6 +776,7 @@ impl D2PreviewBuilder {
                                 size,
                                 100,
                                 true,
+                                None,
                             );
                             // if let Some(texture_index) = assets.tile_index(&tile.id) {
                             //     let batch = Batch2D::from_rectangle(
@@ -809,6 +811,7 @@ impl D2PreviewBuilder {
                         size,
                         100,
                         true,
+                        Some(scene_handler.flat_material),
                     );
                     item_counter += 1;
                 } else {
@@ -823,6 +826,7 @@ impl D2PreviewBuilder {
                         size,
                         100,
                         true,
+                        Some(scene_handler.flat_material),
                     );
                     item_counter += 1;
                 }
@@ -867,18 +871,19 @@ impl D2PreviewBuilder {
                                 size,
                                 100,
                                 true,
+                                None,
                             );
 
-                            if let Some(texture_index) = assets.tile_index(&tile.id) {
-                                let batch = Batch2D::from_rectangle(
-                                    pos.x - hsize,
-                                    pos.y - hsize,
-                                    size,
-                                    size,
-                                )
-                                .source(PixelSource::StaticTileIndex(texture_index));
-                                scene.d2_dynamic.push(batch);
-                            }
+                            // if let Some(texture_index) = assets.tile_index(&tile.id) {
+                            //     let batch = Batch2D::from_rectangle(
+                            //         pos.x - hsize,
+                            //         pos.y - hsize,
+                            //         size,
+                            //         size,
+                            //     )
+                            //     .source(PixelSource::StaticTileIndex(texture_index));
+                            //     scene.d2_dynamic.push(batch);
+                            // }
                         }
                     }
                 } else if let Some(Value::Source(source)) = entity.attributes.get("_source_seq") {
@@ -902,6 +907,7 @@ impl D2PreviewBuilder {
                         size,
                         100,
                         true,
+                        Some(scene_handler.flat_material),
                     );
                     entity_counter += 1;
                 } else {
@@ -916,6 +922,7 @@ impl D2PreviewBuilder {
                         size,
                         100,
                         true,
+                        Some(scene_handler.flat_material),
                     );
                     entity_counter += 1;
                 }
@@ -1015,6 +1022,7 @@ impl D2PreviewBuilder {
                     size_x * 2.0,
                     10000,
                     true,
+                    Some(scene_handler.flat_material),
                 );
             }
         }

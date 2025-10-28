@@ -68,7 +68,7 @@ impl ChunkBuilder for D2ChunkBuilder {
                     //     source = sector.properties.get("ceiling_source");
                     // }
 
-                    let mut processed = false;
+                    // let mut processed = false;
                     for vertex in &geo.0 {
                         let local = Vec2::new(vertex[0], vertex[1]);
 
@@ -99,29 +99,30 @@ impl ChunkBuilder for D2ChunkBuilder {
                                 geo.1.clone(),
                                 0,
                                 true,
+                                None,
                             );
-                            if let Some(texture_index) = assets.tile_index(&tile.id) {
-                                let mut batch =
-                                    Batch2D::new(vertices.clone(), geo.1.clone(), uvs.clone())
-                                        .repeat_mode(if repeat {
-                                            crate::RepeatMode::RepeatXY
-                                        } else {
-                                            crate::RepeatMode::ClampXY
-                                        })
-                                        .source(PixelSource::StaticTileIndex(texture_index));
-                                batch.shader = shader_index;
-                                chunk.batches2d.push(batch);
-                                processed = true;
-                            }
+                            // if let Some(texture_index) = assets.tile_index(&tile.id) {
+                            //     let mut batch =
+                            //         Batch2D::new(vertices.clone(), geo.1.clone(), uvs.clone())
+                            //             .repeat_mode(if repeat {
+                            //                 crate::RepeatMode::RepeatXY
+                            //             } else {
+                            //                 crate::RepeatMode::ClampXY
+                            //             })
+                            //             .source(PixelSource::StaticTileIndex(texture_index));
+                            //     batch.shader = shader_index;
+                            //     chunk.batches2d.push(batch);
+                            //     processed = true;
+                            // }
                         }
                     }
 
-                    if let Some(shader_index) = shader_index
-                        && processed == false
-                    {
-                        let batch = Batch2D::new(vertices, geo.1, uvs).shader(shader_index);
-                        chunk.batches2d.push(batch);
-                    }
+                    // if let Some(shader_index) = shader_index
+                    //     && processed == false
+                    // {
+                    //     let batch = Batch2D::new(vertices, geo.1, uvs).shader(shader_index);
+                    //     chunk.batches2d.push(batch);
+                    // }
                 }
             }
         }

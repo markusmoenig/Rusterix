@@ -1,5 +1,5 @@
 use rust_embed::EmbeddedFile;
-use scenevm::{Atom, Chunk, GeoId, SceneVM};
+use scenevm::{Atom, Chunk, GeoId, Material, SceneVM};
 use theframework::prelude::*;
 
 pub struct SceneHandler {
@@ -12,6 +12,8 @@ pub struct SceneHandler {
     pub character_on: Uuid,
     pub item_off: Uuid,
     pub item_on: Uuid,
+
+    pub flat_material: Uuid,
 
     pub white: Uuid,
     pub selected: Uuid,
@@ -38,6 +40,8 @@ impl SceneHandler {
             character_on: Uuid::new_v4(),
             item_off: Uuid::new_v4(),
             item_on: Uuid::new_v4(),
+
+            flat_material: Uuid::new_v4(),
 
             white: Uuid::new_v4(),
             selected: Uuid::new_v4(),
@@ -152,6 +156,11 @@ impl SceneHandler {
         }
 
         self.vm.execute(Atom::BuildAtlas);
+
+        self.vm.execute(Atom::AddMaterial {
+            id: self.flat_material,
+            material: Material::flat(),
+        });
     }
 
     pub fn clear_overlay_2d(&mut self) {
@@ -178,8 +187,9 @@ impl SceneHandler {
             id,
             color,
             vec![start.into_array(), end.into_array()],
-            0.15,
+            0.1,
             layer,
+            Some(self.flat_material),
         );
     }
 }
