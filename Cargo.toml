@@ -30,6 +30,7 @@ theframework.workspace = true
 scenevm.workspace = true
 
 codegridfx = { path = "codegridfx/lib", default-features = true }
+png = "0.17"
 
 # rustpython = { version = "0.4.0", features = [
 #     "stdlib",
