@@ -67,34 +67,15 @@ impl SceneHandler {
 
         if editor {
             fn decode_png(file: EmbeddedFile) -> Option<(Vec<u8>, u32, u32)> {
-                let data = std::io::Cursor::new(file.data);
-
-                let decoder = png::Decoder::new(data);
-                if let Ok(mut reader) = decoder.read_info() {
-                    let mut buf = vec![0; reader.output_buffer_size()];
-                    let info = reader.next_frame(&mut buf).unwrap();
-                    let bytes = &buf[..info.buffer_size()];
-
-                    // Ensure the image data has 4 channels (RGBA)
-                    let rgba_bytes = if info.color_type.samples() == 3 {
-                        // Image is RGB, expand to RGBA
-                        let mut expanded_buf =
-                            Vec::with_capacity(info.width as usize * info.height as usize * 4);
-                        for chunk in bytes.chunks(3) {
-                            expanded_buf.push(chunk[0]); // R
-                            expanded_buf.push(chunk[1]); // G
-                            expanded_buf.push(chunk[2]); // B
-                            expanded_buf.push(255); // A (opaque)
-                        }
-                        expanded_buf
-                    } else {
-                        // Image is already RGBA
-                        bytes.to_vec()
-                    };
-
-                    return Some((rgba_bytes, info.width, info.height));
+                // Use the `image` crate to decode, auto-detecting the format from bytes.
+                match image::load_from_memory(&file.data) {
+                    Ok(dynamic) => {
+                        let rgba = dynamic.to_rgba8();
+                        let (w, h) = rgba.dimensions();
+                        Some((rgba.into_raw(), w, h))
+                    }
+                    Err(_) => None,
                 }
-                None
             }
 
             if let Some(bytes) = crate::Embedded::get("icons/character_off.png") {

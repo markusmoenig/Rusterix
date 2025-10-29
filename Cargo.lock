@@ -4269,7 +4269,6 @@ dependencies = [
  "noiselib",
  "ordered-float",
  "pathfinding",
- "png 0.17.16",
  "rand 0.9.2",
  "rayon",
  "regex",
@@ -4693,15 +4692,18 @@ dependencies = [
 [[package]]
 name = "scenevm"
 version = "0.1.0"
-source = "git+https://github.com/markusmoenig/SceneVM#b0ea55eab46535ab31800298ae5a6c10a6e08b31"
 dependencies = [
  "bytemuck",
  "image",
  "pollster",
+ "rayon",
+ "rust-embed",
  "rustc-hash 2.1.1",
  "uuid",
  "vek",
+ "wasm-bindgen",
  "wasm-bindgen-futures",
+ "web-sys",
  "wgpu 27.0.1",
 ]
 
@@ -5202,7 +5204,6 @@ checksum = "c13547615a44dc9c452a8a534638acdf07120d4b6847c8178705da06306a3057"
 [[package]]
 name = "theframework"
 version = "0.1.40"
-source = "git+https://github.com/markusmoenig/theframework#58e9f8a053f50c395c0ea697a8b952f6de9e4b79"
 dependencies = [
  "arboard",
  "console_error_panic_hook",

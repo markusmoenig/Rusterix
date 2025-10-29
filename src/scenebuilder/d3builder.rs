@@ -380,6 +380,7 @@ impl D3Builder {
             batch.add_vertex_billboard(center, view_right, view_up, size);
         }
 
+        /*
         // Billboard sectors (Rect)
         for sector in self.map.sectors.iter() {
             if sector.layer.is_some() {
@@ -410,7 +411,7 @@ impl D3Builder {
                     }
                 }
             }
-        }
+        }*/
 
         // Entities
         for entity in &map.entities {

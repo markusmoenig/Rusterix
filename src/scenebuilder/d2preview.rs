@@ -530,7 +530,7 @@ impl D2PreviewBuilder {
                     for sector in &map.sectors {
                         if sector.linedefs.contains(&linedef.id) {
                             // found_in_sector = true;
-                            if sector.properties.contains("rect_rendering") {
+                            if sector.properties.contains("rect") {
                                 draw = false;
                                 break;
                             }
