@@ -70,33 +70,6 @@ impl D2PreviewBuilder {
     pub fn set_properties(&mut self, properties: &ValueContainer) {
         self.no_rect_geo = properties.get_bool_default("no_rect_geo", true);
         self.tile_size = properties.get_int_default("tile_size", 128);
-
-        /*
-        self.textures.clear();
-        if let Some(Value::Texture(tex)) = properties.get("character_on") {
-            self.textures.push(Tile::from_texture(tex.clone()));
-        } else {
-            self.textures.push(Tile::from_texture(Texture::white()));
-        }
-
-        if let Some(Value::Texture(tex)) = properties.get("character_off") {
-            self.textures.push(Tile::from_texture(tex.clone()));
-        } else {
-            self.textures.push(Tile::from_texture(Texture::black()));
-        }
-
-        if let Some(Value::Texture(tex)) = properties.get("treasure_on") {
-            self.textures.push(Tile::from_texture(tex.clone()));
-        } else {
-            self.textures.push(Tile::from_texture(Texture::white()));
-        }
-
-        if let Some(Value::Texture(tex)) = properties.get("treasure_off") {
-            self.textures.push(Tile::from_texture(tex.clone()));
-        } else {
-            self.textures.push(Tile::from_texture(Texture::black()));
-        }
-        */
     }
 
     pub fn build(
@@ -1029,6 +1002,26 @@ impl D2PreviewBuilder {
 
         scene_handler.set_overlay_2d();
         scene.dynamic_textures = self.textures.clone();
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn build_linedefs_cpu(&self, map: &Map, scene: &mut Scene, screen_size: Vec2<f32>) {
+        let mut batch = Batch2D::empty()
+            .source(PixelSource::Pixel(WHITE))
+            .mode(crate::PrimitiveMode::Lines);
+
+        for linedef in &map.linedefs {
+            if let Some(start_vertex) = map.get_vertex(linedef.start_vertex) {
+                let start_pos = self.map_grid_to_local(screen_size, start_vertex, map);
+                if let Some(end_vertex) = map.get_vertex(linedef.end_vertex) {
+                    let end_pos = self.map_grid_to_local(screen_size, end_vertex, map);
+
+                    batch.add_line(start_pos, end_pos, 0.05);
+                }
+            }
+        }
+
+        scene.d2_dynamic.push(batch);
     }
 
     pub fn set_map_tool_type(&mut self, tool: MapToolType) {

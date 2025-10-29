@@ -303,14 +303,15 @@ impl Shape {
                 );
             }
 
-            let mut builder = D2PreviewBuilder::default();
-            let mut scene = builder.build(
-                &map,
-                assets,
-                Vec2::new(width, height),
-                &ValueContainer::default(),
-            );
-            // TODO  builder.build_entities_items(&map, assets, &mut scene, Vec2::new(width, height), &None);
+            let builder = D2PreviewBuilder::default();
+            // let mut scene = builder.build(
+            //     &map,
+            //     assets,
+            //     Vec2::new(width, height),
+            //     &ValueContainer::default(),
+            // );
+            let mut scene = crate::Scene::default();
+            builder.build_linedefs_cpu(&map, &mut scene, Vec2::new(width, height));
             scene.background = None;
 
             let mut rast = Rasterizer::setup(None, Mat4::identity(), Mat4::identity());
