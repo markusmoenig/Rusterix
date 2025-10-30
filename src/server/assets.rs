@@ -12,7 +12,7 @@ pub struct Assets {
     pub entities: FxHashMap<String, (String, String)>,
     pub items: FxHashMap<String, (String, String)>,
 
-    pub tiles: FxHashMap<Uuid, Tile>,
+    pub tiles: IndexMap<Uuid, Tile>,
     pub materials: FxHashMap<Uuid, Tile>,
     pub textures: FxHashMap<String, Texture>,
 
@@ -60,7 +60,7 @@ impl Assets {
             maps: FxHashMap::default(),
             entities: FxHashMap::default(),
             items: FxHashMap::default(),
-            tiles: FxHashMap::default(),
+            tiles: IndexMap::default(),
             textures: FxHashMap::default(),
             tile_list: vec![],
             tile_indices: FxHashMap::default(),
@@ -112,7 +112,8 @@ impl Assets {
     }
 
     /// Set the tiles and atlas from a list of RGBA tiles.
-    pub fn set_rgba_tiles(&mut self, textures: FxHashMap<Uuid, TheRGBATile>) {
+    pub fn set_tiles(&mut self, tiles: IndexMap<Uuid, Tile>) {
+        /*
         let mut tiles: FxHashMap<Uuid, Tile> = FxHashMap::default();
 
         for (id, t) in textures.iter() {
@@ -129,12 +130,13 @@ impl Assets {
             let tile = Tile {
                 id: t.id,
                 textures: texture_array.clone(),
+                module: None,
                 blocking: t.blocking,
                 scale: t.scale,
-                render_mode: t.render_mode,
+                tags: t.name.clone(),
             };
             tiles.insert(*id, tile);
-        }
+        }*/
 
         self.tiles = tiles;
 

@@ -432,6 +432,10 @@ impl Client {
             // }
         }
 
+        scene_handler
+            .vm
+            .execute(scenevm::Atom::SetRenderMode(scenevm::RenderMode::Compute2D));
+
         scene_handler.vm.execute(scenevm::Atom::SetGP1(Vec4::one()));
         for node in &render_miss {
             if let Some(ambient) = self.global.nodes[*node as usize].render_ambient_color(hour) {
@@ -500,21 +504,79 @@ impl Client {
         width: usize,
         height: usize,
         assets: &Assets,
+        scene_handler: &mut SceneHandler,
     ) {
+        // let mut rast = Rasterizer::setup(
+        //     None,
+        //     self.camera_d3.view_matrix(),
+        //     self.camera_d3
+        //         .projection_matrix(width as f32, height as f32),
+        // )
+        // .render_mode(RenderMode::render_3d());
+        // rast.brush_preview = self.brush_preview.clone();
+        // rast.render_graph = self.global.clone();
+        // rast.hour = self.server_time.to_f32();
+        // rast.mapmini = self.scene.mapmini.clone();
+        // rast.rasterize(&mut self.scene, pixels, width, height, 64, assets)
+
         self.scene.animation_frame = self.animation_frame;
 
-        let mut rast = Rasterizer::setup(
-            None,
-            self.camera_d3.view_matrix(),
-            self.camera_d3
-                .projection_matrix(width as f32, height as f32),
-        )
-        .render_mode(RenderMode::render_3d());
-        rast.brush_preview = self.brush_preview.clone();
-        rast.render_graph = self.global.clone();
-        rast.hour = self.server_time.to_f32();
-        rast.mapmini = self.scene.mapmini.clone();
-        rast.rasterize(&mut self.scene, pixels, width, height, 64, assets)
+        let hour = self.server_time.to_f32();
+        let render_miss = self.global.collect_nodes_from(0, 1);
+
+        // Precompute missed node values
+        for node in &render_miss {
+            _ = self.global.nodes[*node as usize].render_setup(hour)
+
+            // if let Some(_(sun_dir, day_factor)) =
+            // self.global.nodes[*node as usize].render_setup(hour)
+            // {
+            // self.sun_dir = Some(sun_dir);
+            // self.day_factor = day_factor;
+            // }
+        }
+
+        scene_handler.vm.execute(scenevm::Atom::SetGP1(Vec4::one()));
+        for node in &render_miss {
+            if let Some(ambient) = self.global.nodes[*node as usize].render_ambient_color(hour) {
+                scene_handler.vm.execute(scenevm::Atom::SetGP1(ambient));
+            }
+        }
+
+        scene_handler
+            .vm
+            .execute(scenevm::Atom::SetAnimationCounter(self.animation_frame));
+
+        scene_handler
+            .vm
+            .execute(scenevm::Atom::SetBackground(Vec4::one()));
+
+        scene_handler
+            .vm
+            .execute(scenevm::Atom::SetRenderMode(scenevm::RenderMode::Compute3D));
+
+        // Enable bump mapping
+        scene_handler
+            .vm
+            .execute(scenevm::Atom::SetGP8(vek::Vec4::new(1.0, 0.0, 0.0, 0.0)));
+
+        // Enable bump mapping
+        scene_handler
+            .vm
+            .execute(scenevm::Atom::SetGP9(vek::Vec4::new(
+                1.0 / 4096.0,
+                1.0 / 4096.0,
+                0.0,
+                1.0,
+            )));
+
+        scene_handler.vm.execute(scenevm::Atom::SetCamera3D {
+            camera: self.camera_d3.as_scenevm_camera(),
+        });
+
+        scene_handler
+            .vm
+            .render_frame(pixels, width as u32, height as u32);
     }
 
     /// Trace the 3D scene.

@@ -61,4 +61,7 @@ pub trait D3Camera: Send + Sync {
 
     /// Zoom (only used by orbit camera)
     fn zoom(&mut self, delta: f32) {}
+
+    /// Generate a SceneVM Camera
+    fn as_scenevm_camera(&self) -> scenevm::Camera3D;
 }

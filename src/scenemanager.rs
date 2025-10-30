@@ -112,7 +112,7 @@ impl SceneManager {
 
         let mut assets = Assets::default();
         let mut map = Map::default();
-        let mut map_geo = Map::default();
+        // let mut map_geo = Map::default();
         let mut terrain_modifiers = true;
 
         let chunk_size = 16;
@@ -161,7 +161,7 @@ impl SceneManager {
                                             result_tx.send(SceneManagerResult::Clear).ok();
                                         }
                                         map = new_map;
-                                        map_geo = map.geometry_clone();
+                                        //map_geo = map.geometry_clone();
                                         let mut bbox = map.bbox();
                                         if let Some(tbbox) = map.terrain.compute_bounds() {
                                             bbox.expand_bbox(tbbox);
@@ -228,16 +228,15 @@ impl SceneManager {
                                 cb_d2.build(&map, &assets, &mut chunk, &mut vmchunk);
                             }
 
-                            /*
                             if let Some(cb_d3) = &mut chunk_builder_d3 {
-                                cb_d3.build(&map, &assets, &mut chunk);
-                                for chunk3d in &mut chunk.batches3d_opacity {
-                                    chunk3d.compute_vertex_normals();
-                                }
-                                for chunk3d in &mut chunk.batches3d {
-                                    chunk3d.compute_vertex_normals();
-                                }
-                            }*/
+                                cb_d3.build(&map, &assets, &mut chunk, &mut vmchunk);
+                                // for chunk3d in &mut chunk.batches3d_opacity {
+                                //     chunk3d.compute_vertex_normals();
+                                // }
+                                // for chunk3d in &mut chunk.batches3d {
+                                //     chunk3d.compute_vertex_normals();
+                                // }
+                            }
 
                             /*
                             let local = map.terrain.get_chunk_coords(coord.0, coord.1);

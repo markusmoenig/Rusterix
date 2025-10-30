@@ -160,7 +160,7 @@ fn cs_main(@builtin(global_invocation_id) gid: vec3<u32>) {
     }
 
     // Supersampling option: U.gp7.y >= 2.0 -> 2× SSAA with rotated-grid offsets
-    let ss_samples = u32(clamp(2.0, 1.0, 4.0));
+    let ss_samples = u32(2);
 
     if (ss_samples >= 2u) {
         let offsets = array<vec2<f32>, 2>(

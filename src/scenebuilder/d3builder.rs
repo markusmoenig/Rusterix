@@ -1,9 +1,7 @@
 use crate::{Assets, Batch3D, D3Camera, Map, PixelSource, Scene, Value, ValueContainer};
 use vek::{Vec2, Vec3};
 
-pub struct D3Builder {
-    map: Map,
-}
+pub struct D3Builder {}
 
 impl Default for D3Builder {
     fn default() -> Self {
@@ -13,9 +11,7 @@ impl Default for D3Builder {
 
 impl D3Builder {
     pub fn new() -> Self {
-        Self {
-            map: Map::default(),
-        }
+        Self {}
     }
 
     pub fn build(

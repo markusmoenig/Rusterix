@@ -578,6 +578,12 @@ impl Texture {
 
         self.data[idx..idx + 4].copy_from_slice(&color);
     }
+
+    /// Convert to an TheRGBABuffer
+    pub fn to_rgba(&self) -> TheRGBABuffer {
+        TheRGBABuffer::from(self.data.clone(), self.width as u32, self.height as u32)
+    }
+
     /// Generates a normal-map subtexture from this texture's color data using a Sobel filter on luma.
     /// The resulting normals are encoded as RGBA8 where XYZ are mapped from [-1,1] to [0,255] and A is 255.
     ///

@@ -1,4 +1,5 @@
 use crate::{AccumBuffer, Command, PlayerCamera, SceneHandler, Surface, prelude::*};
+use indexmap::IndexMap;
 use scenevm::Atom;
 use theframework::prelude::*;
 use vek::Vec2;
@@ -229,8 +230,14 @@ impl Rusterix {
 
     /// Draw the client scene in 3D
     pub fn draw_d3(&mut self, map: &Map, pixels: &mut [u8], width: usize, height: usize) {
-        self.client
-            .draw_d3(map, pixels, width, height, &self.assets);
+        self.client.draw_d3(
+            map,
+            pixels,
+            width,
+            height,
+            &self.assets,
+            &mut self.scene_handler,
+        );
     }
 
     /// Draw the client scene.
@@ -247,8 +254,14 @@ impl Rusterix {
                 );
             }
             D3 => {
-                self.client
-                    .draw_d3(map, pixels, width, height, &self.assets);
+                self.client.draw_d3(
+                    map,
+                    pixels,
+                    width,
+                    height,
+                    &self.assets,
+                    &mut self.scene_handler,
+                );
             }
         }
     }
@@ -278,8 +291,8 @@ impl Rusterix {
     }
 
     /// Update the tiles
-    pub fn set_rgba_tiles(&mut self, textures: FxHashMap<Uuid, TheRGBATile>, editor: bool) {
+    pub fn set_tiles(&mut self, textures: IndexMap<Uuid, Tile>, editor: bool) {
         self.scene_handler.build_atlas(&textures, editor);
-        self.assets.set_rgba_tiles(textures);
+        self.assets.set_tiles(textures);
     }
 }

@@ -163,4 +163,18 @@ impl D3Camera for D3OrbitCamera {
         let up = right.cross(forward).normalized();
         (forward, right, up)
     }
+
+    /// Generate a SceneVM camera
+    fn as_scenevm_camera(&self) -> scenevm::Camera3D {
+        let basis = self.basis_vectors();
+        scenevm::Camera3D {
+            kind: scenevm::CameraKind::OrbitPersp,
+            pos: self.center,
+            forward: basis.0,
+            right: basis.1,
+            up: basis.2,
+            vfov_deg: self.fov,
+            ..Default::default()
+        }
+    }
 }

@@ -246,7 +246,7 @@ impl Map {
         let mut blocked_tiles = FxHashSet::default();
 
         for sector in self.sectors.iter() {
-            let mut casts_shadows = true;
+            let casts_shadows = false;
             let mut add_it = true;
 
             // We collect occluded sectors

@@ -169,4 +169,18 @@ impl D3Camera for D3IsoCamera {
         // Orthographic rays share the same direction
         Ray::new(origin, (self.center - cam_origin).normalized())
     }
+
+    /// Generate a SceneVM camera
+    fn as_scenevm_camera(&self) -> scenevm::Camera3D {
+        let basis = self.basis_vectors();
+        scenevm::Camera3D {
+            kind: scenevm::CameraKind::OrthoIso,
+            pos: self.center,
+            forward: basis.0,
+            right: basis.1,
+            up: basis.2,
+            ortho_half_h: self.scale,
+            ..Default::default()
+        }
+    }
 }

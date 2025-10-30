@@ -136,4 +136,18 @@ impl D3Camera for D3FirstPCamera {
             dir,
         }
     }
+
+    /// Generate a SceneVM camera
+    fn as_scenevm_camera(&self) -> scenevm::Camera3D {
+        let basis = self.basis_vectors();
+        scenevm::Camera3D {
+            kind: scenevm::CameraKind::FirstPersonPersp,
+            pos: self.position,
+            forward: basis.0,
+            right: basis.1,
+            up: basis.2,
+            vfov_deg: self.fov,
+            ..Default::default()
+        }
+    }
 }

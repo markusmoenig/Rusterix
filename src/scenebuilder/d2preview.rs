@@ -1,6 +1,6 @@
 use crate::{
-    Assets, Batch2D, Map, MapToolType, Pixel, PixelSource, Rect, Scene, SceneHandler, Surface,
-    Tile, Value, ValueContainer,
+    Assets, Batch2D, Map, MapToolType, PixelSource, Rect, Scene, SceneHandler, Surface, Tile,
+    Value, ValueContainer,
 };
 use MapToolType::*;
 use scenevm::{Atom, GeoId, Light};
@@ -8,9 +8,6 @@ use theframework::prelude::*;
 use vek::Vec2;
 
 pub struct D2PreviewBuilder {
-    selection_color: Pixel,
-    unselected_with_same_geometry: Pixel,
-
     map_tool_type: MapToolType,
     /// Hover geometry info
     pub hover: (Option<u32>, Option<u32>, Option<u32>),
@@ -45,9 +42,6 @@ impl Default for D2PreviewBuilder {
 impl D2PreviewBuilder {
     pub fn new() -> Self {
         Self {
-            selection_color: [187, 122, 208, 255],
-            unselected_with_same_geometry: [122, 208, 187, 255],
-
             map_tool_type: Linedef,
 
             hover: (None, None, None),
@@ -281,10 +275,10 @@ impl D2PreviewBuilder {
         editing_surface: &Option<Surface>,
         scene_handler: &mut SceneHandler,
     ) {
-        let screen_aspect = screen_size.x / screen_size.y;
+        // let screen_aspect = screen_size.x / screen_size.y;
         let screen_pixel_size = 4.0;
         let size_x = screen_pixel_size / map.grid_size;
-        let size_y = size_x * screen_aspect / 2.0;
+        // let size_y = size_x * screen_aspect / 2.0;
 
         scene.dynamic_lights = vec![];
         scene.d2_dynamic = vec![];
@@ -353,8 +347,8 @@ impl D2PreviewBuilder {
 
         // Add Vertices
 
-        let mut selected_batch = Batch2D::empty().source(PixelSource::Pixel(self.selection_color));
-        let mut batch = Batch2D::empty().source(PixelSource::Pixel([128, 128, 128, 255]));
+        // let mut selected_batch = Batch2D::empty().source(PixelSource::Pixel(self.selection_color));
+        // let mut batch = Batch2D::empty().source(PixelSource::Pixel([128, 128, 128, 255]));
 
         if self.map_tool_type == MapToolType::Selection
             || self.map_tool_type == MapToolType::Vertex
@@ -408,25 +402,43 @@ impl D2PreviewBuilder {
 
                     if self.hover.0 == Some(vertex.id) || map.selected_vertices.contains(&vertex.id)
                     {
-                        selected_batch.add_rectangle(
-                            pos.x - size_x,
-                            pos.y - size_y,
+                        scene_handler.overlay_2d.add_square_2d(
+                            GeoId::Vertex(vertex.id),
+                            scene_handler.selected,
+                            [pos.x, pos.y],
                             size_x * 2.0,
-                            size_y * 2.0,
+                            100,
+                            true,
+                            None,
                         );
+                        // selected_batch.add_rectangle(
+                        //     pos.x - size_x,
+                        //     pos.y - size_y,
+                        //     size_x * 2.0,
+                        //     size_y * 2.0,
+                        // );
                     } else {
-                        batch.add_rectangle(
-                            pos.x - size_x,
-                            pos.y - size_y,
+                        scene_handler.overlay_2d.add_square_2d(
+                            GeoId::Vertex(vertex.id),
+                            scene_handler.white,
+                            [pos.x, pos.y],
                             size_x * 2.0,
-                            size_y * 2.0,
+                            100,
+                            true,
+                            None,
                         );
+                        // batch.add_rectangle(
+                        //     pos.x - size_x,
+                        //     pos.y - size_y,
+                        //     size_x * 2.0,
+                        //     size_y * 2.0,
+                        // );
                     }
                 }
             }
         }
-        scene.d2_dynamic.push(selected_batch);
-        scene.d2_dynamic.push(batch);
+        // scene.d2_dynamic.push(selected_batch);
+        // scene.d2_dynamic.push(batch);
 
         // Add Lines
         if self.map_tool_type == MapToolType::Selection
@@ -677,20 +689,20 @@ impl D2PreviewBuilder {
             // scene.d2_dynamic.push(batch);
 
             if !non_selected_lines_with_selected_graph.is_empty() {
-                let mut batch = Batch2D::empty()
-                    .source(PixelSource::Pixel(self.unselected_with_same_geometry))
-                    .mode(crate::PrimitiveMode::Lines);
+                // let mut batch = Batch2D::empty()
+                //     .source(PixelSource::Pixel(self.unselected_with_same_geometry))
+                //     .mode(crate::PrimitiveMode::Lines);
                 for (id, start_pos, end_pos) in non_selected_lines_with_selected_graph {
-                    batch.add_line(start_pos, end_pos, 0.05);
+                    // batch.add_line(start_pos, end_pos, 0.05);
                     scene_handler.add_overlay_2d_line(
                         id,
                         start_pos,
                         end_pos,
-                        scene_handler.white,
+                        scene_handler.outline,
                         900,
                     );
                 }
-                scene.d2_dynamic.push(batch);
+                // scene.d2_dynamic.push(batch);
             }
 
             // Draw selected lines

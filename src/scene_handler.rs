@@ -1,3 +1,5 @@
+use crate::Tile;
+use indexmap::IndexMap;
 use rust_embed::EmbeddedFile;
 use scenevm::{Atom, Chunk, GeoId, Material, SceneVM};
 use theframework::prelude::*;
@@ -51,16 +53,16 @@ impl SceneHandler {
         }
     }
 
-    pub fn build_atlas(&mut self, tiles: &FxHashMap<Uuid, TheRGBATile>, editor: bool) {
+    pub fn build_atlas(&mut self, tiles: &IndexMap<Uuid, Tile>, editor: bool) {
         for (id, tile) in tiles {
             let mut b = vec![];
-            for t in &tile.buffer {
-                b.push(t.pixels().to_vec());
+            for t in &tile.textures {
+                b.push(t.data.to_vec());
             }
             self.vm.execute(Atom::AddTile {
                 id: *id,
-                width: tile.buffer[0].dim().width as u32,
-                height: tile.buffer[0].dim().height as u32,
+                width: tile.textures[0].width as u32,
+                height: tile.textures[0].height as u32,
                 frames: b,
             });
         }
@@ -164,11 +166,11 @@ impl SceneHandler {
         color: Uuid,
         layer: i32,
     ) {
-        self.overlay_2d.add_line_strip_2d(
+        self.overlay_2d.add_line_strip_2d_px(
             id,
             color,
             vec![start.into_array(), end.into_array()],
-            0.1,
+            1.5,
             layer,
             Some(self.flat_material),
         );
