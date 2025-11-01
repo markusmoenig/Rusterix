@@ -147,6 +147,8 @@ impl D3Camera for D3FirstPCamera {
             right: basis.1,
             up: basis.2,
             vfov_deg: self.fov,
+            near: self.near,
+            far: self.far,
             ..Default::default()
         }
     }

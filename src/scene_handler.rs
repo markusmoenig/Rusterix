@@ -1,4 +1,6 @@
-use crate::Tile;
+use std::str::FromStr;
+
+use crate::{Texture, Tile};
 use indexmap::IndexMap;
 use rust_embed::EmbeddedFile;
 use scenevm::{Atom, Chunk, GeoId, Material, SceneVM};
@@ -120,6 +122,21 @@ impl SceneHandler {
                     });
                 }
             }
+            let checker = Texture::checkerboard(100, 50);
+            self.vm.execute(Atom::AddTile {
+                id: Uuid::from_str("27826750-a9e7-4346-994b-fb318b238452")
+                    .ok()
+                    .unwrap(),
+                width: 100,
+                height: 100,
+                frames: vec![checker.data],
+            });
+            // self.vm.execute(Atom::AddSolid {
+            //     id: Uuid::from_str("27826750-a9e7-4346-994b-fb318b238452")
+            //         .ok()
+            //         .unwrap(),
+            //     color: [128, 128, 18, 255],
+            // });
             self.vm.execute(Atom::AddSolid {
                 id: self.white,
                 color: [255, 255, 255, 255],

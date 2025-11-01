@@ -503,7 +503,7 @@ impl Client {
         pixels: &mut [u8],
         width: usize,
         height: usize,
-        assets: &Assets,
+        _assets: &Assets,
         scene_handler: &mut SceneHandler,
     ) {
         // let mut rast = Rasterizer::setup(
@@ -549,7 +549,7 @@ impl Client {
 
         scene_handler
             .vm
-            .execute(scenevm::Atom::SetBackground(Vec4::one()));
+            .execute(scenevm::Atom::SetBackground(Vec4::new(0.0, 0.0, 0.0, 1.0)));
 
         scene_handler
             .vm
@@ -558,7 +558,7 @@ impl Client {
         // Enable bump mapping
         scene_handler
             .vm
-            .execute(scenevm::Atom::SetGP8(vek::Vec4::new(1.0, 0.0, 0.0, 0.0)));
+            .execute(scenevm::Atom::SetGP8(vek::Vec4::new(0.0, 0.0, 0.0, 0.0)));
 
         // Enable bump mapping
         scene_handler
@@ -573,6 +573,8 @@ impl Client {
         scene_handler.vm.execute(scenevm::Atom::SetCamera3D {
             camera: self.camera_d3.as_scenevm_camera(),
         });
+
+        // scene_handler.vm.print_geometry_stats();
 
         scene_handler
             .vm

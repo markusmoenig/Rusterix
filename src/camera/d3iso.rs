@@ -142,7 +142,10 @@ impl D3Camera for D3IsoCamera {
     }
 
     fn basis_vectors(&self) -> (Vec3<f32>, Vec3<f32>, Vec3<f32>) {
-        self.basis()
+        let (forward_to_camera, right_to_camera, up) = self.basis();
+        let forward = -forward_to_camera; // from eye to center
+        let right = -right_to_camera; // align right with camera X+
+        (forward.normalized(), right.normalized(), up)
     }
 
     fn create_ray(&self, uv: Vec2<f32>, screen: Vec2<f32>, jitter: Vec2<f32>) -> Ray {
@@ -172,14 +175,34 @@ impl D3Camera for D3IsoCamera {
 
     /// Generate a SceneVM camera
     fn as_scenevm_camera(&self) -> scenevm::Camera3D {
-        let basis = self.basis_vectors();
+        let (forward_to_camera, right_to_camera, up_orig) = self.basis();
+        let forward_to_camera = forward_to_camera.normalized();
+        let right_to_camera = right_to_camera.normalized();
+        let up = up_orig.normalized();
+
+        // Ensure the exported camera stays far enough so that the bottom of the ortho slab
+        // does not drop below the focus point when zooming out.
+        let axis = Vec3::unit_y();
+        let up_proj = up.dot(axis).abs();
+        let forward_proj = forward_to_camera.dot(axis).abs();
+        let required_distance = if forward_proj > 1e-4 {
+            self.distance.max((self.scale * up_proj) / forward_proj)
+        } else {
+            self.distance
+        };
+
+        let pos = self.center + forward_to_camera * required_distance;
+        let forward = -forward_to_camera;
+        let right = -right_to_camera;
         scenevm::Camera3D {
             kind: scenevm::CameraKind::OrthoIso,
-            pos: self.center,
-            forward: basis.0,
-            right: basis.1,
-            up: basis.2,
+            pos,
+            forward,
+            right,
+            up,
             ortho_half_h: self.scale,
+            near: self.near,
+            far: self.far,
             ..Default::default()
         }
     }

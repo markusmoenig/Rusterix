@@ -16,6 +16,10 @@ pub struct D3OrbitCamera {
 }
 
 impl D3Camera for D3OrbitCamera {
+    fn position(&self) -> Vec3<f32> {
+        self.eye_position()
+    }
+
     fn new() -> Self {
         Self {
             center: Vec3::zero(),
@@ -43,12 +47,7 @@ impl D3Camera for D3OrbitCamera {
     }
 
     fn view_matrix(&self) -> Mat4<f32> {
-        // Convert spherical coordinates to cartesian coordinates
-        let x = self.distance * self.azimuth.cos() * self.elevation.cos();
-        let y = self.distance * self.elevation.sin();
-        let z = self.distance * self.azimuth.sin() * self.elevation.cos();
-
-        let position = Vec3::new(x, y, z) + self.center;
+        let position = self.eye_position();
         Mat4::look_at_rh(position, self.center, self.up)
     }
 
@@ -123,15 +122,16 @@ impl D3Camera for D3OrbitCamera {
         uv.y = 1.0 - uv.y;
 
         // Orbit camera position
-        let x = self.distance * self.azimuth.cos() * self.elevation.cos();
-        let y = self.distance * self.elevation.sin();
-        let z = self.distance * self.azimuth.sin() * self.elevation.cos();
-        let position = Vec3::new(x, y, z) + self.center;
+        let position = self.eye_position();
 
         // Compute correct basis
         let forward = (self.center - position).normalized(); // from eye to center
-        let right = forward.cross(self.up).normalized();
-        let up = right.cross(forward);
+        let mut right = forward.cross(self.up);
+        if right.magnitude_squared() < 1e-12 {
+            right = Vec3::unit_x();
+        }
+        right = right.normalized();
+        let up = right.cross(forward).normalized();
 
         // Screen plane height/width
         let half_height = (self.fov.to_radians() * 0.5).tan();
@@ -153,28 +153,44 @@ impl D3Camera for D3OrbitCamera {
     }
 
     fn basis_vectors(&self) -> (Vec3<f32>, Vec3<f32>, Vec3<f32>) {
-        let x = self.distance * self.azimuth.cos() * self.elevation.cos();
-        let y = self.distance * self.elevation.sin();
-        let z = self.distance * self.azimuth.sin() * self.elevation.cos();
-        let position = Vec3::new(x, y, z) + self.center;
+        let position = self.eye_position();
 
         let forward = (self.center - position).normalized();
-        let right = forward.cross(self.up).normalized();
+        let mut right = forward.cross(self.up);
+        if right.magnitude_squared() < 1e-12 {
+            right = Vec3::unit_x();
+        }
+        right = right.normalized();
         let up = right.cross(forward).normalized();
         (forward, right, up)
     }
 
     /// Generate a SceneVM camera
     fn as_scenevm_camera(&self) -> scenevm::Camera3D {
-        let basis = self.basis_vectors();
+        let pos = self.eye_position();
+        let (forward, right, up) = self.basis_vectors();
         scenevm::Camera3D {
             kind: scenevm::CameraKind::OrbitPersp,
-            pos: self.center,
-            forward: basis.0,
-            right: basis.1,
-            up: basis.2,
+            pos,
+            forward,
+            right,
+            up,
             vfov_deg: self.fov,
+            near: self.near,
+            far: self.far,
             ..Default::default()
         }
+    }
+}
+
+impl D3OrbitCamera {
+    #[inline]
+    fn eye_position(&self) -> Vec3<f32> {
+        // Convert spherical coordinates to cartesian coordinates
+        let x = self.distance * self.azimuth.cos() * self.elevation.cos();
+        let y = self.distance * self.elevation.sin();
+        let z = self.distance * self.azimuth.sin() * self.elevation.cos();
+
+        Vec3::new(x, y, z) + self.center
     }
 }

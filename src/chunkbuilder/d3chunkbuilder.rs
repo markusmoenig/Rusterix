@@ -1,6 +1,8 @@
 use crate::{Assets, Batch3D, Chunk, ChunkBuilder, Map, PixelSource, Value};
 use crate::{GeometrySource, LoopOp, ProfileLoop, RepeatMode, Sector};
 use scenevm::GeoId;
+use std::str::FromStr;
+use uuid::Uuid;
 use vek::{Vec2, Vec3};
 
 pub struct D3ChunkBuilder {}
@@ -224,7 +226,7 @@ impl ChunkBuilder for D3ChunkBuilder {
                     fn push_with_material_kind_local(
                         kind: MaterialKind,
                         sector: &Sector,
-                        shader_index: Option<usize>,
+                        _shader_index: Option<usize>,
                         assets: &Assets,
                         chunk: &mut Chunk,
                         vmchunk: &mut scenevm::Chunk,
@@ -242,22 +244,24 @@ impl ChunkBuilder for D3ChunkBuilder {
                         };
                         let fallback_key = "source";
 
+                        let mut added = false;
                         if let Some(Value::Source(pixelsource)) = sector
                             .properties
                             .get(source_key)
                             .or_else(|| sector.properties.get(fallback_key))
                         {
                             if let Some(tile) = pixelsource.tile_from_tile_list(assets) {
-                                vmchunk.add_poly_3d(
-                                    GeoId::Sector(sector.id),
-                                    tile.id,
-                                    verts.clone(),
-                                    uvs_in.clone(),
-                                    inds.clone(),
-                                    0,
-                                    true,
-                                    None,
-                                );
+                                // vmchunk.add_poly_3d(
+                                //     GeoId::Sector(sector.id),
+                                //     tile.id,
+                                //     verts.clone(),
+                                //     uvs_in.clone(),
+                                //     inds.clone(),
+                                //     0,
+                                //     true,
+                                //     None,
+                                // );
+                                // added = true;
 
                                 if let Some(texture_index) = assets.tile_index(&tile.id) {
                                     batch.source = PixelSource::StaticTileIndex(texture_index);
@@ -265,6 +269,22 @@ impl ChunkBuilder for D3ChunkBuilder {
                             }
                         }
 
+                        if !added {
+                            vmchunk.add_poly_3d(
+                                GeoId::Sector(sector.id),
+                                Uuid::from_str("27826750-a9e7-4346-994b-fb318b238452")
+                                    .ok()
+                                    .unwrap(),
+                                verts.clone(),
+                                uvs_in.clone(),
+                                inds.clone(),
+                                0,
+                                true,
+                                None,
+                            );
+                        }
+
+                        /*
                         if let Some(si) = shader_index {
                             batch.shader = Some(si);
                             if chunk.shaders_with_opacity[si] {
@@ -293,7 +313,9 @@ impl ChunkBuilder for D3ChunkBuilder {
                             } else {
                                 chunk.batches3d.push(batch);
                             }
-                        }
+                        }*/
+
+                        chunk.batches3d.push(batch);
                     }
 
                     // Build a side band (jamb) with UVs: U=perimeter distance normalized, V=0..1 across depth
@@ -748,9 +770,10 @@ impl ChunkBuilder for D3ChunkBuilder {
                                 let mut cap_i = cap_i;
                                 let desired_n: Vec3<f32> = if profile_target == 0 { -n } else { n }; // face outward
                                 fix_winding(&cap_v, &mut cap_i, desired_n);
-                                let mut batch = Batch3D::new(cap_v, cap_i, cap_uv)
-                                    .repeat_mode(RepeatMode::RepeatXY)
-                                    .geometry_source(GeometrySource::Sector(sector.id));
+                                let mut batch =
+                                    Batch3D::new(cap_v.clone(), cap_i.clone(), cap_uv.clone())
+                                        .repeat_mode(RepeatMode::RepeatXY)
+                                        .geometry_source(GeometrySource::Sector(sector.id));
                                 if let Some(si) = feature_shader_index(
                                     surface,
                                     map,
@@ -761,6 +784,9 @@ impl ChunkBuilder for D3ChunkBuilder {
                                 ) {
                                     batch.shader = Some(si);
                                 }
+
+                                let mut added = false;
+
                                 if let Some(Value::Source(pixelsource)) = feature_pixelsource(
                                     surface,
                                     map,
@@ -769,11 +795,38 @@ impl ChunkBuilder for D3ChunkBuilder {
                                     "relief_source",
                                 ) {
                                     if let Some(tile) = pixelsource.tile_from_tile_list(assets) {
+                                        // vmchunk.add_poly_3d(
+                                        //     GeoId::Sector(sector.id),
+                                        //     tile.id,
+                                        //     cap_v.clone(),
+                                        //     cap_uv.clone(),
+                                        //     cap_i.clone(),
+                                        //     0,
+                                        //     true,
+                                        //     None,
+                                        // );
+                                        // added = true;
+
                                         if let Some(tex) = assets.tile_index(&tile.id) {
                                             batch.source = PixelSource::StaticTileIndex(tex);
                                         }
                                     }
                                 }
+                                if !added {
+                                    vmchunk.add_poly_3d(
+                                        GeoId::Sector(sector.id),
+                                        Uuid::from_str("27826750-a9e7-4346-994b-fb318b238452")
+                                            .ok()
+                                            .unwrap(),
+                                        cap_v,
+                                        cap_uv,
+                                        cap_i,
+                                        0,
+                                        true,
+                                        None,
+                                    );
+                                }
+                                /*
                                 // Inherit host material if nothing set by per-feature keys
                                 if matches!(batch.source, PixelSource::Pixel(_)) {
                                     if let Some(Value::Source(pixelsource)) =
@@ -795,7 +848,8 @@ impl ChunkBuilder for D3ChunkBuilder {
                                     }
                                 } else {
                                     chunk.batches3d.push(batch);
-                                }
+                                }*/
+                                chunk.batches3d.push(batch);
                             }
                             let (ring_v, ring_i, ring_uv) = build_jamb_uv(
                                 &fl.path,
@@ -806,19 +860,21 @@ impl ChunkBuilder for D3ChunkBuilder {
                             );
                             let mut ring_i = ring_i;
                             fix_winding(&ring_v, &mut ring_i, surface.plane.normal);
-                            let mut batch = Batch3D::new(ring_v, ring_i, ring_uv)
-                                .repeat_mode(RepeatMode::RepeatXY)
-                                .geometry_source(GeometrySource::Sector(sector.id));
-                            if let Some(si) = feature_shader_index(
-                                surface,
-                                map,
-                                sector,
-                                fl.origin_profile_sector,
-                                chunk,
-                                assets,
-                            ) {
-                                batch.shader = Some(si);
-                            }
+                            let mut batch =
+                                Batch3D::new(ring_v.clone(), ring_i.clone(), ring_uv.clone())
+                                    .repeat_mode(RepeatMode::RepeatXY)
+                                    .geometry_source(GeometrySource::Sector(sector.id));
+                            // if let Some(si) = feature_shader_index(
+                            //     surface,
+                            //     map,
+                            //     sector,
+                            //     fl.origin_profile_sector,
+                            //     chunk,
+                            //     assets,
+                            // ) {
+                            //     batch.shader = Some(si);
+                            // }
+                            let mut added = false;
                             if let Some(Value::Source(pixelsource)) = feature_pixelsource(
                                 surface,
                                 map,
@@ -827,11 +883,38 @@ impl ChunkBuilder for D3ChunkBuilder {
                                 "relief_jamb_source",
                             ) {
                                 if let Some(tile) = pixelsource.tile_from_tile_list(assets) {
+                                    // vmchunk.add_poly_3d(
+                                    //     GeoId::Sector(sector.id),
+                                    //     tile.id,
+                                    //     ring_v.clone(),
+                                    //     ring_uv.clone(),
+                                    //     ring_i.clone(),
+                                    //     0,
+                                    //     true,
+                                    //     None,
+                                    // );
+                                    // added = true;
+
                                     if let Some(tex) = assets.tile_index(&tile.id) {
                                         batch.source = PixelSource::StaticTileIndex(tex);
                                     }
                                 }
                             }
+                            if !added {
+                                vmchunk.add_poly_3d(
+                                    GeoId::Sector(sector.id),
+                                    Uuid::from_str("27826750-a9e7-4346-994b-fb318b238452")
+                                        .ok()
+                                        .unwrap(),
+                                    ring_v,
+                                    ring_uv,
+                                    ring_i,
+                                    0,
+                                    true,
+                                    None,
+                                );
+                            }
+                            /*
                             // Inherit host material if nothing set by per-feature keys
                             if matches!(batch.source, PixelSource::Pixel(_)) {
                                 if let Some(Value::Source(pixelsource)) =
@@ -852,7 +935,8 @@ impl ChunkBuilder for D3ChunkBuilder {
                                 }
                             } else {
                                 chunk.batches3d.push(batch);
-                            }
+                            }*/
+                            chunk.batches3d.push(batch);
                         }
                         LoopOp::Recess { depth } if depth > 0.0 => {
                             // Determine which cap we recess into and the direction for that cap
@@ -895,19 +979,21 @@ impl ChunkBuilder for D3ChunkBuilder {
                                         profile_target
                                     );
                                 }
-                                let mut batch = Batch3D::new(cap_v, cap_i, cap_uv)
-                                    .repeat_mode(RepeatMode::RepeatXY)
-                                    .geometry_source(GeometrySource::Sector(sector.id));
-                                if let Some(si) = feature_shader_index(
-                                    surface,
-                                    map,
-                                    sector,
-                                    fl.origin_profile_sector,
-                                    chunk,
-                                    assets,
-                                ) {
-                                    batch.shader = Some(si);
-                                }
+                                let mut batch =
+                                    Batch3D::new(cap_v.clone(), cap_i.clone(), cap_uv.clone())
+                                        .repeat_mode(RepeatMode::RepeatXY)
+                                        .geometry_source(GeometrySource::Sector(sector.id));
+                                // if let Some(si) = feature_shader_index(
+                                //     surface,
+                                //     map,
+                                //     sector,
+                                //     fl.origin_profile_sector,
+                                //     chunk,
+                                //     assets,
+                                // ) {
+                                //     batch.shader = Some(si);
+                                // }
+                                let mut added = false;
                                 if let Some(Value::Source(pixelsource)) = feature_pixelsource(
                                     surface,
                                     map,
@@ -928,12 +1014,38 @@ impl ChunkBuilder for D3ChunkBuilder {
                                     {
                                         if let Some(tile) = pixelsource.tile_from_tile_list(assets)
                                         {
+                                            // vmchunk.add_poly_3d(
+                                            //     GeoId::Sector(sector.id),
+                                            //     tile.id,
+                                            //     cap_v.clone(),
+                                            //     cap_uv.clone(),
+                                            //     cap_i.clone(),
+                                            //     0,
+                                            //     true,
+                                            //     None,
+                                            // );
+                                            // added = true;
                                             if let Some(tex) = assets.tile_index(&tile.id) {
                                                 batch.source = PixelSource::StaticTileIndex(tex);
                                             }
                                         }
                                     }
                                 }
+                                if !added {
+                                    vmchunk.add_poly_3d(
+                                        GeoId::Sector(sector.id),
+                                        Uuid::from_str("27826750-a9e7-4346-994b-fb318b238452")
+                                            .ok()
+                                            .unwrap(),
+                                        cap_v,
+                                        cap_uv,
+                                        cap_i,
+                                        0,
+                                        true,
+                                        None,
+                                    );
+                                }
+                                /*
                                 if let Some(si) = batch.shader {
                                     if chunk.shaders_with_opacity[si] {
                                         chunk.batches3d_opacity.push(batch);
@@ -942,7 +1054,8 @@ impl ChunkBuilder for D3ChunkBuilder {
                                     }
                                 } else {
                                     chunk.batches3d.push(batch);
-                                }
+                                }*/
+                                chunk.batches3d.push(batch);
                             }
 
                             // --- Jamb (side band into the pocket) ---
@@ -956,20 +1069,22 @@ impl ChunkBuilder for D3ChunkBuilder {
                                 "recess",
                             );
                             let mut ring_i = ring_i;
-                            fix_winding(&ring_v, &mut ring_i, surface.plane.normal);
-                            let mut batch = Batch3D::new(ring_v, ring_i, ring_uv)
-                                .repeat_mode(RepeatMode::RepeatXY)
-                                .geometry_source(GeometrySource::Sector(sector.id));
-                            if let Some(si) = feature_shader_index(
-                                surface,
-                                map,
-                                sector,
-                                fl.origin_profile_sector,
-                                chunk,
-                                assets,
-                            ) {
-                                batch.shader = Some(si);
-                            }
+                            // fix_winding(&ring_v, &mut ring_i, surface.plane.normal);
+                            let mut batch =
+                                Batch3D::new(ring_v.clone(), ring_i.clone(), ring_uv.clone())
+                                    .repeat_mode(RepeatMode::RepeatXY)
+                                    .geometry_source(GeometrySource::Sector(sector.id));
+                            // if let Some(si) = feature_shader_index(
+                            //     surface,
+                            //     map,
+                            //     sector,
+                            //     fl.origin_profile_sector,
+                            //     chunk,
+                            //     assets,
+                            // ) {
+                            //     batch.shader = Some(si);
+                            // }
+                            let mut added = false;
                             if let Some(Value::Source(pixelsource)) = feature_pixelsource(
                                 surface,
                                 map,
@@ -978,10 +1093,35 @@ impl ChunkBuilder for D3ChunkBuilder {
                                 "recess_jamb_source",
                             ) {
                                 if let Some(tile) = pixelsource.tile_from_tile_list(assets) {
+                                    // vmchunk.add_poly_3d(
+                                    //     GeoId::Sector(sector.id),
+                                    //     tile.id,
+                                    //     ring_v.clone(),
+                                    //     ring_uv.clone(),
+                                    //     ring_i.clone(),
+                                    //     0,
+                                    //     true,
+                                    //     None,
+                                    // );
+                                    // added = true;
                                     if let Some(tex) = assets.tile_index(&tile.id) {
                                         batch.source = PixelSource::StaticTileIndex(tex);
                                     }
                                 }
+                            }
+                            if !added {
+                                vmchunk.add_poly_3d(
+                                    GeoId::Sector(sector.id),
+                                    Uuid::from_str("27826750-a9e7-4346-994b-fb318b238452")
+                                        .ok()
+                                        .unwrap(),
+                                    ring_v,
+                                    ring_uv,
+                                    ring_i,
+                                    0,
+                                    true,
+                                    None,
+                                );
                             }
                             // Inherit host material if nothing set by per-feature keys
                             if matches!(batch.source, PixelSource::Pixel(_)) {
@@ -995,15 +1135,16 @@ impl ChunkBuilder for D3ChunkBuilder {
                                     }
                                 }
                             }
-                            if let Some(si) = batch.shader {
-                                if chunk.shaders_with_opacity[si] {
-                                    chunk.batches3d_opacity.push(batch);
-                                } else {
-                                    chunk.batches3d.push(batch);
-                                }
-                            } else {
-                                chunk.batches3d.push(batch);
-                            }
+                            // if let Some(si) = batch.shader {
+                            //     if chunk.shaders_with_opacity[si] {
+                            //         chunk.batches3d_opacity.push(batch);
+                            //     } else {
+                            //         chunk.batches3d.push(batch);
+                            //     }
+                            // } else {
+                            //     chunk.batches3d.push(batch);
+                            // }
+                            chunk.batches3d.push(batch);
                         }
                         _ => {}
                     }
@@ -1059,14 +1200,15 @@ impl ChunkBuilder for D3ChunkBuilder {
                     fn push_with_material_kind_local(
                         kind: MaterialKind,
                         sector: &Sector,
-                        shader_index: Option<usize>,
+                        _shader_index: Option<usize>,
                         assets: &Assets,
                         chunk: &mut Chunk,
+                        vmchunk: &mut scenevm::Chunk,
                         verts: Vec<[f32; 4]>,
                         inds: Vec<(usize, usize, usize)>,
                         uvs_in: Vec<[f32; 2]>,
                     ) {
-                        let mut batch = Batch3D::new(verts, inds, uvs_in)
+                        let mut batch = Batch3D::new(verts.clone(), inds.clone(), uvs_in.clone())
                             .repeat_mode(RepeatMode::RepeatXY)
                             .geometry_source(GeometrySource::Sector(sector.id));
 
@@ -1076,31 +1218,60 @@ impl ChunkBuilder for D3ChunkBuilder {
                         };
                         let fallback_key = "source";
 
+                        let mut added = false;
+
                         if let Some(Value::Source(pixelsource)) = sector
                             .properties
                             .get(source_key)
                             .or_else(|| sector.properties.get(fallback_key))
                         {
                             if let Some(tile) = pixelsource.tile_from_tile_list(assets) {
+                                // vmchunk.add_poly_3d(
+                                //     GeoId::Sector(sector.id),
+                                //     tile.id,
+                                //     verts.clone(),
+                                //     uvs_in.clone(),
+                                //     inds.clone(),
+                                //     0,
+                                //     true,
+                                //     None,
+                                // );
+                                // added = true;
                                 if let Some(texture_index) = assets.tile_index(&tile.id) {
                                     batch.source = PixelSource::StaticTileIndex(texture_index);
                                 }
                             }
                         }
 
-                        if let Some(si) = shader_index {
-                            batch.shader = Some(si);
-                            if chunk.shaders_with_opacity[si] {
-                                chunk.batches3d_opacity.push(batch);
-                            } else {
-                                chunk.batches3d.push(batch);
-                            }
-                        } else {
-                            if matches!(batch.source, PixelSource::Pixel(_)) {
-                                batch.source = PixelSource::Pixel([128, 128, 128, 255]);
-                            }
-                            chunk.batches3d.push(batch);
+                        if !added {
+                            vmchunk.add_poly_3d(
+                                GeoId::Sector(sector.id),
+                                Uuid::from_str("27826750-a9e7-4346-994b-fb318b238452")
+                                    .ok()
+                                    .unwrap(),
+                                verts,
+                                uvs_in,
+                                inds,
+                                0,
+                                true,
+                                None,
+                            );
                         }
+
+                        // if let Some(si) = shader_index {
+                        //     batch.shader = Some(si);
+                        //     if chunk.shaders_with_opacity[si] {
+                        //         chunk.batches3d_opacity.push(batch);
+                        //     } else {
+                        //         chunk.batches3d.push(batch);
+                        //     }
+                        // } else {
+                        //     if matches!(batch.source, PixelSource::Pixel(_)) {
+                        //         batch.source = PixelSource::Pixel([128, 128, 128, 255]);
+                        //     }
+                        //     chunk.batches3d.push(batch);
+                        // }
+                        chunk.batches3d.push(batch);
                     }
 
                     push_with_material_kind_local(
@@ -1109,6 +1280,7 @@ impl ChunkBuilder for D3ChunkBuilder {
                         shader_index,
                         assets,
                         chunk,
+                        vmchunk,
                         world_vertices,
                         indices,
                         uvs,

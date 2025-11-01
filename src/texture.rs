@@ -82,7 +82,7 @@ impl Texture {
             for x in 0..width {
                 let is_white = ((x / square_size) + (y / square_size)) % 2 == 0;
                 let color = if is_white {
-                    [255, 255, 255, 255]
+                    [128, 128, 128, 255]
                 } else {
                     [0, 0, 0, 255]
                 };
