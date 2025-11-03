@@ -141,23 +141,17 @@ fn cs_main(@builtin(global_invocation_id) gid: vec3<u32>) {
     var base_col = sv_tri_sample_albedo(i0, i1, i2, best_u, best_v);
     if (dot(N, rd) > 0.0) { N = -N; } // two-sided
 
-    // Material lookup for the winning triangle
-    let tri_mat_len = arrayLength(&tri_mat.data);
-    var tri_mat_safe: u32 = 0u;
-    if (tri_mat_len > 0u) {
-        tri_mat_safe = tri_mat.data[clamp_index_u(tri_safe, tri_mat_len)];
-    }
+    // Sample material properties (R/M/O/E) from the secondary atlas
+    let mats = sv_tri_sample_rmoe(i0, i1, i2, best_u, best_v);
+    let opacity = mats.z;
+    let emission = mats.w;
 
-    let mats_len = arrayLength(&materials.data);
-    let m_idx = clamp_index_u(tri_mat_safe, mats_len);
-    let M = materials.data[m_idx];
-
-    let base_rgb = base_col.xyz * M.tint.xyz;
+    let base_rgb = base_col.xyz;
 
     let lit = lambert_pointlights(P, N, base_rgb);
     // Add simple emission, apply opacity (from material)
-    let final_rgb = lit + M.rmoe.w * M.tint.xyz;
-    let final_a = max(base_col.a * M.rmoe.z, 1.0); // keep visible while debugging
+    let final_rgb = lit;// + M.rmoe.w * M.tint.xyz;
+    let final_a = base_col.a;//max(base_col.a * M.rmoe.z, 1.0); // keep visible while debugging
 
     sv_write(px, py, vec4<f32>(base_col.xyz, final_a));
 }

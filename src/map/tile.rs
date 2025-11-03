@@ -139,4 +139,22 @@ impl Tile {
     pub fn append(&mut self, texture: Texture) {
         self.textures.push(texture);
     }
+
+    /// Converts the frames to an array of buffers
+    pub fn to_buffer_array(&self) -> Vec<Vec<u8>> {
+        let mut b = vec![];
+        for t in &self.textures {
+            b.push(t.data.to_vec());
+        }
+        b
+    }
+
+    /// Converts the frames to an array of material buffers
+    pub fn to_material_array(&self) -> Vec<Vec<u8>> {
+        let mut b = vec![];
+        for t in &self.textures {
+            b.push(t.data.to_vec());
+        }
+        b
+    }
 }

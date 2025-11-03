@@ -3,7 +3,7 @@ use std::str::FromStr;
 use crate::{Texture, Tile};
 use indexmap::IndexMap;
 use rust_embed::EmbeddedFile;
-use scenevm::{Atom, Chunk, GeoId, Material, SceneVM};
+use scenevm::{Atom, Chunk, GeoId, SceneVM};
 use theframework::prelude::*;
 
 pub struct SceneHandler {
@@ -65,7 +65,8 @@ impl SceneHandler {
                 id: *id,
                 width: tile.textures[0].width as u32,
                 height: tile.textures[0].height as u32,
-                frames: b,
+                frames: tile.to_buffer_array(),
+                material_frames: None,
             });
         }
 
@@ -89,6 +90,7 @@ impl SceneHandler {
                         width,
                         height,
                         frames: vec![bytes],
+                        material_frames: None,
                     });
                 }
             }
@@ -99,6 +101,7 @@ impl SceneHandler {
                         width,
                         height,
                         frames: vec![bytes],
+                        material_frames: None,
                     });
                 }
             }
@@ -109,6 +112,7 @@ impl SceneHandler {
                         width,
                         height,
                         frames: vec![bytes],
+                        material_frames: None,
                     });
                 }
             }
@@ -119,6 +123,7 @@ impl SceneHandler {
                         width,
                         height,
                         frames: vec![bytes],
+                        material_frames: None,
                     });
                 }
             }
@@ -130,6 +135,7 @@ impl SceneHandler {
                 width: 100,
                 height: 100,
                 frames: vec![checker.data],
+                material_frames: None,
             });
             // self.vm.execute(Atom::AddSolid {
             //     id: Uuid::from_str("27826750-a9e7-4346-994b-fb318b238452")
@@ -156,11 +162,6 @@ impl SceneHandler {
         }
 
         self.vm.execute(Atom::BuildAtlas);
-
-        self.vm.execute(Atom::AddMaterial {
-            id: self.flat_material,
-            material: Material::flat(),
-        });
     }
 
     pub fn clear_overlay_2d(&mut self) {

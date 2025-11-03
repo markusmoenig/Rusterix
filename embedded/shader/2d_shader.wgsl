@@ -12,20 +12,23 @@ fn sv_shade_one(px: u32, py: u32, p: vec2<f32>) -> ShadeOut {
         return ShadeOut(false, U.background);
     }
 
-    // Material look-up for winning triangle
-    let m_idx = tri_mat2d.data[ch.tri];
-    let M = materials.data[m_idx];
+    // Sample packed material params from SceneVM's material atlas.
+    // Channels: xyz = custom payload, w = emission.
+    let mats = textureSampleLevel(atlas_mat_tex, atlas_smp, ch.uv, 0.0);
+    let opacity = mats.z;
+    let emission = mats.w;
+
 
     // Base texture color
     let base = ch.color;
-    let base_rgb = base.xyz * M.tint.xyz;
+    let base_rgb = base.xyz;// * M.tint.xyz;
 
-    // Flat material
-    if (M.model.x > 0.5) {
-        let final_rgb = base_rgb + M.rmoe.w * M.tint.xyz;
-        let final_a   = base.a * M.rmoe.z;
-        return ShadeOut(true, vec4<f32>(final_rgb, final_a));
-    }
+    // Flat material TODO
+    // if (M.model.x > 0.5) {
+    //     let final_rgb = base_rgb + M.rmoe.w * M.tint.xyz;
+    //     let final_a   = base.a * M.rmoe.z;
+    //     return ShadeOut(true, vec4<f32>(final_rgb, final_a));
+    // }
 
     // Ambient term passed via U.gp1 (vec4) — use only RGB
     var ambient_rgb = U.gp1.xyz;
@@ -60,8 +63,8 @@ fn sv_shade_one(px: u32, py: u32, p: vec2<f32>) -> ShadeOut {
 
     // Combine ambient + diffuse; add emission; apply opacity
     let lit = base_rgb * clamp(ambient_rgb + diffuse, vec3<f32>(0.0), vec3<f32>(1.0));
-    let final_rgb = lit + M.rmoe.w * M.tint.xyz;
-    let final_a   = base.a * M.rmoe.z;
+    let final_rgb = lit;// + M.rmoe.w * M.tint.xyz;
+    let final_a   = base.a;
 
     return ShadeOut(true, vec4<f32>(final_rgb, final_a));
 }
@@ -70,7 +73,7 @@ fn sv_shade_one(px: u32, py: u32, p: vec2<f32>) -> ShadeOut {
 fn cs_main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let px = gid.x;
     let py = gid.y;
-    
+
     if (px >= U.fb_size.x || py >= U.fb_size.y) { return; }
 
     // Clear to background first
@@ -180,7 +183,7 @@ fn cs_main(@builtin(global_invocation_id) gid: vec3<u32>) {
         }
         if (hits > 0u) {
             sv_write(px, py, accum / vec4<f32>(f32(hits)));
-        } 
+        }
     } else {
         let p0 = vec2<f32>(f32(px) + 0.5, f32(py) + 0.5);
         let out = sv_shade_one(px, py, p0);

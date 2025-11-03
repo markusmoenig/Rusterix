@@ -555,6 +555,10 @@ impl Client {
             .vm
             .execute(scenevm::Atom::SetRenderMode(scenevm::RenderMode::Compute3D));
 
+        // scene_handler
+        //     .vm
+        //     .execute(scenevm::Atom::SetSceneGridCells { target_cells: 5000 });
+
         // Enable bump mapping
         scene_handler
             .vm
