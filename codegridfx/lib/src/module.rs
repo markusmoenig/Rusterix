@@ -114,6 +114,9 @@ pub struct Module {
     #[serde(default)]
     pub player: bool,
 
+    #[serde(default)]
+    pub view_name: String,
+
     filter_text: String,
 }
 
@@ -204,7 +207,7 @@ impl Module {
     //     self.grid_ctx.error_color = ui.style.theme().color(Red).clone();
     // }
 
-    pub fn build_canvas(&self, ctx: &mut TheContext, name: &str) -> TheCanvas {
+    pub fn build_canvas(&mut self, ctx: &mut TheContext, name: &str) -> TheCanvas {
         let mut canvas = TheCanvas::new();
 
         // Left code list
@@ -257,6 +260,8 @@ impl Module {
         //render_view.set_context_menu(Some(context_menu));
 
         canvas.set_widget(render_view);
+
+        self.view_name = name.to_string();
 
         canvas
     }
@@ -384,7 +389,7 @@ impl Module {
     }
 
     pub fn redraw(&mut self, ui: &mut TheUI, ctx: &TheContext) {
-        if let Some(renderview) = ui.get_render_view(self.get_view_name()) {
+        if let Some(renderview) = ui.get_render_view(&self.get_view_name()) {
             *renderview.render_buffer_mut() = TheRGBABuffer::new(TheDim::new(
                 0,
                 0,
@@ -400,7 +405,7 @@ impl Module {
     }
 
     pub fn redraw_debug(&mut self, ui: &mut TheUI, ctx: &TheContext, id: u32, debug: &DebugModule) {
-        if let Some(renderview) = ui.get_render_view(self.get_view_name()) {
+        if let Some(renderview) = ui.get_render_view(&self.get_view_name()) {
             *renderview.render_buffer_mut() = TheRGBABuffer::new(TheDim::new(
                 0,
                 0,
@@ -463,7 +468,7 @@ impl Module {
                         r.set_screen_width(dim.width as u32, ctx, &self.grid_ctx);
                     }
 
-                    if let Some(renderview) = ui.get_render_view(self.get_view_name()) {
+                    if let Some(renderview) = ui.get_render_view(&self.get_view_name()) {
                         *renderview.render_buffer_mut() =
                             TheRGBABuffer::new(TheDim::new(0, 0, dim.width, dim.height));
                         self.draw(renderview.render_buffer_mut());
@@ -474,7 +479,7 @@ impl Module {
             }
             TheEvent::RenderViewScrollBy(id, coord) => {
                 if id.name == self.get_view_name() {
-                    if let Some(renderview) = ui.get_render_view(self.get_view_name()) {
+                    if let Some(renderview) = ui.get_render_view(&self.get_view_name()) {
                         let view_port_height = renderview.dim().height;
                         let total_height = self.height();
 
@@ -698,7 +703,7 @@ impl Module {
                             }
                         }
                     }
-                    if let Some(renderview) = ui.get_render_view(self.get_view_name()) {
+                    if let Some(renderview) = ui.get_render_view(&self.get_view_name()) {
                         self.draw(renderview.render_buffer_mut());
                     }
                     ctx.ui.send(TheEvent::Custom(
@@ -821,7 +826,8 @@ impl Module {
                                 &mut self.grid_ctx,
                             ) {
                                 r.draw(ctx, &mut self.grid_ctx, 0, None);
-                                if let Some(renderview) = ui.get_render_view(self.get_view_name()) {
+                                if let Some(renderview) = ui.get_render_view(&self.get_view_name())
+                                {
                                     self.draw(renderview.render_buffer_mut());
                                     redraw = true;
                                 }
@@ -1091,11 +1097,12 @@ impl Module {
     }
 
     /// Returns the view name for the module type
-    pub fn get_view_name(&self) -> &'static str {
-        if self.module_type == ModuleType::Shader {
-            return "ShadeModuleView";
-        }
-        "CodeModuleView"
+    pub fn get_view_name(&self) -> String {
+        return self.view_name.clone();
+        // if self.module_type == ModuleType::Shader {
+        //     return "ShadeModuleView";
+        // }
+        // "CodeModuleView"
     }
 
     /// Load a module from a JSON string.

@@ -447,6 +447,18 @@ impl Client {
             .vm
             .execute(scenevm::Atom::SetTransform2D(transform));
 
+        // Set the transform for the overlay if active
+        if scene_handler.vm.vm_layer_count() > 1 {
+            scene_handler.vm.set_active_vm(1);
+            scene_handler
+                .vm
+                .execute(scenevm::Atom::SetTransform2D(transform));
+            scene_handler
+                .vm
+                .execute(scenevm::Atom::SetRenderMode(scenevm::RenderMode::Compute2D));
+            scene_handler.vm.set_active_vm(0);
+        }
+
         scene_handler
             .vm
             .execute(scenevm::Atom::SetAnimationCounter(self.animation_frame));
@@ -577,6 +589,17 @@ impl Client {
         scene_handler.vm.execute(scenevm::Atom::SetCamera3D {
             camera: self.camera_d3.as_scenevm_camera(),
         });
+
+        if scene_handler.vm.vm_layer_count() > 1 {
+            scene_handler.vm.set_active_vm(1);
+            scene_handler.vm.execute(scenevm::Atom::SetCamera3D {
+                camera: self.camera_d3.as_scenevm_camera(),
+            });
+            scene_handler
+                .vm
+                .execute(scenevm::Atom::SetRenderMode(scenevm::RenderMode::Compute3D));
+            scene_handler.vm.set_active_vm(0);
+        }
 
         // scene_handler.vm.print_geometry_stats();
 

@@ -280,10 +280,11 @@ impl D2PreviewBuilder {
         let size_x = screen_pixel_size / map.grid_size;
         // let size_y = size_x * screen_aspect / 2.0;
 
+        return;
         scene.dynamic_lights = vec![];
         scene.d2_dynamic = vec![];
 
-        scene_handler.clear_overlay_2d();
+        scene_handler.clear_overlay();
 
         // Grid
         // if self.draw_grid {
@@ -402,14 +403,13 @@ impl D2PreviewBuilder {
 
                     if self.hover.0 == Some(vertex.id) || map.selected_vertices.contains(&vertex.id)
                     {
-                        scene_handler.overlay_2d.add_square_2d(
+                        scene_handler.overlay.add_square_2d(
                             GeoId::Vertex(vertex.id),
                             scene_handler.selected,
                             [pos.x, pos.y],
                             size_x * 2.0,
-                            100,
+                            10000,
                             true,
-                            None,
                         );
                         // selected_batch.add_rectangle(
                         //     pos.x - size_x,
@@ -418,14 +418,13 @@ impl D2PreviewBuilder {
                         //     size_y * 2.0,
                         // );
                     } else {
-                        scene_handler.overlay_2d.add_square_2d(
+                        scene_handler.overlay.add_square_2d(
                             GeoId::Vertex(vertex.id),
                             scene_handler.white,
                             [pos.x, pos.y],
                             size_x * 2.0,
-                            100,
+                            10000,
                             true,
-                            None,
                         );
                         // batch.add_rectangle(
                         //     pos.x - size_x,
@@ -754,14 +753,13 @@ impl D2PreviewBuilder {
                 if let Some(Value::Source(source)) = item.attributes.get("source") {
                     if item.attributes.get_bool_default("visible", false) {
                         if let Some(tile) = source.tile_from_tile_list(assets) {
-                            scene_handler.overlay_2d.add_square_2d(
+                            scene_handler.overlay.add_square_2d(
                                 GeoId::Character(item.id),
                                 tile.id,
                                 [pos.x, pos.y],
                                 size,
                                 100,
                                 true,
-                                None,
                             );
                             // if let Some(texture_index) = assets.tile_index(&tile.id) {
                             //     let batch = Batch2D::from_rectangle(
@@ -789,14 +787,13 @@ impl D2PreviewBuilder {
                         .source(PixelSource::DynamicTileIndex(2));
                     scene.d2_dynamic.push(batch);
 
-                    scene_handler.overlay_2d.add_square_2d(
+                    scene_handler.overlay.add_square_2d(
                         GeoId::Item(item_counter),
                         scene_handler.item_on,
                         [pos.x, pos.y],
                         size,
                         100,
                         true,
-                        Some(scene_handler.flat_material),
                     );
                     item_counter += 1;
                 } else {
@@ -804,14 +801,13 @@ impl D2PreviewBuilder {
                         .source(PixelSource::DynamicTileIndex(3));
                     scene.d2_dynamic.push(batch);
 
-                    scene_handler.overlay_2d.add_square_2d(
+                    scene_handler.overlay.add_square_2d(
                         GeoId::Item(item_counter),
                         scene_handler.item_off,
                         [pos.x, pos.y],
                         size,
                         100,
                         true,
-                        Some(scene_handler.flat_material),
                     );
                     item_counter += 1;
                 }
@@ -849,14 +845,13 @@ impl D2PreviewBuilder {
                 if let Some(Value::Source(source)) = entity.attributes.get("source") {
                     if entity.attributes.get_bool_default("visible", false) {
                         if let Some(tile) = source.tile_from_tile_list(assets) {
-                            scene_handler.overlay_2d.add_square_2d(
+                            scene_handler.overlay.add_square_2d(
                                 GeoId::Character(entity.id),
                                 tile.id,
                                 [pos.x, pos.y],
                                 size,
                                 100,
                                 true,
-                                None,
                             );
 
                             // if let Some(texture_index) = assets.tile_index(&tile.id) {
@@ -885,14 +880,13 @@ impl D2PreviewBuilder {
                     //     .source(PixelSource::DynamicTileIndex(0));
                     // scene.d2_dynamic.push(batch);
 
-                    scene_handler.overlay_2d.add_square_2d(
+                    scene_handler.overlay.add_square_2d(
                         GeoId::Character(entity_counter),
                         scene_handler.character_on,
                         [pos.x, pos.y],
                         size,
                         100,
                         true,
-                        Some(scene_handler.flat_material),
                     );
                     entity_counter += 1;
                 } else {
@@ -900,14 +894,13 @@ impl D2PreviewBuilder {
                         .source(PixelSource::DynamicTileIndex(1));
                     scene.d2_dynamic.push(batch);
 
-                    scene_handler.overlay_2d.add_square_2d(
+                    scene_handler.overlay.add_square_2d(
                         GeoId::Character(entity_counter),
                         scene_handler.character_off,
                         [pos.x, pos.y],
                         size,
                         100,
                         true,
-                        Some(scene_handler.flat_material),
                     );
                     entity_counter += 1;
                 }
@@ -1000,19 +993,18 @@ impl D2PreviewBuilder {
                 // );
                 // scene.d2_dynamic.push(yellow_batch);
 
-                scene_handler.overlay_2d.add_square_2d(
+                scene_handler.overlay.add_square_2d(
                     GeoId::Triangle(1000),
                     scene_handler.yellow,
                     [hover_pos.x, hover_pos.y],
                     size_x * 2.0,
                     10000,
                     true,
-                    Some(scene_handler.flat_material),
                 );
             }
         }
 
-        scene_handler.set_overlay_2d();
+        scene_handler.set_overlay();
         scene.dynamic_textures = self.textures.clone();
     }
 

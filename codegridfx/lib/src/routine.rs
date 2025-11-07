@@ -145,9 +145,9 @@ impl Routine {
             ctx.draw.text_rect_blend(
                 self.buffer.pixels_mut(),
                 &(
+                    200,
                     0,
-                    0,
-                    self.screen_width as usize - 10,
+                    self.screen_width as usize - 210,
                     header_height as usize,
                 ),
                 stride,

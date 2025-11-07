@@ -251,17 +251,16 @@ impl ChunkBuilder for D3ChunkBuilder {
                             .or_else(|| sector.properties.get(fallback_key))
                         {
                             if let Some(tile) = pixelsource.tile_from_tile_list(assets) {
-                                // vmchunk.add_poly_3d(
-                                //     GeoId::Sector(sector.id),
-                                //     tile.id,
-                                //     verts.clone(),
-                                //     uvs_in.clone(),
-                                //     inds.clone(),
-                                //     0,
-                                //     true,
-                                //     None,
-                                // );
-                                // added = true;
+                                vmchunk.add_poly_3d(
+                                    GeoId::Sector(sector.id),
+                                    tile.id,
+                                    verts.clone(),
+                                    uvs_in.clone(),
+                                    inds.clone(),
+                                    0,
+                                    true,
+                                );
+                                added = true;
 
                                 if let Some(texture_index) = assets.tile_index(&tile.id) {
                                     batch.source = PixelSource::StaticTileIndex(texture_index);
@@ -280,7 +279,6 @@ impl ChunkBuilder for D3ChunkBuilder {
                                 inds.clone(),
                                 0,
                                 true,
-                                None,
                             );
                         }
 
@@ -795,17 +793,16 @@ impl ChunkBuilder for D3ChunkBuilder {
                                     "relief_source",
                                 ) {
                                     if let Some(tile) = pixelsource.tile_from_tile_list(assets) {
-                                        // vmchunk.add_poly_3d(
-                                        //     GeoId::Sector(sector.id),
-                                        //     tile.id,
-                                        //     cap_v.clone(),
-                                        //     cap_uv.clone(),
-                                        //     cap_i.clone(),
-                                        //     0,
-                                        //     true,
-                                        //     None,
-                                        // );
-                                        // added = true;
+                                        vmchunk.add_poly_3d(
+                                            GeoId::Sector(sector.id),
+                                            tile.id,
+                                            cap_v.clone(),
+                                            cap_uv.clone(),
+                                            cap_i.clone(),
+                                            0,
+                                            true,
+                                        );
+                                        added = true;
 
                                         if let Some(tex) = assets.tile_index(&tile.id) {
                                             batch.source = PixelSource::StaticTileIndex(tex);
@@ -823,7 +820,6 @@ impl ChunkBuilder for D3ChunkBuilder {
                                         cap_i,
                                         0,
                                         true,
-                                        None,
                                     );
                                 }
                                 /*
@@ -883,17 +879,16 @@ impl ChunkBuilder for D3ChunkBuilder {
                                 "relief_jamb_source",
                             ) {
                                 if let Some(tile) = pixelsource.tile_from_tile_list(assets) {
-                                    // vmchunk.add_poly_3d(
-                                    //     GeoId::Sector(sector.id),
-                                    //     tile.id,
-                                    //     ring_v.clone(),
-                                    //     ring_uv.clone(),
-                                    //     ring_i.clone(),
-                                    //     0,
-                                    //     true,
-                                    //     None,
-                                    // );
-                                    // added = true;
+                                    vmchunk.add_poly_3d(
+                                        GeoId::Sector(sector.id),
+                                        tile.id,
+                                        ring_v.clone(),
+                                        ring_uv.clone(),
+                                        ring_i.clone(),
+                                        0,
+                                        true,
+                                    );
+                                    added = true;
 
                                     if let Some(tex) = assets.tile_index(&tile.id) {
                                         batch.source = PixelSource::StaticTileIndex(tex);
@@ -911,7 +906,6 @@ impl ChunkBuilder for D3ChunkBuilder {
                                     ring_i,
                                     0,
                                     true,
-                                    None,
                                 );
                             }
                             /*
@@ -1014,17 +1008,16 @@ impl ChunkBuilder for D3ChunkBuilder {
                                     {
                                         if let Some(tile) = pixelsource.tile_from_tile_list(assets)
                                         {
-                                            // vmchunk.add_poly_3d(
-                                            //     GeoId::Sector(sector.id),
-                                            //     tile.id,
-                                            //     cap_v.clone(),
-                                            //     cap_uv.clone(),
-                                            //     cap_i.clone(),
-                                            //     0,
-                                            //     true,
-                                            //     None,
-                                            // );
-                                            // added = true;
+                                            vmchunk.add_poly_3d(
+                                                GeoId::Sector(sector.id),
+                                                tile.id,
+                                                cap_v.clone(),
+                                                cap_uv.clone(),
+                                                cap_i.clone(),
+                                                0,
+                                                true,
+                                            );
+                                            added = true;
                                             if let Some(tex) = assets.tile_index(&tile.id) {
                                                 batch.source = PixelSource::StaticTileIndex(tex);
                                             }
@@ -1042,7 +1035,6 @@ impl ChunkBuilder for D3ChunkBuilder {
                                         cap_i,
                                         0,
                                         true,
-                                        None,
                                     );
                                 }
                                 /*
@@ -1068,7 +1060,7 @@ impl ChunkBuilder for D3ChunkBuilder {
                                 fl.origin_profile_sector,
                                 "recess",
                             );
-                            let mut ring_i = ring_i;
+                            // let mut ring_i = ring_i;
                             // fix_winding(&ring_v, &mut ring_i, surface.plane.normal);
                             let mut batch =
                                 Batch3D::new(ring_v.clone(), ring_i.clone(), ring_uv.clone())
@@ -1093,17 +1085,16 @@ impl ChunkBuilder for D3ChunkBuilder {
                                 "recess_jamb_source",
                             ) {
                                 if let Some(tile) = pixelsource.tile_from_tile_list(assets) {
-                                    // vmchunk.add_poly_3d(
-                                    //     GeoId::Sector(sector.id),
-                                    //     tile.id,
-                                    //     ring_v.clone(),
-                                    //     ring_uv.clone(),
-                                    //     ring_i.clone(),
-                                    //     0,
-                                    //     true,
-                                    //     None,
-                                    // );
-                                    // added = true;
+                                    vmchunk.add_poly_3d(
+                                        GeoId::Sector(sector.id),
+                                        tile.id,
+                                        ring_v.clone(),
+                                        ring_uv.clone(),
+                                        ring_i.clone(),
+                                        0,
+                                        true,
+                                    );
+                                    added = true;
                                     if let Some(tex) = assets.tile_index(&tile.id) {
                                         batch.source = PixelSource::StaticTileIndex(tex);
                                     }
@@ -1120,7 +1111,6 @@ impl ChunkBuilder for D3ChunkBuilder {
                                     ring_i,
                                     0,
                                     true,
-                                    None,
                                 );
                             }
                             // Inherit host material if nothing set by per-feature keys
@@ -1226,17 +1216,16 @@ impl ChunkBuilder for D3ChunkBuilder {
                             .or_else(|| sector.properties.get(fallback_key))
                         {
                             if let Some(tile) = pixelsource.tile_from_tile_list(assets) {
-                                // vmchunk.add_poly_3d(
-                                //     GeoId::Sector(sector.id),
-                                //     tile.id,
-                                //     verts.clone(),
-                                //     uvs_in.clone(),
-                                //     inds.clone(),
-                                //     0,
-                                //     true,
-                                //     None,
-                                // );
-                                // added = true;
+                                vmchunk.add_poly_3d(
+                                    GeoId::Sector(sector.id),
+                                    tile.id,
+                                    verts.clone(),
+                                    uvs_in.clone(),
+                                    inds.clone(),
+                                    0,
+                                    true,
+                                );
+                                added = true;
                                 if let Some(texture_index) = assets.tile_index(&tile.id) {
                                     batch.source = PixelSource::StaticTileIndex(texture_index);
                                 }
@@ -1254,7 +1243,6 @@ impl ChunkBuilder for D3ChunkBuilder {
                                 inds,
                                 0,
                                 true,
-                                None,
                             );
                         }
 

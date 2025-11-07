@@ -9,8 +9,8 @@ use theframework::prelude::*;
 pub struct SceneHandler {
     pub vm: SceneVM,
 
-    pub overlay_2d_id: Uuid,
-    pub overlay_2d: Chunk,
+    pub overlay_id: Uuid,
+    pub overlay: Chunk,
 
     pub character_off: Uuid,
     pub character_on: Uuid,
@@ -34,11 +34,14 @@ impl Default for SceneHandler {
 
 impl SceneHandler {
     pub fn empty() -> Self {
-        Self {
-            vm: SceneVM::default(),
+        let mut vm = SceneVM::default();
+        vm.set_layer_activity_logging(true);
 
-            overlay_2d_id: Uuid::new_v4(),
-            overlay_2d: Chunk::default(),
+        Self {
+            vm,
+
+            overlay_id: Uuid::new_v4(),
+            overlay: Chunk::default(),
 
             character_off: Uuid::new_v4(),
             character_on: Uuid::new_v4(),
@@ -164,16 +167,29 @@ impl SceneHandler {
         self.vm.execute(Atom::BuildAtlas);
     }
 
-    pub fn clear_overlay_2d(&mut self) {
-        self.overlay_2d = Chunk::default();
-        self.overlay_2d.priority = 1;
+    pub fn clear_overlay(&mut self) {
+        if self.vm.vm_layer_count() == 1 {
+            let idx = self.vm.add_vm_layer();
+            self.vm.set_active_vm(idx);
+            if let Some(bytes) = crate::Embedded::get("shader/2d_overlay_shader.wgsl") {
+                if let Ok(source) = std::str::from_utf8(bytes.data.as_ref()) {
+                    self.vm.execute(Atom::SetSource2D(source.into()));
+                }
+            }
+        }
+        self.vm.set_active_vm(0);
+
+        self.overlay = Chunk::default();
+        self.overlay.priority = 1;
     }
 
-    pub fn set_overlay_2d(&mut self) {
+    pub fn set_overlay(&mut self) {
+        self.vm.set_active_vm(1);
         self.vm.execute(Atom::AddChunk {
-            id: self.overlay_2d_id,
-            chunk: self.overlay_2d.clone(),
+            id: self.overlay_id,
+            chunk: self.overlay.clone(),
         });
+        self.vm.set_active_vm(0);
     }
 
     pub fn add_overlay_2d_line(
@@ -184,13 +200,12 @@ impl SceneHandler {
         color: Uuid,
         layer: i32,
     ) {
-        self.overlay_2d.add_line_strip_2d_px(
+        self.overlay.add_line_strip_2d_px(
             id,
             color,
             vec![start.into_array(), end.into_array()],
             1.5,
             layer,
-            Some(self.flat_material),
         );
     }
 }
