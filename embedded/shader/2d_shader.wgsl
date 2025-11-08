@@ -40,14 +40,16 @@ fn sv_shade_one(px: u32, py: u32, p: vec2<f32>) -> ShadeOut {
     // Accumulate diffuse from point lights
     var diffuse = vec3<f32>(0.0);
     for (var li: u32 = 0u; li < U.lights_count; li = li + 1u) {
-        if (lights.data[li].header.y == 0u) { continue; }
+        let light = sd_light(li);
 
-        let Lp = lights.data[li].position;
-        let Lc = lights.data[li].color.xyz;
-        let Li = lights.data[li].params0.x * lights.data[li].params1.x; // Intensity * flicker
+        if (light.header.y == 0u) { continue; }
 
-        let start_d = lights.data[li].params0.z;
-        let end_d   = max(lights.data[li].params0.w, start_d + 1e-3);
+        let Lp = light.position;
+        let Lc = light.color.xyz;
+        let Li = light.params0.x * light.params1.x; // Intensity * flicker
+
+        let start_d = light.params0.z;
+        let end_d   = max(light.params0.w, start_d + 1e-3);
 
         let L = Lp.xyz - P3;
         let dist2 = max(dot(L, L), 1e-6);

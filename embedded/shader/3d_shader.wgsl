@@ -5,14 +5,16 @@ fn lambert_pointlights(P: vec3<f32>, N: vec3<f32>, base_col: vec3<f32>) -> vec3<
     let ambient = max(U.background.xyz, vec3<f32>(0.05, 0.05, 0.05));
 
     for (var li: u32 = 0u; li < U.lights_count; li = li + 1u) {
-        if (lights.data[li].header.y == 0u) { continue; } // emitting flag
+        let light = sd_light(li);
 
-        let Lp = lights.data[li].position;
-        let Lc = lights.data[li].color.xyz;
-        let Li = lights.data[li].params0.x + lights.data[li].params1.x;   // intensity + flicker
+        if (light.header.y == 0u) { continue; } // emitting flag
 
-        let start_d = lights.data[li].params0.z;
-        let end_d   = max(lights.data[li].params0.w, start_d + 1e-3);
+        let Lp = light.position;
+        let Lc = light.color.xyz;
+        let Li = light.params0.x + light.params1.x;   // intensity + flicker
+
+        let start_d = light.params0.z;
+        let end_d   = max(light.params0.w, start_d + 1e-3);
         let L = Lp.xyz - P;
         let dist2 = max(dot(L, L), 1e-6);
         let dist = sqrt(dist2);

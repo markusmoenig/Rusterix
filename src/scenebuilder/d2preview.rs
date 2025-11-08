@@ -280,7 +280,6 @@ impl D2PreviewBuilder {
         let size_x = screen_pixel_size / map.grid_size;
         // let size_y = size_x * screen_aspect / 2.0;
 
-        return;
         scene.dynamic_lights = vec![];
         scene.d2_dynamic = vec![];
 

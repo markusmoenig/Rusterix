@@ -176,6 +176,11 @@ impl SceneHandler {
                     self.vm.execute(Atom::SetSource2D(source.into()));
                 }
             }
+            if let Some(bytes) = crate::Embedded::get("shader/3d_overlay_shader.wgsl") {
+                if let Ok(source) = std::str::from_utf8(bytes.data.as_ref()) {
+                    self.vm.execute(Atom::SetSource3D(source.into()));
+                }
+            }
         }
         self.vm.set_active_vm(0);
 
