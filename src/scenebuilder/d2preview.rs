@@ -3,7 +3,7 @@ use crate::{
     Value, ValueContainer,
 };
 use MapToolType::*;
-use scenevm::{Atom, GeoId, Light};
+use scenevm::{Atom, DynamicObject, GeoId, Light};
 use theframework::prelude::*;
 use vek::Vec2;
 
@@ -284,6 +284,7 @@ impl D2PreviewBuilder {
         scene.d2_dynamic = vec![];
 
         scene_handler.clear_overlay();
+        scene_handler.vm.execute(Atom::ClearDynamics);
 
         // Grid
         // if self.draw_grid {
@@ -752,14 +753,25 @@ impl D2PreviewBuilder {
                 if let Some(Value::Source(source)) = item.attributes.get("source") {
                     if item.attributes.get_bool_default("visible", false) {
                         if let Some(tile) = source.tile_from_tile_list(assets) {
-                            scene_handler.overlay.add_square_2d(
-                                GeoId::Character(item.id),
+                            // scene_handler.overlay.add_square_2d(
+                            //     GeoId::Character(item.id),
+                            //     tile.id,
+                            //     [pos.x, pos.y],
+                            //     size,
+                            //     100,
+                            //     true,
+                            // );
+
+                            let dynamic = DynamicObject::billboard_tile_2d(
+                                GeoId::Item(item.id),
                                 tile.id,
-                                [pos.x, pos.y],
-                                size,
-                                100,
-                                true,
+                                pos,
+                                1.0,
                             );
+                            scene_handler
+                                .vm
+                                .execute(Atom::AddDynamic { object: dynamic });
+
                             // if let Some(texture_index) = assets.tile_index(&tile.id) {
                             //     let batch = Batch2D::from_rectangle(
                             //         pos.x - hsize,
@@ -844,14 +856,24 @@ impl D2PreviewBuilder {
                 if let Some(Value::Source(source)) = entity.attributes.get("source") {
                     if entity.attributes.get_bool_default("visible", false) {
                         if let Some(tile) = source.tile_from_tile_list(assets) {
-                            scene_handler.overlay.add_square_2d(
+                            // scene_handler.overlay.add_square_2d(
+                            //     GeoId::Character(entity.id),
+                            //     tile.id,
+                            //     [pos.x, pos.y],
+                            //     size,
+                            //     100,
+                            //     true,
+                            // );
+
+                            let dynamic = DynamicObject::billboard_tile_2d(
                                 GeoId::Character(entity.id),
                                 tile.id,
-                                [pos.x, pos.y],
-                                size,
-                                100,
-                                true,
+                                pos,
+                                1.0,
                             );
+                            scene_handler
+                                .vm
+                                .execute(Atom::AddDynamic { object: dynamic });
 
                             // if let Some(texture_index) = assets.tile_index(&tile.id) {
                             //     let batch = Batch2D::from_rectangle(
@@ -889,9 +911,9 @@ impl D2PreviewBuilder {
                     );
                     entity_counter += 1;
                 } else {
-                    let batch = Batch2D::from_rectangle(pos.x - hsize, pos.y - hsize, size, size)
-                        .source(PixelSource::DynamicTileIndex(1));
-                    scene.d2_dynamic.push(batch);
+                    // let batch = Batch2D::from_rectangle(pos.x - hsize, pos.y - hsize, size, size)
+                    //     .source(PixelSource::DynamicTileIndex(1));
+                    // scene.d2_dynamic.push(batch);
 
                     scene_handler.overlay.add_square_2d(
                         GeoId::Character(entity_counter),

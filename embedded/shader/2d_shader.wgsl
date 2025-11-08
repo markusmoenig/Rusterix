@@ -6,29 +6,40 @@ struct ShadeOut {
 // Return the final shaded color at subpixel position `p` (in screen pixels).
 fn sv_shade_one(px: u32, py: u32, p: vec2<f32>) -> ShadeOut {
     let tid = tile_of_px(px, py);
-    let ch = sv_shade_tile_pixel(p, px, py, tid);
+    var ch = sv_shade_tile_pixel(p, px, py, tid);
+
+    var base = ch.color;
+    var base_rgb = base.xyz;
+
+    let dyn_count = scene_data.header.billboard_cmd_count;
+    if (dyn_count > 0u) {
+        for (var di: u32 = 0u; di < dyn_count; di = di + 1u) {
+            let cmd = sd_billboard_cmd(di);
+            if (cmd.params.y != DYNAMIC_KIND_BILLBOARD_TILE) {
+                continue;
+            }
+            let bh = sd_billboard_hit_screen(p, cmd);
+            if (!bh.hit) { continue; }
+            let frame = sv_tile_frame(bh.tile_index);
+            let uv = frame.ofs + bh.uv * frame.scale;
+            let col = textureSampleLevel(atlas_tex, atlas_smp, uv, 0.0);
+            if (col.a < 0.01) { continue; }
+            base = col;
+            base_rgb = col.xyz;
+            ch.hit = true;
+            break;
+        }
+    }
+
     if (!ch.hit) {
-        // No scene hit at this sub-sample; don't overwrite the grid/background.
         return ShadeOut(false, U.background);
     }
 
-    // Sample packed material params from SceneVM's material atlas.
-    // Channels: xyz = custom payload, w = emission.
+    // Get materials
     let mats = textureSampleLevel(atlas_mat_tex, atlas_smp, ch.uv, 0.0);
     let opacity = mats.z;
     let emission = mats.w;
 
-
-    // Base texture color
-    let base = ch.color;
-    let base_rgb = base.xyz;// * M.tint.xyz;
-
-    // Flat material TODO
-    // if (M.model.x > 0.5) {
-    //     let final_rgb = base_rgb + M.rmoe.w * M.tint.xyz;
-    //     let final_a   = base.a * M.rmoe.z;
-    //     return ShadeOut(true, vec4<f32>(final_rgb, final_a));
-    // }
 
     // Ambient term passed via U.gp1 (vec4) — use only RGB
     var ambient_rgb = U.gp1.xyz;
