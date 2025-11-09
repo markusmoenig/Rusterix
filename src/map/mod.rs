@@ -258,11 +258,10 @@ impl Map {
             }
 
             if sector.layer.is_some() {
-                // let render_mode = sector.properties.get_int_default("rect_rendering", 0);
-                // if render_mode != 1 {
-                //     casts_shadows = false;
-                //     add_it = false;
-                // }
+                let render_mode = sector.properties.contains("rect");
+                if render_mode {
+                    add_it = false;
+                }
                 // If the tile is explicitly set to blocking we have to add the geometry
                 match sector.properties.get_default_source() {
                     Some(PixelSource::TileId(id)) => {
