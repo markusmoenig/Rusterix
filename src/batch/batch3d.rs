@@ -606,9 +606,9 @@ impl Batch3D {
             let n1 = self.normals[i1];
             let n2 = self.normals[i2];
 
-            let is_v0_inside = v0[2] <= -near_plane;
-            let is_v1_inside = v1[2] <= -near_plane;
-            let is_v2_inside = v2[2] <= -near_plane;
+            let is_v0_inside = v0[2] < -near_plane;
+            let is_v1_inside = v1[2] < -near_plane;
+            let is_v2_inside = v2[2] < -near_plane;
 
             if is_v0_inside && is_v1_inside && is_v2_inside {
                 // All vertices are inside the near plane, keep the triangle
@@ -637,7 +637,7 @@ impl Batch3D {
                 let uv_next = *uv_next;
                 let n_next = *n_next;
 
-                if current[2] <= -near_plane {
+                if current[2] < -near_plane {
                     new_vertices.push(current);
                     new_uvs.push(uv_current);
                     new_normals.push(n_current);
@@ -645,7 +645,7 @@ impl Batch3D {
                     new_edge_visibility.push(true);
                 }
 
-                if (current[2] <= -near_plane) != (next[2] <= -near_plane) {
+                if (current[2] < -near_plane) != (next[2] < -near_plane) {
                     // Edge intersects the near plane, calculate intersection
                     let t = (-near_plane - current[2]) / (next[2] - current[2]);
                     let intersection = [

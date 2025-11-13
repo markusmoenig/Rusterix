@@ -11,26 +11,25 @@ keywords = ["software", "rendering", "graphics", "game", "engine"]
 members = [".", "rusteria", "rsia", "codegridfx/lib"]
 
 [workspace.dependencies]
-theframework = { version = "0.1.40", features = [
-    "ui",
-], git = "https://github.com/markusmoenig/theframework" }
+# theframework = { version = "0.1.40", features = [
+#     "ui",
+# ], git = "https://github.com/markusmoenig/theframework" }
 # theframework = "0.1.33"
 # theframework = { path = "../TheFramework", default-features = true }
 
-scenevm = { version = "0.1", git = "https://github.com/markusmoenig/SceneVM" }
+# scenevm = { version = "0.1", git = "https://github.com/markusmoenig/SceneVM" }
 
-# theframework = { path = "../TheFramework", features = [
-#     "ui",
-# ], default-features = true }
+theframework = { path = "../TheFramework", features = [
+    "ui",
+], default-features = true }
 
-# scenevm = { path = "../SceneVM" }
+scenevm = { path = "../SceneVM" }
 
 [dependencies]
 theframework.workspace = true
 scenevm.workspace = true
 
 codegridfx = { path = "codegridfx/lib", default-features = true }
-png = "0.17"
 
 # rustpython = { version = "0.4.0", features = [
 #     "stdlib",

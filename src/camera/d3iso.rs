@@ -194,6 +194,7 @@ impl D3Camera for D3IsoCamera {
         let pos = self.center + forward_to_camera * required_distance;
         let forward = -forward_to_camera;
         let right = -right_to_camera;
+
         scenevm::Camera3D {
             kind: scenevm::CameraKind::OrthoIso,
             pos,

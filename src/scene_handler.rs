@@ -34,7 +34,7 @@ impl Default for SceneHandler {
 
 impl SceneHandler {
     pub fn empty() -> Self {
-        let mut vm = SceneVM::default();
+        let vm = SceneVM::default();
         // vm.set_layer_activity_logging(true);
 
         Self {

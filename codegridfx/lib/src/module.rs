@@ -801,7 +801,6 @@ impl Module {
                 // if id.name == "ModuleView" {
                 //     if let Some(group) = Group::from_str(&item.name) {
                 //         if let Some(cell) = self.grid_ctx.current_cell.clone() {
-                //             println!("1");
                 //             for r in self.routines.values_mut() {
                 //                 if Some(r.id) == self.grid_ctx.selected_routine {
                 //                     r.draw(ctx, &self.grid_ctx);
