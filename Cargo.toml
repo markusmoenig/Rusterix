@@ -14,8 +14,8 @@ members = [".", "rusteria", "rsia", "codegridfx/lib"]
 theframework = { version = "0.1.40", features = [
     "ui",
 ], git = "https://github.com/markusmoenig/theframework" }
-theframework = "0.1.33"
-theframework = { path = "../TheFramework", default-features = true }
+# theframework = "0.1.33"
+# theframework = { path = "../TheFramework", default-features = true }
 
 scenevm = { version = "0.1", git = "https://github.com/markusmoenig/SceneVM" }
 
