@@ -157,4 +157,28 @@ impl Tile {
         }
         b
     }
+
+    /// Checks if the tile is empty
+    pub fn is_empty(&self) -> bool {
+        self.textures.is_empty()
+    }
+
+    /// Returns a new Tile with all textures resized to the specified dimensions
+    pub fn resized(&self, new_width: usize, new_height: usize) -> Self {
+        let resized_textures = self
+            .textures
+            .iter()
+            .map(|t| t.resized(new_width, new_height))
+            .collect();
+
+        Self {
+            id: self.id,
+            role: self.role,
+            textures: resized_textures,
+            module: self.module.clone(),
+            blocking: self.blocking,
+            scale: self.scale,
+            tags: self.tags.clone(),
+        }
+    }
 }

@@ -547,12 +547,34 @@ impl Texture {
             }
         }
 
+        // Resize normal_map if present
+        let resized_normal_map = self
+            .normal_map
+            .as_ref()
+            .map(|nm| Box::new(nm.resized(new_width, new_height)));
+
+        // Resize material_map if present
+        let resized_material_map = self
+            .material_map
+            .as_ref()
+            .map(|mm| Box::new(mm.resized(new_width, new_height)));
+
         Texture {
             data: new_data,
             width: new_width,
             height: new_height,
-            normal_map: None,
-            material_map: None,
+            normal_map: resized_normal_map,
+            material_map: resized_material_map,
+        }
+    }
+
+    /// Fills the entire texture with the specified color
+    pub fn fill(&mut self, color: [u8; 4]) {
+        for y in 0..self.height {
+            for x in 0..self.width {
+                let idx = (y * self.width + x) * 4;
+                self.data[idx..idx + 4].copy_from_slice(&color);
+            }
         }
     }
 

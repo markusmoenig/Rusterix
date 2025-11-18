@@ -212,8 +212,14 @@ impl Rusterix {
 
     /// Draw the client custom scene in 2D.
     pub fn draw_custom_d2(&mut self, map: &Map, pixels: &mut [u8], width: usize, height: usize) {
-        self.client
-            .draw_custom_d2(map, pixels, width, height, &self.assets);
+        self.client.draw_custom_d2(
+            map,
+            pixels,
+            width,
+            height,
+            &self.assets,
+            // &mut self.scene_handler,
+        );
     }
 
     /// Draw the client scene in 2D.
