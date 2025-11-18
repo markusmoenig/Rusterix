@@ -181,4 +181,30 @@ impl Tile {
             tags: self.tags.clone(),
         }
     }
+
+    /// Sets the number of frames in the textures array.
+    /// If frames > current count: duplicates the last texture to fill.
+    /// If frames < current count: truncates the array.
+    /// Also handles material_map and normal_map within each texture.
+    pub fn set_frames(&mut self, frames: usize) {
+        if frames == 0 {
+            self.textures.clear();
+            return;
+        }
+
+        let current_count = self.textures.len();
+
+        if frames > current_count {
+            if current_count > 0 {
+                // Duplicate the last texture to reach the desired frame count
+                let last_texture = self.textures.last().unwrap().clone();
+                for _ in current_count..frames {
+                    self.textures.push(last_texture.clone());
+                }
+            }
+        } else if frames < current_count {
+            // Truncate to the desired frame count
+            self.textures.truncate(frames);
+        }
+    }
 }
