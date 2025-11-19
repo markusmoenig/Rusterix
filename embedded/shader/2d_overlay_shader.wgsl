@@ -1,6 +1,6 @@
 struct ShadeOut {
-    hit: bool,
     color: vec4<f32>,
+    hit: u32,
 }
 
 fn sv_shade_one(px: u32, py: u32, p: vec2<f32>) -> ShadeOut {
@@ -8,12 +8,12 @@ fn sv_shade_one(px: u32, py: u32, p: vec2<f32>) -> ShadeOut {
     let ch = sv_shade_tile_pixel(p, px, py, tid);
 
     if (!ch.hit) {
-        return ShadeOut(false, U.background);
+        return ShadeOut(U.background, 0u);
     }
 
     // sv_write(px, py, vec4<f32>(1.0));
 
-    return ShadeOut(true, ch.color);
+    return ShadeOut(ch.color, 1u);
 }
 
 @compute @workgroup_size(8,8,1)
@@ -35,7 +35,7 @@ fn cs_main(@builtin(global_invocation_id) gid: vec3<u32>) {
             let p_sub = vec2<f32>(f32(px) + 0.5 + offsets[s].x,
                                   f32(py) + 0.5 + offsets[s].y);
             let out = sv_shade_one(px, py, p_sub);
-            if (out.hit) {
+            if (out.hit != 0u) {
                 accum += out.color;
                 hits += 1u;
             }
@@ -46,7 +46,7 @@ fn cs_main(@builtin(global_invocation_id) gid: vec3<u32>) {
     } else {
         let p0 = vec2<f32>(f32(px) + 0.5, f32(py) + 0.5);
         let out = sv_shade_one(px, py, p0);
-        if (out.hit) {
+        if (out.hit != 0u) {
             // sv_write(px, py, out.color);
         }
     }

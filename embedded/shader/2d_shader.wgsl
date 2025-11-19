@@ -1,6 +1,6 @@
 struct ShadeOut {
-    hit: bool,
     color: vec4<f32>,
+    hit: u32,
 }
 
 // Return the final shaded color at subpixel position `p` (in screen pixels).
@@ -32,7 +32,7 @@ fn sv_shade_one(px: u32, py: u32, p: vec2<f32>) -> ShadeOut {
     }
 
     if (!ch.hit) {
-        return ShadeOut(false, U.background);
+        return ShadeOut(U.background, 0u);
     }
 
     // Get materials
@@ -79,7 +79,7 @@ fn sv_shade_one(px: u32, py: u32, p: vec2<f32>) -> ShadeOut {
     let final_rgb = lit;// + M.rmoe.w * M.tint.xyz;
     let final_a   = base.a;
 
-    return ShadeOut(true, vec4<f32>(final_rgb, final_a));
+    return ShadeOut(vec4<f32>(final_rgb, final_a), 1u);
 }
 
 @compute @workgroup_size(8,8,1)
@@ -189,7 +189,7 @@ fn cs_main(@builtin(global_invocation_id) gid: vec3<u32>) {
             let p_sub = vec2<f32>(f32(px) + 0.5 + offsets[s].x,
                                   f32(py) + 0.5 + offsets[s].y);
             let out = sv_shade_one(px, py, p_sub);
-            if (out.hit) {
+            if (out.hit != 0u) {
                 accum += out.color;
                 hits += 1u;
             }
@@ -200,7 +200,7 @@ fn cs_main(@builtin(global_invocation_id) gid: vec3<u32>) {
     } else {
         let p0 = vec2<f32>(f32(px) + 0.5, f32(py) + 0.5);
         let out = sv_shade_one(px, py, p0);
-        if (out.hit) {
+        if (out.hit != 0u) {
             sv_write(px, py, out.color);
         }
     }
