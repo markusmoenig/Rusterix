@@ -7,11 +7,12 @@ pub mod parser;
 pub mod resolver;
 pub mod widget;
 
+use scenevm::Atom;
 use std::str::FromStr;
 
 use crate::{
-    AccumBuffer, BrushPreview, Command, D2PreviewBuilder, EntityAction, Rect, RenderMode,
-    ShapeFXGraph, Surface, Tracer, Value,
+    AccumBuffer, BrushPreview, Command, D2PreviewBuilder, EntityAction, Rect, ShapeFXGraph,
+    Surface, Tracer, Value,
     client::action::ClientAction,
     client::widget::{
         Widget, deco::DecoWidget, game::GameWidget, messages::MessagesWidget, screen::ScreenWidget,
@@ -336,7 +337,8 @@ impl Client {
         pixels: &mut [u8],
         width: usize,
         height: usize,
-        assets: &Assets,
+        _assets: &Assets,
+        scene_handler: &mut SceneHandler,
     ) {
         self.scene.animation_frame = self.animation_frame;
         let screen_size = Vec2::new(width as f32, height as f32);
@@ -357,12 +359,51 @@ impl Client {
         );
         let transform = translation_matrix * scale_matrix;
 
-        let mut rast = Rasterizer::setup(Some(transform), Mat4::identity(), Mat4::identity())
-            .render_mode(RenderMode::render_2d());
-        rast.render_graph = self.global.clone();
-        rast.hour = self.server_time.to_f32();
-        rast.mapmini = self.scene.mapmini.clone();
-        rast.rasterize(&mut self.scene_d2, pixels, width, height, 64, assets);
+        // let mut rast = Rasterizer::setup(Some(transform), Mat4::identity(), Mat4::identity())
+        //     .render_mode(RenderMode::render_2d());
+        // rast.render_graph = self.global.clone();
+        // rast.hour = self.server_time.to_f32();
+        // rast.mapmini = self.scene.mapmini.clone();
+        // rast.rasterize(&mut self.scene_d2, pixels, width, height, 64, assets);
+
+        scene_handler.vm.set_active_vm(1);
+        scene_handler.vm.set_layer_enabled(0, false);
+        scene_handler.vm.set_layer_enabled(1, true);
+        // scene_handler.vm.set_layer_activity_logging(true);
+
+        scene_handler
+            .vm
+            .execute(scenevm::Atom::SetRenderMode(scenevm::RenderMode::Compute2D));
+
+        scene_handler.vm.execute(Atom::SetGP0(Vec4::new(
+            map.grid_size,
+            map.subdivisions,
+            map.offset.x,
+            -map.offset.y,
+        )));
+
+        // Ambient
+        scene_handler.vm.execute(Atom::SetGP1(Vec4::one()));
+
+        // Enable background clearing in the overlay shadr
+        scene_handler.vm.execute(Atom::SetGP2(Vec4::one()));
+
+        // Background
+        scene_handler
+            .vm
+            .execute(scenevm::Atom::SetBackground(Vec4::zero()));
+
+        // Transform
+        scene_handler.vm.execute(Atom::SetTransform2D(transform));
+
+        // Render
+        scene_handler
+            .vm
+            .render_frame(pixels, width as u32, height as u32);
+
+        scene_handler.vm.execute(Atom::SetGP2(Vec4::zero()));
+        scene_handler.vm.set_active_vm(0);
+        scene_handler.vm.set_layer_enabled(0, true);
     }
 
     /// Draw the 2D scene.

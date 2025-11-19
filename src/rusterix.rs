@@ -218,7 +218,7 @@ impl Rusterix {
             width,
             height,
             &self.assets,
-            // &mut self.scene_handler,
+            &mut self.scene_handler,
         );
     }
 
