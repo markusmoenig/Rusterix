@@ -305,15 +305,51 @@ impl D2PreviewBuilder {
 
         // Add the clipping area
         if let Some(clip_rect) = self.clip_rect {
-            let size = self.map_grid_to_local(
-                screen_size,
-                Vec2::new(clip_rect.width, clip_rect.height),
-                map,
+            // let size = self.map_grid_to_local(
+            //     screen_size,
+            //     Vec2::new(clip_rect.width, clip_rect.height),
+            //     map,
+            // );
+            // let tl = Vec2::new(clip_rect.x, clip_rect.y);
+            // let batch = Batch2D::from_rectangle(tl.x, tl.y, size.x, size.y)
+            //     .source(PixelSource::Pixel([255, 255, 255, 30]));
+            // scene.d2_dynamic.push(batch);
+
+            let rect = (
+                Vec2::new(clip_rect.x, clip_rect.y),
+                Vec2::new(
+                    clip_rect.x + clip_rect.width,
+                    clip_rect.y + clip_rect.height,
+                ),
             );
-            let tl = Vec2::new(clip_rect.x, clip_rect.y);
-            let batch = Batch2D::from_rectangle(tl.x, tl.y, size.x, size.y)
-                .source(PixelSource::Pixel([255, 255, 255, 30]));
-            scene.d2_dynamic.push(batch);
+            scene_handler.add_overlay_2d_line(
+                GeoId::Unknown(20),
+                Vec2::new(rect.0.x, rect.0.y),
+                Vec2::new(rect.1.x, rect.0.y),
+                scene_handler.outline,
+                1000,
+            );
+            scene_handler.add_overlay_2d_line(
+                GeoId::Unknown(21),
+                Vec2::new(rect.0.x, rect.0.y),
+                Vec2::new(rect.0.x, rect.1.y),
+                scene_handler.outline,
+                1000,
+            );
+            scene_handler.add_overlay_2d_line(
+                GeoId::Unknown(22),
+                Vec2::new(rect.1.x, rect.1.y),
+                Vec2::new(rect.1.x, rect.0.y),
+                scene_handler.outline,
+                1000,
+            );
+            scene_handler.add_overlay_2d_line(
+                GeoId::Unknown(23),
+                Vec2::new(rect.1.x, rect.1.y),
+                Vec2::new(rect.0.x, rect.1.y),
+                scene_handler.outline,
+                1000,
+            );
         }
 
         // If this is an editing surface, add the outline
