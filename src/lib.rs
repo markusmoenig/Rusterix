@@ -165,7 +165,7 @@ pub use crate::{
     },
     texture::{RepeatMode, SampleMode, Texture},
     tracer::{HitInfo, Ray, buffer::AccumBuffer, trace::Tracer},
-    value::{Value, ValueContainer},
+    value::{HeightControlPoint, Value, ValueContainer},
 };
 
 // Prelude

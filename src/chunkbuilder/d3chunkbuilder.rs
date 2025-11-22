@@ -483,6 +483,7 @@ impl ChunkBuilder for D3ChunkBuilder {
                                         }
                                     }
                                     LoopOp::Relief { .. } => { /* no hole */ }
+                                    LoopOp::Ridge { .. } => { /* no hole */ }
                                     LoopOp::Terrain { .. } => { /* no hole */ }
                                 }
                             }
@@ -590,587 +591,6 @@ impl ChunkBuilder for D3ChunkBuilder {
                         surface, map, sector, chunk, vmchunk, assets, fl,
                     );
                 }
-
-                // Old hardcoded implementation kept for reference (can be removed after testing)
-                #[allow(dead_code)]
-                let _old_implementation = || {
-                    for fl in &feature_loops {
-                        // Helper: read an int property from the originating profile sector; fallback to host sector
-                        let feature_int_default = |key: &str,
-                                                   origin: Option<u32>,
-                                                   default: i32|
-                         -> i32 {
-                            if let (Some(profile_id), Some(origin_id)) = (surface.profile, origin) {
-                                if let Some(profile_map) = map.profiles.get(&profile_id) {
-                                    if let Some(ps) = profile_map.find_sector(origin_id) {
-                                        return ps.properties.get_int_default(key, default);
-                                    }
-                                }
-                            }
-                            sector.properties.get_int_default(key, default)
-                        };
-                        // Helper: read a float property from the originating profile sector; fallback to host sector
-                        let feature_float_default = |key: &str,
-                                                     origin: Option<u32>,
-                                                     default: f32|
-                         -> f32 {
-                            if let (Some(profile_id), Some(origin_id)) = (surface.profile, origin) {
-                                if let Some(profile_map) = map.profiles.get(&profile_id) {
-                                    if let Some(ps) = profile_map.find_sector(origin_id) {
-                                        return ps.properties.get_float_default(key, default);
-                                    }
-                                }
-                            }
-                            sector.properties.get_float_default(key, default)
-                        };
-                        // Local UV jamb builder for feature loops (U = perimeter distance, V = depth 0..1), starting from a base plane offset
-                        let build_jamb_uv = |loop_uv: &Vec<vek::Vec2<f32>>,
-                                             base_offset: f32,
-                                             depth: f32,
-                                             origin: Option<u32>,
-                                             prefix: &str|
-                         -> (
-                            Vec<[f32; 4]>,
-                            Vec<(usize, usize, usize)>,
-                            Vec<[f32; 2]>,
-                        ) {
-                            let m = loop_uv.len();
-                            if m < 2 {
-                                return (vec![], vec![], vec![]);
-                            }
-
-                            // Accumulate perimeter distances in **world space** on the selected cap plane
-                            let mut n = surface.plane.normal;
-                            let l = n.magnitude();
-                            if l > 1e-6 {
-                                n /= l;
-                            } else {
-                                n = vek::Vec3::unit_y();
-                            }
-
-                            let mut front_ws: Vec<vek::Vec3<f32>> = Vec::with_capacity(m);
-                            for i in 0..m {
-                                let p = surface.uv_to_world(loop_uv[i]) + n * base_offset;
-                                front_ws.push(p);
-                            }
-                            let mut dists = vec![0.0f32; m + 1];
-                            for i in 0..m {
-                                let a = front_ws[i];
-                                let b = front_ws[(i + 1) % m];
-                                dists[i + 1] = dists[i] + (b - a).magnitude();
-                            }
-                            let perim = dists[m].max(1e-6);
-
-                            // --- UVs: follow sector tiling rules for sides with per-feature overrides ---
-                            let tile_mode_side = sector.properties.get_int_default(
-                                "side_tile_mode",
-                                sector.properties.get_int_default("tile_mode", 1),
-                            );
-                            // Allow per-feature overrides, e.g. "relief_jamb_texture_scale_x/y" or "recess_jamb_texture_scale_x/y"
-                            let ov_u_key = format!("{}_jamb_texture_scale_x", prefix);
-                            let ov_v_key = format!("{}_jamb_texture_scale_y", prefix);
-                            let ov_u = feature_float_default(&ov_u_key, origin, f32::NAN);
-                            let ov_v = feature_float_default(&ov_v_key, origin, f32::NAN);
-
-                            let tex_scale_u = if ov_u.is_nan() {
-                                sector.properties.get_float_default(
-                                    "side_texture_scale_x",
-                                    sector.properties.get_float_default("texture_scale_x", 1.0),
-                                )
-                            } else {
-                                ov_u
-                            };
-                            // For RELIEF jambs, default V-scale to the CAP’s scale so vertical tiling matches the face.
-                            // For other jambs (e.g. RECESS), keep the side default unless overridden per-feature.
-                            let tex_scale_v = if ov_v.is_nan() {
-                                if prefix == "relief" {
-                                    sector.properties.get_float_default("texture_scale_y", 1.0)
-                                } else {
-                                    sector.properties.get_float_default(
-                                        "side_texture_scale_y",
-                                        sector.properties.get_float_default("texture_scale_y", 1.0),
-                                    )
-                                }
-                            } else {
-                                ov_v
-                            };
-                            let depth_abs = depth.abs().max(1e-6);
-
-                            // Surface normal
-                            let mut n = surface.plane.normal;
-                            let l = n.magnitude();
-                            if l > 1e-6 {
-                                n /= l;
-                            } else {
-                                n = vek::Vec3::unit_y();
-                            }
-
-                            // Geometry: independent quad per edge (two triangles)
-                            let mut verts: Vec<[f32; 4]> = Vec::with_capacity(m * 4);
-                            let mut uvs: Vec<[f32; 2]> = Vec::with_capacity(m * 4);
-                            let mut inds: Vec<(usize, usize, usize)> = Vec::with_capacity(m * 2);
-
-                            for i in 0..m {
-                                let ia = i;
-                                let ib = (i + 1) % m;
-                                let a_uv = loop_uv[ia];
-                                let b_uv = loop_uv[ib];
-
-                                // Start at the chosen base plane (front or back cap), then extrude by `depth`
-                                let a_front = surface.uv_to_world(a_uv) + n * base_offset;
-                                let b_front = surface.uv_to_world(b_uv) + n * base_offset;
-                                let a_back = a_front + n * depth;
-                                let b_back = b_front + n * depth;
-
-                                let base = verts.len();
-                                verts.push([a_front.x, a_front.y, a_front.z, 1.0]);
-                                verts.push([b_front.x, b_front.y, b_front.z, 1.0]);
-                                verts.push([b_back.x, b_back.y, b_back.z, 1.0]);
-                                verts.push([a_back.x, a_back.y, a_back.z, 1.0]);
-
-                                // U along perimeter, V across depth
-                                let ua_raw = dists[ia];
-                                let ub_raw = dists[ib];
-                                let (ua, ub, v0, v1) = if tile_mode_side == 0 {
-                                    // Fit: normalize to 0..1 in both axes
-                                    (ua_raw / perim, ub_raw / perim, 0.0, 1.0)
-                                } else {
-                                    // Repeat: scale in world units by texture scales
-                                    (
-                                        ua_raw / tex_scale_u.max(1e-6),
-                                        ub_raw / tex_scale_u.max(1e-6),
-                                        0.0,
-                                        depth_abs / tex_scale_v.max(1e-6),
-                                    )
-                                };
-                                uvs.push([ua, v0]);
-                                uvs.push([ub, v0]);
-                                uvs.push([ub, v1]);
-                                uvs.push([ua, v1]);
-
-                                inds.push((base + 0, base + 1, base + 2));
-                                inds.push((base + 0, base + 2, base + 3));
-                            }
-                            (verts, inds, uvs)
-                        };
-
-                        match fl.op {
-                            LoopOp::Relief { height } if height > 0.0 => {
-                                // Decide which cap to attach this feature to: 0=front, 1=back (per-profile-sector)
-                                let profile_target = feature_int_default(
-                                    "profile_target",
-                                    fl.origin_profile_sector,
-                                    0,
-                                );
-                                let mut n = surface.plane.normal;
-                                let ln = n.magnitude();
-                                if ln > 1e-6 {
-                                    n /= ln;
-                                } else {
-                                    n = vek::Vec3::unit_y();
-                                }
-
-                                let cap_offset = if profile_target == 1 {
-                                    surface.extrusion.depth
-                                } else {
-                                    0.0
-                                };
-
-                                // Relief should bulge **outward** from the chosen cap:
-                                // For FRONT (0): outward is along -n  → dir_sign = -1
-                                // For BACK  (1): outward is along +n  → dir_sign = +1
-                                let dir_sign = if profile_target == 0 { -1.0 } else { 1.0 };
-
-                                // Place relief cap by shifting from chosen cap plane along dir_sign * height
-                                let offset_scalar = cap_offset + dir_sign * height;
-                                if let Some((cap_v, cap_i, cap_uv)) =
-                                    build_cap(surface, &fl.path, offset_scalar)
-                                {
-                                    let mut cap_i = cap_i;
-                                    let desired_n: Vec3<f32> =
-                                        if profile_target == 0 { -n } else { n }; // face outward
-                                    fix_winding(&cap_v, &mut cap_i, desired_n);
-                                    let mut batch =
-                                        Batch3D::new(cap_v.clone(), cap_i.clone(), cap_uv.clone())
-                                            .repeat_mode(RepeatMode::RepeatXY)
-                                            .geometry_source(GeometrySource::Sector(sector.id));
-                                    if let Some(si) = feature_shader_index(
-                                        surface,
-                                        map,
-                                        sector,
-                                        fl.origin_profile_sector,
-                                        chunk,
-                                        assets,
-                                    ) {
-                                        batch.shader = Some(si);
-                                    }
-
-                                    let mut added = false;
-
-                                    if let Some(Value::Source(pixelsource)) = feature_pixelsource(
-                                        surface,
-                                        map,
-                                        sector,
-                                        fl.origin_profile_sector,
-                                        "relief_source",
-                                    ) {
-                                        if let Some(tile) = pixelsource.tile_from_tile_list(assets)
-                                        {
-                                            vmchunk.add_poly_3d(
-                                                GeoId::Sector(sector.id),
-                                                tile.id,
-                                                cap_v.clone(),
-                                                cap_uv.clone(),
-                                                cap_i.clone(),
-                                                0,
-                                                true,
-                                            );
-                                            added = true;
-
-                                            if let Some(tex) = assets.tile_index(&tile.id) {
-                                                batch.source = PixelSource::StaticTileIndex(tex);
-                                            }
-                                        }
-                                    }
-                                    if !added {
-                                        vmchunk.add_poly_3d(
-                                            GeoId::Sector(sector.id),
-                                            Uuid::from_str("27826750-a9e7-4346-994b-fb318b238452")
-                                                .ok()
-                                                .unwrap(),
-                                            cap_v,
-                                            cap_uv,
-                                            cap_i,
-                                            0,
-                                            true,
-                                        );
-                                    }
-                                    /*
-                                    // Inherit host material if nothing set by per-feature keys
-                                    if matches!(batch.source, PixelSource::Pixel(_)) {
-                                        if let Some(Value::Source(pixelsource)) =
-                                            sector.properties.get("source")
-                                        {
-                                            if let Some(tile) = pixelsource.tile_from_tile_list(assets)
-                                            {
-                                                if let Some(tex) = assets.tile_index(&tile.id) {
-                                                    batch.source = PixelSource::StaticTileIndex(tex);
-                                                }
-                                            }
-                                        }
-                                    }
-                                    if let Some(si) = batch.shader {
-                                        if chunk.shaders_with_opacity[si] {
-                                            chunk.batches3d_opacity.push(batch);
-                                        } else {
-                                            chunk.batches3d.push(batch);
-                                        }
-                                    } else {
-                                        chunk.batches3d.push(batch);
-                                    }*/
-                                    chunk.batches3d.push(batch);
-                                }
-                                let (ring_v, ring_i, ring_uv) = build_jamb_uv(
-                                    &fl.path,
-                                    cap_offset,
-                                    dir_sign * height,
-                                    fl.origin_profile_sector,
-                                    "relief",
-                                );
-                                let mut ring_i = ring_i;
-                                fix_winding(&ring_v, &mut ring_i, surface.plane.normal);
-                                let mut batch =
-                                    Batch3D::new(ring_v.clone(), ring_i.clone(), ring_uv.clone())
-                                        .repeat_mode(RepeatMode::RepeatXY)
-                                        .geometry_source(GeometrySource::Sector(sector.id));
-                                // if let Some(si) = feature_shader_index(
-                                //     surface,
-                                //     map,
-                                //     sector,
-                                //     fl.origin_profile_sector,
-                                //     chunk,
-                                //     assets,
-                                // ) {
-                                //     batch.shader = Some(si);
-                                // }
-                                let mut added = false;
-                                if let Some(Value::Source(pixelsource)) = feature_pixelsource(
-                                    surface,
-                                    map,
-                                    sector,
-                                    fl.origin_profile_sector,
-                                    "relief_jamb_source",
-                                ) {
-                                    if let Some(tile) = pixelsource.tile_from_tile_list(assets) {
-                                        vmchunk.add_poly_3d(
-                                            GeoId::Sector(sector.id),
-                                            tile.id,
-                                            ring_v.clone(),
-                                            ring_uv.clone(),
-                                            ring_i.clone(),
-                                            0,
-                                            true,
-                                        );
-                                        added = true;
-
-                                        if let Some(tex) = assets.tile_index(&tile.id) {
-                                            batch.source = PixelSource::StaticTileIndex(tex);
-                                        }
-                                    }
-                                }
-                                if !added {
-                                    vmchunk.add_poly_3d(
-                                        GeoId::Sector(sector.id),
-                                        Uuid::from_str("27826750-a9e7-4346-994b-fb318b238452")
-                                            .ok()
-                                            .unwrap(),
-                                        ring_v,
-                                        ring_uv,
-                                        ring_i,
-                                        0,
-                                        true,
-                                    );
-                                }
-                                /*
-                                // Inherit host material if nothing set by per-feature keys
-                                if matches!(batch.source, PixelSource::Pixel(_)) {
-                                    if let Some(Value::Source(pixelsource)) =
-                                        sector.properties.get("source")
-                                    {
-                                        if let Some(tile) = pixelsource.tile_from_tile_list(assets) {
-                                            if let Some(tex) = assets.tile_index(&tile.id) {
-                                                batch.source = PixelSource::StaticTileIndex(tex);
-                                            }
-                                        }
-                                    }
-                                }
-                                if let Some(si) = batch.shader {
-                                    if chunk.shaders_with_opacity[si] {
-                                        chunk.batches3d_opacity.push(batch);
-                                    } else {
-                                        chunk.batches3d.push(batch);
-                                    }
-                                } else {
-                                    chunk.batches3d.push(batch);
-                                }*/
-                                chunk.batches3d.push(batch);
-                            }
-                            LoopOp::Recess { depth } if depth > 0.0 => {
-                                // Determine which cap we recess into and the direction for that cap
-                                let profile_target = feature_int_default(
-                                    "profile_target",
-                                    fl.origin_profile_sector,
-                                    0,
-                                );
-                                let mut n = surface.plane.normal;
-                                let ln = n.magnitude();
-                                if ln > 1e-6 {
-                                    n /= ln;
-                                } else {
-                                    n = vek::Vec3::unit_y();
-                                }
-
-                                // Cap selection: front (0) or back (1)
-                                let cap_offset = if profile_target == 1 {
-                                    surface.extrusion.depth
-                                } else {
-                                    0.0
-                                };
-
-                                // FRONT (0): recess must move **toward back**, i.e. along +n by `depth`
-                                // BACK  (1): recess must move **toward front**, i.e. along -n by `depth`
-                                let dir_sign = if profile_target == 0 { 1.0 } else { -1.0 };
-
-                                // --- Cap (recess plane) ---
-                                // Place recess cap by shifting from chosen cap plane along dir_sign * depth
-                                let offset_scalar = cap_offset + dir_sign * depth;
-                                if let Some((cap_v, cap_i, cap_uv)) =
-                                    build_cap(surface, &fl.path, offset_scalar)
-                                {
-                                    let mut cap_i = cap_i;
-                                    // Recess cap faces into the pocket: opposite of the shift direction
-                                    let desired_n: Vec3<f32> =
-                                        if profile_target == 0 { -n } else { n };
-                                    fix_winding(&cap_v, &mut cap_i, desired_n);
-                                    if dbg {
-                                        println!(
-                                            "[DBG] recess cap: verts={}, tris={}, target={} (0=front,1=back)",
-                                            cap_v.len(),
-                                            cap_i.len(),
-                                            profile_target
-                                        );
-                                    }
-                                    let mut batch =
-                                        Batch3D::new(cap_v.clone(), cap_i.clone(), cap_uv.clone())
-                                            .repeat_mode(RepeatMode::RepeatXY)
-                                            .geometry_source(GeometrySource::Sector(sector.id));
-                                    // if let Some(si) = feature_shader_index(
-                                    //     surface,
-                                    //     map,
-                                    //     sector,
-                                    //     fl.origin_profile_sector,
-                                    //     chunk,
-                                    //     assets,
-                                    // ) {
-                                    //     batch.shader = Some(si);
-                                    // }
-                                    let mut added = false;
-                                    if let Some(Value::Source(pixelsource)) = feature_pixelsource(
-                                        surface,
-                                        map,
-                                        sector,
-                                        fl.origin_profile_sector,
-                                        "recess_source",
-                                    ) {
-                                        if let Some(tile) = pixelsource.tile_from_tile_list(assets)
-                                        {
-                                            if let Some(tex) = assets.tile_index(&tile.id) {
-                                                batch.source = PixelSource::StaticTileIndex(tex);
-                                            }
-                                        }
-                                    }
-                                    // Inherit host material if nothing set by per-feature keys
-                                    if matches!(batch.source, PixelSource::Pixel(_)) {
-                                        if let Some(Value::Source(pixelsource)) =
-                                            sector.properties.get("source")
-                                        {
-                                            if let Some(tile) =
-                                                pixelsource.tile_from_tile_list(assets)
-                                            {
-                                                vmchunk.add_poly_3d(
-                                                    GeoId::Sector(sector.id),
-                                                    tile.id,
-                                                    cap_v.clone(),
-                                                    cap_uv.clone(),
-                                                    cap_i.clone(),
-                                                    0,
-                                                    true,
-                                                );
-                                                added = true;
-                                                if let Some(tex) = assets.tile_index(&tile.id) {
-                                                    batch.source =
-                                                        PixelSource::StaticTileIndex(tex);
-                                                }
-                                            }
-                                        }
-                                    }
-                                    if !added {
-                                        vmchunk.add_poly_3d(
-                                            GeoId::Sector(sector.id),
-                                            Uuid::from_str("27826750-a9e7-4346-994b-fb318b238452")
-                                                .ok()
-                                                .unwrap(),
-                                            cap_v,
-                                            cap_uv,
-                                            cap_i,
-                                            0,
-                                            true,
-                                        );
-                                    }
-                                    /*
-                                    if let Some(si) = batch.shader {
-                                        if chunk.shaders_with_opacity[si] {
-                                            chunk.batches3d_opacity.push(batch);
-                                        } else {
-                                            chunk.batches3d.push(batch);
-                                        }
-                                    } else {
-                                        chunk.batches3d.push(batch);
-                                    }*/
-                                    chunk.batches3d.push(batch);
-                                }
-
-                                // --- Jamb (side band into the pocket) ---
-                                // build_jamb_uv extrudes along +n by the provided depth from base_offset.
-                                // Use the same signed direction as the cap shift
-                                let (ring_v, ring_i, ring_uv) = build_jamb_uv(
-                                    &fl.path,
-                                    cap_offset,
-                                    dir_sign * depth,
-                                    fl.origin_profile_sector,
-                                    "recess",
-                                );
-                                // let mut ring_i = ring_i;
-                                // fix_winding(&ring_v, &mut ring_i, surface.plane.normal);
-                                let mut batch =
-                                    Batch3D::new(ring_v.clone(), ring_i.clone(), ring_uv.clone())
-                                        .repeat_mode(RepeatMode::RepeatXY)
-                                        .geometry_source(GeometrySource::Sector(sector.id));
-                                // if let Some(si) = feature_shader_index(
-                                //     surface,
-                                //     map,
-                                //     sector,
-                                //     fl.origin_profile_sector,
-                                //     chunk,
-                                //     assets,
-                                // ) {
-                                //     batch.shader = Some(si);
-                                // }
-                                let mut added = false;
-                                if let Some(Value::Source(pixelsource)) = feature_pixelsource(
-                                    surface,
-                                    map,
-                                    sector,
-                                    fl.origin_profile_sector,
-                                    "recess_jamb_source",
-                                ) {
-                                    if let Some(tile) = pixelsource.tile_from_tile_list(assets) {
-                                        vmchunk.add_poly_3d(
-                                            GeoId::Sector(sector.id),
-                                            tile.id,
-                                            ring_v.clone(),
-                                            ring_uv.clone(),
-                                            ring_i.clone(),
-                                            0,
-                                            true,
-                                        );
-                                        added = true;
-                                        if let Some(tex) = assets.tile_index(&tile.id) {
-                                            batch.source = PixelSource::StaticTileIndex(tex);
-                                        }
-                                    }
-                                }
-                                if !added {
-                                    vmchunk.add_poly_3d(
-                                        GeoId::Sector(sector.id),
-                                        Uuid::from_str("27826750-a9e7-4346-994b-fb318b238452")
-                                            .ok()
-                                            .unwrap(),
-                                        ring_v,
-                                        ring_uv,
-                                        ring_i,
-                                        0,
-                                        true,
-                                    );
-                                }
-                                // Inherit host material if nothing set by per-feature keys
-                                if matches!(batch.source, PixelSource::Pixel(_)) {
-                                    if let Some(Value::Source(pixelsource)) =
-                                        sector.properties.get("source")
-                                    {
-                                        if let Some(tile) = pixelsource.tile_from_tile_list(assets)
-                                        {
-                                            if let Some(tex) = assets.tile_index(&tile.id) {
-                                                batch.source = PixelSource::StaticTileIndex(tex);
-                                            }
-                                        }
-                                    }
-                                }
-                                // if let Some(si) = batch.shader {
-                                //     if chunk.shaders_with_opacity[si] {
-                                //         chunk.batches3d_opacity.push(batch);
-                                //     } else {
-                                //         chunk.batches3d.push(batch);
-                                //     }
-                                // } else {
-                                //     chunk.batches3d.push(batch);
-                                // }
-                                chunk.batches3d.push(batch);
-                            }
-                            _ => {}
-                        }
-                    }
-                }; // End of old implementation closure
             } else {
                 // Fallback: no profile info; triangulate whole surface as-is
                 if let Some((world_vertices, indices, verts_uv)) = surface.triangulate(sector, map)
@@ -1346,6 +766,10 @@ fn split_loops_for_base<'a>(
                 // Relief never subtracts from the base; purely additive feature
                 feature_loops.push(h);
             }
+            LoopOp::Ridge { .. } => {
+                // Ridge is a raised platform feature, not a hole
+                feature_loops.push(h);
+            }
             LoopOp::Terrain { .. } => {
                 // Terrain is a surface feature, not a hole
                 feature_loops.push(h);
@@ -1353,47 +777,6 @@ fn split_loops_for_base<'a>(
         }
     }
     (base_holes, feature_loops)
-}
-
-/// Triangulate a simple polygon (no holes) in UV space using earcutr and return indices.
-fn earcut_simple(loop_uv: &[vek::Vec2<f32>]) -> Option<Vec<(usize, usize, usize)>> {
-    if loop_uv.len() < 3 {
-        return None;
-    }
-    let flat: Vec<f64> = loop_uv
-        .iter()
-        .flat_map(|p| [p.x as f64, p.y as f64])
-        .collect();
-    let idx = earcutr::earcut(&flat, &[], 2).ok()?;
-    let tris = idx.chunks_exact(3).map(|t| (t[2], t[1], t[0])).collect();
-    Some(tris)
-}
-
-/// Build a cap for a relief/recess by triangulating the loop and offsetting along surface normal.
-fn build_cap(
-    surface: &crate::Surface,
-    loop_uv: &[vek::Vec2<f32>],
-    offset: f32, // +height (relief) or -depth (recess)
-) -> Option<(Vec<[f32; 4]>, Vec<(usize, usize, usize)>, Vec<[f32; 2]>)> {
-    let n = {
-        let nn = surface.plane.normal;
-        let len = nn.magnitude();
-        if len > 1e-6 {
-            nn / len
-        } else {
-            vek::Vec3::unit_y()
-        }
-    };
-    let verts_world: Vec<[f32; 4]> = loop_uv
-        .iter()
-        .map(|uv| {
-            let p = surface.uv_to_world(*uv) + n * offset;
-            [p.x, p.y, p.z, 1.0]
-        })
-        .collect();
-    let tris = earcut_simple(loop_uv)?;
-    let uvs: Vec<[f32; 2]> = loop_uv.iter().map(|p| [p.x, p.y]).collect();
-    Some((verts_world, tris, uvs))
 }
 
 /// Read profile loops (outer + holes) for a surface from the profile map, using profile sectors.
@@ -1421,6 +804,14 @@ fn read_profile_loops(
                 .properties
                 .get_float_default("profile_outer_depth", 0.0),
         },
+        4 => LoopOp::Ridge {
+            height: _sector
+                .properties
+                .get_float_default("profile_outer_height", 0.0),
+            slope_width: _sector
+                .properties
+                .get_float_default("profile_outer_slope_width", 1.0),
+        },
         _ => LoopOp::None,
     };
     let outer = ProfileLoop {
@@ -1428,6 +819,7 @@ fn read_profile_loops(
         op: outer_op,
         origin_profile_sector: None,
         vertex_heights: vec![], // Outer loop doesn't need heights currently
+        height_control_points: vec![], // No custom control points for outer loop
     };
 
     // 2) HOLES from the profile map for this surface
@@ -1501,6 +893,19 @@ fn read_profile_loops(
                         };
                         LoopOp::Terrain { smoothness }
                     }
+                    4 => {
+                        // Ridge: use profile_amount as height, read slope_width separately
+                        let height = if amount.is_nan() {
+                            ps.properties.get_float_default("profile_height", 0.0)
+                        } else {
+                            amount
+                        };
+                        let slope_width = ps.properties.get_float_default("slope_width", 1.0);
+                        LoopOp::Ridge {
+                            height,
+                            slope_width,
+                        }
+                    }
                     _ => LoopOp::None,
                 };
 
@@ -1510,11 +915,26 @@ fn read_profile_loops(
                     _ => vec![],
                 };
 
+                // Read height control points from sector properties if terrain
+                let height_control_points = match op {
+                    LoopOp::Terrain { .. } => ps
+                        .properties
+                        .get_height_points_default("height_control_points")
+                        .iter()
+                        .map(|hcp| crate::map::surface::HeightPoint {
+                            position: vek::Vec2::new(hcp.position[0], hcp.position[1]),
+                            height: hcp.height,
+                        })
+                        .collect(),
+                    _ => vec![],
+                };
+
                 holes.push(ProfileLoop {
                     path: uv_path,
                     op,
                     origin_profile_sector: Some(ps.id as u32),
                     vertex_heights,
+                    height_control_points,
                 });
             }
         }
@@ -1738,12 +1158,20 @@ fn process_feature_loop_with_action(
     use crate::chunkbuilder::action::TerrainAction;
 
     // Get the action for this loop operation
-    // Special handling for Terrain which needs vertex heights
+    // Special handling for Terrain which needs vertex heights and control points
     let action: Box<dyn crate::chunkbuilder::action::SurfaceAction> = match &feature_loop.op {
         LoopOp::Terrain { smoothness } => {
-            // Create terrain action with vertex heights
+            // Convert HeightPoint to (Vec2, f32) tuples for TerrainAction
+            let height_control_points: Vec<(vek::Vec2<f32>, f32)> = feature_loop
+                .height_control_points
+                .iter()
+                .map(|hp| (hp.position, hp.height))
+                .collect();
+
+            // Create terrain action with vertex heights and custom control points
             Box::new(TerrainAction {
                 vertex_heights: feature_loop.vertex_heights.clone(),
+                height_control_points,
                 smoothness: *smoothness,
             })
         }
@@ -1937,36 +1365,4 @@ fn process_feature_loop_with_action(
     }
 
     Some(())
-}
-
-fn feature_shader_index(
-    surface: &crate::Surface,
-    map: &Map,
-    _host_sector: &Sector,
-    loop_origin: Option<u32>,
-    chunk: &mut Chunk,
-    assets: &Assets,
-) -> Option<usize> {
-    // Prefer per-feature shader on the originating profile sector
-    if let (Some(profile_id), Some(origin_id)) = (surface.profile, loop_origin) {
-        if let Some(profile_map) = map.profiles.get(&profile_id) {
-            if let Some(ps) = profile_map.find_sector(origin_id) {
-                if let Some(shader_id) = ps.shader {
-                    if let Some(m) = profile_map.shaders.get(&shader_id) {
-                        if let Some(si) = chunk.add_shader(&m.build_shader(), assets) {
-                            return Some(si);
-                        }
-                    }
-                }
-            }
-        }
-    }
-    /*
-    // Fallback to host sector shader
-    if let Some(shader_id) = host_sector.shader {
-        if let Some(m) = map.shaders.get(&shader_id) {
-            return chunk.add_shader(&m.build_shader(), assets);
-        }
-    }*/
-    None
 }

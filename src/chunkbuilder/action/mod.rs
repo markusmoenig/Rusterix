@@ -1,12 +1,14 @@
 mod hole;
 mod recess;
 mod relief;
+mod ridge;
 mod terrain;
 
 // Re-export action implementations
 pub use hole::HoleAction;
 pub use recess::RecessAction;
 pub use relief::ReliefAction;
+pub use ridge::RidgeAction;
 pub use terrain::{
     SmoothedTerrainAction, TerrainAction, create_smooth_terrain, interpolate_height_idw,
 };
@@ -98,6 +100,8 @@ pub struct ActionProperties {
     pub depth: f32,
     /// Which side of the surface to target (0 = front/default, 1 = back)
     pub target_side: i32,
+    /// Width of slope for ridge actions (distance from edge to flat top)
+    pub slope_width: f32,
     /// Custom connection mode override
     pub connection_override: Option<ConnectionMode>,
 }
@@ -120,6 +124,11 @@ impl ActionProperties {
 
     pub fn with_connection(mut self, connection: ConnectionMode) -> Self {
         self.connection_override = Some(connection);
+        self
+    }
+
+    pub fn with_slope_width(mut self, slope_width: f32) -> Self {
+        self.slope_width = slope_width;
         self
     }
 }

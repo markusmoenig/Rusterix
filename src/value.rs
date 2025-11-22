@@ -5,6 +5,13 @@ use rustpython::vm::*;
 use std::fmt;
 use theframework::prelude::*;
 
+/// A single height control point with position and height
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
+pub struct HeightControlPoint {
+    pub position: [f32; 2], // UV position (x, y)
+    pub height: f32,        // Height value
+}
+
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub enum Value {
     NoValue,
@@ -28,6 +35,7 @@ pub enum Value {
     Color(TheColor),
     ParticleEmitter(ParticleEmitter),
     MaterialProfile(MaterialProfile),
+    HeightPoints(Vec<HeightControlPoint>),
 }
 
 impl Value {
@@ -170,6 +178,7 @@ impl fmt::Display for Value {
             Value::Color(_) => write!(f, "Color"),
             Value::ParticleEmitter(_) => write!(f, "ParticleEmitter"),
             Value::MaterialProfile(_) => write!(f, "MaterialProfile"),
+            Value::HeightPoints(points) => write!(f, "HeightPoints({})", points.len()),
         }
     }
 }
@@ -376,6 +385,31 @@ impl ValueContainer {
         })
     }
 
+    /// Get height control points for terrain generation.
+    pub fn get_height_points(&self, key: &str) -> Option<&Vec<HeightControlPoint>> {
+        self.values.get(key).and_then(|v| {
+            if let Value::HeightPoints(val) = v {
+                Some(val)
+            } else {
+                None
+            }
+        })
+    }
+
+    /// Get height control points with a default empty vector.
+    pub fn get_height_points_default(&self, key: &str) -> Vec<HeightControlPoint> {
+        self.values
+            .get(key)
+            .map(|v| {
+                if let Value::HeightPoints(val) = v {
+                    val.clone()
+                } else {
+                    Vec::new()
+                }
+            })
+            .unwrap_or_default()
+    }
+
     // Checks if the value exists
     pub fn contains(&self, key: &str) -> bool {
         self.values.contains_key(key)
@@ -432,7 +466,8 @@ impl ValueContainer {
             Some(Value::Color(_)) => 14,
             Some(Value::ParticleEmitter(_)) => 14,
             Some(Value::MaterialProfile(_)) => 15,
-            Some(Value::NoValue) => 16,
+            Some(Value::HeightPoints(_)) => 16,
+            Some(Value::NoValue) => 17,
             None => 99, // If key is missing, push to the end
         }
     }

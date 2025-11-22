@@ -5,12 +5,16 @@ use super::{
 use vek::Vec2;
 
 /// A terrain action that creates smooth height-interpolated surfaces
-/// based on vertex heights (vertex.z values)
+/// based on vertex heights (vertex.z values) and optional control points
 pub struct TerrainAction {
     /// Vertex heights in the order they appear in sector_uv
     /// These are the z-heights from the vertices
     pub vertex_heights: Vec<f32>,
+    /// Additional height control points (position + height) for features like hills/valleys
+    /// These are NOT part of the sector outline but influence height interpolation
+    pub height_control_points: Vec<(Vec2<f32>, f32)>,
     /// Smoothness factor (0.0 = linear interpolation, higher = smoother)
+    /// This is used as the power parameter in IDW (Inverse Distance Weighting)
     pub smoothness: f32,
 }
 
@@ -26,15 +30,45 @@ impl SurfaceAction for TerrainAction {
         }
 
         // Create control points with interpolated heights
-        // For now, we'll use the vertex heights directly at the vertices
-        // and let the mesh builder handle the triangulation
         let mut control_points = Vec::with_capacity(sector_uv.len());
 
-        for (i, &uv) in sector_uv.iter().enumerate() {
-            control_points.push(ControlPoint {
-                uv,
-                extrusion: self.vertex_heights[i],
-            });
+        // If we have additional height control points, use IDW interpolation
+        // Otherwise, use vertex heights directly
+        if !self.height_control_points.is_empty() {
+            // Build combined vertex list: boundary vertices + control points
+            let mut all_height_points =
+                Vec::with_capacity(sector_uv.len() + self.height_control_points.len());
+
+            // Add boundary vertices with their heights
+            for (i, &uv) in sector_uv.iter().enumerate() {
+                all_height_points.push((uv, self.vertex_heights[i]));
+            }
+
+            // Add custom control points
+            all_height_points.extend_from_slice(&self.height_control_points);
+
+            // Interpolate height at each boundary vertex using all control points
+            // This allows interior control points (hills/valleys) to influence boundary
+            for &uv in sector_uv.iter() {
+                let height = interpolate_height_idw(
+                    uv,
+                    &all_height_points,
+                    self.smoothness.max(1.0), // Use smoothness as IDW power (min 1.0)
+                );
+
+                control_points.push(ControlPoint {
+                    uv,
+                    extrusion: height,
+                });
+            }
+        } else {
+            // No custom control points, use vertex heights directly
+            for (i, &uv) in sector_uv.iter().enumerate() {
+                control_points.push(ControlPoint {
+                    uv,
+                    extrusion: self.vertex_heights[i],
+                });
+            }
         }
 
         Some(SectorMeshDescriptor {
@@ -58,10 +92,12 @@ impl SurfaceAction for TerrainAction {
 /// # Arguments
 /// * `sector_uv` - The UV coordinates of the sector boundary
 /// * `vertex_heights` - Height values (z-component) for each vertex
-/// * `smoothness` - Smoothness factor for interpolation (0.0 = linear, higher = smoother)
+/// * `height_control_points` - Additional height control points (position, height) for hills/valleys
+/// * `smoothness` - Smoothness factor for interpolation (1.0 = linear IDW, higher = smoother)
 pub fn create_smooth_terrain(
     sector_uv: &[Vec2<f32>],
     vertex_heights: &[f32],
+    height_control_points: Vec<(Vec2<f32>, f32)>,
     smoothness: f32,
 ) -> Option<TerrainAction> {
     if sector_uv.len() != vertex_heights.len() || sector_uv.len() < 3 {
@@ -70,7 +106,8 @@ pub fn create_smooth_terrain(
 
     Some(TerrainAction {
         vertex_heights: vertex_heights.to_vec(),
-        smoothness: smoothness.max(0.0),
+        height_control_points,
+        smoothness: smoothness.max(1.0),
     })
 }
 
@@ -175,10 +212,34 @@ mod tests {
 
         let heights = vec![0.0, 1.0, 2.0, 1.5];
 
-        let terrain = create_smooth_terrain(&sector_uv, &heights, 1.0).unwrap();
+        let terrain = create_smooth_terrain(&sector_uv, &heights, vec![], 1.0).unwrap();
 
         assert_eq!(terrain.vertex_heights.len(), 4);
         assert_eq!(terrain.smoothness, 1.0);
+        assert_eq!(terrain.height_control_points.len(), 0);
+    }
+
+    #[test]
+    fn test_terrain_with_control_points() {
+        let sector_uv = vec![
+            Vec2::new(0.0, 0.0),
+            Vec2::new(10.0, 0.0),
+            Vec2::new(10.0, 10.0),
+            Vec2::new(0.0, 10.0),
+        ];
+
+        let heights = vec![0.0, 0.0, 0.0, 0.0];
+
+        // Add a hill in the center
+        let control_points = vec![
+            (Vec2::new(5.0, 5.0), 5.0), // Hill peak at center
+        ];
+
+        let terrain = create_smooth_terrain(&sector_uv, &heights, control_points, 2.0).unwrap();
+
+        assert_eq!(terrain.vertex_heights.len(), 4);
+        assert_eq!(terrain.height_control_points.len(), 1);
+        assert_eq!(terrain.smoothness, 2.0);
     }
 
     #[test]
