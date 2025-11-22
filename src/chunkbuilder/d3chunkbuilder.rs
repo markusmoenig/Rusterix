@@ -8,6 +8,9 @@ use std::str::FromStr;
 use uuid::Uuid;
 use vek::{Vec2, Vec3};
 
+/// Default tile UUID for untextured/fallback meshes
+const DEFAULT_TILE_ID: &str = "27826750-a9e7-4346-994b-fb318b238452";
+
 pub struct D3ChunkBuilder {}
 
 impl Clone for D3ChunkBuilder {
@@ -211,14 +214,6 @@ impl ChunkBuilder for D3ChunkBuilder {
                             uvs.push([(v[0] - minx) / tex_scale_x, (v[1] - miny) / tex_scale_y]);
                         }
                     }
-                    let shader_index = sector
-                        .shader
-                        .and_then(|shader_id| {
-                            map.shaders
-                                .get(&shader_id)
-                                .map(|m| chunk.add_shader(&m.build_shader(), assets))
-                        })
-                        .flatten();
                     #[derive(Clone, Copy)]
                     enum MaterialKind {
                         Cap,
@@ -229,7 +224,6 @@ impl ChunkBuilder for D3ChunkBuilder {
                     fn push_with_material_kind_local(
                         kind: MaterialKind,
                         sector: &Sector,
-                        _shader_index: Option<usize>,
                         assets: &Assets,
                         chunk: &mut Chunk,
                         vmchunk: &mut scenevm::Chunk,
@@ -274,9 +268,7 @@ impl ChunkBuilder for D3ChunkBuilder {
                         if !added {
                             vmchunk.add_poly_3d(
                                 GeoId::Sector(sector.id),
-                                Uuid::from_str("27826750-a9e7-4346-994b-fb318b238452")
-                                    .ok()
-                                    .unwrap(),
+                                Uuid::from_str(DEFAULT_TILE_ID).unwrap(),
                                 verts.clone(),
                                 uvs_in.clone(),
                                 inds.clone(),
@@ -284,37 +276,6 @@ impl ChunkBuilder for D3ChunkBuilder {
                                 true,
                             );
                         }
-
-                        /*
-                        if let Some(si) = shader_index {
-                            batch.shader = Some(si);
-                            if chunk.shaders_with_opacity[si] {
-                                chunk.batches3d_opacity.push(batch);
-                            } else {
-                                if let Some(si) = batch.shader {
-                                    if chunk.shaders_with_opacity[si] {
-                                        chunk.batches3d_opacity.push(batch);
-                                    } else {
-                                        chunk.batches3d.push(batch);
-                                    }
-                                } else {
-                                    chunk.batches3d.push(batch);
-                                }
-                            }
-                        } else {
-                            if matches!(batch.source, PixelSource::Pixel(_)) {
-                                batch.source = PixelSource::Pixel([128, 128, 128, 255]);
-                            }
-                            if let Some(si) = batch.shader {
-                                if chunk.shaders_with_opacity[si] {
-                                    chunk.batches3d_opacity.push(batch);
-                                } else {
-                                    chunk.batches3d.push(batch);
-                                }
-                            } else {
-                                chunk.batches3d.push(batch);
-                            }
-                        }*/
 
                         chunk.batches3d.push(batch);
                     }
@@ -420,7 +381,6 @@ impl ChunkBuilder for D3ChunkBuilder {
                     push_with_material_kind_local(
                         MaterialKind::Cap,
                         sector,
-                        shader_index,
                         assets,
                         chunk,
                         vmchunk,
@@ -546,7 +506,6 @@ impl ChunkBuilder for D3ChunkBuilder {
                                 push_with_material_kind_local(
                                     MaterialKind::Cap,
                                     sector,
-                                    shader_index,
                                     assets,
                                     chunk,
                                     vmchunk,
@@ -564,7 +523,6 @@ impl ChunkBuilder for D3ChunkBuilder {
                             push_with_material_kind_local(
                                 MaterialKind::Side,
                                 sector,
-                                shader_index,
                                 assets,
                                 chunk,
                                 vmchunk,
@@ -622,15 +580,6 @@ impl ChunkBuilder for D3ChunkBuilder {
                             uvs.push([(v[0] - minx) / tex_scale_x, (v[1] - miny) / tex_scale_y]);
                         }
                     }
-                    let shader_index = sector
-                        .shader
-                        .and_then(|shader_id| {
-                            map.shaders
-                                .get(&shader_id)
-                                .map(|m| chunk.add_shader(&m.build_shader(), assets))
-                        })
-                        .flatten();
-
                     #[allow(dead_code)]
                     #[derive(Clone, Copy)]
                     enum MaterialKind {
@@ -642,7 +591,6 @@ impl ChunkBuilder for D3ChunkBuilder {
                     fn push_with_material_kind_local(
                         kind: MaterialKind,
                         sector: &Sector,
-                        _shader_index: Option<usize>,
                         assets: &Assets,
                         chunk: &mut Chunk,
                         vmchunk: &mut scenevm::Chunk,
@@ -687,9 +635,7 @@ impl ChunkBuilder for D3ChunkBuilder {
                         if !added {
                             vmchunk.add_poly_3d(
                                 GeoId::Sector(sector.id),
-                                Uuid::from_str("27826750-a9e7-4346-994b-fb318b238452")
-                                    .ok()
-                                    .unwrap(),
+                                Uuid::from_str(DEFAULT_TILE_ID).unwrap(),
                                 verts,
                                 uvs_in,
                                 inds,
@@ -698,26 +644,12 @@ impl ChunkBuilder for D3ChunkBuilder {
                             );
                         }
 
-                        // if let Some(si) = shader_index {
-                        //     batch.shader = Some(si);
-                        //     if chunk.shaders_with_opacity[si] {
-                        //         chunk.batches3d_opacity.push(batch);
-                        //     } else {
-                        //         chunk.batches3d.push(batch);
-                        //     }
-                        // } else {
-                        //     if matches!(batch.source, PixelSource::Pixel(_)) {
-                        //         batch.source = PixelSource::Pixel([128, 128, 128, 255]);
-                        //     }
-                        //     chunk.batches3d.push(batch);
-                        // }
                         chunk.batches3d.push(batch);
                     }
 
                     push_with_material_kind_local(
                         MaterialKind::Cap,
                         sector,
-                        shader_index,
                         assets,
                         chunk,
                         vmchunk,
@@ -1350,9 +1282,7 @@ fn process_feature_loop_with_action(
         if !added {
             vmchunk.add_poly_3d(
                 GeoId::Sector(sector.id),
-                Uuid::from_str("27826750-a9e7-4346-994b-fb318b238452")
-                    .ok()
-                    .unwrap(),
+                Uuid::from_str(DEFAULT_TILE_ID).unwrap(),
                 mesh.vertices.clone(),
                 mesh.uvs.clone(),
                 mesh_indices,
