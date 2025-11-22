@@ -6,11 +6,48 @@ use vek::{Vec2, Vec3};
 use earcutr::earcut;
 
 /// Operation applied to a profile loop on this surface (non-destructive).
-#[derive(Serialize, Deserialize, Clone, Copy, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub enum LoopOp {
     None,
-    Relief { height: f32 }, // positive outward along surface normal
-    Recess { depth: f32 },  // positive inward along surface normal
+    Relief { height: f32 },      // positive outward along surface normal
+    Recess { depth: f32 },       // positive inward along surface normal
+    Terrain { smoothness: f32 }, // terrain with vertex height interpolation
+}
+
+impl LoopOp {
+    /// Convert this LoopOp to ActionProperties for use with the SurfaceAction trait system
+    pub fn to_action_properties(
+        &self,
+        target_side: i32,
+    ) -> crate::chunkbuilder::action::ActionProperties {
+        use crate::chunkbuilder::action::ActionProperties;
+
+        match self {
+            LoopOp::None => ActionProperties::default().with_target_side(target_side),
+            LoopOp::Relief { height } => ActionProperties::default()
+                .with_height(*height)
+                .with_target_side(target_side),
+            LoopOp::Recess { depth } => ActionProperties::default()
+                .with_depth(*depth)
+                .with_target_side(target_side),
+            LoopOp::Terrain { smoothness } => ActionProperties::default()
+                .with_height(*smoothness) // Reuse height field for smoothness
+                .with_target_side(target_side),
+        }
+    }
+
+    /// Get the appropriate SurfaceAction implementation for this operation
+    /// Note: For Terrain, you must provide vertex_heights separately via TerrainAction
+    pub fn get_action(&self) -> Option<Box<dyn crate::chunkbuilder::action::SurfaceAction>> {
+        use crate::chunkbuilder::action::{HoleAction, RecessAction, ReliefAction};
+
+        match self {
+            LoopOp::None => Some(Box::new(HoleAction)),
+            LoopOp::Relief { .. } => Some(Box::new(ReliefAction)),
+            LoopOp::Recess { .. } => Some(Box::new(RecessAction)),
+            LoopOp::Terrain { .. } => None, // Terrain requires special handling with vertex_heights
+        }
+    }
 }
 
 /// One closed loop in the surface's UV/profile space.
@@ -20,6 +57,9 @@ pub struct ProfileLoop {
     pub op: LoopOp,           // optional loop-specific op
     /// The profile-map sector this loop came from. `None` for the outer host loop.
     pub origin_profile_sector: Option<u32>,
+    /// Vertex heights (z-component) for terrain interpolation. Empty if not terrain.
+    #[serde(default)]
+    pub vertex_heights: Vec<f32>,
 }
 
 /// Represents a geometric plane defined by an origin and a normal vector.

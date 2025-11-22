@@ -1,5 +1,7 @@
+pub mod action;
 pub mod d2chunkbuilder;
 pub mod d3chunkbuilder;
+pub mod surface_mesh_builder;
 
 use crate::{Assets, Chunk, Map};
 
