@@ -220,24 +220,19 @@ impl ChunkBuilder for D3ChunkBuilder {
                         Side,
                     }
 
-                    // Helper function (no captures): push a batch with sector material. Side prefers `side_source`.
+                    // Helper function (no captures): push a batch with sector material.
                     fn push_with_material_kind_local(
                         kind: MaterialKind,
                         sector: &Sector,
                         assets: &Assets,
-                        chunk: &mut Chunk,
                         vmchunk: &mut scenevm::Chunk,
                         verts: Vec<[f32; 4]>,
                         inds: Vec<(usize, usize, usize)>,
                         uvs_in: Vec<[f32; 2]>,
                     ) {
-                        let mut batch = Batch3D::new(verts.clone(), inds.clone(), uvs_in.clone())
-                            .repeat_mode(RepeatMode::RepeatXY)
-                            .geometry_source(GeometrySource::Sector(sector.id));
-
                         let source_key = match kind {
-                            MaterialKind::Side => "side_source",
-                            MaterialKind::Cap => "source",
+                            MaterialKind::Side => "jamb_source",
+                            MaterialKind::Cap => "cap_source",
                         };
                         let fallback_key = "source";
 
@@ -258,10 +253,6 @@ impl ChunkBuilder for D3ChunkBuilder {
                                     true,
                                 );
                                 added = true;
-
-                                if let Some(texture_index) = assets.tile_index(&tile.id) {
-                                    batch.source = PixelSource::StaticTileIndex(texture_index);
-                                }
                             }
                         }
 
@@ -276,8 +267,6 @@ impl ChunkBuilder for D3ChunkBuilder {
                                 true,
                             );
                         }
-
-                        chunk.batches3d.push(batch);
                     }
 
                     // Build a side band (jamb) with UVs: U=perimeter distance normalized, V=0..1 across depth
@@ -382,7 +371,6 @@ impl ChunkBuilder for D3ChunkBuilder {
                         MaterialKind::Cap,
                         sector,
                         assets,
-                        chunk,
                         vmchunk,
                         world_vertices.clone(),
                         indices.clone(),
@@ -507,7 +495,6 @@ impl ChunkBuilder for D3ChunkBuilder {
                                     MaterialKind::Cap,
                                     sector,
                                     assets,
-                                    chunk,
                                     vmchunk,
                                     back_world_vertices,
                                     back_indices,
@@ -524,7 +511,6 @@ impl ChunkBuilder for D3ChunkBuilder {
                                 MaterialKind::Side,
                                 sector,
                                 assets,
-                                chunk,
                                 vmchunk,
                                 ring_v,
                                 ring_i,
@@ -587,24 +573,19 @@ impl ChunkBuilder for D3ChunkBuilder {
                         Side,
                     }
 
-                    // Helper function (no captures): push a batch with sector material. Side prefers `side_source`.
+                    // Helper function (no captures): push a batch with sector material.
                     fn push_with_material_kind_local(
                         kind: MaterialKind,
                         sector: &Sector,
                         assets: &Assets,
-                        chunk: &mut Chunk,
                         vmchunk: &mut scenevm::Chunk,
                         verts: Vec<[f32; 4]>,
                         inds: Vec<(usize, usize, usize)>,
                         uvs_in: Vec<[f32; 2]>,
                     ) {
-                        let mut batch = Batch3D::new(verts.clone(), inds.clone(), uvs_in.clone())
-                            .repeat_mode(RepeatMode::RepeatXY)
-                            .geometry_source(GeometrySource::Sector(sector.id));
-
                         let source_key = match kind {
-                            MaterialKind::Side => "side_source",
-                            MaterialKind::Cap => "source",
+                            MaterialKind::Side => "jamb_source",
+                            MaterialKind::Cap => "cap_source",
                         };
                         let fallback_key = "source";
 
@@ -626,9 +607,6 @@ impl ChunkBuilder for D3ChunkBuilder {
                                     true,
                                 );
                                 added = true;
-                                if let Some(texture_index) = assets.tile_index(&tile.id) {
-                                    batch.source = PixelSource::StaticTileIndex(texture_index);
-                                }
                             }
                         }
 
@@ -643,15 +621,12 @@ impl ChunkBuilder for D3ChunkBuilder {
                                 true,
                             );
                         }
-
-                        chunk.batches3d.push(batch);
                     }
 
                     push_with_material_kind_local(
                         MaterialKind::Cap,
                         sector,
                         assets,
-                        chunk,
                         vmchunk,
                         world_vertices,
                         indices,
