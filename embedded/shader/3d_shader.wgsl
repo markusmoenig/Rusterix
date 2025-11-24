@@ -21,6 +21,10 @@ const BUMP_STRENGTH: f32 = 1.0;
 const MIN_ROUGHNESS: f32 = 0.04;
 const MAX_TRANSPARENCY_BOUNCES: u32 = 8u;
 
+// ===== Performance Tuning Constants =====
+const MAX_SHADOW_DISTANCE: f32 = 10.0;  // Maximum distance to trace for sun shadows
+const MAX_SKY_DISTANCE: f32 = 50.0;     // Maximum distance to trace for sky visibility
+
 // ===== Hash functions for random sampling =====
 fn hash13(p3: vec3<f32>) -> f32 {
     var p = fract(p3 * 0.1031);
@@ -217,8 +221,8 @@ fn pbr_lighting(P: vec3<f32>, N: vec3<f32>, V: vec3<f32>, albedo: vec3<f32>, mat
         let NdotL = max(dot(N, L), 0.0);
 
         if (NdotL > 0.0) {
-            // Ray-traced shadow (use large distance for directional light)
-            let shadow = trace_shadow(P, L, 1e6);
+            // Ray-traced shadow
+            let shadow = trace_shadow(P, L, MAX_SHADOW_DISTANCE);
 
             if (shadow > 0.01) {
                 let radiance = sun_color * sun_intensity * shadow;
@@ -403,7 +407,7 @@ fn cs_main(@builtin(global_invocation_id) gid: vec3<u32>) {
         let sky_dir = reflect(rd, N);
         // Only trace if reflection actually points upward (sky is above)
         let sky_dir_up = max(dot(sky_dir, vec3<f32>(0.0, 1.0, 0.0)), 0.0);
-        let sky_visibility = select(0.0, trace_shadow(P, sky_dir, 1e6), sky_dir_up > 0.0);
+        let sky_visibility = select(0.0, trace_shadow(P, sky_dir, MAX_SKY_DISTANCE), sky_dir_up > 0.0);
         // Combine: orientation determines amount, ray trace determines visibility
         let sky_contribution = sky_rgb * sky_factor * sky_visibility;
 
