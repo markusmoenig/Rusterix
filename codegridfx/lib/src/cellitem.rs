@@ -126,99 +126,101 @@ impl CellItem {
                     }
                     _ => self.cell.to_string(),
                 };
-                if let Some(font) = &ctx.ui.font {
-                    ctx.draw.rounded_rect(
-                        buffer.pixels_mut(),
-                        &rect.to_buffer_utuple(),
-                        stride,
-                        &color,
-                        &self.rounding(rounding),
-                    );
+                ctx.draw.rounded_rect(
+                    buffer.pixels_mut(),
+                    &rect.to_buffer_utuple(),
+                    stride,
+                    &color,
+                    &self.rounding(rounding),
+                );
 
+                let r = rect.to_buffer_utuple();
+                ctx.draw.text_rect_blend(
+                    buffer.pixels_mut(),
+                    &(
+                        r.0,
+                        r.1,
+                        r.2,
+                        r.3 - if self.description.is_empty() { 0 } else { 10 },
+                    ),
+                    stride,
+                    &text,
+                    TheFontSettings {
+                        size: font_size,
+                        ..Default::default()
+                    },
+                    &text_color,
+                    TheHorizontalAlign::Center,
+                    TheVerticalAlign::Center,
+                );
+
+                if !self.description.is_empty() {
                     let r = rect.to_buffer_utuple();
                     ctx.draw.text_rect_blend(
                         buffer.pixels_mut(),
-                        &(
-                            r.0,
-                            r.1,
-                            r.2,
-                            r.3 - if self.description.is_empty() { 0 } else { 10 },
-                        ),
+                        &(r.0, r.1 + 15, r.2, r.3),
                         stride,
-                        font,
-                        font_size,
-                        &text,
-                        &text_color,
+                        &self.description,
+                        TheFontSettings {
+                            size: font_size,
+                            ..Default::default()
+                        },
+                        &highlight_text_color,
                         TheHorizontalAlign::Center,
                         TheVerticalAlign::Center,
                     );
-
-                    if !self.description.is_empty() {
-                        let r = rect.to_buffer_utuple();
-                        ctx.draw.text_rect_blend(
-                            buffer.pixels_mut(),
-                            &(r.0, r.1 + 15, r.2, r.3),
-                            stride,
-                            font,
-                            font_size,
-                            &self.description,
-                            &highlight_text_color,
-                            TheHorizontalAlign::Center,
-                            TheVerticalAlign::Center,
-                        );
-                    }
                 }
             }
             Cell::Comparison(_) | Cell::If | Arithmetic(_) | Cell::Else => {
-                if let Some(font) = &ctx.ui.font {
-                    ctx.draw.text_rect_blend(
-                        buffer.pixels_mut(),
-                        &rect.to_buffer_utuple(),
-                        stride,
-                        font,
-                        font_size * 2.0,
-                        &self.cell.to_string(),
-                        color,
-                        TheHorizontalAlign::Center,
-                        TheVerticalAlign::Center,
-                    );
-                }
+                ctx.draw.text_rect_blend(
+                    buffer.pixels_mut(),
+                    &rect.to_buffer_utuple(),
+                    stride,
+                    &self.cell.to_string(),
+                    TheFontSettings {
+                        size: font_size * 2.0,
+                        ..Default::default()
+                    },
+                    color,
+                    TheHorizontalAlign::Center,
+                    TheVerticalAlign::Center,
+                );
             }
             Cell::Assignment => {
-                if let Some(font) = &ctx.ui.font {
-                    let text = if let Some(op) = AssignmentOp::from_index(self.option) {
-                        op.describe().to_string()
-                    } else {
-                        "=".to_string()
-                    };
+                let text = if let Some(op) = AssignmentOp::from_index(self.option) {
+                    op.describe().to_string()
+                } else {
+                    "=".to_string()
+                };
 
-                    ctx.draw.text_rect_blend(
-                        buffer.pixels_mut(),
-                        &rect.to_buffer_utuple(),
-                        stride,
-                        font,
-                        font_size * 2.0,
-                        &text,
-                        color,
-                        TheHorizontalAlign::Center,
-                        TheVerticalAlign::Center,
-                    );
-                }
+                ctx.draw.text_rect_blend(
+                    buffer.pixels_mut(),
+                    &rect.to_buffer_utuple(),
+                    stride,
+                    &text,
+                    TheFontSettings {
+                        size: font_size * 2.0,
+                        ..Default::default()
+                    },
+                    color,
+                    TheHorizontalAlign::Center,
+                    TheVerticalAlign::Center,
+                );
             }
             Cell::LeftParent | Cell::RightParent => {
-                if let Some(font) = &ctx.ui.font {
-                    ctx.draw.text_rect_blend(
-                        buffer.pixels_mut(),
-                        &rect.to_buffer_utuple(),
-                        stride,
-                        font,
-                        font_size * 2.0 + 10.0 * grid_ctx.zoom,
-                        &self.cell.to_string(),
-                        color,
-                        TheHorizontalAlign::Center,
-                        TheVerticalAlign::Center,
-                    );
-                }
+                ctx.draw.text_rect_blend(
+                    buffer.pixels_mut(),
+                    &rect.to_buffer_utuple(),
+                    stride,
+                    &self.cell.to_string(),
+                    TheFontSettings {
+                        size: font_size * 2.0 + 10.0 * grid_ctx.zoom,
+                        ..Default::default()
+                    },
+                    color,
+                    TheHorizontalAlign::Center,
+                    TheVerticalAlign::Center,
+                );
             }
             Cell::Integer(_)
             | Cell::Float(_)
@@ -227,47 +229,49 @@ impl CellItem {
             | Cell::Textures(_)
             | PaletteColor(_)
             | Value(_) => {
-                if let Some(font) = &ctx.ui.font {
-                    ctx.draw.rounded_rect(
-                        buffer.pixels_mut(),
-                        &rect.to_buffer_utuple(),
-                        stride,
-                        &color,
-                        &self.rounding(rounding),
-                    );
+                ctx.draw.rounded_rect(
+                    buffer.pixels_mut(),
+                    &rect.to_buffer_utuple(),
+                    stride,
+                    &color,
+                    &self.rounding(rounding),
+                );
 
+                let r = rect.to_buffer_utuple();
+                ctx.draw.text_rect_blend(
+                    buffer.pixels_mut(),
+                    &(
+                        r.0,
+                        r.1,
+                        r.2,
+                        r.3 - if self.description.is_empty() { 0 } else { 10 },
+                    ),
+                    stride,
+                    &self.cell.to_string(),
+                    TheFontSettings {
+                        size: font_size,
+                        ..Default::default()
+                    },
+                    &text_color,
+                    TheHorizontalAlign::Center,
+                    TheVerticalAlign::Center,
+                );
+
+                if !self.description.is_empty() {
                     let r = rect.to_buffer_utuple();
                     ctx.draw.text_rect_blend(
                         buffer.pixels_mut(),
-                        &(
-                            r.0,
-                            r.1,
-                            r.2,
-                            r.3 - if self.description.is_empty() { 0 } else { 10 },
-                        ),
+                        &(r.0, r.1 + 15, r.2, r.3),
                         stride,
-                        font,
-                        font_size,
-                        &self.cell.to_string(),
-                        &text_color,
+                        &self.description,
+                        TheFontSettings {
+                            size: font_size,
+                            ..Default::default()
+                        },
+                        &highlight_text_color,
                         TheHorizontalAlign::Center,
                         TheVerticalAlign::Center,
                     );
-
-                    if !self.description.is_empty() {
-                        let r = rect.to_buffer_utuple();
-                        ctx.draw.text_rect_blend(
-                            buffer.pixels_mut(),
-                            &(r.0, r.1 + 15, r.2, r.3),
-                            stride,
-                            font,
-                            font_size,
-                            &self.description,
-                            &highlight_text_color,
-                            TheHorizontalAlign::Center,
-                            TheVerticalAlign::Center,
-                        );
-                    }
                 }
             }
             Empty => {
@@ -286,51 +290,53 @@ impl CellItem {
             _ => {
                 // Function Header
 
-                if let Some(font) = &ctx.ui.font {
-                    ctx.draw.rounded_rect(
-                        buffer.pixels_mut(),
-                        &rect.to_buffer_utuple(),
-                        stride,
-                        &color,
-                        &self.rounding(rounding),
-                    );
+                ctx.draw.rounded_rect(
+                    buffer.pixels_mut(),
+                    &rect.to_buffer_utuple(),
+                    stride,
+                    &color,
+                    &self.rounding(rounding),
+                );
 
-                    let r = rect.to_buffer_utuple();
-                    let mut has_debug = false;
-                    if let Some(debug) = debug {
-                        if let Some(value) = debug.get_value(id, event, pos.0, pos.1) {
-                            let color = if debug.has_error(id, event, pos.0, pos.1) {
-                                &error_color
-                            } else {
-                                &highlight_text_color
-                            };
-                            has_debug = true;
-                            ctx.draw.text_rect_blend(
-                                buffer.pixels_mut(),
-                                &(r.0, r.1 + 15, r.2, r.3),
-                                stride,
-                                font,
-                                font_size,
-                                &value.describe(),
-                                color,
-                                TheHorizontalAlign::Center,
-                                TheVerticalAlign::Center,
-                            );
-                        }
+                let r = rect.to_buffer_utuple();
+                let mut has_debug = false;
+                if let Some(debug) = debug {
+                    if let Some(value) = debug.get_value(id, event, pos.0, pos.1) {
+                        let color = if debug.has_error(id, event, pos.0, pos.1) {
+                            &error_color
+                        } else {
+                            &highlight_text_color
+                        };
+                        has_debug = true;
+                        ctx.draw.text_rect_blend(
+                            buffer.pixels_mut(),
+                            &(r.0, r.1 + 15, r.2, r.3),
+                            stride,
+                            &value.describe(),
+                            TheFontSettings {
+                                size: font_size,
+                                ..Default::default()
+                            },
+                            color,
+                            TheHorizontalAlign::Center,
+                            TheVerticalAlign::Center,
+                        );
                     }
-
-                    ctx.draw.text_rect_blend(
-                        buffer.pixels_mut(),
-                        &(r.0, r.1, r.2, r.3 - if !has_debug { 0 } else { 10 }),
-                        stride,
-                        font,
-                        large_font_size,
-                        &self.cell.to_string(),
-                        &text_color,
-                        TheHorizontalAlign::Center,
-                        TheVerticalAlign::Center,
-                    );
                 }
+
+                ctx.draw.text_rect_blend(
+                    buffer.pixels_mut(),
+                    &(r.0, r.1, r.2, r.3 - if !has_debug { 0 } else { 10 }),
+                    stride,
+                    &self.cell.to_string(),
+                    TheFontSettings {
+                        size: large_font_size,
+                        ..Default::default()
+                    },
+                    &text_color,
+                    TheHorizontalAlign::Center,
+                    TheVerticalAlign::Center,
+                );
             } // _ => {
               //     buffer.draw_rect_outline(
               //         rect,
@@ -369,65 +375,118 @@ impl CellItem {
                     }
                     _ => self.cell.to_string(),
                 };
-                if let Some(font) = &ctx.ui.font {
-                    size.x = ctx.draw.get_text_size(font, font_size, &text).0 as u32 + 20;
-                    size.x = size.x.min(200);
+                size.x = ctx
+                    .draw
+                    .get_text_size(
+                        &text,
+                        &TheFontSettings {
+                            size: font_size,
+                            ..Default::default()
+                        },
+                    )
+                    .0 as u32
+                    + 20;
+                size.x = size.x.min(200);
 
-                    if !self.description.is_empty() {
-                        let desc = ctx.draw.get_text_size(font, font_size, &self.description).0
-                            as u32
-                            + 20;
-                        size.x = size.x.max(desc);
-                    }
+                if !self.description.is_empty() {
+                    let desc = ctx
+                        .draw
+                        .get_text_size(
+                            &self.description,
+                            &TheFontSettings {
+                                size: font_size,
+                                ..Default::default()
+                            },
+                        )
+                        .0 as u32
+                        + 20;
+                    size.x = size.x.max(desc);
                 }
             }
             Assignment => {
-                if let Some(font) = &ctx.ui.font {
-                    if let Some(op) = AssignmentOp::from_index(self.option) {
-                        size.x =
-                            ctx.draw.get_text_size(font, font_size, op.describe()).0 as u32 + 20;
-                    } else {
-                        size.x = ctx.draw.get_text_size(font, font_size, "=").0 as u32 + 20;
-                    }
+                if let Some(op) = AssignmentOp::from_index(self.option) {
+                    size.x = ctx
+                        .draw
+                        .get_text_size(
+                            op.describe(),
+                            &TheFontSettings {
+                                size: font_size,
+                                ..Default::default()
+                            },
+                        )
+                        .0 as u32
+                        + 20;
+                } else {
+                    size.x = ctx
+                        .draw
+                        .get_text_size(
+                            "=",
+                            &TheFontSettings {
+                                size: font_size,
+                                ..Default::default()
+                            },
+                        )
+                        .0 as u32
+                        + 20;
                 }
             }
             If | Else | Comparison(_) => {
-                if let Some(font) = &ctx.ui.font {
-                    size.x = ctx
-                        .draw
-                        .get_text_size(font, font_size * 2.0, &self.cell.to_string())
-                        .0 as u32
-                        + 10;
-                    if matches!(self.cell, Cell::Else) {
-                        size.y = 30;
-                    }
+                size.x = ctx
+                    .draw
+                    .get_text_size(
+                        &self.cell.to_string(),
+                        &TheFontSettings {
+                            size: font_size * 2.0,
+                            ..Default::default()
+                        },
+                    )
+                    .0 as u32
+                    + 10;
+                if matches!(self.cell, Cell::Else) {
+                    size.y = 30;
                 }
             }
             LeftParent | RightParent => {
-                if let Some(font) = &ctx.ui.font {
-                    size.x = ctx
-                        .draw
-                        .get_text_size(font, font_size * 2.0, &self.cell.to_string())
-                        .0 as u32
-                        + 10;
-                }
+                size.x = ctx
+                    .draw
+                    .get_text_size(
+                        &self.cell.to_string(),
+                        &TheFontSettings {
+                            size: font_size * 2.0,
+                            ..Default::default()
+                        },
+                    )
+                    .0 as u32
+                    + 10;
             }
             Empty => {}
             _ => {
-                if let Some(font) = &ctx.ui.font {
-                    size.x = ctx
-                        .draw
-                        .get_text_size(font, large_font_size, &self.cell.to_string())
-                        .0 as u32
-                        + 20;
+                size.x = ctx
+                    .draw
+                    .get_text_size(
+                        &self.cell.to_string(),
+                        &TheFontSettings {
+                            size: large_font_size,
+                            ..Default::default()
+                        },
+                    )
+                    .0 as u32
+                    + 20;
 
-                    if let Some(debug) = debug {
-                        if let Some(value) = debug.get_value(id, event, pos.0, pos.1) {
-                            let desc = ctx.draw.get_text_size(font, font_size, &value.describe()).0
-                                as u32
-                                + 20;
-                            size.x = size.x.max(desc);
-                        }
+                if let Some(debug) = debug {
+                    if let Some(value) = debug.get_value(id, event, pos.0, pos.1) {
+                        let desc = ctx
+                            .draw
+                            .get_text_size(
+                                &value.describe(),
+                                &TheFontSettings {
+                                    size: font_size,
+                                    ..Default::default()
+                                },
+                            )
+                            .0 as u32
+                            + 20;
+                        size.x = size.x.max(desc);
                     }
                 }
             }

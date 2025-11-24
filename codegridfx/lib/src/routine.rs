@@ -130,35 +130,37 @@ impl Routine {
         let stride = self.buffer.dim().width as usize;
         let desc = self.get_description();
 
-        if let Some(font) = &ctx.ui.font {
-            ctx.draw.text_rect_blend(
-                self.buffer.pixels_mut(),
-                &(20, 0, self.screen_width as usize, header_height as usize),
-                stride,
-                font,
-                15.0,
-                &format!("{} ({})", self.name, self.grid.count()),
-                &text_color,
-                TheHorizontalAlign::Left,
-                TheVerticalAlign::Center,
-            );
-            ctx.draw.text_rect_blend(
-                self.buffer.pixels_mut(),
-                &(
-                    200,
-                    0,
-                    self.screen_width as usize - 210,
-                    header_height as usize,
-                ),
-                stride,
-                font,
-                13.0,
-                &desc,
-                &text_color,
-                TheHorizontalAlign::Right,
-                TheVerticalAlign::Center,
-            );
-        }
+        ctx.draw.text_rect_blend(
+            self.buffer.pixels_mut(),
+            &(20, 0, self.screen_width as usize, header_height as usize),
+            stride,
+            &format!("{} ({})", self.name, self.grid.count()),
+            TheFontSettings {
+                size: 15.0,
+                ..Default::default()
+            },
+            &text_color,
+            TheHorizontalAlign::Left,
+            TheVerticalAlign::Center,
+        );
+        ctx.draw.text_rect_blend(
+            self.buffer.pixels_mut(),
+            &(
+                200,
+                0,
+                self.screen_width as usize - 210,
+                header_height as usize,
+            ),
+            stride,
+            &desc,
+            TheFontSettings {
+                size: 13.0,
+                ..Default::default()
+            },
+            &text_color,
+            TheHorizontalAlign::Right,
+            TheVerticalAlign::Center,
+        );
 
         if !self.folded {
             for (coord, cell) in &mut self.grid.grid {

@@ -2,7 +2,7 @@ use theframework::prelude::*;
 
 /// Assignment operators in the AST
 #[derive(Clone, PartialEq, Debug)]
-pub enum AssignmentOp{
+pub enum AssignmentOp {
     Assign,
     AddAssign,
     SubtractAssign,
@@ -444,9 +444,7 @@ impl Cell {
             PaletteColor(idx) => {
                 format!("palette({})", idx)
             }
-            Value(value) => {
-                value.clone()
-            }
+            Value(value) => value.clone(),
 
             Assignment => "=".into(),
             Comparison(op) => op.to_string().to_string(),
@@ -593,14 +591,15 @@ impl Cell {
             Tan => "Tangent of angle (radians).".into(),
             Sample => "Sample a noise or pattern texture.".into(),
             SampleNormal => "Sample the normal of a noise or pattern texture.".into(),
-            
+
             _ => "".into(),
         }
     }
 
     pub fn role(&self) -> CellRole {
         match &self {
-            Variable(_) | Integer(_) | Float(_) | Str(_) | Boolean(_) | Textures(_) | Value(_) | PaletteColor(_) => CellRole::Value,
+            Variable(_) | Integer(_) | Float(_) | Str(_) | Boolean(_) | Textures(_) | Value(_)
+            | PaletteColor(_) => CellRole::Value,
             Assignment | Comparison(_) | If | Else | Arithmetic(_) => CellRole::Operator,
             Empty => CellRole::None,
 
