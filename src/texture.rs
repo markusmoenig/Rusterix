@@ -48,9 +48,9 @@ pub struct Texture {
     pub data: Vec<u8>,
     pub width: usize,
     pub height: usize,
-    /// Optional unified material+normal data (u32 per pixel = 4 bytes)
+    /// Optional unified material+normal data (4 u8 bytes per pixel)
     /// See struct documentation for packed format details
-    pub data_ext: Option<Vec<u32>>,
+    pub data_ext: Option<Vec<u8>>,
 }
 
 impl Default for Texture {
@@ -486,7 +486,7 @@ impl Texture {
 
         // Resize data_ext if present (nearest-neighbor for material/normal data)
         let resized_data_ext = self.data_ext.as_ref().map(|ext| {
-            let mut new_ext = vec![0u32; new_width * new_height];
+            let mut new_ext = vec![0u8; new_width * new_height * 4];
             for y in 0..new_height {
                 for x in 0..new_width {
                     let mut src_x = (x as f32 * scale_x) as usize;
@@ -497,9 +497,9 @@ impl Texture {
                     if src_y >= self.height {
                         src_y = self.height - 1;
                     }
-                    let src_idx = src_y * self.width + src_x;
-                    let dst_idx = y * new_width + x;
-                    new_ext[dst_idx] = ext[src_idx];
+                    let src_idx = (src_y * self.width + src_x) * 4;
+                    let dst_idx = (y * new_width + x) * 4;
+                    new_ext[dst_idx..dst_idx + 4].copy_from_slice(&ext[src_idx..src_idx + 4]);
                 }
             }
             new_ext
@@ -642,7 +642,7 @@ impl Texture {
     /// Ensures data_ext is allocated for this texture
     fn ensure_data_ext(&mut self) {
         if self.data_ext.is_none() {
-            self.data_ext = Some(vec![0u32; self.width * self.height]);
+            self.data_ext = Some(vec![0u8; self.width * self.height * 4]);
         }
     }
 
@@ -699,12 +699,14 @@ impl Texture {
         self.ensure_data_ext();
         let x = x.min((self.width - 1) as u32) as usize;
         let y = y.min((self.height - 1) as u32) as usize;
-        let idx = y * self.width + x;
+        let idx = (y * self.width + x) * 4;
 
         if let Some(ext) = self.data_ext.as_mut() {
             let mat_packed = Self::pack_materials(roughness, metallic, opacity, emissive);
-            let normal_packed = (ext[idx] >> 16) as u16; // Preserve normal
-            ext[idx] = mat_packed as u32 | ((normal_packed as u32) << 16);
+            let mat_bytes = mat_packed.to_le_bytes();
+            ext[idx] = mat_bytes[0];
+            ext[idx + 1] = mat_bytes[1];
+            // Preserve bytes 2-3 (normal data)
         }
     }
 
@@ -713,10 +715,10 @@ impl Texture {
     pub fn get_materials(&self, x: u32, y: u32) -> (f32, f32, f32, f32) {
         let x = x.min((self.width - 1) as u32) as usize;
         let y = y.min((self.height - 1) as u32) as usize;
-        let idx = y * self.width + x;
+        let idx = (y * self.width + x) * 4;
 
         if let Some(ext) = self.data_ext.as_ref() {
-            let mat_packed = (ext[idx] & 0xFFFF) as u16;
+            let mat_packed = u16::from_le_bytes([ext[idx], ext[idx + 1]]);
             Self::unpack_materials(mat_packed)
         } else {
             (0.5, 0.0, 1.0, 0.0) // Defaults: half rough, no metal, opaque, no emissive
@@ -754,11 +756,13 @@ impl Texture {
         self.ensure_data_ext();
 
         let default_packed = Self::pack_materials(0.5, 0.0, 1.0, 0.0);
+        let mat_bytes = default_packed.to_le_bytes();
 
         if let Some(ext) = self.data_ext.as_mut() {
-            for pixel in ext.iter_mut() {
-                let normal_packed = (*pixel >> 16) as u16; // Preserve normal
-                *pixel = default_packed as u32 | ((normal_packed as u32) << 16);
+            for i in (0..ext.len()).step_by(4) {
+                ext[i] = mat_bytes[0];
+                ext[i + 1] = mat_bytes[1];
+                // Preserve bytes i+2 and i+3 (normal data)
             }
         }
     }
@@ -768,12 +772,14 @@ impl Texture {
         self.ensure_data_ext();
         let x = x.min((self.width - 1) as u32) as usize;
         let y = y.min((self.height - 1) as u32) as usize;
-        let idx = y * self.width + x;
+        let idx = (y * self.width + x) * 4;
 
         if let Some(ext) = self.data_ext.as_mut() {
-            let mat_packed = (ext[idx] & 0xFFFF) as u16; // Preserve materials
             let normal_packed = Self::pack_normal(nx, ny);
-            ext[idx] = mat_packed as u32 | ((normal_packed as u32) << 16);
+            let normal_bytes = normal_packed.to_le_bytes();
+            ext[idx + 2] = normal_bytes[0];
+            ext[idx + 3] = normal_bytes[1];
+            // Preserve bytes 0-1 (material data)
         }
     }
 
@@ -782,10 +788,10 @@ impl Texture {
     pub fn get_normal(&self, x: u32, y: u32) -> (f32, f32) {
         let x = x.min((self.width - 1) as u32) as usize;
         let y = y.min((self.height - 1) as u32) as usize;
-        let idx = y * self.width + x;
+        let idx = (y * self.width + x) * 4;
 
         if let Some(ext) = self.data_ext.as_ref() {
-            let normal_packed = (ext[idx] >> 16) as u16;
+            let normal_packed = u16::from_le_bytes([ext[idx + 2], ext[idx + 3]]);
             Self::unpack_normal(normal_packed)
         } else {
             (0.0, 0.0) // Flat normal

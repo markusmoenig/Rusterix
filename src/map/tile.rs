@@ -153,7 +153,9 @@ impl Tile {
     pub fn to_material_array(&self) -> Vec<Vec<u8>> {
         let mut b = vec![];
         for t in &self.textures {
-            b.push(t.data.to_vec());
+            if let Some(mat) = &t.data_ext {
+                b.push(mat.to_vec());
+            }
         }
         b
     }

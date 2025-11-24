@@ -73,7 +73,7 @@ impl SceneHandler {
                 width: tile.textures[0].width as u32,
                 height: tile.textures[0].height as u32,
                 frames: tile.to_buffer_array(),
-                material_frames: None,
+                material_frames: Some(tile.to_material_array()),
             });
         }
 
