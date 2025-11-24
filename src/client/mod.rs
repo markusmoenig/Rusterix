@@ -579,7 +579,7 @@ impl Client {
 
         // Precompute missed node values
         for node in &render_miss {
-            _ = self.global.nodes[*node as usize].render_setup(hour)
+            _ = self.global.nodes[*node as usize].render_setup(hour);
 
             // if let Some(_(sun_dir, day_factor)) =
             // self.global.nodes[*node as usize].render_setup(hour)
@@ -589,12 +589,26 @@ impl Client {
             // }
         }
 
-        scene_handler.vm.execute(scenevm::Atom::SetGP1(Vec4::one()));
+        scene_handler.settings.apply(&mut scene_handler.vm);
+
         for node in &render_miss {
             if let Some(ambient) = self.global.nodes[*node as usize].render_ambient_color(hour) {
-                scene_handler.vm.execute(scenevm::Atom::SetGP1(ambient));
+                scene_handler.vm.execute(scenevm::Atom::SetGP0(ambient));
+                // scene_handler.vm.execute(scenevm::Atom::SetGP1(ambient));
+                //
+                // scene_handler
+                //     .vm
+                //     .execute(Atom::SetGP0(Vec4::new(0.0, 0.0, 0.0, 0.03))); // Black sky
+                //
+                // scene_handler
+                //     .vm
+                //     .execute(scenevm::Atom::SetGP3(Vec4::new(0.3, 0.3, 0.3, 0.5)));
             }
         }
+
+        // scene_handler
+        //     .vm
+        //     .execute(scenevm::Atom::SetGP4(Vec4::new(1.0, 1.0, 1.0, 0.0)));
 
         scene_handler
             .vm
@@ -603,6 +617,10 @@ impl Client {
         scene_handler
             .vm
             .execute(scenevm::Atom::SetBackground(Vec4::new(0.0, 0.0, 0.0, 1.0)));
+
+        // scene_handler
+        //     .vm
+        //     .execute(scenevm::Atom::SetGP0(Vec4::new(0.2, 0.2, 0.2, 0.1)));
 
         scene_handler
             .vm

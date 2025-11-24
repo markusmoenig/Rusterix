@@ -207,4 +207,14 @@ impl Tile {
             self.textures.truncate(frames);
         }
     }
+
+    /// Initialize all textures with default materials and compute normals
+    /// Sets roughness=0.5, metallic=0.0, opacity=1.0, emissive=0.0 for all pixels
+    /// Then generates normals from the color data for each texture
+    pub fn set_default_materials(&mut self) {
+        for texture in &mut self.textures {
+            texture.set_default_materials();
+            texture.generate_normals(false);
+        }
+    }
 }

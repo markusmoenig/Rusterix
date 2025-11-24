@@ -334,6 +334,15 @@ impl ChunkBuilder for D3ChunkBuilder {
                             let a_back = a_world + n * depth;
                             let b_back = b_world + n * depth;
 
+                            // Skip edge if the actual extruded height is very small (avoids z-fighting)
+                            // This happens when edges are nearly on the surface boundary
+                            let a_height = (a_back - a_world).dot(n).abs();
+                            let b_height = (b_back - b_world).dot(n).abs();
+                            const MIN_EDGE_HEIGHT: f32 = 0.2;
+                            if a_height < MIN_EDGE_HEIGHT || b_height < MIN_EDGE_HEIGHT {
+                                continue; // Skip this thin jamb edge
+                            }
+
                             let base = verts.len();
                             verts.push([a_world.x, a_world.y, a_world.z, 1.0]);
                             verts.push([b_world.x, b_world.y, b_world.z, 1.0]);

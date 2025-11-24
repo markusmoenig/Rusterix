@@ -388,6 +388,7 @@ impl Tracer {
                 let textile = &assets.tile_list[index as usize];
                 let index = scene.animation_frame % textile.textures.len();
 
+                /*
                 if let Some(mut normal) = hit.normal {
                     let texel = pixel_to_vec4(&&textile.textures[index].sample_with_normal(
                         hit.uv.x,
@@ -400,13 +401,13 @@ impl Tracer {
                     hit.normal = Some(normal);
                     texel
                 } else {
-                    pixel_to_vec4(&&textile.textures[index].sample(
-                        hit.uv.x,
-                        hit.uv.y,
-                        self.sample_mode,
-                        batch.repeat_mode,
-                    ))
-                }
+                    */
+                pixel_to_vec4(&&textile.textures[index].sample(
+                    hit.uv.x,
+                    hit.uv.y,
+                    self.sample_mode,
+                    batch.repeat_mode,
+                ))
             }
             PixelSource::DynamicTileIndex(index) => {
                 let textile = &scene.dynamic_textures[index as usize];

@@ -1,6 +1,6 @@
 use std::str::FromStr;
 
-use crate::{Texture, Tile};
+use crate::{RenderSettings, Texture, Tile};
 use indexmap::IndexMap;
 use rust_embed::EmbeddedFile;
 use scenevm::{Atom, Chunk, GeoId, SceneVM};
@@ -24,6 +24,8 @@ pub struct SceneHandler {
     pub gray: Uuid,
     pub outline: Uuid,
     pub yellow: Uuid,
+
+    pub settings: RenderSettings,
 }
 
 impl Default for SceneHandler {
@@ -55,6 +57,8 @@ impl SceneHandler {
             gray: Uuid::new_v4(),
             outline: Uuid::new_v4(),
             yellow: Uuid::new_v4(),
+
+            settings: RenderSettings::default(),
         }
     }
 

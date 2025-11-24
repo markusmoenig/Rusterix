@@ -1103,13 +1103,20 @@ impl Rasterizer {
                                             let index =
                                                 scene.animation_frame % textile.textures.len();
                                             (
-                                                textile.textures[index].sample_with_normal(
+                                                // textile.textures[index].sample_with_normal(
+                                                //     interpolated_u,
+                                                //     interpolated_v,
+                                                //     self.sample_mode,
+                                                //     batch.repeat_mode,
+                                                //     Some(&mut normal),
+                                                //     0.2,
+                                                // ),
+                                                // (
+                                                textile.textures[index].sample(
                                                     interpolated_u,
                                                     interpolated_v,
                                                     self.sample_mode,
                                                     batch.repeat_mode,
-                                                    Some(&mut normal),
-                                                    0.2,
                                                 ),
                                                 false,
                                             )
@@ -1229,13 +1236,19 @@ impl Rasterizer {
                                         };
 
                                         if let Some(texture) = texture {
-                                            let texel = texture.sample_with_normal(
+                                            // let texel = texture.sample_with_normal(
+                                            //     interpolated_u,
+                                            //     interpolated_v,
+                                            //     self.sample_mode,
+                                            //     batch.repeat_mode,
+                                            //     Some(&mut normal),
+                                            //     0.2,
+                                            // );
+                                            let texel = texture.sample(
                                                 interpolated_u,
                                                 interpolated_v,
                                                 self.sample_mode,
                                                 batch.repeat_mode,
-                                                Some(&mut normal),
-                                                0.2,
                                             );
                                             color = pixel_to_vec4(&texel);
                                             color.x = srgb_to_linear_fast(color.x);

@@ -12,6 +12,7 @@ pub mod map;
 pub mod material_profile;
 pub mod rasterizer;
 pub mod rect;
+pub mod render_settings;
 pub mod rendermode;
 pub mod rusterix;
 pub mod scene;
@@ -128,6 +129,7 @@ pub use crate::{
     material_profile::MaterialProfile,
     rasterizer::{BrushPreview, Rasterizer},
     rect::Rect,
+    render_settings::RenderSettings,
     rendermode::RenderMode,
     rusterix::Rusterix,
     scene::Scene,
