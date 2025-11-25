@@ -32,6 +32,27 @@ pub struct RenderSettings {
     /// Fog density (0.0 = no fog, higher = denser)
     pub fog_density: f32,
 
+    /// AO samples (number of rays)
+    pub ao_samples: f32,
+
+    /// AO radius
+    pub ao_radius: f32,
+
+    /// Bump strength (0.0-1.0)
+    pub bump_strength: f32,
+
+    /// Max transparency bounces
+    pub max_transparency_bounces: f32,
+
+    /// Max shadow distance
+    pub max_shadow_distance: f32,
+
+    /// Max sky distance
+    pub max_sky_distance: f32,
+
+    /// Max shadow steps (for transparent shadows)
+    pub max_shadow_steps: f32,
+
     /// Daylight simulation settings
     pub simulation: DaylightSimulation,
 }
@@ -103,6 +124,13 @@ impl Default for RenderSettings {
             ambient_strength: 0.3,
             fog_color: [0.502, 0.502, 0.502], // #808080
             fog_density: 0.0,
+            ao_samples: 8.0,
+            ao_radius: 0.5,
+            bump_strength: 1.0,
+            max_transparency_bounces: 8.0,
+            max_shadow_distance: 10.0,
+            max_sky_distance: 50.0,
+            max_shadow_steps: 8.0,
             simulation: DaylightSimulation::default(),
         }
     }
@@ -174,6 +202,46 @@ impl RenderSettings {
             if let Some(density) = section.get("fog_density") {
                 self.fog_density =
                     density.as_float().ok_or("fog_density must be a number")? as f32 / 100.0;
+            }
+
+            if let Some(samples) = section.get("ao_samples") {
+                self.ao_samples = samples.as_float().ok_or("ao_samples must be a number")? as f32;
+            }
+
+            if let Some(radius) = section.get("ao_radius") {
+                self.ao_radius = radius.as_float().ok_or("ao_radius must be a number")? as f32;
+            }
+
+            if let Some(strength) = section.get("bump_strength") {
+                self.bump_strength = strength
+                    .as_float()
+                    .ok_or("bump_strength must be a number")?
+                    as f32;
+            }
+
+            if let Some(bounces) = section.get("max_transparency_bounces") {
+                self.max_transparency_bounces = bounces
+                    .as_float()
+                    .ok_or("max_transparency_bounces must be a number")?
+                    as f32;
+            }
+
+            if let Some(dist) = section.get("max_shadow_distance") {
+                self.max_shadow_distance =
+                    dist.as_float()
+                        .ok_or("max_shadow_distance must be a number")? as f32;
+            }
+
+            if let Some(dist) = section.get("max_sky_distance") {
+                self.max_sky_distance =
+                    dist.as_float().ok_or("max_sky_distance must be a number")? as f32;
+            }
+
+            if let Some(steps) = section.get("max_shadow_steps") {
+                self.max_shadow_steps = steps
+                    .as_float()
+                    .ok_or("max_shadow_steps must be a number")?
+                    as f32;
             }
         }
 
@@ -326,19 +394,22 @@ impl RenderSettings {
 
     /// Apply these render settings to a SceneVM instance
     pub fn apply_3d(&self, vm: &mut SceneVM) {
-        // gp0: Sky color (RGB) + unused w
+        // Convert sRGB colors to linear space (gamma 2.2) on CPU instead of per-pixel in shader
+        let to_linear = |c: f32| c.powf(2.2);
+
+        // gp0: Sky color (RGB, linear) + unused w
         vm.execute(Atom::SetGP0(Vec4::new(
-            self.sky_color[0],
-            self.sky_color[1],
-            self.sky_color[2],
+            to_linear(self.sky_color[0]),
+            to_linear(self.sky_color[1]),
+            to_linear(self.sky_color[2]),
             0.0,
         )));
 
-        // gp1: Sun color (RGB) + sun intensity (w)
+        // gp1: Sun color (RGB, linear) + sun intensity (w)
         vm.execute(Atom::SetGP1(Vec4::new(
-            self.sun_color[0],
-            self.sun_color[1],
-            self.sun_color[2],
+            to_linear(self.sun_color[0]),
+            to_linear(self.sun_color[1]),
+            to_linear(self.sun_color[2]),
             self.sun_intensity,
         )));
 
@@ -351,20 +422,38 @@ impl RenderSettings {
             if self.sun_enabled { 1.0 } else { 0.0 },
         )));
 
-        // gp3: Ambient color (RGB) + ambient strength (w)
+        // gp3: Ambient color (RGB, linear) + ambient strength (w)
         vm.execute(Atom::SetGP3(Vec4::new(
-            self.ambient_color[0],
-            self.ambient_color[1],
-            self.ambient_color[2],
+            to_linear(self.ambient_color[0]),
+            to_linear(self.ambient_color[1]),
+            to_linear(self.ambient_color[2]),
             self.ambient_strength,
         )));
 
-        // gp4: Fog color (RGB) + fog density (w)
+        // gp4: Fog color (RGB, linear) + fog density (w)
         vm.execute(Atom::SetGP4(Vec4::new(
-            self.fog_color[0],
-            self.fog_color[1],
-            self.fog_color[2],
+            to_linear(self.fog_color[0]),
+            to_linear(self.fog_color[1]),
+            to_linear(self.fog_color[2]),
             self.fog_density,
+        )));
+
+        // gp5: Rendering quality settings
+        // x: AO samples, y: AO radius, z: Bump strength, w: Max transparency bounces
+        vm.execute(Atom::SetGP5(Vec4::new(
+            self.ao_samples,
+            self.ao_radius,
+            self.bump_strength,
+            self.max_transparency_bounces,
+        )));
+
+        // gp6: Distance settings
+        // x: Max shadow distance, y: Max sky distance, z: Max shadow steps, w: unused
+        vm.execute(Atom::SetGP6(Vec4::new(
+            self.max_shadow_distance,
+            self.max_sky_distance,
+            self.max_shadow_steps,
+            0.0,
         )));
     }
 }

@@ -12,18 +12,18 @@
 // - gp3.w:   Ambient strength
 // - gp4.xyz: Fog color (RGB)
 // - gp4.w:   Fog density (0.0 = no fog, higher values = denser fog)
+// - gp5.x:   AO samples (number of rays, default 8)
+// - gp5.y:   AO radius (default 0.5)
+// - gp5.z:   Bump strength (0.0-1.0, default 1.0)
+// - gp5.w:   Max transparency bounces (default 8)
+// - gp6.x:   Max shadow distance (default 10.0)
+// - gp6.y:   Max sky distance (default 50.0)
+// - gp6.z:   Max shadow steps (default 8)
+// - gp6.w:   Unused
 
 // ===== Constants =====
 const PI: f32 = 3.14159265359;
-const AO_SAMPLES: u32 = 8u;
-const AO_RADIUS: f32 = 0.5;
-const BUMP_STRENGTH: f32 = 1.0;
 const MIN_ROUGHNESS: f32 = 0.04;
-const MAX_TRANSPARENCY_BOUNCES: u32 = 8u;
-
-// ===== Performance Tuning Constants =====
-const MAX_SHADOW_DISTANCE: f32 = 10.0;  // Maximum distance to trace for sun shadows
-const MAX_SKY_DISTANCE: f32 = 50.0;     // Maximum distance to trace for sky visibility
 
 // ===== Hash functions for random sampling =====
 fn hash13(p3: vec3<f32>) -> f32 {
@@ -106,7 +106,8 @@ fn unpack_material(mats: vec4<f32>) -> Material {
 
     // Lower 16 bits: materials (4 bits each)
     let mat_bits = packed & 0xFFFFu;
-    let roughness = max(f32(mat_bits & 0xFu) / 15.0, MIN_ROUGHNESS);
+    let min_roughness = select(0.04, U.gp6.x, U.gp6.x > 0.0);
+    let roughness = max(f32(mat_bits & 0xFu) / 15.0, min_roughness);
     let metallic = f32((mat_bits >> 4u) & 0xFu) / 15.0;
     let opacity = f32((mat_bits >> 8u) & 0xFu) / 15.0;
     let emissive = f32((mat_bits >> 12u) & 0xFu) / 15.0;
@@ -128,8 +129,8 @@ fn trace_shadow(P: vec3<f32>, L: vec3<f32>, max_dist: f32) -> f32 {
     var transparency = 1.0; // Starts fully lit
 
     // Trace multiple hits to accumulate transparency
-    let MAX_SHADOW_STEPS = 8u;
-    for (var step: u32 = 0u; step < MAX_SHADOW_STEPS; step = step + 1u) {
+    let max_shadow_steps = u32(select(8.0, U.gp6.z, U.gp6.z >= 0.0));
+    for (var step: u32 = 0u; step < max_shadow_steps; step = step + 1u) {
         let hit = sv_trace_grid(current_pos, L, 0.0, remaining_dist);
 
         if (!hit.hit) {
@@ -168,10 +169,19 @@ fn trace_shadow(P: vec3<f32>, L: vec3<f32>, max_dist: f32) -> f32 {
 
 // ===== Ambient Occlusion with opacity support =====
 fn compute_ao(P: vec3<f32>, N: vec3<f32>, seed: vec3<f32>) -> f32 {
+    // Read AO parameters from GP5 (negative = use default, 0.0 = disable/off)
+    let ao_samples = u32(select(8.0, U.gp5.x, U.gp5.x >= 0.0));
+    let ao_radius = select(0.5, U.gp5.y, U.gp5.y >= 0.0);
+
+    // Early return if AO is disabled
+    if (ao_samples == 0u || ao_radius <= 0.0) {
+        return 1.0;
+    }
+
     let onb = build_onb(N);
     var occlusion = 0.0;
 
-    for (var i: u32 = 0u; i < AO_SAMPLES; i = i + 1u) {
+    for (var i: u32 = 0u; i < ao_samples; i = i + 1u) {
         let hash_seed = seed + vec3<f32>(f32(i) * 0.1);
         let u1 = hash13(hash_seed);
         let u2 = hash13(hash_seed + vec3<f32>(7.3, 11.7, 13.1));
@@ -180,7 +190,7 @@ fn compute_ao(P: vec3<f32>, N: vec3<f32>, seed: vec3<f32>) -> f32 {
         let local_dir = cosine_sample_hemisphere(u1, u2);
         let world_dir = onb * local_dir;
 
-        let ao_hit = sv_trace_grid(P + N * 0.001, world_dir, 0.0, AO_RADIUS);
+        let ao_hit = sv_trace_grid(P + N * 0.001, world_dir, 0.0, ao_radius);
         if (ao_hit.hit) {
             // Get material at hit point to check opacity
             let tri = ao_hit.tri;
@@ -192,14 +202,14 @@ fn compute_ao(P: vec3<f32>, N: vec3<f32>, seed: vec3<f32>) -> f32 {
             let mat = unpack_material(mat_data);
 
             // Weight by distance - closer occluders contribute more
-            let dist_factor = 1.0 - (ao_hit.t / AO_RADIUS);
+            let dist_factor = 1.0 - (ao_hit.t / ao_radius);
 
             // Modulate occlusion by opacity (transparent objects occlude less)
             occlusion += dist_factor * mat.opacity;
         }
     }
 
-    return 1.0 - (occlusion / f32(AO_SAMPLES));
+    return 1.0 - (occlusion / f32(ao_samples));
 }
 
 // ===== PBR Direct Lighting =====
@@ -212,7 +222,7 @@ fn pbr_lighting(P: vec3<f32>, N: vec3<f32>, V: vec3<f32>, albedo: vec3<f32>, mat
     // ===== Directional Sun Light =====
     if (U.gp2.w > 0.5) { // Sun enabled
         let sun_dir = normalize(U.gp2.xyz);
-        let sun_color = pow(U.gp1.xyz, vec3<f32>(2.2)); // Convert from sRGB to linear
+        let sun_color = U.gp1.xyz; // Already in linear space
         let sun_intensity = U.gp1.w;
 
         let L = -sun_dir; // Light direction points FROM surface TO light
@@ -222,7 +232,8 @@ fn pbr_lighting(P: vec3<f32>, N: vec3<f32>, V: vec3<f32>, albedo: vec3<f32>, mat
 
         if (NdotL > 0.0) {
             // Ray-traced shadow
-            let shadow = trace_shadow(P, L, MAX_SHADOW_DISTANCE);
+            let max_shadow_dist = select(10.0, U.gp6.x, U.gp6.x >= 0.0);
+            let shadow = trace_shadow(P, L, max_shadow_dist);
 
             if (shadow > 0.01) {
                 let radiance = sun_color * sun_intensity * shadow;
@@ -324,13 +335,13 @@ fn cs_main(@builtin(global_invocation_id) gid: vec3<u32>) {
     var fog_distance = 0.0; // Track distance from camera for fog (set on first hit)
     var first_hit = true;
 
-    // Sky color for background (convert from sRGB to linear)
-    let sky_rgb_srgb = select(U.background.rgb, U.gp0.xyz, length(U.gp0.xyz) > 0.01);
-    let sky_rgb = pow(sky_rgb_srgb, vec3<f32>(2.2));
+    // Sky color for background (already in linear space from CPU)
+    let sky_rgb = select(U.background.rgb, U.gp0.xyz, length(U.gp0.xyz) > 0.01);
     let ambient_strength = select(0.3, U.gp3.w, U.gp3.w > 0.0);
 
     // Trace through transparent layers
-    for (var bounce: u32 = 0u; bounce < MAX_TRANSPARENCY_BOUNCES; bounce = bounce + 1u) {
+    let max_bounces = u32(max(1.0, select(8.0, U.gp5.w, U.gp5.w >= 0.0)));
+    for (var bounce: u32 = 0u; bounce < max_bounces; bounce = bounce + 1u) {
         // First ray uses epsilon, continuation uses 0 to avoid self-intersection vs gaps
         let tmin = select(0.0, 0.001, bounce == 0u);
         let hit = sv_trace_grid(ro, rd, tmin, 1e6);
@@ -377,11 +388,12 @@ fn cs_main(@builtin(global_invocation_id) gid: vec3<u32>) {
         let mat = unpack_material(mat_data);
 
         // Apply bump mapping
-        if (BUMP_STRENGTH > 0.0 && length(mat.normal) > 0.1) {
+        let bump_strength = select(1.0, U.gp5.z, U.gp5.z >= 0.0);
+        if (bump_strength > 0.0 && length(mat.normal) > 0.1) {
             let TBN = sv_tri_tbn(v0.pos, v1.pos, v2.pos, v0.uv, v1.uv, v2.uv);
             let N_ts = mat.normal;
             let N_ws = normalize(TBN * N_ts);
-            N = normalize(mix(N, N_ws, BUMP_STRENGTH));
+            N = normalize(mix(N, N_ws, bump_strength));
         }
 
         // Two-sided lighting
@@ -395,10 +407,9 @@ fn cs_main(@builtin(global_invocation_id) gid: vec3<u32>) {
         // PBR direct lighting
         let direct = pbr_lighting(P, N, V, albedo.rgb, mat);
 
-        // Ambient contribution
+        // Ambient contribution (already in linear space from CPU)
         let has_ambient_color = length(U.gp3.xyz) > 0.01;
-        let ambient_color_srgb = select(vec3<f32>(0.05), U.gp3.xyz, has_ambient_color);
-        let ambient_color = pow(ambient_color_srgb, vec3<f32>(2.2)); // Convert from sRGB to linear
+        let ambient_color = select(vec3<f32>(0.05), U.gp3.xyz, has_ambient_color);
 
         // Sky contribution: combine orientation and occlusion
         // How much the surface faces upward (0.0 = horizontal, 1.0 = straight up)
@@ -407,7 +418,8 @@ fn cs_main(@builtin(global_invocation_id) gid: vec3<u32>) {
         let sky_dir = reflect(rd, N);
         // Only trace if reflection actually points upward (sky is above)
         let sky_dir_up = max(dot(sky_dir, vec3<f32>(0.0, 1.0, 0.0)), 0.0);
-        let sky_visibility = select(0.0, trace_shadow(P, sky_dir, MAX_SKY_DISTANCE), sky_dir_up > 0.0);
+        let max_sky_dist = select(50.0, U.gp6.y, U.gp6.y >= 0.0);
+        let sky_visibility = select(0.0, trace_shadow(P, sky_dir, max_sky_dist), sky_dir_up > 0.0);
         // Combine: orientation determines amount, ray trace determines visibility
         let sky_contribution = sky_rgb * sky_factor * sky_visibility;
 
@@ -453,8 +465,7 @@ fn cs_main(@builtin(global_invocation_id) gid: vec3<u32>) {
         // Exponential squared fog: fog_amount = density * distance²
         let fog_amount = fog_density * fog_distance * fog_distance;
         let fog_factor = clamp(exp(-fog_amount), 0.0, 1.0);
-        let fog_color_srgb = U.gp4.xyz;
-        let fog_color = pow(fog_color_srgb, vec3<f32>(2.2)); // Convert to linear
+        let fog_color = U.gp4.xyz; // Already in linear space from CPU
 
         // Mix between scene color and fog color based on fog factor
         // fog_factor = 1.0 means no fog (close), 0.0 means full fog (far)
