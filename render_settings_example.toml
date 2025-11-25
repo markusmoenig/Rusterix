@@ -46,8 +46,8 @@ max_shadow_distance = 10.0
 # Max sky distance (0.0 = no sky visibility check, default: 50.0)
 max_sky_distance = 50.0
 
-# Max shadow steps for transparent shadows (0.0 = no transparent shadows, default: 8)
-max_shadow_steps = 8.0
+# Max shadow steps for transparent shadows (0.0 = no transparent shadows, default: 2)
+max_shadow_steps = 2.0
 
 [simulation]
 # Enable procedural daylight simulation (overrides static sky_color, sun_color, sun_direction)

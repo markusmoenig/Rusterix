@@ -18,7 +18,7 @@
 // - gp5.w:   Max transparency bounces (default 8)
 // - gp6.x:   Max shadow distance (default 10.0)
 // - gp6.y:   Max sky distance (default 50.0)
-// - gp6.z:   Max shadow steps (default 8)
+// - gp6.z:   Max shadow steps (default 2)
 // - gp6.w:   Unused
 
 // ===== Constants =====
@@ -129,7 +129,7 @@ fn trace_shadow(P: vec3<f32>, L: vec3<f32>, max_dist: f32) -> f32 {
     var transparency = 1.0; // Starts fully lit
 
     // Trace multiple hits to accumulate transparency
-    let max_shadow_steps = u32(select(8.0, U.gp6.z, U.gp6.z >= 0.0));
+    let max_shadow_steps = u32(select(2.0, U.gp6.z, U.gp6.z >= 0.0));
     for (var step: u32 = 0u; step < max_shadow_steps; step = step + 1u) {
         let hit = sv_trace_grid(current_pos, L, 0.0, remaining_dist);
 

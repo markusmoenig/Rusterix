@@ -130,7 +130,7 @@ impl Default for RenderSettings {
             max_transparency_bounces: 8.0,
             max_shadow_distance: 10.0,
             max_sky_distance: 50.0,
-            max_shadow_steps: 8.0,
+            max_shadow_steps: 2.0,
             simulation: DaylightSimulation::default(),
         }
     }
