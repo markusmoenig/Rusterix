@@ -312,14 +312,14 @@ impl Routine {
         if let Some(pos) = pos {
             if let Some(item) = self.grid.grid.get(&pos) {
                 let nodeui: TheNodeUI = item.create_settings(palette, module_type);
-                if let Some(layout) = ui.get_text_layout("Node Settings") {
-                    nodeui.apply_to_text_layout(layout);
-                    ctx.ui.relayout = true;
-
-                    ctx.ui.send(TheEvent::Custom(
-                        TheId::named("Show Node Settings"),
-                        TheValue::Text(format!("{} Settings", item.cell.description())),
-                    ));
+                if let Some(layout) = ui.get_tree_layout("Node Settings") {
+                    let root = layout.get_root();
+                    if !root.childs.is_empty() {
+                        nodeui.apply_to_tree_node(&mut root.childs[0]);
+                        root.childs[0]
+                            .widget
+                            .set_value(TheValue::Text("Cell Settings".into()));
+                    }
                 }
             }
 
@@ -363,14 +363,14 @@ impl Routine {
                             grid_ctx.current_cell = Some(coord.clone());
 
                             let nodeui: TheNodeUI = cell.create_settings(palette, module_type);
-                            if let Some(layout) = ui.get_text_layout("Node Settings") {
-                                nodeui.apply_to_text_layout(layout);
-                                ctx.ui.relayout = true;
-
-                                ctx.ui.send(TheEvent::Custom(
-                                    TheId::named("Show Node Settings"),
-                                    TheValue::Text(format!("{}", cell.cell.description())),
-                                ));
+                            if let Some(layout) = ui.get_tree_layout("Node Settings") {
+                                let root = layout.get_root();
+                                if !root.childs.is_empty() {
+                                    nodeui.apply_to_tree_node(&mut root.childs[0]);
+                                    root.childs[0]
+                                        .widget
+                                        .set_value(TheValue::Text("Cell Settings".into()));
+                                }
                             }
 
                             self.draw(ctx, grid_ctx, 0, None);

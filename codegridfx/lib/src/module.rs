@@ -906,7 +906,7 @@ impl Module {
     }
 
     /// Show the settings for the current event.
-    fn show_event_settings(&mut self, ui: &mut TheUI, ctx: &mut TheContext) {
+    fn show_event_settings(&mut self, ui: &mut TheUI, _ctx: &mut TheContext) {
         let mut name = "".into();
         let mut pixelization = 0;
         let mut color_steps = 0;
@@ -984,14 +984,14 @@ impl Module {
             nodeui.add_item(item);
         }
 
-        if let Some(layout) = ui.get_text_layout("Node Settings") {
-            nodeui.apply_to_text_layout(layout);
-            ctx.ui.relayout = true;
-
-            ctx.ui.send(TheEvent::Custom(
-                TheId::named("Show Node Settings"),
-                TheValue::Text(format!("\"{}\" Settings", name)),
-            ));
+        if let Some(layout) = ui.get_tree_layout("Node Settings") {
+            let root = layout.get_root();
+            if !root.childs.is_empty() {
+                nodeui.apply_to_tree_node(&mut root.childs[0]);
+                root.childs[0]
+                    .widget
+                    .set_value(TheValue::Text("Event Settings".into()));
+            }
         }
     }
 
