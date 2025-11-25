@@ -603,14 +603,19 @@ fn cs_main(@builtin(global_invocation_id) gid: vec3<u32>) {
         // Sky contribution: combine orientation and occlusion
         // How much the surface faces upward (0.0 = horizontal, 1.0 = straight up)
         let sky_factor = max(dot(N, vec3<f32>(0.0, 1.0, 0.0)), 0.0);
-        // Ray trace in reflection direction to check occlusion
-        let sky_dir = reflect(rd, N);
-        // Only trace if reflection actually points upward (sky is above)
-        let sky_dir_up = max(dot(sky_dir, vec3<f32>(0.0, 1.0, 0.0)), 0.0);
         let max_sky_dist = select(50.0, U.gp6.y, U.gp6.y >= 0.0);
-        let sky_visibility = select(0.0, trace_shadow(P, sky_dir, max_sky_dist), sky_dir_up > 0.0);
-        // Combine: orientation determines amount, ray trace determines visibility
-        let sky_contribution = sky_rgb * sky_factor * sky_visibility;
+
+        var sky_contribution = vec3<f32>(0.0);
+        // Only trace sky visibility if enabled and surface faces upward
+        if (max_sky_dist > 0.0 && sky_factor > 0.0) {
+            // Ray trace in reflection direction to check occlusion
+            let sky_dir = reflect(rd, N);
+            // Only trace if reflection actually points upward (sky is above)
+            let sky_dir_up = max(dot(sky_dir, vec3<f32>(0.0, 1.0, 0.0)), 0.0);
+            let sky_visibility = select(0.0, trace_shadow(P, sky_dir, max_sky_dist), sky_dir_up > 0.0);
+            // Combine: orientation determines amount, ray trace determines visibility
+            sky_contribution = sky_rgb * sky_factor * sky_visibility;
+        }
 
         // Combine ambient (uniform) and sky (directional based on upward facing)
         let ambient = (ambient_color * ambient_strength + sky_contribution) * albedo.rgb * ao;
