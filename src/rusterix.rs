@@ -173,7 +173,8 @@ impl Rusterix {
                 &mut self.scene_handler,
             );
         } else if self.draw_mode == ClientDrawMode::D3 {
-            self.client.apply_entities_items_d3(map, &self.assets);
+            self.client
+                .apply_entities_items_d3(map, &self.assets, &mut self.scene_handler);
         }
     }
 
@@ -202,6 +203,7 @@ impl Rusterix {
             self.client.camera_d3.as_ref(),
             &self.assets,
             &mut self.client.scene,
+            &mut self.scene_handler,
         );
     }
 

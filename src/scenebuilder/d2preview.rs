@@ -285,6 +285,7 @@ impl D2PreviewBuilder {
 
         scene_handler.clear_overlay();
         scene_handler.vm.execute(Atom::ClearDynamics);
+        scene_handler.vm.execute(Atom::ClearLights);
 
         // Grid
         // if self.draw_grid {

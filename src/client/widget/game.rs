@@ -129,12 +129,12 @@ impl GameWidget {
             self.builder_d2
                 .build_entities_items(map, assets, &mut self.scene, self.rect.size());
         } else {
-            self.builder_d3.build_entities_items(
-                map,
-                self.camera_d3.as_ref(),
-                assets,
-                &mut self.scene,
-            );
+            // TODO self.builder_d3.build_entities_items(
+            //     map,
+            //     self.camera_d3.as_ref(),
+            //     assets,
+            //     &mut self.scene,
+            // );
         }
     }
 

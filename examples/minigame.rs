@@ -64,9 +64,7 @@ impl TheTrait for MiniGame {
 
         if let Some(mut map) = self.rusterix.assets.get_map("world").cloned() {
             self.rusterix.server.apply_entities_items(&mut map);
-            self.rusterix
-                .client
-                .apply_entities_items_d3(&map, &self.rusterix.assets);
+            self.rusterix.build_entities_items_d3(&map);
 
             self.rusterix
                 .draw_scene(&map, pixels, ctx.width, ctx.height);

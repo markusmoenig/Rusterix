@@ -259,14 +259,24 @@ impl Client {
     }
 
     /// Apply the entities to the 3D scene.
-    pub fn apply_entities_items_d3(&mut self, map: &Map, assets: &Assets) {
+    pub fn apply_entities_items_d3(
+        &mut self,
+        map: &Map,
+        assets: &Assets,
+        scene_handler: &mut SceneHandler,
+    ) {
         for entity in &map.entities {
             if entity.is_player() {
                 entity.apply_to_camera(&mut self.camera_d3);
             }
         }
-        self.builder_d3
-            .build_entities_items(map, self.camera_d3.as_ref(), assets, &mut self.scene);
+        self.builder_d3.build_entities_items(
+            map,
+            self.camera_d3.as_ref(),
+            assets,
+            &mut self.scene,
+            scene_handler,
+        );
     }
 
     /// Process messages from the server to be displayed after drawing.

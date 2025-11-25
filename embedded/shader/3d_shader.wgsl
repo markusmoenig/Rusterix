@@ -18,7 +18,7 @@
 // - gp5.w:   Max transparency bounces (default 8)
 // - gp6.x:   Max shadow distance (default 10.0)
 // - gp6.y:   Max sky distance (default 50.0)
-// - gp6.z:   Max shadow steps (default 2)
+// - gp6.z:   Max shadow steps (default 0, 0=binary/fast, >0=transparent shadows)
 // - gp6.w:   Unused
 
 // ===== Constants =====
@@ -121,20 +121,150 @@ fn unpack_material(mats: vec4<f32>) -> Material {
     return Material(roughness, metallic, opacity, emissive, vec3<f32>(nx, ny, nz));
 }
 
+// ===== Billboard Support =====
+// Modular billboard system for dynamic objects (particles, sprites, effects, etc.)
+
+struct BillboardHit {
+    hit: bool,              // offset 0, size 4 (stored as u32 in SPIR-V)
+    t: f32,                 // offset 4, size 4
+    uv: vec2<f32>,          // offset 8, size 8 (needs 8-byte alignment)
+    tile_index: u32,        // offset 16, size 4
+    billboard_index: u32,   // offset 20, size 4
+    _pad0: u32,             // offset 24, size 4 (AMD alignment fix)
+    _pad1: u32,             // offset 28, size 4 (pad to 16-byte boundary)
+};
+
+/// Ray-billboard intersection test
+/// Returns hit information if ray intersects the billboard quad
+fn intersect_billboard(ro: vec3<f32>, rd: vec3<f32>, center: vec3<f32>,
+                       axis_right: vec3<f32>, axis_up: vec3<f32>,
+                       tile_index: u32, billboard_idx: u32) -> BillboardHit {
+    var result = BillboardHit(false, 0.0, vec2<f32>(0.0), 0u, 0u, 0u, 0u);
+
+    // Compute billboard normal
+    let normal = normalize(cross(axis_right, axis_up));
+
+    // Ray-plane intersection
+    let denom = dot(normal, rd);
+    if (abs(denom) < 1e-5) {
+        return result; // Ray parallel to billboard
+    }
+
+    let t = dot(center - ro, normal) / denom;
+    if (t <= 0.0) {
+        return result; // Behind ray origin
+    }
+
+    // Compute hit point and local coordinates
+    let hit_pos = ro + rd * t;
+    let rel = hit_pos - center;
+
+    let len_right2 = max(dot(axis_right, axis_right), 1e-6);
+    let len_up2 = max(dot(axis_up, axis_up), 1e-6);
+
+    let u = dot(rel, axis_right) / len_right2;
+    let v = dot(rel, axis_up) / len_up2;
+
+    // Check if within quad bounds
+    if (abs(u) > 1.0 || abs(v) > 1.0) {
+        return result;
+    }
+
+    // Convert to texture coordinates [0,1]
+    let uv = vec2<f32>(0.5 * (u + 1.0), 0.5 * (1.0 - v));
+
+    result.hit = true;
+    result.t = t;
+    result.uv = uv;
+    result.tile_index = tile_index;
+    result.billboard_index = billboard_idx;
+
+    return result;
+}
+
+/// Sample billboard color from atlas
+/// This is separated to allow future procedural effects (fire, smoke, etc.)
+fn sample_billboard(hit: BillboardHit) -> vec4<f32> {
+    // Get tile frame information
+    let frame = sv_tile_frame(hit.tile_index);
+
+    // Map UV to atlas coordinates
+    let atlas_uv = frame.ofs + hit.uv * frame.scale;
+
+    // Sample from atlas
+    let color = textureSampleLevel(atlas_tex, atlas_smp, atlas_uv, 0.0);
+
+    // TODO: Future expansion point for procedural effects
+    // if (billboard_type == FIRE) { return apply_fire_effect(color, hit); }
+    // if (billboard_type == SMOKE) { return apply_smoke_effect(color, hit); }
+
+    return color;
+}
+
+/// Trace all billboards and return the closest hit
+/// This is modular to allow future expansion for different billboard types
+fn trace_billboards(ro: vec3<f32>, rd: vec3<f32>, max_t: f32) -> BillboardHit {
+    var closest = BillboardHit(false, max_t, vec2<f32>(0.0), 0u, 0u, 0u, 0u);
+
+    let billboard_count = scene_data.header.billboard_cmd_count;
+    if (billboard_count == 0u) {
+        return closest;
+    }
+
+    for (var i: u32 = 0u; i < billboard_count; i = i + 1u) {
+        let cmd = sd_billboard_cmd(i);
+
+        // Extract billboard parameters
+        let center = cmd.center_size.xyz;
+        let axis_right = cmd.axis_right.xyz;
+        let axis_up = cmd.axis_up.xyz;
+        let tile_index = cmd.params.x;
+
+        // Test intersection
+        let hit = intersect_billboard(ro, rd, center, axis_right, axis_up, tile_index, i);
+
+        if (hit.hit && hit.t < closest.t) {
+            closest = hit;
+        }
+    }
+
+    return closest;
+}
+
 // ===== Ray-traced shadows with opacity support =====
 fn trace_shadow(P: vec3<f32>, L: vec3<f32>, max_dist: f32) -> f32 {
     let shadow_bias = 0.01; // Increased from 0.001 to avoid edge artifacts
+    let max_shadow_steps = u32(select(0.0, U.gp6.z, U.gp6.z >= 0.0));
+
+    // Minimum distance to light to avoid self-shadowing when light is near/in geometry
+    let min_light_dist = 0.1;
+
+    // Fast path: Binary shadow test (no transparency support)
+    // This is much faster for scenes without transparent objects
+    if (max_shadow_steps == 0u) {
+        let hit = sv_trace_grid(P + L * shadow_bias, L, 0.0, max_dist);
+        // Only shadow if hit is not too close to the light (avoid geometry at light position)
+        if (hit.hit && hit.t < (max_dist - min_light_dist)) {
+            return 0.0; // shadowed
+        }
+        return 1.0; // lit
+    }
+
+    // Slow path: Multi-step transparency-aware shadows
     var current_pos = P + L * shadow_bias;
     var remaining_dist = max_dist;
     var transparency = 1.0; // Starts fully lit
 
-    // Trace multiple hits to accumulate transparency
-    let max_shadow_steps = u32(select(2.0, U.gp6.z, U.gp6.z >= 0.0));
     for (var step: u32 = 0u; step < max_shadow_steps; step = step + 1u) {
         let hit = sv_trace_grid(current_pos, L, 0.0, remaining_dist);
 
         if (!hit.hit) {
             break; // No more occlusion, light reaches
+        }
+
+        // Skip geometry very close to light position (light might be embedded in wall)
+        if (remaining_dist - hit.t < min_light_dist) {
+            break; // Close enough to light, don't shadow
         }
 
         // Get material at hit point
@@ -264,21 +394,27 @@ fn pbr_lighting(P: vec3<f32>, N: vec3<f32>, V: vec3<f32>, albedo: vec3<f32>, mat
         if (light.header.y == 0u) { continue; } // skip non-emitting lights
 
         let Lp = light.position.xyz;
-        let Lc = pow(light.color.xyz, vec3<f32>(2.2)); // Convert from sRGB to linear
-        let Li = light.params0.x + light.params1.x; // intensity + flicker
+        let Lc = light.color.xyz;
+        let Li = light.params0.x * light.params1.x; // intensity * flicker_multiplier
 
         let start_d = light.params0.z;
         let end_d = max(light.params0.w, start_d + 1e-3);
 
         let L_vec = Lp - P;
         let dist = length(L_vec);
+
+        // Early exit if beyond range
+        if (dist > end_d) { continue; }
+
         let L = normalize(L_vec);
         let H = normalize(V + L);
 
-        // Distance-based attenuation
+        // Distance-based attenuation with smooth falloff
         let dist2 = max(dot(L_vec, L_vec), 1e-6);
-        let falloff = clamp((end_d - dist) / max(end_d - start_d, 1e-3), 0.0, 1.0);
-        let attenuation = (Li * falloff) / dist2;
+
+        // Smooth distance falloff between start and end
+        let range_factor = smoothstep(end_d, start_d, dist);
+        let attenuation = (Li * range_factor) / dist2;
 
         // Ray-traced shadow
         let shadow = trace_shadow(P, L, dist);
@@ -337,15 +473,69 @@ fn cs_main(@builtin(global_invocation_id) gid: vec3<u32>) {
 
     // Sky color for background (already in linear space from CPU)
     let sky_rgb = select(U.background.rgb, U.gp0.xyz, length(U.gp0.xyz) > 0.01);
-    let ambient_strength = select(0.3, U.gp3.w, U.gp3.w > 0.0);
+    let ambient_strength = U.gp3.w; // User-defined, no default
 
     // Trace through transparent layers
     let max_bounces = u32(max(1.0, select(8.0, U.gp5.w, U.gp5.w >= 0.0)));
     for (var bounce: u32 = 0u; bounce < max_bounces; bounce = bounce + 1u) {
         // First ray uses epsilon, continuation uses 0 to avoid self-intersection vs gaps
         let tmin = select(0.0, 0.001, bounce == 0u);
+
+        // Trace geometry
         let hit = sv_trace_grid(ro, rd, tmin, 1e6);
 
+        // Trace billboards (check up to geometry hit or max distance)
+        let billboard_max_t = select(1e6, hit.t, hit.hit);
+        let billboard_hit = trace_billboards(ro, rd, billboard_max_t);
+
+        // Determine which is closer: billboard or geometry
+        let use_billboard = billboard_hit.hit && (!hit.hit || billboard_hit.t < hit.t);
+
+        // Handle billboard hit
+        if (use_billboard) {
+            // Sample billboard color
+            var billboard_color = sample_billboard(billboard_hit);
+
+            // Convert from sRGB to linear (billboards stored in sRGB)
+            billboard_color = vec4<f32>(
+                pow(billboard_color.rgb, vec3<f32>(2.2)),
+                billboard_color.a
+            );
+
+            // Alpha test - skip fully transparent pixels
+            if (billboard_color.a < 0.01) {
+                // Continue ray just past this billboard
+                ro = ro + rd * (billboard_hit.t + 0.001);
+                continue;
+            }
+
+            // Track fog distance on first hit
+            if (first_hit) {
+                fog_distance = billboard_hit.t;
+                first_hit = false;
+            }
+
+            // Billboards are unlit (emissive) - just use the texture color
+            // TODO: Future expansion - add lighting for certain billboard types
+            let billboard_lit = billboard_color.rgb;
+
+            // Front-to-back compositing
+            let opacity = billboard_color.a;
+            accum_color += billboard_lit * opacity * (1.0 - accum_alpha);
+            accum_alpha += opacity * (1.0 - accum_alpha);
+
+            // Check if fully opaque
+            if (opacity >= 0.99 || accum_alpha >= 0.99) {
+                accum_alpha = 1.0;
+                break;
+            }
+
+            // Continue ray past billboard
+            ro = ro + rd * (billboard_hit.t + 0.001);
+            continue;
+        }
+
+        // Handle geometry hit
         if (!hit.hit) {
             // Hit sky - blend with accumulated alpha
             let sky_color = sky_rgb * (1.0 - accum_alpha);
@@ -408,8 +598,7 @@ fn cs_main(@builtin(global_invocation_id) gid: vec3<u32>) {
         let direct = pbr_lighting(P, N, V, albedo.rgb, mat);
 
         // Ambient contribution (already in linear space from CPU)
-        let has_ambient_color = length(U.gp3.xyz) > 0.01;
-        let ambient_color = select(vec3<f32>(0.05), U.gp3.xyz, has_ambient_color);
+        let ambient_color = U.gp3.xyz; // User-defined, no minimum clamp
 
         // Sky contribution: combine orientation and occlusion
         // How much the surface faces upward (0.0 = horizontal, 1.0 = straight up)

@@ -1,4 +1,7 @@
-use crate::{Assets, Batch3D, D3Camera, Map, PixelSource, Scene, Value, ValueContainer};
+use crate::{
+    Assets, Batch3D, D3Camera, Map, PixelSource, Scene, SceneHandler, Value, ValueContainer,
+};
+use scenevm::{Atom, DynamicObject, GeoId, Light};
 use vek::{Vec2, Vec3};
 
 pub struct D3Builder {}
@@ -367,7 +370,13 @@ impl D3Builder {
         camera: &dyn D3Camera,
         assets: &Assets,
         scene: &mut Scene,
+        scene_handler: &mut SceneHandler,
     ) {
+        scene_handler.vm.execute(Atom::ClearDynamics);
+        scene_handler.vm.execute(Atom::ClearLights);
+
+        let basis = camera.basis_vectors();
+
         scene.dynamic_lights = vec![];
         let mut batches = vec![];
 
@@ -468,14 +477,40 @@ impl D3Builder {
 
             if show_entity {
                 if let Some(Value::Light(light)) = item.attributes.get("light") {
-                    let mut light = light.clone();
-                    light.set_position(item.position);
-                    scene.dynamic_lights.push(light.compile());
+                    // let mut light = light.clone();
+                    // light.set_position(item.position);
+                    // scene.dynamic_lights.push(light.compile());
+                    scene_handler.vm.execute(Atom::AddLight {
+                        id: GeoId::ItemLight(item.id),
+                        light: Light::new_pointlight(item.position)
+                            .with_color(Vec3::from(light.get_color().map(|c| c.powf(2.2)))) // Convert light to linear
+                            .with_intensity(light.get_intensity())
+                            .with_emitting(light.active)
+                            .with_start_distance(light.get_start_distance())
+                            .with_end_distance(light.get_end_distance())
+                            .with_flicker(light.get_flicker()),
+                    });
                 }
 
                 if let Some(Value::Source(source)) = item.attributes.get("source") {
                     if item.attributes.get_bool_default("visible", false) {
                         let size = 1.0;
+                        if let Some(tile) = source.tile_from_tile_list(assets) {
+                            let center3 = Vec3::new(item.position.x, size * 0.5, item.position.z);
+
+                            let dynamic = DynamicObject::billboard_tile(
+                                GeoId::Item(item.id),
+                                tile.id,
+                                center3,
+                                basis.1,
+                                basis.2,
+                                size,
+                            );
+                            scene_handler
+                                .vm
+                                .execute(Atom::AddDynamic { object: dynamic });
+                        }
+
                         let center3 = Vec3::new(item.position.x, size * 0.5, item.position.z);
                         if let Some(tile) = source.tile_from_tile_list(assets) {
                             if let Some(texture_index) = assets.tile_index(&tile.id) {
