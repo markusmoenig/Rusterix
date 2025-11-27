@@ -1,6 +1,6 @@
 # Surface Action Properties Guide
 
-This document describes all the properties you can set on sectors to control how holes, reliefs, recesses, and any future surface actions are rendered.
+This document describes all the properties you can set on sectors to control how holes, reliefs, and recesses are rendered.
 
 ## Overview
 
@@ -10,7 +10,7 @@ Properties can be set on two types of sectors:
 
 Profile sector properties take precedence over host sector properties.
 
-The property system uses **unified names** that work for all action types (holes, reliefs, recesses, terrain features, etc.).
+The property system uses **unified names** that work for all action types (holes, reliefs, recesses, etc.).
 
 ---
 
@@ -25,8 +25,6 @@ The property system uses **unified names** that work for all action types (holes
 - `0` = None (Hole/cutout)
 - `1` = Relief (raised)
 - `2` = Recess (inset)
-- `3` = Terrain (height-interpolated surface)
-- `4` = Ridge (elevated flat platform with sloped sides)
 
 **Example:**
 ```rust
@@ -36,7 +34,7 @@ profile_sector.properties.set("profile_op", 1); // Relief
 ### `profile_amount` (Profile Sector) **[RECOMMENDED]**
 **Type:** Float  
 **Default:** 0.0  
-**Description:** **Unified property** for height/depth that works with ALL action types. Positive values mean "how much" the action applies (height for reliefs, depth for recesses, intensity for terrain features, etc.).
+**Description:** **Unified property** for height/depth that works with ALL action types. Positive values mean "how much" the action applies (height for reliefs, depth for recesses).
 
 **Example:**
 ```rust
@@ -47,15 +45,6 @@ profile_sector.properties.set("profile_amount", 2.5); // 2.5 units high
 // Recess - amount is depth
 profile_sector.properties.set("profile_op", 2);
 profile_sector.properties.set("profile_amount", 1.0); // 1 unit deep
-
-// Terrain - amount is smoothness (IDW power parameter)
-profile_sector.properties.set("profile_op", 3);
-profile_sector.properties.set("profile_amount", 2.0); // Smoothness factor (1.0 = linear, higher = smoother)
-
-// Ridge - amount is height of the platform
-profile_sector.properties.set("profile_op", 4);
-profile_sector.properties.set("profile_amount", 3.0); // 3 units high
-profile_sector.properties.set("slope_width", 1.5);    // 1.5 units of slope from edge to flat top
 ```
 
 ### `profile_height` (Profile Sector) **[DEPRECATED - use profile_amount]**
@@ -89,7 +78,7 @@ profile_sector.properties.set("profile_target", 1);
 
 ### `connection_mode` (Profile Sector)
 **Type:** Integer  
-**Default:** Action-specific (Hard for most, Smooth for terrain)  
+**Default:** 0 (Hard)  
 **Description:** How the mesh edges connect to the surrounding surface.
 
 **Values:**
@@ -99,10 +88,10 @@ profile_sector.properties.set("profile_target", 1);
 
 **Example:**
 ```rust
-// Hard edges (default for reliefs/recesses)
+// Hard edges (default)
 profile_sector.properties.set("connection_mode", 0);
 
-// Smooth blending (good for terrain features like hills)
+// Smooth blending
 profile_sector.properties.set("connection_mode", 1);
 
 // Beveled edges
@@ -133,130 +122,6 @@ profile_sector.properties.set("bevel_radius", 0.25);  // Smaller bevel
 
 ---
 
-## Terrain-Specific Properties
-
-When using `profile_op = 3` (Terrain), you can create smooth height-interpolated surfaces with hills, valleys, and other elevation features.
-
-### How Terrain Works
-
-Terrain uses the **vertex z-component** as height values and interpolates between them. You can also add custom height control points inside the sector that aren't part of the sector outline (e.g., hill peaks, valley bottoms).
-
-### `height_control_points` (Profile Sector, Terrain only)
-**Type:** HeightPoints array  
-**Default:** Empty (no custom control points)  
-**Description:** Additional height control points for creating terrain features like hills and valleys. These points influence the terrain interpolation but are NOT part of the sector boundary.
-
-**Structure:** Each control point has:
-- `position`: [x, y] UV coordinates
-- `height`: Height value at that position
-
-**Example:**
-```rust
-use rusterix::{HeightControlPoint, Value};
-
-// Create a terrain sector with two hills
-profile_sector.properties.set("profile_op", Value::Int(3)); // Terrain
-
-// Set smoothness
-profile_sector.properties.set("profile_amount", Value::Float(2.0)); // Smoother interpolation
-
-// Add custom height control points
-let control_points = vec![
-    HeightControlPoint {
-        position: [5.0, 5.0],   // UV position of first hill
-        height: 8.0,            // Height of first hill
-    },
-    HeightControlPoint {
-        position: [15.0, 10.0], // UV position of second hill
-        height: 6.0,            // Height of second hill
-    },
-    HeightControlPoint {
-        position: [10.0, 15.0], // UV position of valley
-        height: -2.0,           // Negative for valley
-    },
-];
-
-profile_sector.properties.set(
-    "height_control_points",
-    Value::HeightPoints(control_points)
-);
-```
-
-### Terrain Height Interpolation
-
-The terrain system uses **Inverse Distance Weighting (IDW)** to interpolate heights:
-
-1. **Boundary vertices** provide heights from their z-component
-2. **Custom control points** (from `height_control_points`) add interior features
-3. All points are combined and the height at any position is calculated based on distance-weighted average
-4. The `profile_amount` (smoothness) parameter controls the IDW power:
-   - `1.0` = Linear interpolation (equal weighting)
-   - `2.0` = Quadratic falloff (default, good for most terrain)
-   - `3.0+` = Steeper falloff (creates more pronounced peaks/valleys)
-
-**Workflow Example:**
-1. Create a sector in the profile map for your terrain area
-2. Set vertex heights (z-component) for the boundary
-3. Set `profile_op = 3` and `profile_amount` for smoothness
-4. Use your heightmap editor to add control points for hills/valleys
-5. The system automatically interpolates smooth terrain between all points
-
----
-
-## Ridge-Specific Properties
-
-When using `profile_op = 4` (Ridge), you create elevated flat platforms with sloped sides - perfect for iso-style terrain features like plateaus, raised walkways, or stepped terrain.
-
-### How Ridge Works
-
-Ridge creates a **flat elevated platform** at a specified height with **sloped transition sides** connecting to the base surface. The slope transitions smoothly from the sector boundary edge to the flat top.
-
-### `slope_width` (Profile Sector, Ridge only)
-**Type:** Float  
-**Default:** 1.0  
-**Description:** The width of the sloped transition from the edge to the flat top surface, measured in world units. This determines how steep the slopes are.
-
-**Behavior:**
-- Smaller values (e.g., `0.5`) create **steeper slopes**
-- Larger values (e.g., `3.0`) create **gentler slopes**
-- The flat top will be inset from the sector boundary by this distance
-
-**Example:**
-```rust
-use rusterix::Value;
-
-// Create a ridge platform 5 units high with moderate slopes
-profile_sector.properties.set("profile_op", Value::Int(4));
-profile_sector.properties.set("profile_amount", Value::Float(5.0));  // Height of platform
-profile_sector.properties.set("slope_width", Value::Float(2.0));     // 2-unit slope transition
-
-// Steep ridge for dramatic elevation changes
-profile_sector.properties.set("slope_width", Value::Float(0.5));     // Steep, short slope
-
-// Gentle ridge for gradual elevation
-profile_sector.properties.set("slope_width", Value::Float(4.0));     // Gentle, long slope
-```
-
-### Ridge Use Cases
-
-**Iso-Style Terrain:**
-- Elevated platforms in isometric games
-- Stepped terrain with distinct height levels
-- Raised walkways or bridges
-- Defensive walls with flat tops
-
-**Level Design:**
-- Plateaus and mesas
-- Tiered gardens or terraces
-- Stage platforms
-- Elevated combat arenas
-
-**Comparison to Relief:**
-- **Relief:** Smooth rounded elevation (like a hill)
-- **Ridge:** Flat-topped elevation with distinct slopes (like a plateau)
-
----
-
 ## Unified Material/Texture Properties
 
 ### Property Names (Unified for All Actions)
@@ -267,7 +132,7 @@ Instead of having separate properties for each action type (like `relief_source`
 - **`jamb_source`** - Texture for the sides/walls of ANY feature
 - **`source`** - Generic fallback texture
 
-This means the same property names work for reliefs, recesses, holes, hills, valleys, or any future action type!
+This means the same property names work for reliefs, recesses, holes, or any future action type!
 
 ### Material Lookup Chain
 
@@ -541,7 +406,7 @@ profile1.properties.set(
     Value::Source(PixelSource::TileId(stone_tile_uuid))
 );
 
-// Smooth terrain hill
+// Smooth relief (organic shape)
 profile2.properties.set("profile_op", 1);                         // Relief
 profile2.properties.set("profile_amount", 3.0);
 profile2.properties.set("connection_mode", 1);                    // Smooth blending
@@ -560,26 +425,6 @@ profile3.properties.set(
     "cap_source",
     Value::Source(PixelSource::TileId(marble_tile_uuid))
 );
-```
-
-### Example 6: Future-Proof - Works with New Action Types!
-
-```rust
-// When you add a new action type (like HillAction), the same properties work!
-
-// Hypothetical hill feature
-profile_sector.properties.set("profile_op", 3);                    // Future: Hill
-profile_sector.properties.set("connection_mode", 1);               // Smooth for terrain
-profile_sector.properties.set(
-    "cap_source",                                                  // Hill surface
-    Value::Source(PixelSource::TileId(grass_tile_uuid))
-);
-profile_sector.properties.set(
-    "jamb_source",                                                 // Hill slopes
-    Value::Source(PixelSource::TileId(dirt_tile_uuid))
-);
-
-// No need for hill_source, hill_jamb_source, etc.!
 ```
 
 ---
@@ -629,7 +474,7 @@ This allows you to:
 | `profile_height` | Profile | Float | 0.0 | DEPRECATED - use profile_amount |
 | `profile_depth` | Profile | Float | 0.0 | DEPRECATED - use profile_amount |
 | `profile_target` | Profile | Int | 0 | 0=Front, 1=Back |
-| `connection_mode` | Profile | Int | varies | 0=Hard, 1=Smooth, 2=Bevel |
+| `connection_mode` | Profile | Int | 0 | 0=Hard, 1=Smooth, 2=Bevel |
 | `bevel_segments` | Profile | Int | 4 | Bevel segment count |
 | `bevel_radius` | Profile | Float | 0.5 | Bevel radius in world units |
 | **Materials (Unified)** |
@@ -655,7 +500,7 @@ This allows you to:
 
 ✅ **Simpler** - Only 2 material properties to remember: `cap_source` and `jamb_source`  
 ✅ **Consistent** - Same properties work for all action types  
-✅ **Future-proof** - New actions (hills, valleys, terrain) work automatically  
+✅ **Future-proof** - New actions work automatically  
 ✅ **Flexible** - Still allows per-feature customization  
 ✅ **Clean** - No need for action-specific property names  
 ✅ **Backward compatible** - Old `side_source` still works

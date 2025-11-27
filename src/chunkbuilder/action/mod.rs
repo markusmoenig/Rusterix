@@ -1,17 +1,11 @@
 mod hole;
 mod recess;
 mod relief;
-mod ridge;
-mod terrain;
 
 // Re-export action implementations
 pub use hole::HoleAction;
 pub use recess::RecessAction;
 pub use relief::ReliefAction;
-pub use ridge::RidgeAction;
-pub use terrain::{
-    SmoothedTerrainAction, TerrainAction, create_smooth_terrain, interpolate_height_idw,
-};
 
 use vek::Vec2;
 

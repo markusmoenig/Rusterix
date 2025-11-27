@@ -2,6 +2,7 @@ pub mod action;
 pub mod d2chunkbuilder;
 pub mod d3chunkbuilder;
 pub mod surface_mesh_builder;
+pub mod terrain_generator;
 
 use crate::{Assets, Chunk, Map};
 

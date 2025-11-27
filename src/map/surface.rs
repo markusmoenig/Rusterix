@@ -9,10 +9,8 @@ use earcutr::earcut;
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub enum LoopOp {
     None,
-    Relief { height: f32 },      // positive outward along surface normal
-    Recess { depth: f32 },       // positive inward along surface normal
-    Terrain { smoothness: f32 }, // terrain with vertex height interpolation
-    Ridge { height: f32, slope_width: f32 }, // elevated flat platform with sloped sides
+    Relief { height: f32 }, // positive outward along surface normal
+    Recess { depth: f32 },  // positive inward along surface normal
 }
 
 impl LoopOp {
@@ -31,39 +29,19 @@ impl LoopOp {
             LoopOp::Recess { depth } => ActionProperties::default()
                 .with_depth(*depth)
                 .with_target_side(target_side),
-            LoopOp::Terrain { smoothness } => ActionProperties::default()
-                .with_height(*smoothness) // Reuse height field for smoothness
-                .with_target_side(target_side),
-            LoopOp::Ridge {
-                height,
-                slope_width,
-            } => ActionProperties::default()
-                .with_height(*height)
-                .with_slope_width(*slope_width)
-                .with_target_side(target_side),
         }
     }
 
     /// Get the appropriate SurfaceAction implementation for this operation
-    /// Note: For Terrain, you must provide vertex_heights separately via TerrainAction
     pub fn get_action(&self) -> Option<Box<dyn crate::chunkbuilder::action::SurfaceAction>> {
-        use crate::chunkbuilder::action::{HoleAction, RecessAction, ReliefAction, RidgeAction};
+        use crate::chunkbuilder::action::{HoleAction, RecessAction, ReliefAction};
 
         match self {
             LoopOp::None => Some(Box::new(HoleAction)),
             LoopOp::Relief { .. } => Some(Box::new(ReliefAction)),
             LoopOp::Recess { .. } => Some(Box::new(RecessAction)),
-            LoopOp::Ridge { .. } => Some(Box::new(RidgeAction)),
-            LoopOp::Terrain { .. } => None, // Terrain requires special handling with vertex_heights
         }
     }
-}
-
-/// Height control point for terrain generation
-#[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct HeightPoint {
-    pub position: Vec2<f32>, // UV position
-    pub height: f32,         // Height value
 }
 
 /// One closed loop in the surface's UV/profile space.
@@ -73,13 +51,6 @@ pub struct ProfileLoop {
     pub op: LoopOp,           // optional loop-specific op
     /// The profile-map sector this loop came from. `None` for the outer host loop.
     pub origin_profile_sector: Option<u32>,
-    /// Vertex heights (z-component) for terrain interpolation. Empty if not terrain.
-    #[serde(default)]
-    pub vertex_heights: Vec<f32>,
-    /// Additional height control points (e.g., hills, valleys) for terrain.
-    /// These points are NOT part of the sector outline but influence height interpolation.
-    #[serde(default)]
-    pub height_control_points: Vec<HeightPoint>,
 }
 
 /// Represents a geometric plane defined by an origin and a normal vector.

@@ -1,6 +1,7 @@
 use crate::chunkbuilder::surface_mesh_builder::{
     SurfaceMeshBuilder, fix_winding as mesh_fix_winding,
 };
+use crate::chunkbuilder::terrain_generator::{TerrainConfig, TerrainGenerator};
 use crate::{Assets, Batch3D, Chunk, ChunkBuilder, Map, PixelSource, Value};
 use crate::{GeometrySource, LoopOp, ProfileLoop, RepeatMode, Sector};
 use scenevm::GeoId;
@@ -440,8 +441,6 @@ impl ChunkBuilder for D3ChunkBuilder {
                                         }
                                     }
                                     LoopOp::Relief { .. } => { /* no hole */ }
-                                    LoopOp::Ridge { .. } => { /* no hole */ }
-                                    LoopOp::Terrain { .. } => { /* no hole */ }
                                 }
                             }
 
@@ -644,6 +643,101 @@ impl ChunkBuilder for D3ChunkBuilder {
                 }
             }
         }
+
+        // Generate terrain for this chunk
+        let terrain_counter = chunk.bbox.min.x as u32 * 10000 + chunk.bbox.min.y as u32;
+        generate_terrain(map, assets, chunk, vmchunk, terrain_counter);
+    }
+}
+
+// --- Terrain Generation ---
+fn generate_terrain(
+    map: &Map,
+    assets: &Assets,
+    chunk: &mut Chunk,
+    vmchunk: &mut scenevm::Chunk,
+    terrain_id: u32,
+) {
+    // Check if terrain generation is enabled for this map
+    let terrain_enabled = map.properties.get_bool_default("terrain_enabled", false);
+
+    if !terrain_enabled {
+        return;
+    }
+
+    println!(
+        "[TERRAIN] Terrain enabled for map, generating for chunk at {:?}",
+        chunk.bbox
+    );
+
+    // Create terrain generator with default config
+    let config = TerrainConfig::default();
+    let generator = TerrainGenerator::new(config);
+
+    // Generate terrain meshes for this chunk (grouped by tile)
+    if let Some(meshes) = generator.generate(map, chunk) {
+        println!(
+            "[TERRAIN] Generated {} separate meshes (grouped by tile)",
+            meshes.len()
+        );
+
+        // Process each mesh (one per tile)
+        for (mesh_idx, (vertices, indices, uvs, vertex_id)) in meshes.iter().enumerate() {
+            println!(
+                "[TERRAIN] Mesh {}: {} vertices, {} triangles, vertex_id: {}",
+                mesh_idx,
+                vertices.len(),
+                indices.len() / 3,
+                vertex_id
+            );
+
+            // Look up tile from the vertex (vertex_id 0 means no control vertex, use default)
+            let tile_id = if *vertex_id == 0 {
+                println!("[TERRAIN] No control vertex for this mesh, using default");
+                Uuid::from_str(DEFAULT_TILE_ID).unwrap()
+            } else if let Some(vertex) = map.find_vertex(*vertex_id) {
+                // Look up source property from vertex (using PixelSource pattern like actions)
+                if let Some(Value::Source(pixelsource)) = vertex.properties.get("source") {
+                    if let Some(tile) = pixelsource.tile_from_tile_list(assets) {
+                        println!("[TERRAIN] Using tile from vertex: {}", tile.id);
+                        tile.id
+                    } else {
+                        println!("[TERRAIN] No tile found in assets, using default");
+                        Uuid::from_str(DEFAULT_TILE_ID).unwrap()
+                    }
+                } else {
+                    println!("[TERRAIN] No source property on vertex, using default");
+                    Uuid::from_str(DEFAULT_TILE_ID).unwrap()
+                }
+            } else {
+                println!("[TERRAIN] Vertex {} not found, using default", vertex_id);
+                Uuid::from_str(DEFAULT_TILE_ID).unwrap()
+            };
+
+            // Convert vertices from Vec3<f32> to [f32; 4] (homogeneous coordinates)
+            let vertices_4d: Vec<[f32; 4]> =
+                vertices.iter().map(|v| [v.x, v.y, v.z, 1.0]).collect();
+
+            // Convert indices from Vec<u32> to Vec<(usize, usize, usize)>
+            let indices_tuples: Vec<(usize, usize, usize)> = indices
+                .chunks_exact(3)
+                .map(|chunk| (chunk[0] as usize, chunk[1] as usize, chunk[2] as usize))
+                .collect();
+
+            // Add terrain mesh to vmchunk with unique GeoId per mesh
+            let mesh_terrain_id = terrain_id * 1000 + mesh_idx as u32;
+            vmchunk.add_poly_3d(
+                GeoId::Terrain(mesh_terrain_id),
+                tile_id,
+                vertices_4d,
+                uvs.clone(),
+                indices_tuples,
+                0,
+                true,
+            );
+        }
+
+        println!("[TERRAIN] All meshes added to vmchunk");
     }
 }
 
@@ -682,14 +776,6 @@ fn split_loops_for_base<'a>(
                 // Relief never subtracts from the base; purely additive feature
                 feature_loops.push(h);
             }
-            LoopOp::Ridge { .. } => {
-                // Ridge is a raised platform feature, not a hole
-                feature_loops.push(h);
-            }
-            LoopOp::Terrain { .. } => {
-                // Terrain is a surface feature, not a hole
-                feature_loops.push(h);
-            }
         }
     }
     (base_holes, feature_loops)
@@ -720,22 +806,12 @@ fn read_profile_loops(
                 .properties
                 .get_float_default("profile_outer_depth", 0.0),
         },
-        4 => LoopOp::Ridge {
-            height: _sector
-                .properties
-                .get_float_default("profile_outer_height", 0.0),
-            slope_width: _sector
-                .properties
-                .get_float_default("profile_outer_slope_width", 1.0),
-        },
         _ => LoopOp::None,
     };
     let outer = ProfileLoop {
         path: outer_path,
         op: outer_op,
         origin_profile_sector: None,
-        vertex_heights: vec![], // Outer loop doesn't need heights currently
-        height_control_points: vec![], // No custom control points for outer loop
     };
 
     // 2) HOLES from the profile map for this surface
@@ -800,57 +876,13 @@ fn read_profile_loops(
                         };
                         LoopOp::Recess { depth }
                     }
-                    3 => {
-                        // Terrain: use profile_amount as smoothness
-                        let smoothness = if amount.is_nan() {
-                            1.0 // Default smoothness
-                        } else {
-                            amount
-                        };
-                        LoopOp::Terrain { smoothness }
-                    }
-                    4 => {
-                        // Ridge: use profile_amount as height, read slope_width separately
-                        let height = if amount.is_nan() {
-                            ps.properties.get_float_default("profile_height", 0.0)
-                        } else {
-                            amount
-                        };
-                        let slope_width = ps.properties.get_float_default("slope_width", 1.0);
-                        LoopOp::Ridge {
-                            height,
-                            slope_width,
-                        }
-                    }
                     _ => LoopOp::None,
-                };
-
-                // Determine which heights to use based on op type
-                let vertex_heights = match op {
-                    LoopOp::Terrain { .. } => heights.clone(),
-                    _ => vec![],
-                };
-
-                // Read height control points from sector properties if terrain
-                let height_control_points = match op {
-                    LoopOp::Terrain { .. } => ps
-                        .properties
-                        .get_height_points_default("height_control_points")
-                        .iter()
-                        .map(|hcp| crate::map::surface::HeightPoint {
-                            position: vek::Vec2::new(hcp.position[0], hcp.position[1]),
-                            height: hcp.height,
-                        })
-                        .collect(),
-                    _ => vec![],
                 };
 
                 holes.push(ProfileLoop {
                     path: uv_path,
                     op,
                     origin_profile_sector: Some(ps.id as u32),
-                    vertex_heights,
-                    height_control_points,
                 });
             }
         }
@@ -1071,28 +1103,8 @@ fn process_feature_loop_with_action(
     assets: &Assets,
     feature_loop: &ProfileLoop,
 ) -> Option<()> {
-    use crate::chunkbuilder::action::TerrainAction;
-
     // Get the action for this loop operation
-    // Special handling for Terrain which needs vertex heights and control points
-    let action: Box<dyn crate::chunkbuilder::action::SurfaceAction> = match &feature_loop.op {
-        LoopOp::Terrain { smoothness } => {
-            // Convert HeightPoint to (Vec2, f32) tuples for TerrainAction
-            let height_control_points: Vec<(vek::Vec2<f32>, f32)> = feature_loop
-                .height_control_points
-                .iter()
-                .map(|hp| (hp.position, hp.height))
-                .collect();
-
-            // Create terrain action with vertex heights and custom control points
-            Box::new(TerrainAction {
-                vertex_heights: feature_loop.vertex_heights.clone(),
-                height_control_points,
-                smoothness: *smoothness,
-            })
-        }
-        _ => feature_loop.op.get_action()?,
-    };
+    let action = feature_loop.op.get_action()?;
 
     // Get profile_target to determine which side to attach to
     let profile_target = if let Some(origin) = feature_loop.origin_profile_sector {
