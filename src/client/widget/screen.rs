@@ -61,10 +61,9 @@ impl ScreenWidget {
         let width = self.buffer.dim().width as usize;
         let height = self.buffer.dim().height as usize;
 
-        let screen_size = Vec2::new(width as f32, height as f32);
-
-        //let offset = screen_size / (2.0 * self.grid_size);
-        let translation_matrix = Mat3::<f32>::translation_2d(screen_size / 2.0 + self.offset / 2.0);
+        // Offset is in grid units; translate so the grid cell at offset lands on pixel (0,0)
+        let translation_matrix =
+            Mat3::<f32>::translation_2d(Vec2::new(-self.offset.x, -self.offset.y) * self.grid_size);
 
         let scale_matrix = Mat3::new(
             self.grid_size,

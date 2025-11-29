@@ -807,6 +807,7 @@ impl Client {
             );
 
             widget.builder_d2.activated_widgets = self.activated_widgets.clone();
+            widget.grid_size = self.grid_size;
 
             // Add the current intent to the activated widgets
             for w in self.button_widgets.iter() {
