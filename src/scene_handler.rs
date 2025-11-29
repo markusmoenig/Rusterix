@@ -1,9 +1,9 @@
 use std::str::FromStr;
 
-use crate::{RenderSettings, Texture, Tile};
+use crate::{Assets, Map, RenderSettings, Texture, Tile, Value};
 use indexmap::IndexMap;
 use rust_embed::EmbeddedFile;
-use scenevm::{Atom, Chunk, GeoId, SceneVM};
+use scenevm::{Atom, Chunk, DynamicObject, GeoId, Light, SceneVM};
 use theframework::prelude::*;
 
 pub struct SceneHandler {
@@ -216,5 +216,88 @@ impl SceneHandler {
             1.5,
             layer,
         );
+    }
+
+    /// Build dynamic elements of the 2D Map: Entities, Items, Lights ...
+    pub fn build_dynamics_2d(&mut self, map: &Map, assets: &Assets) {
+        self.vm.execute(Atom::ClearDynamics);
+        self.vm.execute(Atom::ClearLights);
+
+        for item in &map.items {
+            let item_pos = Vec2::new(item.position.x, item.position.z);
+            let pos = Vec2::new(item_pos.x, item_pos.y);
+
+            if let Some(Value::Light(light)) = item.attributes.get("light") {
+                self.vm.execute(Atom::AddLight {
+                    id: GeoId::ItemLight(item.id),
+                    light: Light::new_pointlight(item.position)
+                        .with_color(Vec3::from(light.get_color()))
+                        .with_intensity(light.get_intensity())
+                        .with_emitting(light.active)
+                        .with_start_distance(light.get_start_distance())
+                        .with_end_distance(light.get_end_distance())
+                        .with_flicker(light.get_flicker()),
+                });
+            }
+
+            if let Some(Value::Source(source)) = item.attributes.get("source") {
+                if item.attributes.get_bool_default("visible", false) {
+                    if let Some(tile) = source.tile_from_tile_list(assets) {
+                        let dynamic = DynamicObject::billboard_tile_2d(
+                            GeoId::Item(item.id),
+                            tile.id,
+                            pos,
+                            1.0,
+                        );
+                        self.vm.execute(Atom::AddDynamic { object: dynamic });
+                    }
+                }
+            }
+        }
+
+        for entity in &map.entities {
+            let entity_pos = Vec2::new(entity.position.x, entity.position.z);
+            let pos = Vec2::new(entity_pos.x, entity_pos.y);
+
+            // Find light on entity
+            if let Some(Value::Light(light)) = entity.attributes.get("light") {
+                if light.active {
+                    let mut light = light.clone();
+                    light.set_position(entity.position);
+                }
+            }
+
+            // Find light on entity items
+            for (_, item) in entity.iter_inventory() {
+                if let Some(Value::Light(light)) = item.attributes.get("light") {
+                    if light.active {
+                        self.vm.execute(Atom::AddLight {
+                            id: GeoId::ItemLight(item.id),
+                            light: Light::new_pointlight(entity.position)
+                                .with_color(Vec3::from(light.get_color()))
+                                .with_intensity(light.get_intensity())
+                                .with_emitting(light.active)
+                                .with_start_distance(light.get_start_distance())
+                                .with_end_distance(light.get_end_distance())
+                                .with_flicker(light.get_flicker()),
+                        });
+                    }
+                }
+            }
+
+            if let Some(Value::Source(source)) = entity.attributes.get("source") {
+                if entity.attributes.get_bool_default("visible", false) {
+                    if let Some(tile) = source.tile_from_tile_list(assets) {
+                        let dynamic = DynamicObject::billboard_tile_2d(
+                            GeoId::Character(entity.id),
+                            tile.id,
+                            pos,
+                            1.0,
+                        );
+                        self.vm.execute(Atom::AddDynamic { object: dynamic });
+                    }
+                }
+            }
+        }
     }
 }

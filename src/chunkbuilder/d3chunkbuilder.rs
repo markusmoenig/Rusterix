@@ -4,6 +4,7 @@ use crate::chunkbuilder::surface_mesh_builder::{
 use crate::chunkbuilder::terrain_generator::{TerrainConfig, TerrainGenerator};
 use crate::{Assets, Batch3D, Chunk, ChunkBuilder, Map, PixelSource, Value};
 use crate::{GeometrySource, LoopOp, ProfileLoop, RepeatMode, Sector};
+use rustc_hash::FxHashMap;
 use scenevm::GeoId;
 use std::str::FromStr;
 use uuid::Uuid;
@@ -13,6 +14,47 @@ use vek::{Vec2, Vec3};
 const DEFAULT_TILE_ID: &str = "27826750-a9e7-4346-994b-fb318b238452";
 
 pub struct D3ChunkBuilder {}
+
+/// Split triangles into per-tile batches using 1x1 UV cells. Only routes a triangle
+/// to an override if all three vertices fall into the same overridden cell.
+fn partition_triangles_with_tile_overrides(
+    indices: &[(usize, usize, usize)],
+    uvs: &[[f32; 2]],
+    overrides: Option<&FxHashMap<(i32, i32), PixelSource>>,
+    assets: &Assets,
+) -> (Vec<(usize, usize, usize)>, Vec<(Uuid, Vec<(usize, usize, usize)>)>) {
+    let mut defaults = Vec::new();
+    let mut per_tile: FxHashMap<Uuid, Vec<(usize, usize, usize)>> = FxHashMap::default();
+
+    let Some(map) = overrides else {
+        defaults.extend_from_slice(indices);
+        return (defaults, Vec::new());
+    };
+
+    for &(a, b, c) in indices {
+        let (Some(uv_a), Some(uv_b), Some(uv_c)) = (uvs.get(a), uvs.get(b), uvs.get(c)) else {
+            defaults.push((a, b, c));
+            continue;
+        };
+
+        let cell_a = (uv_a[0].floor() as i32, uv_a[1].floor() as i32);
+        let cell_b = (uv_b[0].floor() as i32, uv_b[1].floor() as i32);
+        let cell_c = (uv_c[0].floor() as i32, uv_c[1].floor() as i32);
+
+        if cell_a == cell_b && cell_a == cell_c {
+            if let Some(ps) = map.get(&cell_a) {
+                if let Some(tile) = ps.tile_from_tile_list(assets) {
+                    per_tile.entry(tile.id).or_default().push((a, b, c));
+                    continue;
+                }
+            }
+        }
+
+        defaults.push((a, b, c));
+    }
+
+    (defaults, per_tile.into_iter().collect())
+}
 
 impl Clone for D3ChunkBuilder {
     fn clone(&self) -> Self {
@@ -377,15 +419,51 @@ impl ChunkBuilder for D3ChunkBuilder {
                         (verts, inds, uvs)
                     };
 
-                    push_with_material_kind_local(
-                        MaterialKind::Cap,
-                        sector,
-                        assets,
-                        vmchunk,
-                        world_vertices.clone(),
-                        indices.clone(),
-                        uvs.clone(),
-                    );
+                    // Apply optional per-tile overrides for the main surface (jambs/caps unchanged).
+                    if let Some(Value::TileOverrides(tile_map)) = sector.properties.get("tiles") {
+                        let (default_indices, overrides) = partition_triangles_with_tile_overrides(
+                            &indices,
+                            &uvs,
+                            Some(tile_map),
+                            assets,
+                        );
+
+                        for (tile_id, inds) in overrides {
+                            if !inds.is_empty() {
+                                vmchunk.add_poly_3d(
+                                    GeoId::Sector(sector.id),
+                                    tile_id,
+                                    world_vertices.clone(),
+                                    uvs.clone(),
+                                    inds,
+                                    0,
+                                    true,
+                                );
+                            }
+                        }
+
+                        if !default_indices.is_empty() {
+                            push_with_material_kind_local(
+                                MaterialKind::Cap,
+                                sector,
+                                assets,
+                                vmchunk,
+                                world_vertices.clone(),
+                                default_indices,
+                                uvs.clone(),
+                            );
+                        }
+                    } else {
+                        push_with_material_kind_local(
+                            MaterialKind::Cap,
+                            sector,
+                            assets,
+                            vmchunk,
+                            world_vertices.clone(),
+                            indices.clone(),
+                            uvs.clone(),
+                        );
+                    }
 
                     // --- Extrusion: thickness, back cap, side bands ---
                     if surface.extrusion.enabled && surface.extrusion.depth.abs() > 1e-6 {
@@ -631,15 +709,50 @@ impl ChunkBuilder for D3ChunkBuilder {
                         }
                     }
 
-                    push_with_material_kind_local(
-                        MaterialKind::Cap,
-                        sector,
-                        assets,
-                        vmchunk,
-                        world_vertices,
-                        indices,
-                        uvs,
-                    );
+                    if let Some(Value::TileOverrides(tile_map)) = sector.properties.get("tiles") {
+                        let (default_indices, overrides) = partition_triangles_with_tile_overrides(
+                            &indices,
+                            &uvs,
+                            Some(tile_map),
+                            assets,
+                        );
+
+                        for (tile_id, inds) in overrides {
+                            if !inds.is_empty() {
+                                vmchunk.add_poly_3d(
+                                    GeoId::Sector(sector.id),
+                                    tile_id,
+                                    world_vertices.clone(),
+                                    uvs.clone(),
+                                    inds,
+                                    0,
+                                    true,
+                                );
+                            }
+                        }
+
+                        if !default_indices.is_empty() {
+                            push_with_material_kind_local(
+                                MaterialKind::Cap,
+                                sector,
+                                assets,
+                                vmchunk,
+                                world_vertices,
+                                default_indices,
+                                uvs,
+                            );
+                        }
+                    } else {
+                        push_with_material_kind_local(
+                            MaterialKind::Cap,
+                            sector,
+                            assets,
+                            vmchunk,
+                            world_vertices,
+                            indices,
+                            uvs,
+                        );
+                    }
                 }
             }
         }

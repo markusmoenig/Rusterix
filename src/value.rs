@@ -36,6 +36,7 @@ pub enum Value {
     ParticleEmitter(ParticleEmitter),
     MaterialProfile(MaterialProfile),
     HeightPoints(Vec<HeightControlPoint>),
+    TileOverrides(FxHashMap<(i32, i32), PixelSource>),
 }
 
 impl Value {
@@ -179,6 +180,7 @@ impl fmt::Display for Value {
             Value::ParticleEmitter(_) => write!(f, "ParticleEmitter"),
             Value::MaterialProfile(_) => write!(f, "MaterialProfile"),
             Value::HeightPoints(points) => write!(f, "HeightPoints({})", points.len()),
+            Value::TileOverrides(_) => write!(f, "TileOverrides"),
         }
     }
 }
@@ -467,7 +469,8 @@ impl ValueContainer {
             Some(Value::ParticleEmitter(_)) => 14,
             Some(Value::MaterialProfile(_)) => 15,
             Some(Value::HeightPoints(_)) => 16,
-            Some(Value::NoValue) => 17,
+            Some(Value::TileOverrides(_)) => 17,
+            Some(Value::NoValue) => 18,
             None => 99, // If key is missing, push to the end
         }
     }

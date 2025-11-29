@@ -238,6 +238,14 @@ impl Surface {
         Vec2::new(rel.dot(self.edit_uv.right), rel.dot(self.edit_uv.up)) / self.edit_uv.scale
     }
 
+    /// Map a world point to discrete tile coordinates (1x1 grid cells in UV space).
+    /// Returns (tile_x, tile_y) representing which tile cell the point falls into.
+    /// This is useful for tile override systems that assign different tiles to different regions.
+    pub fn world_to_tile(&self, p: Vec3<f32>) -> (i32, i32) {
+        let uv = self.world_to_uv(p);
+        (uv.x.floor() as i32, uv.y.floor() as i32)
+    }
+
     /// Project the owning sector polygon into this surface's UV space (CCW ensured).
     pub fn sector_loop_uv(&self, map: &Map) -> Option<Vec<Vec2<f32>>> {
         let sector = map.find_sector(self.sector_id)?;

@@ -280,7 +280,7 @@ impl Rusterix {
 
     /// Set up the client for processing the game.
     pub fn setup_client(&mut self) -> Vec<Command> {
-        self.client.setup(&self.assets)
+        self.client.setup(&self.assets, &mut self.scene_handler)
     }
 
     /// Draw the game as the client sees it.
@@ -290,7 +290,13 @@ impl Rusterix {
         messages: Vec<crate::server::Message>,
         choices: Vec<crate::MultipleChoice>,
     ) {
-        self.client.draw_game(map, &self.assets, messages, choices);
+        self.client.draw_game(
+            map,
+            &self.assets,
+            messages,
+            choices,
+            &mut self.scene_handler,
+        );
     }
 
     /// Update the server messages.

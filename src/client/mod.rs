@@ -665,7 +665,7 @@ impl Client {
     }
 
     /// Setup the client with the given assets.
-    pub fn setup(&mut self, assets: &Assets) -> Vec<Command> {
+    pub fn setup(&mut self, assets: &Assets, scene_handler: &mut SceneHandler) -> Vec<Command> {
         let mut commands = vec![];
         self.first_game_draw = true;
         self.intent = String::new();
@@ -751,7 +751,7 @@ impl Client {
         }
 
         if let Some(screen) = assets.screens.get(&self.current_screen) {
-            self.init_screen(screen, assets);
+            self.init_screen(screen, assets, scene_handler);
         } else {
             eprintln!("Did not find start screen");
         }
@@ -766,6 +766,7 @@ impl Client {
         assets: &Assets,
         messages: Vec<crate::server::Message>,
         choices: Vec<crate::MultipleChoice>,
+        scene_handler: &mut SceneHandler,
     ) {
         let mut player_entity = Entity::default();
 
@@ -780,8 +781,14 @@ impl Client {
         self.target.fill([0, 0, 0, 255]);
         // First process the game widgets
         for widget in self.game_widgets.values_mut() {
-            widget.apply_entities(map, assets);
-            widget.draw(map, &self.server_time, assets);
+            widget.apply_entities(map, assets, scene_handler);
+            widget.draw(
+                map,
+                &self.server_time,
+                self.animation_frame,
+                assets,
+                scene_handler,
+            );
 
             self.target
                 .copy_into(widget.rect.x as i32, widget.rect.y as i32, &widget.buffer);
@@ -1100,7 +1107,7 @@ impl Client {
     }
 
     // Init the screen
-    pub fn init_screen(&mut self, screen: &Map, assets: &Assets) {
+    pub fn init_screen(&mut self, screen: &Map, assets: &Assets, scene_handler: &mut SceneHandler) {
         self.game_widgets.clear();
         self.button_widgets.clear();
         self.text_widgets.clear();
@@ -1154,7 +1161,7 @@ impl Client {
                         };
 
                         if let Some(map) = assets.maps.get(&self.current_map) {
-                            game_widget.build(map, assets);
+                            game_widget.build(map, assets, scene_handler);
                         }
                         game_widget.init();
                         self.game_widgets.insert(widget.creator_id, game_widget);
