@@ -1843,15 +1843,16 @@ impl RegionInstance {
 
             // NEW COLLISION SYSTEM
             let collision_blocked = {
-                let entity_3d_pos =
-                    vek::Vec3::new(entity.position.x, entity.position.y, entity.position.z);
-                ctx.collision_world.is_blocked(entity_3d_pos, radius)
-            };
+                let move_vec = end_position - position;
+                let start_pos =
+                    vek::Vec3::new(position.x, entity.position.y, position.y /* z component */);
+                let move_vec_3d = vek::Vec3::new(move_vec.x, 0.0, move_vec.y);
+                let (collision_pos, blocked) =
+                    ctx.collision_world.move_distance(start_pos, move_vec_3d, radius);
 
-            // If new collision system detected blocking, revert to old position
-            if collision_blocked {
-                entity.set_pos_xz(position);
-            }
+                entity.set_pos_xz(vek::Vec2::new(collision_pos.x, collision_pos.z));
+                blocked
+            };
 
             check_player_for_section_change(ctx, entity);
             geometry_blocked || collision_blocked

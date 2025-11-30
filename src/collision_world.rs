@@ -62,6 +62,12 @@ pub struct WalkableFloor {
     pub polygon_2d: Vec<Vec2<f32>>,
 }
 
+#[derive(Clone, Copy, Debug)]
+struct CollisionSegment {
+    start: Vec2<f32>,
+    end: Vec2<f32>,
+}
+
 /// State of a dynamic geometry element
 #[derive(Clone, Debug)]
 pub struct DynamicState {
@@ -130,6 +136,110 @@ impl CollisionWorld {
         }
 
         false
+    }
+
+    /// Move in the XZ plane with collision sliding, returning the new position and whether a collision occurred.
+    pub fn move_distance(
+        &self,
+        start_pos: Vec3<f32>,
+        move_vector: Vec3<f32>,
+        radius: f32,
+    ) -> (Vec3<f32>, bool) {
+        const MAX_ITERATIONS: usize = 3;
+        const EPSILON: f32 = 0.001;
+
+        // Shortcut: if the destination lies in a passable opening we can skip further checks
+        let target_pos = Vec3::new(
+            start_pos.x + move_vector.x,
+            start_pos.y + move_vector.y,
+            start_pos.z + move_vector.z,
+        );
+        if self.is_in_passable_opening(target_pos, radius) {
+            return (target_pos, false);
+        }
+
+        let mut current_pos = start_pos;
+        current_pos.y = target_pos.y; // Allow vertical movement directly; collisions are horizontal.
+
+        let mut current_2d = Vec2::new(start_pos.x, start_pos.z);
+        let mut remaining = Vec2::new(move_vector.x, move_vector.z);
+        let mut blocked = false;
+        let mut iterations = 0;
+
+        let segments = self.collect_blocking_segments(start_pos, radius);
+
+        while remaining.magnitude_squared() > EPSILON * EPSILON && iterations < MAX_ITERATIONS {
+            iterations += 1;
+
+            // Find earliest collision in remaining path
+            let mut closest_collision = None;
+            for seg in &segments {
+                if let Some((distance, normal)) = self.check_intersection(
+                    current_2d,
+                    current_2d + remaining,
+                    seg.start,
+                    seg.end,
+                    radius,
+                ) {
+                    if closest_collision.map_or(true, |(d, _)| distance < d) {
+                        closest_collision = Some((distance, normal));
+                    }
+                }
+            }
+
+            match closest_collision {
+                Some((distance, normal)) => {
+                    blocked = true;
+
+                    // Move up to (just before) collision point
+                    let move_dir = remaining.normalized();
+                    let allowed_move = move_dir * (distance - EPSILON);
+                    current_2d += allowed_move;
+
+                    // Project leftover movement onto the wall's tangent
+                    let leftover = remaining.magnitude() - distance;
+                    if leftover > EPSILON {
+                        let normal_component = normal.dot(remaining) * normal;
+                        let slide_vec = remaining - normal_component;
+                        let slide_len = slide_vec.magnitude();
+
+                        if slide_len > EPSILON {
+                            let friction = 0.5;
+                            remaining = slide_vec.normalized() * leftover * friction;
+                        } else {
+                            remaining = Vec2::zero();
+                        }
+                    } else {
+                        remaining = Vec2::zero();
+                    }
+
+                    // Nudge outward from wall to avoid corner clipping
+                    current_2d += normal * EPSILON;
+                }
+                None => {
+                    current_2d += remaining;
+                    remaining = Vec2::zero();
+                }
+            }
+        }
+
+        // Final "push out" pass so we are never left overlapping geometry
+        for seg in &segments {
+            if let Some((dist, normal)) =
+                self.check_point_against_segment(current_2d, seg.start, seg.end, radius)
+            {
+                let penetration = radius - dist;
+                if penetration > 0.0 {
+                    blocked = true;
+                    current_2d += normal * (penetration + EPSILON);
+                }
+            }
+        }
+
+        current_pos.x = current_2d.x;
+        current_pos.z = current_2d.y;
+
+        (current_pos, blocked)
     }
 
     fn check_chunk_collision(
@@ -243,6 +353,132 @@ impl CollisionWorld {
         None
     }
 
+    fn is_in_passable_opening(&self, position: Vec3<f32>, radius: f32) -> bool {
+        let chunk_coords = self.world_to_chunk(Vec2::new(position.x, position.z));
+
+        for dx in -1..=1 {
+            for dy in -1..=1 {
+                let check_chunk = Vec2::new(chunk_coords.x + dx, chunk_coords.y + dy);
+                if let Some(chunk_collision) = self.chunks.get(&check_chunk) {
+                    for opening in &chunk_collision.dynamic_openings {
+                        if self.opening_is_passable(opening)
+                            && position.y + radius >= opening.floor_height
+                            && position.y - radius <= opening.ceiling_height
+                            && self.point_in_polygon_2d(
+                                Vec2::new(position.x, position.z),
+                                &opening.boundary_2d,
+                                radius,
+                            )
+                        {
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+
+        false
+    }
+
+    fn collect_blocking_segments(
+        &self,
+        position: Vec3<f32>,
+        radius: f32,
+    ) -> Vec<CollisionSegment> {
+        let chunk_coords = self.world_to_chunk(Vec2::new(position.x, position.z));
+        let mut segments = Vec::new();
+
+        for dx in -1..=1 {
+            for dy in -1..=1 {
+                let check_chunk = Vec2::new(chunk_coords.x + dx, chunk_coords.y + dy);
+                if let Some(chunk_collision) = self.chunks.get(&check_chunk) {
+                    for volume in &chunk_collision.static_volumes {
+                        self.add_volume_segments(volume, &mut segments);
+                    }
+
+                    for opening in &chunk_collision.dynamic_openings {
+                        if self.opening_is_blocking(opening)
+                            && position.y + radius >= opening.floor_height
+                            && position.y - radius <= opening.ceiling_height
+                        {
+                            self.add_polygon_segments(&opening.boundary_2d, &mut segments);
+                        }
+                    }
+                }
+            }
+        }
+
+        segments
+    }
+
+    fn add_volume_segments(&self, volume: &BlockingVolume, segments: &mut Vec<CollisionSegment>) {
+        let min = volume.min;
+        let max = volume.max;
+        let corners = [
+            Vec2::new(min.x, min.z),
+            Vec2::new(max.x, min.z),
+            Vec2::new(max.x, max.z),
+            Vec2::new(min.x, max.z),
+        ];
+
+        segments.push(CollisionSegment {
+            start: corners[0],
+            end: corners[1],
+        });
+        segments.push(CollisionSegment {
+            start: corners[1],
+            end: corners[2],
+        });
+        segments.push(CollisionSegment {
+            start: corners[2],
+            end: corners[3],
+        });
+        segments.push(CollisionSegment {
+            start: corners[3],
+            end: corners[0],
+        });
+    }
+
+    fn add_polygon_segments(
+        &self,
+        polygon: &[Vec2<f32>],
+        segments: &mut Vec<CollisionSegment>,
+    ) {
+        if polygon.len() < 2 {
+            return;
+        }
+
+        for i in 0..polygon.len() {
+            let start = polygon[i];
+            let end = polygon[(i + 1) % polygon.len()];
+            segments.push(CollisionSegment { start, end });
+        }
+    }
+
+    fn opening_is_passable(&self, opening: &DynamicOpening) -> bool {
+        match opening.opening_type {
+            OpeningType::Passage => true,
+            OpeningType::Window => false,
+            OpeningType::Door => self
+                .dynamic_states
+                .get(&opening.geo_id)
+                .map(|state| state.is_passable)
+                .unwrap_or(true),
+        }
+    }
+
+    fn opening_is_blocking(&self, opening: &DynamicOpening) -> bool {
+        match opening.opening_type {
+            OpeningType::Passage => false,
+            OpeningType::Window => true,
+            OpeningType::Door => self
+                .dynamic_states
+                .get(&opening.geo_id)
+                .map(|state| !state.is_passable)
+                .unwrap_or(false),
+        }
+    }
+
     fn world_to_chunk(&self, world_pos: Vec2<f32>) -> Vec2<i32> {
         Vec2::new(
             (world_pos.x / self.chunk_size as f32).floor() as i32,
@@ -272,6 +508,136 @@ impl CollisionWorld {
             && pos.x <= expanded_max_x
             && pos.z >= expanded_min_z
             && pos.z <= expanded_max_z
+    }
+
+    fn check_intersection(
+        &self,
+        start: Vec2<f32>,
+        end: Vec2<f32>,
+        line_start: Vec2<f32>,
+        line_end: Vec2<f32>,
+        radius: f32,
+    ) -> Option<(f32, Vec2<f32>)> {
+        let line_vec = line_end - line_start;
+        let line_len = line_vec.magnitude();
+        if line_len < f32::EPSILON {
+            return None;
+        }
+
+        let line_dir = line_vec / line_len;
+        let normal = Vec2::new(-line_dir.y, line_dir.x);
+
+        let start_dist = (start - line_start).dot(normal);
+        let end_dist = (end - line_start).dot(normal);
+
+        if start_dist > radius && end_dist > radius {
+            return None;
+        }
+        if start_dist < -radius && end_dist < -radius {
+            return None;
+        }
+
+        let dist_diff = end_dist - start_dist;
+        let t = if dist_diff.abs() < f32::EPSILON {
+            if start_dist.abs() <= radius {
+                0.0
+            } else {
+                return None;
+            }
+        } else {
+            let desired_dist = if start_dist < 0.0 { -radius } else { radius };
+            (desired_dist - start_dist) / dist_diff
+        };
+
+        if !(0.0..=1.0).contains(&t) {
+            return None;
+        }
+
+        let intersection = start + (end - start) * t;
+        let line_proj = (intersection - line_start).dot(line_dir);
+
+        if line_proj < 0.0 || line_proj > line_len {
+            if line_proj < 0.0 {
+                return self.check_point_collision(intersection, line_start, radius, start);
+            } else {
+                return self.check_point_collision(intersection, line_end, radius, start);
+            }
+        }
+
+        let collision_dist = (intersection - start).magnitude();
+        let final_normal = if start_dist < 0.0 { -normal } else { normal };
+
+        Some((collision_dist, final_normal))
+    }
+
+    fn check_point_collision(
+        &self,
+        collision_point: Vec2<f32>,
+        corner: Vec2<f32>,
+        radius: f32,
+        start: Vec2<f32>,
+    ) -> Option<(f32, Vec2<f32>)> {
+        let to_corner = collision_point - corner;
+        let dist_sq = to_corner.magnitude_squared();
+
+        if dist_sq > radius * radius {
+            return None;
+        }
+
+        let dist_corner = dist_sq.sqrt();
+        let normal = if dist_corner > f32::EPSILON {
+            to_corner / dist_corner
+        } else {
+            Vec2::unit_x()
+        };
+
+        let collision_dist = (collision_point - start).magnitude();
+
+        Some((collision_dist, normal))
+    }
+
+    fn check_point_against_segment(
+        &self,
+        point: Vec2<f32>,
+        seg_start: Vec2<f32>,
+        seg_end: Vec2<f32>,
+        radius: f32,
+    ) -> Option<(f32, Vec2<f32>)> {
+        let seg_vec = seg_end - seg_start;
+        let seg_len = seg_vec.magnitude();
+        if seg_len < f32::EPSILON {
+            let d_sq = (point - seg_start).magnitude_squared();
+            if d_sq > radius * radius {
+                return None;
+            }
+            let d = d_sq.sqrt();
+            let normal = if d > f32::EPSILON {
+                (point - seg_start) / d
+            } else {
+                Vec2::unit_x()
+            };
+            return Some((d, normal));
+        }
+
+        let seg_dir = seg_vec / seg_len;
+        let diff = point - seg_start;
+        let t = diff.dot(seg_dir).clamp(0.0, seg_len);
+        let closest_point = seg_start + seg_dir * t;
+
+        let delta = point - closest_point;
+        let dist_sq = delta.magnitude_squared();
+        if dist_sq > radius * radius {
+            return None;
+        }
+
+        let dist = dist_sq.sqrt();
+        let normal = if dist > f32::EPSILON {
+            delta / dist
+        } else {
+            Vec2::unit_x()
+        };
+
+        Some((dist, normal))
     }
 
     fn point_in_polygon_2d(&self, point: Vec2<f32>, polygon: &[Vec2<f32>], padding: f32) -> bool {
@@ -377,5 +743,25 @@ mod tests {
         // Open door
         world.set_opening_state(door_id, true);
         assert!(world.get_opening_state(&door_id).unwrap().is_passable);
+    }
+
+    #[test]
+    fn test_move_distance_slides_along_wall() {
+        let mut world = CollisionWorld::new(10);
+        let mut chunk = ChunkCollision::new();
+        chunk.static_volumes.push(BlockingVolume {
+            geo_id: GeoId::Sector(1),
+            min: Vec3::new(1.0, 0.0, -2.0),
+            max: Vec3::new(1.1, 2.0, 2.0),
+        });
+        world.update_chunk(Vec2::new(0, 0), chunk);
+
+        let start = Vec3::new(0.0, 0.0, 0.0);
+        let move_vec = Vec3::new(2.0, 0.0, 1.0);
+        let (end, blocked) = world.move_distance(start, move_vec, 0.5);
+
+        assert!(blocked);
+        assert!(end.x < 0.6);
+        assert!(end.z > 0.7);
     }
 }
