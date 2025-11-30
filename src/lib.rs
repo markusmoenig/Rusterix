@@ -6,6 +6,7 @@ pub mod camera;
 pub mod chunk;
 pub mod chunkbuilder;
 pub mod client;
+pub mod collision_world;
 pub mod edge;
 pub mod intodata;
 pub mod map;
@@ -106,6 +107,7 @@ pub use crate::{
         daylight::Daylight,
         parser::{MsgParser, Tok},
     },
+    collision_world::CollisionWorld,
     edge::Edges,
     intodata::IntoDataInput,
     map::{

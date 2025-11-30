@@ -490,6 +490,80 @@ impl RegionInstance {
         ctx.to_receiver.set(self.to_receiver.clone()).unwrap();
         ctx.region_id = self.id;
         ctx.mapmini = ctx.map.as_mini(&ctx.blocking_tiles);
+
+        // Build collision geometry for all chunks (new collision system)
+        use crate::chunkbuilder::{ChunkBuilder, d3chunkbuilder::D3ChunkBuilder};
+        let mut chunk_builder = D3ChunkBuilder::new();
+        let chunk_size = 10; // Match collision_world chunk size
+
+        // Calculate chunk bounds from map
+        let mut min_chunk = vek::Vec2::new(i32::MAX, i32::MAX);
+        let mut max_chunk = vek::Vec2::new(i32::MIN, i32::MIN);
+
+        for surface in ctx.map.surfaces.values() {
+            if let Some(sector) = ctx.map.find_sector(surface.sector_id) {
+                let bbox = sector.bounding_box(&ctx.map);
+                let chunk_min = vek::Vec2::new(
+                    (bbox.min.x / chunk_size as f32).floor() as i32,
+                    (bbox.min.y / chunk_size as f32).floor() as i32,
+                );
+                let chunk_max = vek::Vec2::new(
+                    (bbox.max.x / chunk_size as f32).floor() as i32,
+                    (bbox.max.y / chunk_size as f32).floor() as i32,
+                );
+                min_chunk =
+                    vek::Vec2::new(min_chunk.x.min(chunk_min.x), min_chunk.y.min(chunk_min.y));
+                max_chunk =
+                    vek::Vec2::new(max_chunk.x.max(chunk_max.x), max_chunk.y.max(chunk_max.y));
+            }
+        }
+
+        // Build collision for each chunk
+        for cy in min_chunk.y..=max_chunk.y {
+            for cx in min_chunk.x..=max_chunk.x {
+                let chunk_origin = vek::Vec2::new(cx, cy);
+                let chunk_collision =
+                    chunk_builder.build_collision(&ctx.map, chunk_origin, chunk_size);
+
+                // Debug output
+                println!(
+                    "[COLLISION] Chunk ({}, {}): {} static volumes, {} dynamic openings, {} walkable floors",
+                    cx,
+                    cy,
+                    chunk_collision.static_volumes.len(),
+                    chunk_collision.dynamic_openings.len(),
+                    chunk_collision.walkable_floors.len()
+                );
+
+                for (i, vol) in chunk_collision.static_volumes.iter().enumerate() {
+                    println!(
+                        "  Static Volume {}: min=({:.2},{:.2},{:.2}) max=({:.2},{:.2},{:.2})",
+                        i, vol.min.x, vol.min.y, vol.min.z, vol.max.x, vol.max.y, vol.max.z
+                    );
+                }
+
+                for (i, opening) in chunk_collision.dynamic_openings.iter().enumerate() {
+                    println!(
+                        "  Dynamic Opening {}: type={:?} floor={:.2} ceiling={:.2} boundary_points={}",
+                        i,
+                        opening.opening_type,
+                        opening.floor_height,
+                        opening.ceiling_height,
+                        opening.boundary_2d.len()
+                    );
+                    if opening.boundary_2d.len() > 0 {
+                        println!(
+                            "    First point: ({:.2},{:.2})",
+                            opening.boundary_2d[0].x, opening.boundary_2d[0].y
+                        );
+                    }
+                }
+
+                ctx.collision_world
+                    .update_chunk(chunk_origin, chunk_collision);
+            }
+        }
+
         ctx.ticks = 0;
 
         ctx.ticks_per_minute = 4;
@@ -1759,7 +1833,7 @@ impl RegionInstance {
                 .sample_height_bilinear(entity.position.x, entity.position.z)
                 + 1.5;
 
-            // Finally, let the geometry/linedef collision do its thing
+            // Finally, let the geometry/linedef collision do its thing (OLD SYSTEM)
             let (end_position, geometry_blocked) =
                 ctx.mapmini
                     .move_distance(position, new_position - position, radius);
@@ -1767,8 +1841,20 @@ impl RegionInstance {
             // Move the entity after geometry
             entity.set_pos_xz(end_position);
 
+            // NEW COLLISION SYSTEM
+            let collision_blocked = {
+                let entity_3d_pos =
+                    vek::Vec3::new(entity.position.x, entity.position.y, entity.position.z);
+                ctx.collision_world.is_blocked(entity_3d_pos, radius)
+            };
+
+            // If new collision system detected blocking, revert to old position
+            if collision_blocked {
+                entity.set_pos_xz(position);
+            }
+
             check_player_for_section_change(ctx, entity);
-            geometry_blocked
+            geometry_blocked || collision_blocked
         })
         .unwrap()
     }

@@ -1,3 +1,4 @@
+use crate::collision_world::ChunkCollision;
 use crate::{Assets, BBox, Batch2D, Batch3D, CompiledLight, Pixel, Texture};
 use rusteria::{Program, RenderBuffer, Rusteria};
 use std::sync::{Arc, Mutex};
@@ -25,6 +26,9 @@ pub struct Chunk {
     // Occluded Sectors
     pub occluded_sectors: Vec<(BBox, f32)>,
 
+    // Collision
+    pub collision: ChunkCollision,
+
     /// The list of shaders for the Batches
     pub shaders: Vec<Program>,
 
@@ -50,6 +54,7 @@ impl Chunk {
             terrain_texture: None,
             lights: vec![],
             occluded_sectors: vec![],
+            collision: ChunkCollision::new(),
             shaders: vec![],
             shader_textures: vec![],
             shaders_with_opacity: vec![],

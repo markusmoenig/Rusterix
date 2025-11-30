@@ -1,5 +1,5 @@
-use crate::MapMini;
 use crate::prelude::*;
+use crate::{CollisionWorld, MapMini};
 use crossbeam_channel::{Receiver, Sender};
 use std::sync::OnceLock;
 use theframework::prelude::*;
@@ -10,6 +10,7 @@ use uuid::Uuid;
 pub struct RegionCtx {
     pub map: Map,
     pub mapmini: MapMini,
+    pub collision_world: CollisionWorld,
 
     pub blocking_tiles: FxHashSet<Uuid>,
 

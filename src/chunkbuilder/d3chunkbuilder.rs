@@ -2,6 +2,7 @@ use crate::chunkbuilder::surface_mesh_builder::{
     SurfaceMeshBuilder, fix_winding as mesh_fix_winding,
 };
 use crate::chunkbuilder::terrain_generator::{TerrainConfig, TerrainGenerator};
+use crate::collision_world::{BlockingVolume, DynamicOpening, OpeningType, WalkableFloor};
 use crate::{Assets, Batch3D, Chunk, ChunkBuilder, Map, PixelSource, Value};
 use crate::{GeometrySource, LoopOp, ProfileLoop, RepeatMode, Sector};
 use rustc_hash::FxHashMap;
@@ -765,6 +766,498 @@ impl ChunkBuilder for D3ChunkBuilder {
         // Generate terrain for this chunk
         let terrain_counter = chunk.bbox.min.x as u32 * 10000 + chunk.bbox.min.y as u32;
         generate_terrain(map, assets, chunk, vmchunk, terrain_counter);
+    }
+
+    fn build_collision(
+        &mut self,
+        map: &Map,
+        chunk_origin: Vec2<i32>,
+        chunk_size: i32,
+    ) -> crate::collision_world::ChunkCollision {
+        use crate::BBox;
+
+        let mut collision = crate::collision_world::ChunkCollision::new();
+        let chunk_bbox = BBox::from_pos_size(
+            (chunk_origin.map(|v| v as f32)) * chunk_size as f32,
+            Vec2::broadcast(chunk_size as f32),
+        );
+
+        // Process each surface in the map
+        for surface in map.surfaces.values() {
+            let Some(sector) = map.find_sector(surface.sector_id) else {
+                continue;
+            };
+
+            let bbox = sector.bounding_box(map);
+            // Cull with the sector bbox: only check intersection
+            // Don't require center to be in chunk - surfaces can span multiple chunks!
+            if !bbox.intersects(&chunk_bbox) {
+                continue;
+            }
+
+            // Get profile loops (same as rendering)
+            if let Some((outer_loop, hole_loops)) = read_profile_loops(surface, sector, map) {
+                let extrude_abs = surface.extrusion.depth.abs();
+
+                // Calculate bounds for the surface
+                let mut min_x = f32::INFINITY;
+                let mut min_z = f32::INFINITY;
+                let mut max_x = f32::NEG_INFINITY;
+                let mut max_z = f32::NEG_INFINITY;
+
+                for uv in &outer_loop.path {
+                    let world_pos = surface.uv_to_world(*uv);
+                    min_x = min_x.min(world_pos.x);
+                    max_x = max_x.max(world_pos.x);
+                    min_z = min_z.min(world_pos.z);
+                    max_z = max_z.max(world_pos.z);
+                }
+
+                let base_y = surface.plane.origin.y;
+
+                // Determine if this is a vertical surface (wall) or horizontal (floor/ceiling)
+                // Check the normal vector: if it's mostly horizontal (small Y), it's a wall
+                // If it's mostly vertical (large Y), it's a floor/ceiling
+                let normal = surface.plane.normal;
+                let normal_len = normal.magnitude();
+                let normalized_y = if normal_len > 1e-6 {
+                    (normal.y / normal_len).abs()
+                } else {
+                    0.0
+                };
+                let is_horizontal = normalized_y > 0.7; // If Y component > 0.7, it's horizontal (floor/ceiling)
+
+                // Only add blocking volumes for VERTICAL surfaces (walls)
+                // Horizontal surfaces (floors/ceilings) should not block movement
+                if !is_horizontal {
+                    // Add blocking volume for vertical surfaces (both extruded and non-extruded)
+                    if surface.extrusion.enabled && extrude_abs > 1e-6 {
+                        // Extruded surface - full volume
+                        let top_y = base_y + surface.extrusion.depth;
+                        let (min_y, max_y) = if surface.extrusion.depth > 0.0 {
+                            (base_y, top_y)
+                        } else {
+                            (top_y, base_y)
+                        };
+
+                        // Expand paper-thin dimensions (walls that are flat planes)
+                        const MIN_THICKNESS: f32 = 0.1;
+                        let mut wall_min = Vec3::new(min_x, min_y, min_z);
+                        let mut wall_max = Vec3::new(max_x, max_y, max_z);
+
+                        if (wall_max.x - wall_min.x).abs() < MIN_THICKNESS {
+                            let mid = (wall_min.x + wall_max.x) * 0.5;
+                            wall_min.x = mid - MIN_THICKNESS * 0.5;
+                            wall_max.x = mid + MIN_THICKNESS * 0.5;
+                        }
+                        if (wall_max.z - wall_min.z).abs() < MIN_THICKNESS {
+                            let mid = (wall_min.z + wall_max.z) * 0.5;
+                            wall_min.z = mid - MIN_THICKNESS * 0.5;
+                            wall_max.z = mid + MIN_THICKNESS * 0.5;
+                        }
+
+                        collision.static_volumes.push(BlockingVolume {
+                            geo_id: GeoId::Sector(sector.id),
+                            min: wall_min,
+                            max: wall_max,
+                        });
+
+                        // Add walkable floor at base level
+                        let floor_polygon: Vec<Vec2<f32>> = outer_loop
+                            .path
+                            .iter()
+                            .map(|uv| {
+                                let world_pos = surface.uv_to_world(*uv);
+                                Vec2::new(world_pos.x, world_pos.z)
+                            })
+                            .collect();
+
+                        collision.walkable_floors.push(WalkableFloor {
+                            geo_id: GeoId::Sector(sector.id),
+                            height: base_y,
+                            polygon_2d: floor_polygon,
+                        });
+                    } else {
+                        // Non-extruded surface - thin wall
+                        // Create thin blocking volume (small height to represent wall)
+                        const WALL_HEIGHT: f32 = 2.5; // Default wall height for collision
+                        const MIN_THICKNESS: f32 = 0.1;
+
+                        let mut wall_min = Vec3::new(min_x, base_y, min_z);
+                        let mut wall_max = Vec3::new(max_x, base_y + WALL_HEIGHT, max_z);
+
+                        // Expand paper-thin dimensions
+                        if (wall_max.x - wall_min.x).abs() < MIN_THICKNESS {
+                            let mid = (wall_min.x + wall_max.x) * 0.5;
+                            wall_min.x = mid - MIN_THICKNESS * 0.5;
+                            wall_max.x = mid + MIN_THICKNESS * 0.5;
+                        }
+                        if (wall_max.z - wall_min.z).abs() < MIN_THICKNESS {
+                            let mid = (wall_min.z + wall_max.z) * 0.5;
+                            wall_min.z = mid - MIN_THICKNESS * 0.5;
+                            wall_max.z = mid + MIN_THICKNESS * 0.5;
+                        }
+
+                        collision.static_volumes.push(BlockingVolume {
+                            geo_id: GeoId::Sector(sector.id),
+                            min: wall_min,
+                            max: wall_max,
+                        });
+                    }
+                } else {
+                    // Horizontal surface (floor/ceiling) - only add as walkable floor if facing up
+                    if normal.y > 0.7 {
+                        let floor_polygon: Vec<Vec2<f32>> = outer_loop
+                            .path
+                            .iter()
+                            .map(|uv| {
+                                let world_pos = surface.uv_to_world(*uv);
+                                Vec2::new(world_pos.x, world_pos.z)
+                            })
+                            .collect();
+
+                        collision.walkable_floors.push(WalkableFloor {
+                            geo_id: GeoId::Sector(sector.id),
+                            height: base_y,
+                            polygon_2d: floor_polygon,
+                        });
+                    }
+                }
+
+                // Process holes/doors/windows as dynamic openings
+                for h in &hole_loops {
+                    match h.op {
+                        LoopOp::None => {
+                            // This is a hole (door or window)
+                            // The hole boundary is on the wall surface, but we need to expand it
+                            // perpendicular to the wall to create a passable volume
+                            let hole_points: Vec<Vec2<f32>> = h
+                                .path
+                                .iter()
+                                .map(|uv| {
+                                    let world_pos = surface.uv_to_world(*uv);
+                                    Vec2::new(world_pos.x, world_pos.z)
+                                })
+                                .collect();
+
+                            // Expand the hole polygon perpendicular to the wall surface
+                            // to create a passable corridor through the wall
+                            let normal = surface.plane.normal;
+                            let normal_2d = Vec2::new(normal.x, normal.z).normalized();
+                            const DOOR_DEPTH: f32 = 1.0; // Extend 1 unit on each side of wall
+
+                            // Create expanded polygon by offsetting in both directions
+                            let mut boundary_2d = Vec::new();
+                            for point in &hole_points {
+                                // Add point offset in one direction
+                                boundary_2d.push(*point + normal_2d * DOOR_DEPTH);
+                            }
+                            // Add points offset in opposite direction (reverse order for correct winding)
+                            for point in hole_points.iter().rev() {
+                                boundary_2d.push(*point - normal_2d * DOOR_DEPTH);
+                            }
+
+                            // For door/window openings, use a simple approach:
+                            // Doors/passages should allow passage from floor level up to a reasonable ceiling height
+                            // We don't have easy access to the actual room floor/ceiling from the door frame surface
+                            // So use a generous range that will cover typical doorways
+                            let floor_height = 0.0; // Allow from ground level
+                            let ceiling_height = 10.0; // Up to high ceiling
+
+                            // Determine opening type from properties
+                            let opening_type = if let Some(origin) = h.origin_profile_sector {
+                                if let Some(profile_id) = surface.profile {
+                                    if let Some(profile_map) = map.profiles.get(&profile_id) {
+                                        if let Some(ps) = profile_map.find_sector(origin) {
+                                            // Check if it's marked as a door
+                                            if ps.properties.get_bool_default("is_door", false) {
+                                                OpeningType::Door
+                                            } else if ps
+                                                .properties
+                                                .get_bool_default("is_window", false)
+                                            {
+                                                OpeningType::Window
+                                            } else {
+                                                OpeningType::Passage
+                                            }
+                                        } else {
+                                            OpeningType::Door // Default
+                                        }
+                                    } else {
+                                        OpeningType::Door
+                                    }
+                                } else {
+                                    OpeningType::Door
+                                }
+                            } else {
+                                OpeningType::Door
+                            };
+
+                            let geo_id = if let Some(origin) = h.origin_profile_sector {
+                                // Hole: (parent sector id, hole sector id)
+                                GeoId::Hole(sector.id, origin)
+                            } else {
+                                GeoId::Sector(sector.id)
+                            };
+
+                            collision.dynamic_openings.push(DynamicOpening {
+                                geo_id,
+                                boundary_2d,
+                                floor_height,
+                                ceiling_height,
+                                opening_type,
+                            });
+                        }
+                        _ => {
+                            // Recesses and reliefs are handled as static blocking volumes
+                            // For simplicity, we can skip them or add as static volumes
+                        }
+                    }
+                }
+            } else {
+                // Fallback for surfaces WITHOUT profile loops
+                // Use sector boundary directly
+                let sector_points: Vec<Vec2<f32>> = sector
+                    .linedefs
+                    .iter()
+                    .filter_map(|&ld_id| {
+                        let ld = map.find_linedef(ld_id)?;
+                        let v = map.get_vertex_3d(ld.start_vertex)?;
+                        Some(Vec2::new(v.x, v.z))
+                    })
+                    .collect();
+
+                if sector_points.len() >= 3 {
+                    // Calculate bounds
+                    let mut min_x = f32::INFINITY;
+                    let mut min_z = f32::INFINITY;
+                    let mut max_x = f32::NEG_INFINITY;
+                    let mut max_z = f32::NEG_INFINITY;
+
+                    for p in &sector_points {
+                        min_x = min_x.min(p.x);
+                        max_x = max_x.max(p.x);
+                        min_z = min_z.min(p.y);
+                        max_z = max_z.max(p.y);
+                    }
+
+                    let base_y = surface.plane.origin.y;
+
+                    // Check if vertical or horizontal
+                    let normal = surface.plane.normal;
+                    let normal_len = normal.magnitude();
+                    let normalized_y = if normal_len > 1e-6 {
+                        (normal.y / normal_len).abs()
+                    } else {
+                        0.0
+                    };
+                    let is_horizontal = normalized_y > 0.7;
+
+                    if !is_horizontal {
+                        // Vertical wall - add blocking volume
+                        let extrude_abs = surface.extrusion.depth.abs();
+                        const MIN_THICKNESS: f32 = 0.1;
+
+                        if surface.extrusion.enabled && extrude_abs > 1e-6 {
+                            let top_y = base_y + surface.extrusion.depth;
+                            let (min_y, max_y) = if surface.extrusion.depth > 0.0 {
+                                (base_y, top_y)
+                            } else {
+                                (top_y, base_y)
+                            };
+
+                            let mut wall_min = Vec3::new(min_x, min_y, min_z);
+                            let mut wall_max = Vec3::new(max_x, max_y, max_z);
+
+                            // Expand paper-thin dimensions
+                            if (wall_max.x - wall_min.x).abs() < MIN_THICKNESS {
+                                let mid = (wall_min.x + wall_max.x) * 0.5;
+                                wall_min.x = mid - MIN_THICKNESS * 0.5;
+                                wall_max.x = mid + MIN_THICKNESS * 0.5;
+                            }
+                            if (wall_max.z - wall_min.z).abs() < MIN_THICKNESS {
+                                let mid = (wall_min.z + wall_max.z) * 0.5;
+                                wall_min.z = mid - MIN_THICKNESS * 0.5;
+                                wall_max.z = mid + MIN_THICKNESS * 0.5;
+                            }
+
+                            collision.static_volumes.push(BlockingVolume {
+                                geo_id: GeoId::Sector(sector.id),
+                                min: wall_min,
+                                max: wall_max,
+                            });
+                        } else {
+                            // Non-extruded wall
+                            const WALL_HEIGHT: f32 = 2.5;
+
+                            let mut wall_min = Vec3::new(min_x, base_y, min_z);
+                            let mut wall_max = Vec3::new(max_x, base_y + WALL_HEIGHT, max_z);
+
+                            // Expand paper-thin dimensions
+                            if (wall_max.x - wall_min.x).abs() < MIN_THICKNESS {
+                                let mid = (wall_min.x + wall_max.x) * 0.5;
+                                wall_min.x = mid - MIN_THICKNESS * 0.5;
+                                wall_max.x = mid + MIN_THICKNESS * 0.5;
+                            }
+                            if (wall_max.z - wall_min.z).abs() < MIN_THICKNESS {
+                                let mid = (wall_min.z + wall_max.z) * 0.5;
+                                wall_min.z = mid - MIN_THICKNESS * 0.5;
+                                wall_max.z = mid + MIN_THICKNESS * 0.5;
+                            }
+
+                            collision.static_volumes.push(BlockingVolume {
+                                geo_id: GeoId::Sector(sector.id),
+                                min: wall_min,
+                                max: wall_max,
+                            });
+                        }
+                    } else if normalized_y > 0.7 {
+                        // Horizontal floor - add as walkable
+                        collision.walkable_floors.push(WalkableFloor {
+                            geo_id: GeoId::Sector(sector.id),
+                            height: base_y,
+                            polygon_2d: sector_points,
+                        });
+                    }
+                }
+            }
+        }
+
+        // TODO: Process linedefs for walls between sectors
+        // For now, we rely on surfaces created by linedef extrusion
+        // In the future, we could detect implicit walls from sector height differences
+        // but we need a way to get floor/ceiling heights from sectors
+        /*
+        println!("[COLLISION] Processing linedefs for sector walls...");
+        for linedef in map.linedefs.values() {
+            // Check if this linedef is in the chunk bounds
+            let Some(v1) = map.get_vertex_3d(linedef.start_vertex) else {
+                continue;
+            };
+            let Some(v2) = map.get_vertex_3d(linedef.end_vertex) else {
+                continue;
+            };
+
+            // Check if linedef intersects chunk
+            let ld_min_x = v1.x.min(v2.x);
+            let ld_max_x = v1.x.max(v2.x);
+            let ld_min_z = v1.z.min(v2.z);
+            let ld_max_z = v1.z.max(v2.z);
+
+            if ld_max_x < chunk_bbox.pos.x
+                || ld_min_x > chunk_bbox.pos.x + chunk_bbox.size.x
+                || ld_max_z < chunk_bbox.pos.y
+                || ld_min_z > chunk_bbox.pos.y + chunk_bbox.size.y
+            {
+                continue; // Linedef not in chunk
+            }
+
+            // If linedef has two different sectors, there might be a wall
+            if let (Some(front_sector_id), Some(back_sector_id)) =
+                (linedef.front_sector, linedef.back_sector)
+            {
+                let Some(front_sector) = map.find_sector(front_sector_id) else {
+                    continue;
+                };
+                let Some(back_sector) = map.find_sector(back_sector_id) else {
+                    continue;
+                };
+
+                // Create wall if there's a height difference
+                let front_floor = front_sector.floor_height;
+                let front_ceiling = front_sector.ceiling_height;
+                let back_floor = back_sector.floor_height;
+                let back_ceiling = back_sector.ceiling_height;
+
+                // Lower wall (if back floor is higher than front floor)
+                if back_floor > front_floor + 0.1 {
+                    let wall_min_y = front_floor;
+                    let wall_max_y = back_floor;
+
+                    const MIN_THICKNESS: f32 = 0.1;
+                    let mut wall_min = Vec3::new(ld_min_x, wall_min_y, ld_min_z);
+                    let mut wall_max = Vec3::new(ld_max_x, wall_max_y, ld_max_z);
+
+                    // Expand thin dimensions
+                    if (wall_max.x - wall_min.x).abs() < MIN_THICKNESS {
+                        let mid = (wall_min.x + wall_max.x) * 0.5;
+                        wall_min.x = mid - MIN_THICKNESS * 0.5;
+                        wall_max.x = mid + MIN_THICKNESS * 0.5;
+                    }
+                    if (wall_max.z - wall_min.z).abs() < MIN_THICKNESS {
+                        let mid = (wall_min.z + wall_max.z) * 0.5;
+                        wall_min.z = mid - MIN_THICKNESS * 0.5;
+                        wall_max.z = mid + MIN_THICKNESS * 0.5;
+                    }
+
+                    collision.static_volumes.push(BlockingVolume {
+                        geo_id: GeoId::Linedef(linedef.id),
+                        min: wall_min,
+                        max: wall_max,
+                    });
+                }
+
+                // Upper wall (if front ceiling is higher than back ceiling)
+                if front_ceiling > back_ceiling + 0.1 {
+                    let wall_min_y = back_ceiling;
+                    let wall_max_y = front_ceiling;
+
+                    const MIN_THICKNESS: f32 = 0.1;
+                    let mut wall_min = Vec3::new(ld_min_x, wall_min_y, ld_min_z);
+                    let mut wall_max = Vec3::new(ld_max_x, wall_max_y, ld_max_z);
+
+                    // Expand thin dimensions
+                    if (wall_max.x - wall_min.x).abs() < MIN_THICKNESS {
+                        let mid = (wall_min.x + wall_max.x) * 0.5;
+                        wall_min.x = mid - MIN_THICKNESS * 0.5;
+                        wall_max.x = mid + MIN_THICKNESS * 0.5;
+                    }
+                    if (wall_max.z - wall_min.z).abs() < MIN_THICKNESS {
+                        let mid = (wall_min.z + wall_max.z) * 0.5;
+                        wall_min.z = mid - MIN_THICKNESS * 0.5;
+                        wall_max.z = mid + MIN_THICKNESS * 0.5;
+                    }
+
+                    collision.static_volumes.push(BlockingVolume {
+                        geo_id: GeoId::Linedef(linedef.id),
+                        min: wall_min,
+                        max: wall_max,
+                    });
+                }
+            } else if linedef.front_sector.is_some() && linedef.back_sector.is_none() {
+                // One-sided linedef - solid wall
+                if let Some(front_sector) = linedef.front_sector.and_then(|id| map.find_sector(id))
+                {
+                    let wall_min_y = front_sector.floor_height;
+                    let wall_max_y = front_sector.ceiling_height;
+
+                    const MIN_THICKNESS: f32 = 0.1;
+                    let mut wall_min = Vec3::new(ld_min_x, wall_min_y, ld_min_z);
+                    let mut wall_max = Vec3::new(ld_max_x, wall_max_y, ld_max_z);
+
+                    // Expand thin dimensions
+                    if (wall_max.x - wall_min.x).abs() < MIN_THICKNESS {
+                        let mid = (wall_min.x + wall_max.x) * 0.5;
+                        wall_min.x = mid - MIN_THICKNESS * 0.5;
+                        wall_max.x = mid + MIN_THICKNESS * 0.5;
+                    }
+                    if (wall_max.z - wall_min.z).abs() < MIN_THICKNESS {
+                        let mid = (wall_min.z + wall_max.z) * 0.5;
+                        wall_min.z = mid - MIN_THICKNESS * 0.5;
+                        wall_max.z = mid + MIN_THICKNESS * 0.5;
+                    }
+
+                    collision.static_volumes.push(BlockingVolume {
+                        geo_id: GeoId::Linedef(linedef.id),
+                        min: wall_min,
+                        max: wall_max,
+                    });
+                }
+            }
+        }
+        */
+
+        collision
     }
 }
 
