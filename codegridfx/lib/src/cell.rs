@@ -171,6 +171,7 @@ pub enum Cell {
     RandomWalkInSector,
     SetAttr,
     SetEmitLight,
+    SetPlayerCamera,
     SetProximityTracking,
     SetTile,
     Take,
@@ -285,6 +286,7 @@ impl Cell {
             Cell::RandomWalkInSector => "Random Walk In Sector",
             Cell::SetAttr => "Set Attribute",
             Cell::SetEmitLight => "Set Emit Light",
+            Cell::SetPlayerCamera => "Set Player Camera",
             Cell::SetProximityTracking => "Set Proximity Tracking",
             Cell::SetTile => "Set Tile",
             Cell::Take => "Take",
@@ -373,6 +375,7 @@ impl Cell {
             "random_walk_in_sector" => Some(Cell::RandomWalkInSector),
             "set_attr" => Some(Cell::SetAttr),
             "set_emit_light" => Some(Cell::SetEmitLight),
+            "set_player_camera" => Some(Cell::SetPlayerCamera),
             "set_proximity_tracking" => Some(Cell::SetProximityTracking),
             "set_tile" => Some(Cell::SetTile),
             "take" => Some(Cell::Take),
@@ -476,6 +479,7 @@ impl Cell {
             RandomWalkInSector => "random_walk_in_sector".into(),
             SetAttr => "set_attr".into(),
             SetEmitLight => "set_emit_light".into(),
+            SetPlayerCamera => "set_player_camera".into(),
             SetProximityTracking => "set_proximity_tracking".into(),
             SetTile => "set_tile".into(),
             Take => "take".into(),
@@ -551,6 +555,9 @@ impl Cell {
             RandomWalkInSector => "Randomly walk in the entities current sector.".into(),
             SetAttr => "Set an attribute of the current entity or item.".into(),
             SetEmitLight => "Set the light emission state of the current entity or item.".into(),
+            SetPlayerCamera => {
+                "Sets the player camera: '2d', 'iso' or 'firstp'.".into()
+            }
             SetProximityTracking => {
                 "Enable / disable tracking of entities for the current entity or item.".into()
             }

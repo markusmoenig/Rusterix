@@ -1260,6 +1260,21 @@ impl CellItem {
                 self.form = CellItemForm::LeftRounded;
                 grid.insert(pos, self)
             }
+            Cell::SetPlayerCamera => {
+                grid.insert(
+                    (pos.0 + 1, pos.1),
+                    CellItem::new_dependency(
+                        Cell::Str("firstp".into()),
+                        self.id,
+                        true,
+                        "Camera",
+                        CellItemForm::RightRounded,
+                    ),
+                );
+
+                self.form = CellItemForm::LeftRounded;
+                grid.insert(pos, self)
+            }
             Cell::SetProximityTracking => {
                 grid.insert(
                     (pos.0 + 1, pos.1),

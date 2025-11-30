@@ -6,7 +6,7 @@ const BLOCKS: [&str; 3] = ["Event", "Var = ..", "If .. == .."];
 const VALUES: [&str; 5] = ["Boolean", "Float", "Integer", "String", "Variable"];
 const OPERATORS: [&str; 4] = ["Arithmetic", "Assignment", "Comparison", "Else"];
 const USER_EVENTS: [&str; 2] = ["key_down", "key_up"];
-const FUNCTIONS: [&str; 30] = [
+const FUNCTIONS: [&str; 31] = [
     "action",
     "add_item",
     "block_events",
@@ -31,6 +31,7 @@ const FUNCTIONS: [&str; 30] = [
     "random_walk_in_sector",
     "set_attr",
     "set_emit_light",
+    "set_player_camera",
     "set_proximity_tracking",
     "set_tile",
     "take",

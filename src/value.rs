@@ -298,6 +298,10 @@ impl ValueContainer {
         })
     }
 
+    pub fn get_vec3_default(&self, key: &str, def: [f32; 3]) -> [f32; 3] {
+        self.get_vec3(key).unwrap_or(def)
+    }
+
     pub fn get_vec4(&self, key: &str) -> Option<[f32; 4]> {
         self.values.get(key).and_then(|v| {
             if let Value::Vec4(val) = v {

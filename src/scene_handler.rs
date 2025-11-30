@@ -1,6 +1,6 @@
 use std::str::FromStr;
 
-use crate::{Assets, Map, RenderSettings, Texture, Tile, Value};
+use crate::{Assets, D3Camera, Map, RenderSettings, Texture, Tile, Value};
 use indexmap::IndexMap;
 use rust_embed::EmbeddedFile;
 use scenevm::{Atom, Chunk, DynamicObject, GeoId, Light, SceneVM};
@@ -295,6 +295,110 @@ impl SceneHandler {
                             1.0,
                         );
                         self.vm.execute(Atom::AddDynamic { object: dynamic });
+                    }
+                }
+            }
+        }
+    }
+
+    pub fn build_dynamics_3d(&mut self, map: &Map, camera: &dyn D3Camera, assets: &Assets) {
+        self.vm.execute(Atom::ClearDynamics);
+        self.vm.execute(Atom::ClearLights);
+
+        let basis = camera.basis_vectors();
+
+        // Entities
+        for entity in &map.entities {
+            let show_entity = true; // !(entity.is_player() && camera.id() == "firstp");
+
+            if show_entity {
+                // Find light on entity
+                if let Some(Value::Light(light)) = entity.attributes.get("light") {
+                    self.vm.execute(Atom::AddLight {
+                        id: GeoId::ItemLight(entity.id),
+                        light: Light::new_pointlight(entity.position)
+                            .with_color(Vec3::from(light.get_color().map(|c| c.powf(2.2)))) // Convert light to linear
+                            .with_intensity(light.get_intensity())
+                            .with_emitting(light.active)
+                            .with_start_distance(light.get_start_distance())
+                            .with_end_distance(light.get_end_distance())
+                            .with_flicker(light.get_flicker()),
+                    });
+                }
+
+                // Find light on entity items
+                for (_, item) in entity.iter_inventory() {
+                    if let Some(Value::Light(light)) = item.attributes.get("light") {
+                        self.vm.execute(Atom::AddLight {
+                            id: GeoId::ItemLight(item.id),
+                            light: Light::new_pointlight(entity.position)
+                                .with_color(Vec3::from(light.get_color().map(|c| c.powf(2.2)))) // Convert light to linear
+                                .with_intensity(light.get_intensity())
+                                .with_emitting(light.active)
+                                .with_start_distance(light.get_start_distance())
+                                .with_end_distance(light.get_end_distance())
+                                .with_flicker(light.get_flicker()),
+                        });
+                    }
+                }
+
+                if let Some(Value::Source(source)) = entity.attributes.get("source") {
+                    if entity.attributes.get_bool_default("visible", false) {
+                        let size = 2.0;
+                        if let Some(tile) = source.tile_from_tile_list(assets) {
+                            let center3 =
+                                Vec3::new(entity.position.x, size * 0.5, entity.position.z);
+
+                            let dynamic = DynamicObject::billboard_tile(
+                                GeoId::Item(entity.id),
+                                tile.id,
+                                center3,
+                                basis.1,
+                                basis.2,
+                                size,
+                            );
+                            self.vm.execute(Atom::AddDynamic { object: dynamic });
+                        }
+                    }
+                }
+            }
+
+            // Items
+            for item in &map.items {
+                let show_entity = true; // !(entity.is_player() && camera.id() == "firstp");
+
+                if show_entity {
+                    if let Some(Value::Light(light)) = item.attributes.get("light") {
+                        self.vm.execute(Atom::AddLight {
+                            id: GeoId::ItemLight(item.id),
+                            light: Light::new_pointlight(item.position)
+                                .with_color(Vec3::from(light.get_color().map(|c| c.powf(2.2)))) // Convert light to linear
+                                .with_intensity(light.get_intensity())
+                                .with_emitting(light.active)
+                                .with_start_distance(light.get_start_distance())
+                                .with_end_distance(light.get_end_distance())
+                                .with_flicker(light.get_flicker()),
+                        });
+                    }
+
+                    if let Some(Value::Source(source)) = item.attributes.get("source") {
+                        if item.attributes.get_bool_default("visible", false) {
+                            let size = 1.0;
+                            if let Some(tile) = source.tile_from_tile_list(assets) {
+                                let center3 =
+                                    Vec3::new(item.position.x, size * 0.5, item.position.z);
+
+                                let dynamic = DynamicObject::billboard_tile(
+                                    GeoId::Item(item.id),
+                                    tile.id,
+                                    center3,
+                                    basis.1,
+                                    basis.2,
+                                    size,
+                                );
+                                self.vm.execute(Atom::AddDynamic { object: dynamic });
+                            }
+                        }
                     }
                 }
             }

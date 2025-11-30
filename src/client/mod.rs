@@ -552,19 +552,6 @@ impl Client {
         _assets: &Assets,
         scene_handler: &mut SceneHandler,
     ) {
-        // let mut rast = Rasterizer::setup(
-        //     None,
-        //     self.camera_d3.view_matrix(),
-        //     self.camera_d3
-        //         .projection_matrix(width as f32, height as f32),
-        // )
-        // .render_mode(RenderMode::render_3d());
-        // rast.brush_preview = self.brush_preview.clone();
-        // rast.render_graph = self.global.clone();
-        // rast.hour = self.server_time.to_f32();
-        // rast.mapmini = self.scene.mapmini.clone();
-        // rast.rasterize(&mut self.scene, pixels, width, height, 64, assets)
-
         self.scene.animation_frame = self.animation_frame;
 
         let hour = self.server_time.to_f32();
@@ -583,10 +570,6 @@ impl Client {
         scene_handler
             .vm
             .execute(scenevm::Atom::SetRenderMode(scenevm::RenderMode::Compute3D));
-
-        // scene_handler
-        //     .vm
-        //     .execute(scenevm::Atom::SetSceneGridCells { target_cells: 5000 });
 
         scene_handler.vm.execute(scenevm::Atom::SetCamera3D {
             camera: self.camera_d3.as_scenevm_camera(),

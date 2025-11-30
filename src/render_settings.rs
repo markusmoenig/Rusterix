@@ -1,3 +1,5 @@
+use crate::value::ValueContainer;
+use crate::value_toml::ValueTomlLoader;
 use scenevm::{Atom, SceneVM};
 use vek::Vec4;
 
@@ -139,169 +141,17 @@ impl Default for RenderSettings {
 impl RenderSettings {
     /// Parse render settings from a TOML string's [render] and [simulation] sections
     pub fn read(&mut self, toml_content: &str) -> Result<(), Box<dyn std::error::Error>> {
-        let parsed: toml::Value = toml::from_str(toml_content)?;
+        let groups =
+            ValueTomlLoader::from_str(toml_content).map_err(|e| -> Box<dyn std::error::Error> {
+                e.into()
+            })?;
 
-        // Parse [render] section
-        if let Some(section) = parsed.get("render") {
-            if let Some(sky) = section.get("sky_color") {
-                self.sky_color =
-                    parse_hex_color(sky.as_str().ok_or("sky_color must be a string")?)?;
-            }
-
-            if let Some(sun) = section.get("sun_color") {
-                self.sun_color =
-                    parse_hex_color(sun.as_str().ok_or("sun_color must be a string")?)?;
-            }
-
-            if let Some(intensity) = section.get("sun_intensity") {
-                self.sun_intensity = intensity
-                    .as_float()
-                    .ok_or("sun_intensity must be a number")?
-                    as f32;
-            }
-
-            if let Some(dir) = section.get("sun_direction") {
-                let arr = dir.as_array().ok_or("sun_direction must be an array")?;
-                if arr.len() != 3 {
-                    return Err("sun_direction must have 3 elements".into());
-                }
-                self.sun_direction = [
-                    arr[0]
-                        .as_float()
-                        .ok_or("sun_direction[0] must be a number")? as f32,
-                    arr[1]
-                        .as_float()
-                        .ok_or("sun_direction[1] must be a number")? as f32,
-                    arr[2]
-                        .as_float()
-                        .ok_or("sun_direction[2] must be a number")? as f32,
-                ];
-            }
-
-            if let Some(enabled) = section.get("sun_enabled") {
-                self.sun_enabled = enabled.as_bool().ok_or("sun_enabled must be a boolean")?;
-            }
-
-            if let Some(ambient) = section.get("ambient_color") {
-                self.ambient_color =
-                    parse_hex_color(ambient.as_str().ok_or("ambient_color must be a string")?)?;
-            }
-
-            if let Some(strength) = section.get("ambient_strength") {
-                self.ambient_strength = strength
-                    .as_float()
-                    .ok_or("ambient_strength must be a number")?
-                    as f32;
-            }
-
-            if let Some(fog) = section.get("fog_color") {
-                self.fog_color =
-                    parse_hex_color(fog.as_str().ok_or("fog_color must be a string")?)?;
-            }
-
-            if let Some(density) = section.get("fog_density") {
-                self.fog_density =
-                    density.as_float().ok_or("fog_density must be a number")? as f32 / 100.0;
-            }
-
-            if let Some(samples) = section.get("ao_samples") {
-                self.ao_samples = samples.as_float().ok_or("ao_samples must be a number")? as f32;
-            }
-
-            if let Some(radius) = section.get("ao_radius") {
-                self.ao_radius = radius.as_float().ok_or("ao_radius must be a number")? as f32;
-            }
-
-            if let Some(strength) = section.get("bump_strength") {
-                self.bump_strength = strength
-                    .as_float()
-                    .ok_or("bump_strength must be a number")?
-                    as f32;
-            }
-
-            if let Some(bounces) = section.get("max_transparency_bounces") {
-                self.max_transparency_bounces = bounces
-                    .as_float()
-                    .ok_or("max_transparency_bounces must be a number")?
-                    as f32;
-            }
-
-            if let Some(dist) = section.get("max_shadow_distance") {
-                self.max_shadow_distance =
-                    dist.as_float()
-                        .ok_or("max_shadow_distance must be a number")? as f32;
-            }
-
-            if let Some(dist) = section.get("max_sky_distance") {
-                self.max_sky_distance =
-                    dist.as_float().ok_or("max_sky_distance must be a number")? as f32;
-            }
-
-            if let Some(steps) = section.get("max_shadow_steps") {
-                self.max_shadow_steps = steps
-                    .as_float()
-                    .ok_or("max_shadow_steps must be a number")?
-                    as f32;
-            }
+        if let Some(render) = groups.get("render") {
+            self.apply_render_values(render)?;
         }
 
-        // Parse [simulation] section
-        if let Some(section) = parsed.get("simulation") {
-            if let Some(enabled) = section.get("enabled") {
-                self.simulation.enabled = enabled
-                    .as_bool()
-                    .ok_or("simulation.enabled must be a boolean")?;
-            }
-
-            if let Some(sky) = section.get("night_sky_color") {
-                self.simulation.night_sky_color =
-                    parse_hex_color(sky.as_str().ok_or("night_sky_color must be a string")?)?;
-            }
-
-            if let Some(sky) = section.get("morning_sky_color") {
-                self.simulation.morning_sky_color =
-                    parse_hex_color(sky.as_str().ok_or("morning_sky_color must be a string")?)?;
-            }
-
-            if let Some(sky) = section.get("midday_sky_color") {
-                self.simulation.midday_sky_color =
-                    parse_hex_color(sky.as_str().ok_or("midday_sky_color must be a string")?)?;
-            }
-
-            if let Some(sky) = section.get("evening_sky_color") {
-                self.simulation.evening_sky_color =
-                    parse_hex_color(sky.as_str().ok_or("evening_sky_color must be a string")?)?;
-            }
-
-            if let Some(sun) = section.get("night_sun_color") {
-                self.simulation.night_sun_color =
-                    parse_hex_color(sun.as_str().ok_or("night_sun_color must be a string")?)?;
-            }
-
-            if let Some(sun) = section.get("morning_sun_color") {
-                self.simulation.morning_sun_color =
-                    parse_hex_color(sun.as_str().ok_or("morning_sun_color must be a string")?)?;
-            }
-
-            if let Some(sun) = section.get("midday_sun_color") {
-                self.simulation.midday_sun_color =
-                    parse_hex_color(sun.as_str().ok_or("midday_sun_color must be a string")?)?;
-            }
-
-            if let Some(sun) = section.get("evening_sun_color") {
-                self.simulation.evening_sun_color =
-                    parse_hex_color(sun.as_str().ok_or("evening_sun_color must be a string")?)?;
-            }
-
-            if let Some(time) = section.get("sunrise_time") {
-                self.simulation.sunrise_time =
-                    time.as_float().ok_or("sunrise_time must be a number")? as f32;
-            }
-
-            if let Some(time) = section.get("sunset_time") {
-                self.simulation.sunset_time =
-                    time.as_float().ok_or("sunset_time must be a number")? as f32;
-            }
+        if let Some(sim) = groups.get("simulation") {
+            self.apply_simulation_values(sim)?;
         }
 
         Ok(())
@@ -458,6 +308,122 @@ impl RenderSettings {
     }
 }
 
+impl RenderSettings {
+    fn apply_render_values(
+        &mut self,
+        render: &ValueContainer,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        if let Some(v) = render.get_str("sky_color") {
+            self.sky_color = parse_hex_color(v)?;
+        } else if let Some(v) = render.get_vec3("sky_color") {
+            self.sky_color = v;
+        }
+
+        if let Some(v) = render.get_str("sun_color") {
+            self.sun_color = parse_hex_color(v)?;
+        } else if let Some(v) = render.get_vec3("sun_color") {
+            self.sun_color = v;
+        }
+
+        self.sun_intensity = render.get_float_default("sun_intensity", self.sun_intensity);
+        self.sun_direction = render.get_vec3_default("sun_direction", self.sun_direction);
+        self.sun_enabled = render.get_bool_default("sun_enabled", self.sun_enabled);
+
+        if let Some(v) = render.get_str("ambient_color") {
+            self.ambient_color = parse_hex_color(v)?;
+        } else if let Some(v) = render.get_vec3("ambient_color") {
+            self.ambient_color = v;
+        }
+
+        self.ambient_strength =
+            render.get_float_default("ambient_strength", self.ambient_strength);
+
+        if let Some(v) = render.get_str("fog_color") {
+            self.fog_color = parse_hex_color(v)?;
+        } else if let Some(v) = render.get_vec3("fog_color") {
+            self.fog_color = v;
+        }
+
+        // keep legacy percent scaling
+        if let Some(d) = render.get_float("fog_density") {
+            self.fog_density = d / 100.0;
+        }
+        self.ao_samples = render.get_float_default("ao_samples", self.ao_samples);
+        self.ao_radius = render.get_float_default("ao_radius", self.ao_radius);
+        self.bump_strength = render.get_float_default("bump_strength", self.bump_strength);
+        self.max_transparency_bounces =
+            render.get_float_default("max_transparency_bounces", self.max_transparency_bounces);
+        self.max_shadow_distance =
+            render.get_float_default("max_shadow_distance", self.max_shadow_distance);
+        self.max_sky_distance = render.get_float_default("max_sky_distance", self.max_sky_distance);
+        self.max_shadow_steps = render.get_float_default("max_shadow_steps", self.max_shadow_steps);
+
+        Ok(())
+    }
+
+    fn apply_simulation_values(
+        &mut self,
+        sim: &ValueContainer,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        self.simulation.enabled = sim.get_bool_default("enabled", self.simulation.enabled);
+
+        if let Some(v) = sim.get_str("night_sky_color") {
+            self.simulation.night_sky_color = parse_hex_color(v)?;
+        } else if let Some(v) = sim.get_vec3("night_sky_color") {
+            self.simulation.night_sky_color = v;
+        }
+
+        if let Some(v) = sim.get_str("morning_sky_color") {
+            self.simulation.morning_sky_color = parse_hex_color(v)?;
+        } else if let Some(v) = sim.get_vec3("morning_sky_color") {
+            self.simulation.morning_sky_color = v;
+        }
+
+        if let Some(v) = sim.get_str("midday_sky_color") {
+            self.simulation.midday_sky_color = parse_hex_color(v)?;
+        } else if let Some(v) = sim.get_vec3("midday_sky_color") {
+            self.simulation.midday_sky_color = v;
+        }
+
+        if let Some(v) = sim.get_str("evening_sky_color") {
+            self.simulation.evening_sky_color = parse_hex_color(v)?;
+        } else if let Some(v) = sim.get_vec3("evening_sky_color") {
+            self.simulation.evening_sky_color = v;
+        }
+
+        if let Some(v) = sim.get_str("night_sun_color") {
+            self.simulation.night_sun_color = parse_hex_color(v)?;
+        } else if let Some(v) = sim.get_vec3("night_sun_color") {
+            self.simulation.night_sun_color = v;
+        }
+
+        if let Some(v) = sim.get_str("morning_sun_color") {
+            self.simulation.morning_sun_color = parse_hex_color(v)?;
+        } else if let Some(v) = sim.get_vec3("morning_sun_color") {
+            self.simulation.morning_sun_color = v;
+        }
+
+        if let Some(v) = sim.get_str("midday_sun_color") {
+            self.simulation.midday_sun_color = parse_hex_color(v)?;
+        } else if let Some(v) = sim.get_vec3("midday_sun_color") {
+            self.simulation.midday_sun_color = v;
+        }
+
+        if let Some(v) = sim.get_str("evening_sun_color") {
+            self.simulation.evening_sun_color = parse_hex_color(v)?;
+        } else if let Some(v) = sim.get_vec3("evening_sun_color") {
+            self.simulation.evening_sun_color = v;
+        }
+
+        self.simulation.sunrise_time =
+            sim.get_float_default("sunrise_time", self.simulation.sunrise_time);
+        self.simulation.sunset_time =
+            sim.get_float_default("sunset_time", self.simulation.sunset_time);
+
+        Ok(())
+    }
+}
+
 /// Linear interpolation between two f32 values
 fn lerp(a: f32, b: f32, t: f32) -> f32 {
     a + (b - a) * t
@@ -489,4 +455,25 @@ fn parse_hex_color(hex: &str) -> Result<[f32; 3], Box<dyn std::error::Error>> {
     let b = u8::from_str_radix(&hex[4..6], 16)?;
 
     Ok([r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0])
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn load_example_toml() {
+        let example = include_str!("../render_settings_example.toml");
+        let mut settings = RenderSettings::default();
+        settings.read(example).expect("render settings parse");
+
+        assert_eq!(settings.sky_color, [0.5294118, 0.80784315, 0.92156863]); // #87CEEB
+        assert_eq!(settings.sun_color, [1.0, 0.98039216, 0.8039216]); // #FFFACD
+        assert_eq!(settings.sun_intensity, 1.0);
+        assert_eq!(settings.sun_direction, [-0.5, -1.0, -0.3]);
+        assert!(settings.sun_enabled);
+        assert!(settings.simulation.enabled);
+        assert_eq!(settings.simulation.sunrise_time, 6.0);
+        assert_eq!(settings.simulation.sunset_time, 18.0);
+    }
 }

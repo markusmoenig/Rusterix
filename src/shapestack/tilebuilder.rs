@@ -44,11 +44,11 @@ pub fn tile_builder(map: &mut Map, assets: &mut Assets) {
                 }
             } else {
                 // No sequences for this character at all, build the sequence
-                println!(
-                    "No sequences at all ({}) for character {}",
-                    name,
-                    entity.attributes.get_str_default("name", "unknown".into())
-                );
+                // println!(
+                //     "No sequences at all ({}) for character {}",
+                //     name,
+                //     entity.attributes.get_str_default("name", "unknown".into())
+                // );
 
                 if let Some(Value::Str(class_name)) = entity.attributes.get("class_name") {
                     if let Some(character_map) = assets.character_maps.get(class_name) {
@@ -105,11 +105,11 @@ pub fn tile_builder(map: &mut Map, assets: &mut Assets) {
                 }
             } else {
                 // No sequences for this item at all, build the sequence
-                println!(
-                    "No sequences at all ({}) for item {}",
-                    name,
-                    item.attributes.get_str_default("name", "unknown".into())
-                );
+                // println!(
+                //     "No sequences at all ({}) for item {}",
+                //     name,
+                //     item.attributes.get_str_default("name", "unknown".into())
+                // );
 
                 if let Some(Value::Str(class_name)) = item.attributes.get("class_name") {
                     if let Some(item_map) = assets.item_maps.get(class_name) {
