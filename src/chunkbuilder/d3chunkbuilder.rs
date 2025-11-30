@@ -4,7 +4,7 @@ use crate::chunkbuilder::surface_mesh_builder::{
 use crate::chunkbuilder::terrain_generator::{TerrainConfig, TerrainGenerator};
 use crate::collision_world::{BlockingVolume, DynamicOpening, OpeningType, WalkableFloor};
 use crate::{Assets, Batch3D, Chunk, ChunkBuilder, Map, PixelSource, Value};
-use crate::{GeometrySource, LoopOp, ProfileLoop, RepeatMode, Sector};
+use crate::{BillboardAnimation, GeometrySource, LoopOp, ProfileLoop, RepeatMode, Sector};
 use rustc_hash::FxHashMap;
 use scenevm::GeoId;
 use std::str::FromStr;
@@ -524,6 +524,10 @@ impl ChunkBuilder for D3ChunkBuilder {
                                         }
                                     }
                                     LoopOp::Relief { .. } => { /* no hole */ }
+                                    LoopOp::Billboard { .. } => {
+                                        // Billboard is a hole in the surface
+                                        back_holes_paths.push(h.path.clone());
+                                    }
                                 }
                             }
 
@@ -1008,6 +1012,50 @@ impl ChunkBuilder for D3ChunkBuilder {
                                 opening_type,
                             });
                         }
+                        LoopOp::Billboard { .. } => {
+                            // Billboard creates a hole similar to LoopOp::None
+                            // but with visual geometry (handled in rendering)
+                            let hole_points: Vec<Vec2<f32>> = h
+                                .path
+                                .iter()
+                                .map(|uv| {
+                                    let world_pos = surface.uv_to_world(*uv);
+                                    Vec2::new(world_pos.x, world_pos.z)
+                                })
+                                .collect();
+
+                            let normal = surface.plane.normal;
+                            let normal_2d = Vec2::new(normal.x, normal.z).normalized();
+                            const DOOR_DEPTH: f32 = 1.0;
+
+                            let mut boundary_2d = Vec::new();
+                            for point in &hole_points {
+                                boundary_2d.push(*point + normal_2d * DOOR_DEPTH);
+                            }
+                            for point in hole_points.iter().rev() {
+                                boundary_2d.push(*point - normal_2d * DOOR_DEPTH);
+                            }
+
+                            let floor_height = 0.0;
+                            let ceiling_height = 10.0;
+
+                            // Billboards are typically doors/gates
+                            let opening_type = OpeningType::Door;
+
+                            let geo_id = if let Some(origin) = h.origin_profile_sector {
+                                GeoId::Hole(sector.id, origin)
+                            } else {
+                                GeoId::Sector(sector.id)
+                            };
+
+                            collision.dynamic_openings.push(DynamicOpening {
+                                geo_id,
+                                boundary_2d,
+                                floor_height,
+                                ceiling_height,
+                                opening_type,
+                            });
+                        }
                         _ => {
                             // Recesses and reliefs are handled as static blocking volumes
                             // For simplicity, we can skip them or add as static volumes
@@ -1122,140 +1170,6 @@ impl ChunkBuilder for D3ChunkBuilder {
                 }
             }
         }
-
-        // TODO: Process linedefs for walls between sectors
-        // For now, we rely on surfaces created by linedef extrusion
-        // In the future, we could detect implicit walls from sector height differences
-        // but we need a way to get floor/ceiling heights from sectors
-        /*
-        println!("[COLLISION] Processing linedefs for sector walls...");
-        for linedef in map.linedefs.values() {
-            // Check if this linedef is in the chunk bounds
-            let Some(v1) = map.get_vertex_3d(linedef.start_vertex) else {
-                continue;
-            };
-            let Some(v2) = map.get_vertex_3d(linedef.end_vertex) else {
-                continue;
-            };
-
-            // Check if linedef intersects chunk
-            let ld_min_x = v1.x.min(v2.x);
-            let ld_max_x = v1.x.max(v2.x);
-            let ld_min_z = v1.z.min(v2.z);
-            let ld_max_z = v1.z.max(v2.z);
-
-            if ld_max_x < chunk_bbox.pos.x
-                || ld_min_x > chunk_bbox.pos.x + chunk_bbox.size.x
-                || ld_max_z < chunk_bbox.pos.y
-                || ld_min_z > chunk_bbox.pos.y + chunk_bbox.size.y
-            {
-                continue; // Linedef not in chunk
-            }
-
-            // If linedef has two different sectors, there might be a wall
-            if let (Some(front_sector_id), Some(back_sector_id)) =
-                (linedef.front_sector, linedef.back_sector)
-            {
-                let Some(front_sector) = map.find_sector(front_sector_id) else {
-                    continue;
-                };
-                let Some(back_sector) = map.find_sector(back_sector_id) else {
-                    continue;
-                };
-
-                // Create wall if there's a height difference
-                let front_floor = front_sector.floor_height;
-                let front_ceiling = front_sector.ceiling_height;
-                let back_floor = back_sector.floor_height;
-                let back_ceiling = back_sector.ceiling_height;
-
-                // Lower wall (if back floor is higher than front floor)
-                if back_floor > front_floor + 0.1 {
-                    let wall_min_y = front_floor;
-                    let wall_max_y = back_floor;
-
-                    const MIN_THICKNESS: f32 = 0.1;
-                    let mut wall_min = Vec3::new(ld_min_x, wall_min_y, ld_min_z);
-                    let mut wall_max = Vec3::new(ld_max_x, wall_max_y, ld_max_z);
-
-                    // Expand thin dimensions
-                    if (wall_max.x - wall_min.x).abs() < MIN_THICKNESS {
-                        let mid = (wall_min.x + wall_max.x) * 0.5;
-                        wall_min.x = mid - MIN_THICKNESS * 0.5;
-                        wall_max.x = mid + MIN_THICKNESS * 0.5;
-                    }
-                    if (wall_max.z - wall_min.z).abs() < MIN_THICKNESS {
-                        let mid = (wall_min.z + wall_max.z) * 0.5;
-                        wall_min.z = mid - MIN_THICKNESS * 0.5;
-                        wall_max.z = mid + MIN_THICKNESS * 0.5;
-                    }
-
-                    collision.static_volumes.push(BlockingVolume {
-                        geo_id: GeoId::Linedef(linedef.id),
-                        min: wall_min,
-                        max: wall_max,
-                    });
-                }
-
-                // Upper wall (if front ceiling is higher than back ceiling)
-                if front_ceiling > back_ceiling + 0.1 {
-                    let wall_min_y = back_ceiling;
-                    let wall_max_y = front_ceiling;
-
-                    const MIN_THICKNESS: f32 = 0.1;
-                    let mut wall_min = Vec3::new(ld_min_x, wall_min_y, ld_min_z);
-                    let mut wall_max = Vec3::new(ld_max_x, wall_max_y, ld_max_z);
-
-                    // Expand thin dimensions
-                    if (wall_max.x - wall_min.x).abs() < MIN_THICKNESS {
-                        let mid = (wall_min.x + wall_max.x) * 0.5;
-                        wall_min.x = mid - MIN_THICKNESS * 0.5;
-                        wall_max.x = mid + MIN_THICKNESS * 0.5;
-                    }
-                    if (wall_max.z - wall_min.z).abs() < MIN_THICKNESS {
-                        let mid = (wall_min.z + wall_max.z) * 0.5;
-                        wall_min.z = mid - MIN_THICKNESS * 0.5;
-                        wall_max.z = mid + MIN_THICKNESS * 0.5;
-                    }
-
-                    collision.static_volumes.push(BlockingVolume {
-                        geo_id: GeoId::Linedef(linedef.id),
-                        min: wall_min,
-                        max: wall_max,
-                    });
-                }
-            } else if linedef.front_sector.is_some() && linedef.back_sector.is_none() {
-                // One-sided linedef - solid wall
-                if let Some(front_sector) = linedef.front_sector.and_then(|id| map.find_sector(id))
-                {
-                    let wall_min_y = front_sector.floor_height;
-                    let wall_max_y = front_sector.ceiling_height;
-
-                    const MIN_THICKNESS: f32 = 0.1;
-                    let mut wall_min = Vec3::new(ld_min_x, wall_min_y, ld_min_z);
-                    let mut wall_max = Vec3::new(ld_max_x, wall_max_y, ld_max_z);
-
-                    // Expand thin dimensions
-                    if (wall_max.x - wall_min.x).abs() < MIN_THICKNESS {
-                        let mid = (wall_min.x + wall_max.x) * 0.5;
-                        wall_min.x = mid - MIN_THICKNESS * 0.5;
-                        wall_max.x = mid + MIN_THICKNESS * 0.5;
-                    }
-                    if (wall_max.z - wall_min.z).abs() < MIN_THICKNESS {
-                        let mid = (wall_min.z + wall_max.z) * 0.5;
-                        wall_min.z = mid - MIN_THICKNESS * 0.5;
-                        wall_max.z = mid + MIN_THICKNESS * 0.5;
-                    }
-
-                    collision.static_volumes.push(BlockingVolume {
-                        geo_id: GeoId::Linedef(linedef.id),
-                        min: wall_min,
-                        max: wall_max,
-                    });
-                }
-            }
-        }
-        */
 
         collision
     }
@@ -1387,6 +1301,11 @@ fn split_loops_for_base<'a>(
                 // Relief never subtracts from the base; purely additive feature
                 feature_loops.push(h);
             }
+            LoopOp::Billboard { .. } => {
+                // Billboard cuts a hole in the base and creates a billboard quad
+                base_holes.push(h); // subtract from base
+                feature_loops.push(h); // build billboard geometry
+            }
         }
     }
     (base_holes, feature_loops)
@@ -1486,6 +1405,40 @@ fn read_profile_loops(
                             amount
                         };
                         LoopOp::Recess { depth }
+                    }
+                    3 => {
+                        // Billboard: gate/door with optional animation
+                        let inset = if amount.is_nan() {
+                            ps.properties.get_float_default("profile_inset", 0.0)
+                        } else {
+                            amount
+                        };
+                        // Read tile_id as UUID string or Id
+                        let tile_id = if let Some(Value::Str(tile_str)) =
+                            ps.properties.get("billboard_tile_id")
+                        {
+                            Uuid::from_str(tile_str).ok()
+                        } else if let Some(Value::Id(id)) = ps.properties.get("billboard_tile_id") {
+                            Some(*id)
+                        } else {
+                            None
+                        };
+
+                        let anim_code = ps.properties.get_int_default("billboard_animation", 0);
+                        let animation = match anim_code {
+                            1 => BillboardAnimation::OpenUp,
+                            2 => BillboardAnimation::OpenRight,
+                            3 => BillboardAnimation::OpenDown,
+                            4 => BillboardAnimation::OpenLeft,
+                            5 => BillboardAnimation::Fade,
+                            _ => BillboardAnimation::None,
+                        };
+
+                        LoopOp::Billboard {
+                            tile_id,
+                            animation,
+                            inset,
+                        }
                     }
                     _ => LoopOp::None,
                 };
@@ -1714,6 +1667,69 @@ fn process_feature_loop_with_action(
     assets: &Assets,
     feature_loop: &ProfileLoop,
 ) -> Option<()> {
+    // Special handling for billboards - use DynamicObject instead of mesh
+    if let LoopOp::Billboard {
+        tile_id,
+        animation,
+        inset,
+    } = &feature_loop.op
+    {
+        // Calculate billboard center from hole polygon
+        let mut center_uv = Vec2::zero();
+        for uv in &feature_loop.path {
+            center_uv += *uv;
+        }
+        center_uv /= feature_loop.path.len() as f32;
+
+        // Convert to world space at the inset depth
+        let center_world = surface.uvw_to_world(center_uv, *inset);
+
+        // Calculate billboard size from hole bounds
+        let mut min_uv = feature_loop.path[0];
+        let mut max_uv = feature_loop.path[0];
+        for uv in &feature_loop.path {
+            min_uv.x = min_uv.x.min(uv.x);
+            min_uv.y = min_uv.y.min(uv.y);
+            max_uv.x = max_uv.x.max(uv.x);
+            max_uv.y = max_uv.y.max(uv.y);
+        }
+        let size_uv = max_uv - min_uv;
+        let size = size_uv.magnitude() * surface.edit_uv.scale;
+
+        // Get tile from tile_id or use default
+        let billboard_tile_id = if let Some(tid) = tile_id {
+            // Verify the tile exists in assets
+            if assets.tiles.contains_key(tid) {
+                *tid
+            } else {
+                Uuid::from_str(DEFAULT_TILE_ID).unwrap()
+            }
+        } else {
+            Uuid::from_str(DEFAULT_TILE_ID).unwrap()
+        };
+
+        // GeoId for the billboard
+        let geo_id = if let Some(origin) = feature_loop.origin_profile_sector {
+            GeoId::Hole(sector.id, origin)
+        } else {
+            GeoId::Sector(sector.id)
+        };
+
+        // Store billboard metadata in chunk for transfer to SceneHandler
+        // Animation state will be handled dynamically during rendering
+        chunk.billboards.push(crate::BillboardMetadata {
+            geo_id,
+            tile_id: billboard_tile_id,
+            center: center_world,
+            up: surface.frame.up,
+            right: surface.frame.right,
+            size,
+            animation: *animation,
+        });
+
+        return Some(());
+    }
+
     // Get the action for this loop operation
     let action = feature_loop.op.get_action()?;
 

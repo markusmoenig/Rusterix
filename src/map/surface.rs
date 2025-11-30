@@ -5,12 +5,33 @@ use vek::{Vec2, Vec3};
 
 use earcutr::earcut;
 
+/// Animation type for billboards
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Default)]
+pub enum BillboardAnimation {
+    #[default]
+    None,
+    OpenUp,    // Gate opens upward
+    OpenRight, // Gate opens to the right
+    OpenDown,  // Gate opens downward
+    OpenLeft,  // Gate opens to the left
+    Fade,      // Gate fades in/out
+}
+
 /// Operation applied to a profile loop on this surface (non-destructive).
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub enum LoopOp {
     None,
-    Relief { height: f32 }, // positive outward along surface normal
-    Recess { depth: f32 },  // positive inward along surface normal
+    Relief {
+        height: f32,
+    }, // positive outward along surface normal
+    Recess {
+        depth: f32,
+    }, // positive inward along surface normal
+    Billboard {
+        tile_id: Option<Uuid>,         // Tile UUID to render on billboard
+        animation: BillboardAnimation, // Animation type
+        inset: f32,                    // Offset from surface (positive = along normal)
+    },
 }
 
 impl LoopOp {
@@ -29,17 +50,29 @@ impl LoopOp {
             LoopOp::Recess { depth } => ActionProperties::default()
                 .with_depth(*depth)
                 .with_target_side(target_side),
+            LoopOp::Billboard {
+                tile_id,
+                animation,
+                inset,
+            } => ActionProperties::default()
+                .with_depth(*inset)
+                .with_target_side(target_side)
+                .with_tile_id(*tile_id)
+                .with_animation(*animation),
         }
     }
 
     /// Get the appropriate SurfaceAction implementation for this operation
     pub fn get_action(&self) -> Option<Box<dyn crate::chunkbuilder::action::SurfaceAction>> {
-        use crate::chunkbuilder::action::{HoleAction, RecessAction, ReliefAction};
+        use crate::chunkbuilder::action::{
+            BillboardAction, HoleAction, RecessAction, ReliefAction,
+        };
 
         match self {
             LoopOp::None => Some(Box::new(HoleAction)),
             LoopOp::Relief { .. } => Some(Box::new(ReliefAction)),
             LoopOp::Recess { .. } => Some(Box::new(RecessAction)),
+            LoopOp::Billboard { .. } => Some(Box::new(BillboardAction)),
         }
     }
 }

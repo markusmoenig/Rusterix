@@ -1,8 +1,22 @@
 use crate::collision_world::ChunkCollision;
-use crate::{Assets, BBox, Batch2D, Batch3D, CompiledLight, Pixel, Texture};
+use crate::{Assets, BBox, Batch2D, Batch3D, BillboardAnimation, CompiledLight, Pixel, Texture};
 use rusteria::{Program, RenderBuffer, Rusteria};
+use scenevm::GeoId;
 use std::sync::{Arc, Mutex};
-use vek::Vec2;
+use uuid::Uuid;
+use vek::{Vec2, Vec3};
+
+/// Billboard metadata for dynamic rendering
+#[derive(Clone, Debug)]
+pub struct BillboardMetadata {
+    pub geo_id: GeoId,
+    pub tile_id: Uuid,
+    pub center: Vec3<f32>,
+    pub up: Vec3<f32>,
+    pub right: Vec3<f32>,
+    pub size: f32,
+    pub animation: BillboardAnimation,
+}
 
 /// A chunk of 2D and 3D batches which make up a Scene.
 pub struct Chunk {
@@ -28,6 +42,9 @@ pub struct Chunk {
 
     // Collision
     pub collision: ChunkCollision,
+
+    // Billboards (temporarily stored during build, transferred to SceneHandler)
+    pub billboards: Vec<BillboardMetadata>,
 
     /// The list of shaders for the Batches
     pub shaders: Vec<Program>,
@@ -55,6 +72,7 @@ impl Chunk {
             lights: vec![],
             occluded_sectors: vec![],
             collision: ChunkCollision::new(),
+            billboards: vec![],
             shaders: vec![],
             shader_textures: vec![],
             shaders_with_opacity: vec![],

@@ -1,8 +1,9 @@
 use std::str::FromStr;
 
-use crate::{Assets, D3Camera, Map, RenderSettings, Texture, Tile, Value};
+use crate::{Assets, BillboardMetadata, D3Camera, Map, RenderSettings, Texture, Tile, Value};
 use indexmap::IndexMap;
 use rust_embed::EmbeddedFile;
+use rustc_hash::FxHashMap;
 use scenevm::{Atom, Chunk, DynamicObject, GeoId, Light, SceneVM};
 use theframework::prelude::*;
 
@@ -26,6 +27,9 @@ pub struct SceneHandler {
     pub yellow: Uuid,
 
     pub settings: RenderSettings,
+
+    // Billboards for dynamic doors/gates (indexed by GeoId for fast lookup)
+    pub billboards: FxHashMap<GeoId, BillboardMetadata>,
 }
 
 impl Default for SceneHandler {
@@ -59,6 +63,8 @@ impl SceneHandler {
             yellow: Uuid::new_v4(),
 
             settings: RenderSettings::default(),
+
+            billboards: FxHashMap::default(),
         }
     }
 
@@ -401,6 +407,29 @@ impl SceneHandler {
                         }
                     }
                 }
+            }
+        }
+
+        // Billboards (doors/gates)
+        for (geo_id, billboard) in &self.billboards {
+            // TODO: Query server/client for current state of this GeoId
+            // For now, always render billboards (you can add state checking later)
+            let is_visible = true;
+
+            if is_visible {
+                // Calculate animation offset based on animation type and state
+                // For now, render at static position (you can add animation interpolation later)
+                let animated_center = billboard.center;
+
+                let dynamic = DynamicObject::billboard_tile(
+                    *geo_id,
+                    billboard.tile_id,
+                    animated_center,
+                    billboard.up,
+                    billboard.right,
+                    billboard.size,
+                );
+                self.vm.execute(Atom::AddDynamic { object: dynamic });
             }
         }
     }

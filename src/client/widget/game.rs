@@ -145,7 +145,7 @@ impl GameWidget {
         // Apply scene manager chunks
         while let Some(result) = self.scenemanager.receive() {
             match result {
-                SceneManagerResult::Chunk(chunk, _togo, _total) => {
+                SceneManagerResult::Chunk(chunk, _togo, _total, billboards) => {
                     scene_handler.vm.execute(scenevm::Atom::RemoveChunkAt {
                         origin: chunk.origin,
                     });
@@ -154,9 +154,15 @@ impl GameWidget {
                         id: Uuid::new_v4(),
                         chunk: chunk,
                     });
+
+                    // Add billboards to scene_handler (indexed by GeoId)
+                    for billboard in billboards {
+                        scene_handler.billboards.insert(billboard.geo_id, billboard);
+                    }
                 }
                 SceneManagerResult::Clear => {
                     scene_handler.vm.execute(scenevm::Atom::ClearGeometry);
+                    scene_handler.billboards.clear();
                 }
                 _ => {}
             }

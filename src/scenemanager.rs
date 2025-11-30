@@ -22,7 +22,7 @@ pub enum SceneManagerCmd {
 pub enum SceneManagerResult {
     Startup,
     Clear,
-    Chunk(VMChunk, i32, i32),
+    Chunk(VMChunk, i32, i32, Vec<crate::BillboardMetadata>),
     ProcessedHeights(Vec2<i32>, FxHashMap<(i32, i32), f32>),
     UpdatedBatch3D((i32, i32), Batch3D),
     Quit,
@@ -232,11 +232,13 @@ impl SceneManager {
                 cb_d3.build(&self.map, &self.assets, &mut chunk, &mut vmchunk);
             }
 
-            // Send the chunk
+            // Send the chunk with billboards
+            let billboards = chunk.billboards.clone();
             self.results.push(SceneManagerResult::Chunk(
                 vmchunk,
                 self.dirty.len() as i32,
                 self.total_chunks,
+                billboards,
             ));
 
             // Check if we just finished all dirty chunks

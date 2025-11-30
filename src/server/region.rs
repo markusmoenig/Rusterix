@@ -1844,11 +1844,15 @@ impl RegionInstance {
             // NEW COLLISION SYSTEM
             let collision_blocked = {
                 let move_vec = end_position - position;
-                let start_pos =
-                    vek::Vec3::new(position.x, entity.position.y, position.y /* z component */);
+                let start_pos = vek::Vec3::new(
+                    position.x,
+                    entity.position.y,
+                    position.y, /* z component */
+                );
                 let move_vec_3d = vek::Vec3::new(move_vec.x, 0.0, move_vec.y);
                 let (collision_pos, blocked) =
-                    ctx.collision_world.move_distance(start_pos, move_vec_3d, radius);
+                    ctx.collision_world
+                        .move_distance(start_pos, move_vec_3d, radius);
 
                 entity.set_pos_xz(vek::Vec2::new(collision_pos.x, collision_pos.z));
                 blocked

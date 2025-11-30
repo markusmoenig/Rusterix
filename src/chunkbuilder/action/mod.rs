@@ -1,8 +1,10 @@
+mod billboard;
 mod hole;
 mod recess;
 mod relief;
 
 // Re-export action implementations
+pub use billboard::BillboardAction;
 pub use hole::HoleAction;
 pub use recess::RecessAction;
 pub use relief::ReliefAction;
@@ -98,6 +100,10 @@ pub struct ActionProperties {
     pub slope_width: f32,
     /// Custom connection mode override
     pub connection_override: Option<ConnectionMode>,
+    /// Tile ID for billboard rendering
+    pub tile_id: Option<uuid::Uuid>,
+    /// Animation type for billboards
+    pub animation: crate::map::surface::BillboardAnimation,
 }
 
 impl ActionProperties {
@@ -123,6 +129,16 @@ impl ActionProperties {
 
     pub fn with_slope_width(mut self, slope_width: f32) -> Self {
         self.slope_width = slope_width;
+        self
+    }
+
+    pub fn with_tile_id(mut self, tile_id: Option<uuid::Uuid>) -> Self {
+        self.tile_id = tile_id;
+        self
+    }
+
+    pub fn with_animation(mut self, animation: crate::map::surface::BillboardAnimation) -> Self {
+        self.animation = animation;
         self
     }
 }
