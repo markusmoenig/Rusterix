@@ -22,7 +22,10 @@ fn partition_triangles_with_tile_overrides(
     uvs: &[[f32; 2]],
     overrides: Option<&FxHashMap<(i32, i32), PixelSource>>,
     assets: &Assets,
-) -> (Vec<(usize, usize, usize)>, Vec<(Uuid, Vec<(usize, usize, usize)>)>) {
+) -> (
+    Vec<(usize, usize, usize)>,
+    Vec<(Uuid, Vec<(usize, usize, usize)>)>,
+) {
     let mut defaults = Vec::new();
     let mut per_tile: FxHashMap<Uuid, Vec<(usize, usize, usize)>> = FxHashMap::default();
 
@@ -377,13 +380,14 @@ impl ChunkBuilder for D3ChunkBuilder {
                             let a_back = a_world + n * depth;
                             let b_back = b_world + n * depth;
 
-                            // Skip edge if the actual extruded height is very small (avoids z-fighting)
-                            // This happens when edges are nearly on the surface boundary
-                            let a_height = (a_back - a_world).dot(n).abs();
-                            let b_height = (b_back - b_world).dot(n).abs();
-                            const MIN_EDGE_HEIGHT: f32 = 0.2;
-                            if a_height < MIN_EDGE_HEIGHT || b_height < MIN_EDGE_HEIGHT {
-                                continue; // Skip this thin jamb edge
+                            // Skip edge if both vertices are at nearly the same low height (e.g., door bottom on floor)
+                            // Check if edge is horizontal and at the minimum Y position
+                            const MIN_HEIGHT_THRESHOLD: f32 = 0.2;
+                            let edge_is_horizontal = (a_world.y - b_world.y).abs() < 0.01;
+                            let edge_is_low = a_world.y.min(b_world.y) < MIN_HEIGHT_THRESHOLD;
+
+                            if edge_is_horizontal && edge_is_low {
+                                continue; // Skip horizontal edges at floor level (door bottoms)
                             }
 
                             let base = verts.len();
@@ -607,7 +611,8 @@ impl ChunkBuilder for D3ChunkBuilder {
                         // 2) Outer perimeter side band
                         push_side_band(&outer_loop.path);
 
-                        // 3) Through-hole tubes for **actual** base holes (cutouts + through-recesses)
+                        // 3) Through-hole tubes for base holes (cutouts + through-recesses)
+                        // Thin edge check automatically handles doors vs windows
                         for h in &base_holes {
                             push_side_band(&h.path);
                         }
