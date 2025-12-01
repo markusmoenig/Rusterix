@@ -216,7 +216,7 @@ impl Tile {
     pub fn set_default_materials(&mut self) {
         for texture in &mut self.textures {
             texture.set_default_materials();
-            texture.generate_normals(false);
+            texture.generate_normals(true);
         }
     }
 }

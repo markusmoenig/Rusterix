@@ -710,6 +710,30 @@ impl Texture {
         }
     }
 
+    /// Set material properties for all pixels in the texture
+    pub fn set_materials_all(
+        &mut self,
+        roughness: f32,
+        metallic: f32,
+        opacity: f32,
+        emissive: f32,
+    ) {
+        self.ensure_data_ext();
+
+        if let Some(ext) = self.data_ext.as_mut() {
+            let mat_packed = Self::pack_materials(roughness, metallic, opacity, emissive);
+            let mat_bytes = mat_packed.to_le_bytes();
+
+            // Set material bytes for all pixels
+            for pixel_idx in 0..(self.width * self.height) {
+                let idx = pixel_idx * 4;
+                ext[idx] = mat_bytes[0];
+                ext[idx + 1] = mat_bytes[1];
+                // Preserve bytes 2-3 (normal data)
+            }
+        }
+    }
+
     /// Get all material properties for a pixel
     /// Returns (roughness, metallic, opacity, emissive) or defaults if data_ext not present
     pub fn get_materials(&self, x: u32, y: u32) -> (f32, f32, f32, f32) {

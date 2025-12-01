@@ -1765,12 +1765,13 @@ fn process_feature_loop_with_action(
 
         // Store billboard metadata in chunk for transfer to SceneHandler
         // Animation state will be handled dynamically during rendering
+        // NOTE: Swapping up/right to fix 90-degree rotation
         chunk.billboards.push(crate::BillboardMetadata {
             geo_id,
             tile_id: billboard_tile_id,
             center: center_world,
-            up: billboard_up,
-            right: billboard_right,
+            up: billboard_right,
+            right: billboard_up,
             size,
             animation: *animation,
             repeat_mode,

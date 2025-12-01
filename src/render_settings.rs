@@ -55,6 +55,9 @@ pub struct RenderSettings {
     /// Max shadow steps (for transparent shadows)
     pub max_shadow_steps: f32,
 
+    /// Reflection samples (0 = disabled, higher = better quality)
+    pub reflection_samples: f32,
+
     /// Daylight simulation settings
     pub simulation: DaylightSimulation,
 }
@@ -133,6 +136,7 @@ impl Default for RenderSettings {
             max_shadow_distance: 10.0,
             max_sky_distance: 50.0,
             max_shadow_steps: 2.0,
+            reflection_samples: 0.0,
             simulation: DaylightSimulation::default(),
         }
     }
@@ -141,10 +145,8 @@ impl Default for RenderSettings {
 impl RenderSettings {
     /// Parse render settings from a TOML string's [render] and [simulation] sections
     pub fn read(&mut self, toml_content: &str) -> Result<(), Box<dyn std::error::Error>> {
-        let groups =
-            ValueTomlLoader::from_str(toml_content).map_err(|e| -> Box<dyn std::error::Error> {
-                e.into()
-            })?;
+        let groups = ValueTomlLoader::from_str(toml_content)
+            .map_err(|e| -> Box<dyn std::error::Error> { e.into() })?;
 
         if let Some(render) = groups.get("render") {
             self.apply_render_values(render)?;
@@ -298,12 +300,12 @@ impl RenderSettings {
         )));
 
         // gp6: Distance settings
-        // x: Max shadow distance, y: Max sky distance, z: Max shadow steps, w: unused
+        // x: Max shadow distance, y: Max sky distance, z: Max shadow steps, w: Reflection samples
         vm.execute(Atom::SetGP6(Vec4::new(
             self.max_shadow_distance,
             self.max_sky_distance,
             self.max_shadow_steps,
-            0.0,
+            self.reflection_samples,
         )));
     }
 }
@@ -335,8 +337,7 @@ impl RenderSettings {
             self.ambient_color = v;
         }
 
-        self.ambient_strength =
-            render.get_float_default("ambient_strength", self.ambient_strength);
+        self.ambient_strength = render.get_float_default("ambient_strength", self.ambient_strength);
 
         if let Some(v) = render.get_str("fog_color") {
             self.fog_color = parse_hex_color(v)?;
@@ -357,6 +358,8 @@ impl RenderSettings {
             render.get_float_default("max_shadow_distance", self.max_shadow_distance);
         self.max_sky_distance = render.get_float_default("max_sky_distance", self.max_sky_distance);
         self.max_shadow_steps = render.get_float_default("max_shadow_steps", self.max_shadow_steps);
+        self.reflection_samples =
+            render.get_float_default("reflection_samples", self.reflection_samples);
 
         Ok(())
     }
