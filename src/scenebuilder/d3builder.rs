@@ -505,6 +505,7 @@ impl D3Builder {
                                 basis.1,
                                 basis.2,
                                 size,
+                                size,
                             );
                             scene_handler
                                 .vm
@@ -537,6 +538,33 @@ impl D3Builder {
                         }
                     }
                 }
+            }
+        }
+
+        // Billboards (doors/gates)
+        for (geo_id, billboard) in &scene_handler.billboards {
+            // TODO: Query server/client for current state of this GeoId
+            // For now, always render billboards (you can add state checking later)
+            let is_visible = true;
+
+            if is_visible {
+                // Calculate animation offset based on animation type and state
+                // For now, render at static position (you can add animation interpolation later)
+                let animated_center = billboard.center;
+
+                let dynamic = DynamicObject::billboard_tile(
+                    *geo_id,
+                    billboard.tile_id,
+                    animated_center,
+                    billboard.up,
+                    billboard.right,
+                    billboard.size,
+                    billboard.size,
+                )
+                .with_repeat_mode(billboard.repeat_mode);
+                scene_handler
+                    .vm
+                    .execute(Atom::AddDynamic { object: dynamic });
             }
         }
 

@@ -16,6 +16,7 @@ pub struct BillboardMetadata {
     pub right: Vec3<f32>,
     pub size: f32,
     pub animation: BillboardAnimation,
+    pub repeat_mode: scenevm::RepeatMode,
 }
 
 /// A chunk of 2D and 3D batches which make up a Scene.

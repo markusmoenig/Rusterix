@@ -254,6 +254,7 @@ impl SceneHandler {
                             tile.id,
                             pos,
                             1.0,
+                            1.0,
                         );
                         self.vm.execute(Atom::AddDynamic { object: dynamic });
                     }
@@ -298,6 +299,7 @@ impl SceneHandler {
                             GeoId::Character(entity.id),
                             tile.id,
                             pos,
+                            1.0,
                             1.0,
                         );
                         self.vm.execute(Atom::AddDynamic { object: dynamic });
@@ -362,6 +364,7 @@ impl SceneHandler {
                                 basis.1,
                                 basis.2,
                                 size,
+                                size,
                             );
                             self.vm.execute(Atom::AddDynamic { object: dynamic });
                         }
@@ -401,6 +404,7 @@ impl SceneHandler {
                                     basis.1,
                                     basis.2,
                                     size,
+                                    size,
                                 );
                                 self.vm.execute(Atom::AddDynamic { object: dynamic });
                             }
@@ -428,7 +432,9 @@ impl SceneHandler {
                     billboard.up,
                     billboard.right,
                     billboard.size,
-                );
+                    billboard.size,
+                )
+                .with_repeat_mode(billboard.repeat_mode);
                 self.vm.execute(Atom::AddDynamic { object: dynamic });
             }
         }

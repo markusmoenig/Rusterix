@@ -804,6 +804,7 @@ impl D2PreviewBuilder {
                                 tile.id,
                                 pos,
                                 1.0,
+                                1.0,
                             );
                             scene_handler
                                 .vm
@@ -906,6 +907,7 @@ impl D2PreviewBuilder {
                                 GeoId::Character(entity.id),
                                 tile.id,
                                 pos,
+                                1.0,
                                 1.0,
                             );
                             scene_handler

@@ -1674,17 +1674,7 @@ fn process_feature_loop_with_action(
         inset,
     } = &feature_loop.op
     {
-        // Calculate billboard center from hole polygon
-        let mut center_uv = Vec2::zero();
-        for uv in &feature_loop.path {
-            center_uv += *uv;
-        }
-        center_uv /= feature_loop.path.len() as f32;
-
-        // Convert to world space at the inset depth
-        let center_world = surface.uvw_to_world(center_uv, *inset);
-
-        // Calculate billboard size from hole bounds
+        // Calculate billboard bounds from hole polygon
         let mut min_uv = feature_loop.path[0];
         let mut max_uv = feature_loop.path[0];
         for uv in &feature_loop.path {
@@ -1693,19 +1683,44 @@ fn process_feature_loop_with_action(
             max_uv.x = max_uv.x.max(uv.x);
             max_uv.y = max_uv.y.max(uv.y);
         }
+
+        // Billboard center is the center of the bounding box
+        let center_uv = (min_uv + max_uv) * 0.5;
+
+        // Convert to world space at the inset depth
+        let mut center_world = surface.uvw_to_world(center_uv, *inset);
+
+        // Adjust Y position: billboard should be centered at half its height above ground
         let size_uv = max_uv - min_uv;
+        let height = size_uv.y * surface.edit_uv.scale;
+        center_world.y = height * 0.5;
+
         let size = size_uv.magnitude() * surface.edit_uv.scale;
 
-        // Get tile from tile_id or use default
-        let billboard_tile_id = if let Some(tid) = tile_id {
-            // Verify the tile exists in assets
-            if assets.tiles.contains_key(tid) {
-                *tid
+        // Get tile using feature_pixelsource (same approach as other features)
+        let billboard_tile_id = if let Some(Value::Source(pixelsource)) = feature_pixelsource(
+            surface,
+            map,
+            sector,
+            feature_loop.origin_profile_sector,
+            "billboard_source",
+        ) {
+            if let Some(tile) = pixelsource.tile_from_tile_list(assets) {
+                tile.id
             } else {
                 Uuid::from_str(DEFAULT_TILE_ID).unwrap()
             }
         } else {
-            Uuid::from_str(DEFAULT_TILE_ID).unwrap()
+            // Fallback: use tile_id if specified directly
+            if let Some(tid) = tile_id {
+                if assets.tiles.contains_key(tid) {
+                    *tid
+                } else {
+                    Uuid::from_str(DEFAULT_TILE_ID).unwrap()
+                }
+            } else {
+                Uuid::from_str(DEFAULT_TILE_ID).unwrap()
+            }
         };
 
         // GeoId for the billboard
@@ -1715,16 +1730,50 @@ fn process_feature_loop_with_action(
             GeoId::Sector(sector.id)
         };
 
+        // Read repeat mode from profile sector properties
+        let repeat_mode = if let Some(origin) = feature_loop.origin_profile_sector {
+            if let Some(profile_id) = surface.profile {
+                if let Some(profile_map) = map.profiles.get(&profile_id) {
+                    if let Some(ps) = profile_map.find_sector(origin) {
+                        let mode = ps.properties.get_int_default("billboard_repeat_mode", 1);
+                        match mode {
+                            1 => scenevm::RepeatMode::Scale,
+                            _ => scenevm::RepeatMode::Repeat,
+                        }
+                    } else {
+                        scenevm::RepeatMode::Repeat
+                    }
+                } else {
+                    scenevm::RepeatMode::Repeat
+                }
+            } else {
+                scenevm::RepeatMode::Repeat
+            }
+        } else {
+            scenevm::RepeatMode::Repeat
+        };
+
+        // Billboard orientation: for doors/gates, we want world-space up and right perpendicular to surface normal
+        let world_up = Vec3::new(0.0, 1.0, 0.0);
+        let normal = surface.plane.normal.normalized();
+
+        // Right is perpendicular to both normal and world up
+        let billboard_right = normal.cross(world_up).normalized();
+
+        // Up is perpendicular to both normal and right (ensures orthogonal frame)
+        let billboard_up = billboard_right.cross(normal).normalized();
+
         // Store billboard metadata in chunk for transfer to SceneHandler
         // Animation state will be handled dynamically during rendering
         chunk.billboards.push(crate::BillboardMetadata {
             geo_id,
             tile_id: billboard_tile_id,
             center: center_world,
-            up: surface.frame.up,
-            right: surface.frame.right,
+            up: billboard_up,
+            right: billboard_right,
             size,
             animation: *animation,
+            repeat_mode,
         });
 
         return Some(());
