@@ -43,11 +43,11 @@ impl Rusterix {
             }
         }
 
-        if let Some(bytes) = crate::Embedded::get("shader/3d_shader.wgsl") {
-            if let Ok(source) = std::str::from_utf8(bytes.data.as_ref()) {
-                scene_handler.vm.execute(Atom::SetSource3D(source.into()));
-            }
-        }
+        // if let Some(bytes) = crate::Embedded::get("shader/3d_shader.wgsl") {
+        //     if let Ok(source) = std::str::from_utf8(bytes.data.as_ref()) {
+        //         scene_handler.vm.execute(Atom::SetSource3D(source.into()));
+        //     }
+        // }
 
         Self {
             assets: Assets::default(),
@@ -148,6 +148,7 @@ impl Rusterix {
         screen_size: Vec2<f32>,
         map: &Map,
         edit_surface: &Option<Surface>,
+        draw_sectors: bool,
     ) {
         for e in map.entities.iter() {
             if e.is_player() {
@@ -171,6 +172,7 @@ impl Rusterix {
                 &self.assets,
                 edit_surface,
                 &mut self.scene_handler,
+                draw_sectors,
             );
         } else if self.draw_mode == ClientDrawMode::D3 {
             self.client
@@ -185,6 +187,7 @@ impl Rusterix {
         map: &Map,
         values: &ValueContainer,
         edit_surface: &Option<Surface>,
+        draw_sectors: bool,
     ) {
         self.client.build_custom_scene_d2(
             screen_size,
@@ -193,6 +196,7 @@ impl Rusterix {
             values,
             edit_surface,
             &mut self.scene_handler,
+            draw_sectors,
         );
     }
 

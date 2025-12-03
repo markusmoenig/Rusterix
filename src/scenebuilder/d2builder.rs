@@ -1,8 +1,6 @@
-// use crate::PrimitiveMode::*;
-
-// use crate::Texture;
 use crate::{Assets, Batch2D, Map, PixelSource, Scene, Value};
 use theframework::prelude::*;
+use uuid::Uuid;
 use vek::Vec2;
 
 pub struct D2Builder {

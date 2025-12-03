@@ -12,7 +12,7 @@ use uuid::Uuid;
 use vek::{Vec2, Vec3};
 
 /// Default tile UUID for untextured/fallback meshes
-const DEFAULT_TILE_ID: &str = "27826750-a9e7-4346-994b-fb318b238452";
+pub const DEFAULT_TILE_ID: &str = "27826750-a9e7-4346-994b-fb318b238452";
 
 pub struct D3ChunkBuilder {}
 

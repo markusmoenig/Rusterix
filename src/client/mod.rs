@@ -214,6 +214,7 @@ impl Client {
         values: &ValueContainer,
         edit_surface: &Option<Surface>,
         scene_handler: &mut SceneHandler,
+        draw_sectors: bool,
     ) {
         self.curr_map_id = map.id;
         self.scene_d2 = self.builder_d2.build(map, assets, screen_size, values);
@@ -224,6 +225,7 @@ impl Client {
             screen_size,
             edit_surface,
             scene_handler,
+            draw_sectors,
         );
     }
 
@@ -235,6 +237,7 @@ impl Client {
         assets: &Assets,
         edit_surface: &Option<Surface>,
         scene_handler: &mut SceneHandler,
+        draw_sectors: bool,
     ) {
         self.builder_d2.build_entities_items(
             map,
@@ -243,6 +246,7 @@ impl Client {
             screen_size,
             edit_surface,
             scene_handler,
+            draw_sectors,
         );
     }
 

@@ -44,15 +44,6 @@ impl ChunkBuilder for D2ChunkBuilder {
 
             if bbox.intersects(&chunk.bbox) && chunk.bbox.contains(bbox.center()) {
                 if let Some(geo) = sector.generate_geometry(map) {
-                    // let shader_index = sector
-                    //     .shader
-                    //     .and_then(|shader_id| {
-                    //         map.shaders
-                    //             .get(&shader_id)
-                    //             .map(|m| chunk.add_shader(&m.build_shader(), assets))
-                    //     })
-                    //     .flatten();
-
                     let mut vertices: Vec<[f32; 2]> = vec![];
                     let mut uvs: Vec<[f32; 2]> = vec![];
 
@@ -61,14 +52,7 @@ impl ChunkBuilder for D2ChunkBuilder {
                         repeat = false;
                     }
 
-                    // Use the floor or ceiling source
                     let source = sector.properties.get_default_source();
-                    // if source.is_none() {
-                    //     //|| self.activated_widgets.contains(&sector.id) {
-                    //     source = sector.properties.get("ceiling_source");
-                    // }
-
-                    // let mut processed = false;
                     for vertex in &geo.0 {
                         let local = Vec2::new(vertex[0], vertex[1]);
 
@@ -100,28 +84,8 @@ impl ChunkBuilder for D2ChunkBuilder {
                                 0,
                                 true,
                             );
-                            // if let Some(texture_index) = assets.tile_index(&tile.id) {
-                            //     let mut batch =
-                            //         Batch2D::new(vertices.clone(), geo.1.clone(), uvs.clone())
-                            //             .repeat_mode(if repeat {
-                            //                 crate::RepeatMode::RepeatXY
-                            //             } else {
-                            //                 crate::RepeatMode::ClampXY
-                            //             })
-                            //             .source(PixelSource::StaticTileIndex(texture_index));
-                            //     batch.shader = shader_index;
-                            //     chunk.batches2d.push(batch);
-                            //     processed = true;
-                            // }
                         }
                     }
-
-                    // if let Some(shader_index) = shader_index
-                    //     && processed == false
-                    // {
-                    //     let batch = Batch2D::new(vertices, geo.1, uvs).shader(shader_index);
-                    //     chunk.batches2d.push(batch);
-                    // }
                 }
             }
         }

@@ -5,6 +5,7 @@ use crate::{
 use MapToolType::*;
 use scenevm::{Atom, DynamicObject, GeoId, Light};
 use theframework::prelude::*;
+use uuid::Uuid;
 use vek::Vec2;
 
 pub struct D2PreviewBuilder {
@@ -274,6 +275,7 @@ impl D2PreviewBuilder {
         screen_size: Vec2<f32>,
         editing_surface: &Option<Surface>,
         scene_handler: &mut SceneHandler,
+        draw_sectors: bool,
     ) {
         // let screen_aspect = screen_size.x / screen_size.y;
         let screen_pixel_size = 4.0;
@@ -381,6 +383,67 @@ impl D2PreviewBuilder {
                 );
             }
             // scene.d2_dynamic.push(batch);
+        }
+
+        if draw_sectors {
+            let sectors = map.sorted_sectors_by_area();
+            for sector in &sectors {
+                let bbox = sector.bounding_box(map);
+
+                if let Some(geo) = sector.generate_geometry(map) {
+                    let mut vertices: Vec<[f32; 2]> = vec![];
+                    let mut uvs: Vec<[f32; 2]> = vec![];
+
+                    let mut repeat = true;
+                    if sector.properties.get_int_default("tile_mode", 1) == 0 {
+                        repeat = false;
+                    }
+
+                    // Use the floor or ceiling source
+                    let source = sector.properties.get_default_source();
+                    // if source.is_none() {
+                    //     //     //|| self.activated_widgets.contains(&sector.id) {
+                    //     //     source = sector.properties.get("ceiling_source");
+                    //     //
+                    //     source = Some(&default_source);
+                    // }
+                    //
+
+                    for vertex in &geo.0 {
+                        let local = Vec2::new(vertex[0], vertex[1]);
+
+                        if !repeat {
+                            let uv = [
+                                (vertex[0] - bbox.min.x) / (bbox.max.x - bbox.min.x),
+                                (vertex[1] - bbox.min.y) / (bbox.max.y - bbox.min.y),
+                            ];
+                            uvs.push(uv);
+                        } else {
+                            let texture_scale = 1.0;
+                            let uv = [
+                                (vertex[0] - bbox.min.x) / texture_scale,
+                                (vertex[1] - bbox.min.y) / texture_scale,
+                            ];
+                            uvs.push(uv);
+                        }
+                        vertices.push([local.x, local.y]);
+                    }
+
+                    if let Some(pixelsource) = source {
+                        if let Some(tile) = pixelsource.tile_from_tile_list(assets) {
+                            scene_handler.overlay.add_poly_2d(
+                                GeoId::Sector(sector.id),
+                                tile.id,
+                                vertices,
+                                uvs,
+                                geo.1,
+                                10,
+                                true,
+                            );
+                        }
+                    }
+                }
+            }
         }
 
         // Add Vertices
@@ -551,7 +614,9 @@ impl D2PreviewBuilder {
                     for sector in &map.sectors {
                         if sector.linedefs.contains(&linedef.id) {
                             // found_in_sector = true;
-                            if sector.properties.contains("rect") {
+                            if sector.properties.contains("rect")
+                                || sector.properties.contains("rect_rendering")
+                            {
                                 draw = false;
                                 break;
                             }
