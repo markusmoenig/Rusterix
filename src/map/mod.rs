@@ -246,7 +246,6 @@ impl Map {
         let mut blocked_tiles = FxHashSet::default();
 
         for sector in self.sectors.iter() {
-            let casts_shadows = false;
             let mut add_it = true;
 
             // We collect occluded sectors
@@ -284,25 +283,15 @@ impl Map {
             if add_it {
                 for linedef_id in sector.linedefs.iter() {
                     if let Some(linedef) = self.find_linedef(*linedef_id) {
-                        let mut casts_shadows = casts_shadows;
-                        let cs = linedef.properties.get_int_default("casts_shadows", 0);
-                        if cs == 1 {
-                            casts_shadows = false;
-                        }
-                        let wall_height = linedef.properties.get_float_default("wall_height", 0.0);
-
-                        if wall_height > 0.5 {
-                            if let Some(start) = self.find_vertex(linedef.start_vertex) {
-                                if let Some(end) = self.find_vertex(linedef.end_vertex) {
-                                    let cl = CompiledLinedef::new(
-                                        start.as_vec2(),
-                                        end.as_vec2(),
-                                        linedef.properties.get_float_default("wall_width", 0.0),
-                                        linedef.properties.get_float_default("wall_height", 0.0),
-                                        casts_shadows,
-                                    );
-                                    linedefs.push(cl);
-                                }
+                        if let Some(start) = self.find_vertex(linedef.start_vertex) {
+                            if let Some(end) = self.find_vertex(linedef.end_vertex) {
+                                let cl = CompiledLinedef::new(
+                                    start.as_vec2(),
+                                    end.as_vec2(),
+                                    linedef.properties.get_float_default("wall_width", 0.0),
+                                    linedef.properties.get_float_default("wall_height", 0.0),
+                                );
+                                linedefs.push(cl);
                             }
                         }
                     }
@@ -339,7 +328,6 @@ impl Map {
                                 end.as_vec2(),
                                 l.properties.get_float_default("wall_width", 0.0),
                                 wall_height,
-                                true,
                             );
                             linedefs.push(cl);
                         }

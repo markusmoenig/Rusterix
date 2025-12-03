@@ -120,24 +120,15 @@ pub struct CompiledLinedef {
 
     pub wall_width: f32,
     pub wall_height: f32,
-
-    pub casts_shadows: bool,
 }
 
 impl CompiledLinedef {
-    pub fn new(
-        start: Vec2<f32>,
-        end: Vec2<f32>,
-        wall_width: f32,
-        wall_height: f32,
-        casts_shadows: bool,
-    ) -> Self {
+    pub fn new(start: Vec2<f32>, end: Vec2<f32>, wall_width: f32, wall_height: f32) -> Self {
         Self {
             start,
             end,
             wall_width,
             wall_height,
-            casts_shadows,
         }
     }
 }
