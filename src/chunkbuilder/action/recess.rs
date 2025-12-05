@@ -1,4 +1,3 @@
-use super::hole::HoleAction;
 use super::{
     ActionProperties, ConnectionMode, ControlPoint, MeshTopology, SectorMeshDescriptor,
     SurfaceAction,
@@ -35,18 +34,9 @@ impl SurfaceAction for RecessAction {
             1.0 // front recesses toward back (along +normal)
         };
 
-        // Check if this is a through-hole (depth >= thickness)
-        let is_through = if surface_thickness > 1e-6 {
-            properties.depth >= surface_thickness
-        } else {
-            false
-        };
-
-        if is_through {
-            // Through recess is just a hole
-            let hole_action = HoleAction;
-            return hole_action.describe_mesh(sector_uv, surface_thickness, properties);
-        }
+        // Always build recess geometry (cap + jamb) regardless of depth
+        // The recess creates a visible pocket that extends along the surface normal
+        // Note: We no longer convert deep recesses to holes - they always render as pockets
 
         let recess_extrusion = base_extrusion + direction * properties.depth;
 

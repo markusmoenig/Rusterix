@@ -192,7 +192,8 @@ impl<'a> SurfaceMeshBuilder<'a> {
     fn control_point_to_world(&self, cp: &ControlPoint) -> Vec3<f32> {
         // Use the surface's uvw_to_world method
         // UV gives position on surface plane, extrusion is the W component
-        self.surface.uvw_to_world(cp.uv, cp.extrusion)
+        let world_pos = self.surface.uvw_to_world(cp.uv, cp.extrusion);
+        world_pos
     }
 }
 

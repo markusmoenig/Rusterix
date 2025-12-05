@@ -88,6 +88,11 @@ impl ChunkBuilder for D3ChunkBuilder {
                 continue;
             };
 
+            let visible = sector.properties.get_bool_default("visible", true);
+            if !visible {
+                continue;
+            }
+
             let bbox = sector.bounding_box(map);
             // Cull with the sector bbox: only use intersection
             if !bbox.intersects(&chunk.bbox) || !chunk.bbox.contains(bbox.center()) {
@@ -148,17 +153,25 @@ impl ChunkBuilder for D3ChunkBuilder {
                 let mut holes_paths: Vec<Vec<vek::Vec2<f32>>> =
                     base_holes.iter().map(|h| h.path.clone()).collect();
 
-                // Symmetry: if extruded, also cut holes on the FRONT cap for shallow recesses
-                // that explicitly target the FRONT (profile_target == 0). This makes the pocket visible
-                // from the front when editing recess-on-front.
-                if surface.extrusion.enabled && extrude_abs > 1e-6 {
+                // Cut holes in the FRONT cap for recesses/reliefs that extend beyond the front
+                // Note: We check depth, not enabled flag, because depth=0 still needs hole logic
+                if extrude_abs > 1e-6 {
                     for h in &hole_loops {
-                        if loop_profile_target(h) == 0 {
-                            if let LoopOp::Recess { depth: d } = h.op {
-                                if d + 1e-5f32 < extrude_abs {
+                        let target = loop_profile_target(h);
+                        match h.op {
+                            LoopOp::Recess { depth: d } => {
+                                // Cut hole if recess targets front, OR if it's deep enough to extend beyond front cap
+                                if target == 0 || d > extrude_abs {
                                     holes_paths.push(h.path.clone());
                                 }
                             }
+                            LoopOp::Relief { .. } => {
+                                // Cut hole if relief targets front
+                                if target == 0 {
+                                    holes_paths.push(h.path.clone());
+                                }
+                            }
+                            _ => {}
                         }
                     }
                 }
@@ -505,8 +518,6 @@ impl ChunkBuilder for D3ChunkBuilder {
                             //  - pure cutouts (None)
                             //  - through recesses (depth >= thickness)
                             //  - shallow recesses that TARGET THE BACK CAP (profile_target==1)
-                            let eps = 1e-5f32;
-                            let extrude_abs = surface.extrusion.depth.abs();
                             let mut back_holes_paths: Vec<Vec<vek::Vec2<f32>>> = Vec::new();
                             for h in &hole_loops {
                                 let to_back = loop_profile_target(h) == 1;
@@ -514,16 +525,18 @@ impl ChunkBuilder for D3ChunkBuilder {
                                     LoopOp::None => {
                                         back_holes_paths.push(h.path.clone());
                                     }
-                                    LoopOp::Recess { depth: d } => {
-                                        if d + eps >= extrude_abs {
-                                            // through recess → hole on both caps
-                                            back_holes_paths.push(h.path.clone());
-                                        } else if to_back {
-                                            // shallow recess targeted to the BACK cap → visible pocket → cut a hole on BACK
+                                    LoopOp::Recess { .. } => {
+                                        // Always cut a hole for recesses that target the back side
+                                        if to_back {
                                             back_holes_paths.push(h.path.clone());
                                         }
                                     }
-                                    LoopOp::Relief { .. } => { /* no hole */ }
+                                    LoopOp::Relief { .. } => {
+                                        // Cut a hole for reliefs that target the back side
+                                        if to_back {
+                                            back_holes_paths.push(h.path.clone());
+                                        }
+                                    }
                                     LoopOp::Billboard { .. } => {
                                         // Billboard is a hole in the surface
                                         back_holes_paths.push(h.path.clone());
@@ -1283,17 +1296,15 @@ fn split_loops_for_base<'a>(
                 // Pure cutout → subtract from base; no feature meshes needed
                 base_holes.push(h);
             }
-            LoopOp::Recess { depth } => {
+            LoopOp::Recess { .. } => {
                 if extrude_depth_abs <= eps {
                     // Zero-thickness surface: we need a visible hole in the base cap
-                    // *and* a recessed pocket (cap + jamb). Put it in **both** buckets.
+                    // *and* a recessed pocket (cap only, no jamb). Put it in **both** buckets.
                     base_holes.push(h); // subtract from base
-                    feature_loops.push(h); // build recess cap + jamb
-                } else if depth + eps >= extrude_depth_abs {
-                    // Through recess on a thick surface ⇒ just a hole; extrusion pass builds tube
-                    base_holes.push(h);
+                    feature_loops.push(h); // build recess cap
                 } else {
-                    // Shallow recess on a thick surface ⇒ feature only; base stays intact
+                    // On extruded surfaces, always build the recess as a feature (cap + jamb)
+                    // The recess creates a visible pocket regardless of depth
                     feature_loops.push(h);
                 }
             }

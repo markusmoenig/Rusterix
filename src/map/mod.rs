@@ -246,7 +246,7 @@ impl Map {
         let mut blocked_tiles = FxHashSet::default();
 
         for sector in self.sectors.iter() {
-            let mut add_it = true;
+            let mut add_it = false;
 
             // We collect occluded sectors
             let occlusion = sector.properties.get_float_default("occlusion", 1.0);
@@ -285,13 +285,17 @@ impl Map {
                     if let Some(linedef) = self.find_linedef(*linedef_id) {
                         if let Some(start) = self.find_vertex(linedef.start_vertex) {
                             if let Some(end) = self.find_vertex(linedef.end_vertex) {
-                                let cl = CompiledLinedef::new(
-                                    start.as_vec2(),
-                                    end.as_vec2(),
-                                    linedef.properties.get_float_default("wall_width", 0.0),
-                                    linedef.properties.get_float_default("wall_height", 0.0),
-                                );
-                                linedefs.push(cl);
+                                let sy = start.as_vec3_world().y;
+                                let ey = end.as_vec3_world().y;
+                                if sy == 0.0 && ey == 0.0 {
+                                    let cl = CompiledLinedef::new(
+                                        start.as_vec2(),
+                                        end.as_vec2(),
+                                        linedef.properties.get_float_default("wall_width", 0.0),
+                                        linedef.properties.get_float_default("wall_height", 0.0),
+                                    );
+                                    linedefs.push(cl);
+                                }
                             }
                         }
                     }
@@ -302,11 +306,10 @@ impl Map {
         for l in self.linedefs.iter() {
             if l.front_sector.is_none() && l.back_sector.is_none() {
                 let wall_height = l.properties.get_float_default("wall_height", 0.0);
-
                 let mut add_it = false;
 
                 // If the tile is explicitly set to blocking we have to add the geometry
-                match l.properties.get("row1_source") {
+                match l.properties.get("source") {
                     Some(Value::Source(PixelSource::TileId(id))) => {
                         if blocking_tiles.contains(id) {
                             add_it = true;
@@ -323,13 +326,17 @@ impl Map {
                 if add_it {
                     if let Some(start) = self.find_vertex(l.start_vertex) {
                         if let Some(end) = self.find_vertex(l.end_vertex) {
-                            let cl = CompiledLinedef::new(
-                                start.as_vec2(),
-                                end.as_vec2(),
-                                l.properties.get_float_default("wall_width", 0.0),
-                                wall_height,
-                            );
-                            linedefs.push(cl);
+                            let sy = start.as_vec3_world().y;
+                            let ey = end.as_vec3_world().y;
+                            if sy == 0.0 && ey == 0.0 {
+                                let cl = CompiledLinedef::new(
+                                    start.as_vec2(),
+                                    end.as_vec2(),
+                                    l.properties.get_float_default("wall_width", 0.0),
+                                    wall_height,
+                                );
+                                linedefs.push(cl);
+                            }
                         }
                     }
                 }
