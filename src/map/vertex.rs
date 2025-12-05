@@ -49,8 +49,7 @@ impl Vertex {
         vek::Vec3::new(self.x, self.z, self.y)
     }
 
-    /// Returns true if this vertex lies within a vertical slice centered at `slice_y` with
-    /// thickness `thickness` (Z-up in vertex space). Uses `as_vec3_world().y` (world Y == vertex Z).
+    /// Returns true if this vertex lies within a vertical slice centered at `slice_y`
     pub fn intersects_vertical_slice(&self, slice_y: f32, thickness: f32) -> bool {
         if thickness <= 0.0 {
             return false;

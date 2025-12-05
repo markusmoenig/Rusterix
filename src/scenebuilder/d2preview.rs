@@ -31,6 +31,9 @@ pub struct D2PreviewBuilder {
     /// Do not draw Rect based geometry
     no_rect_geo: bool,
 
+    /// Editing slice
+    editing_slice: f32,
+
     tile_size: i32,
 }
 
@@ -57,6 +60,7 @@ impl D2PreviewBuilder {
             textures: Vec::new(),
 
             no_rect_geo: false,
+            editing_slice: 0.0,
 
             tile_size: 128,
         }
@@ -65,6 +69,7 @@ impl D2PreviewBuilder {
     pub fn set_properties(&mut self, properties: &ValueContainer) {
         self.no_rect_geo = properties.get_bool_default("no_rect_geo", true);
         self.tile_size = properties.get_int_default("tile_size", 128);
+        self.editing_slice = properties.get_float_default("editing_slice", 0.0);
     }
 
     pub fn build(
@@ -388,58 +393,60 @@ impl D2PreviewBuilder {
         if draw_sectors {
             let sectors = map.sorted_sectors_by_area();
             for sector in &sectors {
-                let bbox = sector.bounding_box(map);
+                if sector.intersects_vertical_slice(map, self.editing_slice, 1.0) {
+                    let bbox = sector.bounding_box(map);
 
-                if let Some(geo) = sector.generate_geometry(map) {
-                    let mut vertices: Vec<[f32; 2]> = vec![];
-                    let mut uvs: Vec<[f32; 2]> = vec![];
+                    if let Some(geo) = sector.generate_geometry(map) {
+                        let mut vertices: Vec<[f32; 2]> = vec![];
+                        let mut uvs: Vec<[f32; 2]> = vec![];
 
-                    let mut repeat = true;
-                    if sector.properties.get_int_default("tile_mode", 1) == 0 {
-                        repeat = false;
-                    }
-
-                    // Use the floor or ceiling source
-                    let source = sector.properties.get_default_source();
-                    // if source.is_none() {
-                    //     //     //|| self.activated_widgets.contains(&sector.id) {
-                    //     //     source = sector.properties.get("ceiling_source");
-                    //     //
-                    //     source = Some(&default_source);
-                    // }
-                    //
-
-                    for vertex in &geo.0 {
-                        let local = Vec2::new(vertex[0], vertex[1]);
-
-                        if !repeat {
-                            let uv = [
-                                (vertex[0] - bbox.min.x) / (bbox.max.x - bbox.min.x),
-                                (vertex[1] - bbox.min.y) / (bbox.max.y - bbox.min.y),
-                            ];
-                            uvs.push(uv);
-                        } else {
-                            let texture_scale = 1.0;
-                            let uv = [
-                                (vertex[0] - bbox.min.x) / texture_scale,
-                                (vertex[1] - bbox.min.y) / texture_scale,
-                            ];
-                            uvs.push(uv);
+                        let mut repeat = true;
+                        if sector.properties.get_int_default("tile_mode", 1) == 0 {
+                            repeat = false;
                         }
-                        vertices.push([local.x, local.y]);
-                    }
 
-                    if let Some(pixelsource) = source {
-                        if let Some(tile) = pixelsource.tile_from_tile_list(assets) {
-                            scene_handler.overlay.add_poly_2d(
-                                GeoId::Sector(sector.id),
-                                tile.id,
-                                vertices,
-                                uvs,
-                                geo.1,
-                                10,
-                                true,
-                            );
+                        // Use the floor or ceiling source
+                        let source = sector.properties.get_default_source();
+                        // if source.is_none() {
+                        //     //     //|| self.activated_widgets.contains(&sector.id) {
+                        //     //     source = sector.properties.get("ceiling_source");
+                        //     //
+                        //     source = Some(&default_source);
+                        // }
+                        //
+
+                        for vertex in &geo.0 {
+                            let local = Vec2::new(vertex[0], vertex[1]);
+
+                            if !repeat {
+                                let uv = [
+                                    (vertex[0] - bbox.min.x) / (bbox.max.x - bbox.min.x),
+                                    (vertex[1] - bbox.min.y) / (bbox.max.y - bbox.min.y),
+                                ];
+                                uvs.push(uv);
+                            } else {
+                                let texture_scale = 1.0;
+                                let uv = [
+                                    (vertex[0] - bbox.min.x) / texture_scale,
+                                    (vertex[1] - bbox.min.y) / texture_scale,
+                                ];
+                                uvs.push(uv);
+                            }
+                            vertices.push([local.x, local.y]);
+                        }
+
+                        if let Some(pixelsource) = source {
+                            if let Some(tile) = pixelsource.tile_from_tile_list(assets) {
+                                scene_handler.overlay.add_poly_2d(
+                                    GeoId::Sector(sector.id),
+                                    tile.id,
+                                    vertices,
+                                    uvs,
+                                    geo.1,
+                                    10,
+                                    true,
+                                );
+                            }
                         }
                     }
                 }
@@ -457,7 +464,7 @@ impl D2PreviewBuilder {
             || self.map_tool_type == MapToolType::Linedef
         {
             for vertex in &map.vertices {
-                if !vertex.intersects_vertical_slice(0.0, 1.0) {
+                if !vertex.intersects_vertical_slice(self.editing_slice, 1.0) {
                     continue;
                 }
                 if let Some(vertex_pos) = map.get_vertex(vertex.id) {
@@ -602,7 +609,7 @@ impl D2PreviewBuilder {
             }
 
             for linedef in &map.linedefs {
-                if !linedef.intersects_vertical_slice(map, 0.0, 1.0) {
+                if !linedef.intersects_vertical_slice(map, self.editing_slice, 1.0) {
                     continue;
                 }
 
