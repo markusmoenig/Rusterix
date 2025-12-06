@@ -279,6 +279,19 @@ impl Surface {
         (uv.x.floor() as i32, uv.y.floor() as i32)
     }
 
+    /// Get the four world-space corners of a 1x1 tile cell at the given tile coordinates.
+    /// Corners are ordered around the cell starting at (tile_x, tile_y) and proceeding CCW.
+    pub fn tile_outline_world(&self, tile: (i32, i32)) -> [Vec3<f32>; 4] {
+        let (tx, ty) = tile;
+        let corners_uv = [
+            Vec2::new(tx as f32, ty as f32),
+            Vec2::new(tx as f32 + 1.0, ty as f32),
+            Vec2::new(tx as f32 + 1.0, ty as f32 + 1.0),
+            Vec2::new(tx as f32, ty as f32 + 1.0),
+        ];
+        corners_uv.map(|uv| self.uv_to_world(uv))
+    }
+
     /// Project the owning sector polygon into this surface's UV space (CCW ensured).
     pub fn sector_loop_uv(&self, map: &Map) -> Option<Vec<Vec2<f32>>> {
         let sector = map.find_sector(self.sector_id)?;
