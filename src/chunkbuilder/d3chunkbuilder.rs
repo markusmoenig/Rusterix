@@ -16,6 +16,50 @@ pub const DEFAULT_TILE_ID: &str = "27826750-a9e7-4346-994b-fb318b238452";
 
 pub struct D3ChunkBuilder {}
 
+fn build_world_vertices(verts_uv: &[[f32; 2]], surface: &crate::Surface) -> Vec<[f32; 4]> {
+    verts_uv
+        .iter()
+        .map(|uv| {
+            let p = surface.uv_to_world(vek::Vec2::new(uv[0], uv[1]));
+            [p.x, p.y, p.z, 1.0]
+        })
+        .collect()
+}
+
+fn build_surface_uvs(verts_uv: &[[f32; 2]], sector: &Sector) -> Vec<[f32; 2]> {
+    if verts_uv.is_empty() {
+        return Vec::new();
+    }
+
+    let tile_mode = sector.properties.get_int_default("tile_mode", 1);
+    let mut minx = f32::INFINITY;
+    let mut miny = f32::INFINITY;
+    let mut maxx = f32::NEG_INFINITY;
+    let mut maxy = f32::NEG_INFINITY;
+    for v in verts_uv {
+        minx = minx.min(v[0]);
+        maxx = maxx.max(v[0]);
+        miny = miny.min(v[1]);
+        maxy = maxy.max(v[1]);
+    }
+    let sx = (maxx - minx).max(1e-6);
+    let sy = (maxy - miny).max(1e-6);
+    let mut uvs: Vec<[f32; 2]> = Vec::with_capacity(verts_uv.len());
+    if tile_mode == 0 {
+        for v in verts_uv {
+            uvs.push([(v[0] - minx) / sx, (v[1] - miny) / sy]);
+        }
+    } else {
+        let tex_scale_x = sector.properties.get_float_default("texture_scale_x", 1.0);
+        let tex_scale_y = sector.properties.get_float_default("texture_scale_y", 1.0);
+        for v in verts_uv {
+            uvs.push([(v[0] - minx) / tex_scale_x, (v[1] - miny) / tex_scale_y]);
+        }
+    }
+
+    uvs
+}
+
 /// Split triangles into per-tile batches using 1x1 UV cells. Only routes a triangle
 /// to an override if all three vertices fall into the same overridden cell.
 fn partition_triangles_with_tile_overrides(
@@ -23,41 +67,198 @@ fn partition_triangles_with_tile_overrides(
     uvs: &[[f32; 2]],
     overrides: Option<&FxHashMap<(i32, i32), PixelSource>>,
     assets: &Assets,
+    surface: &crate::Surface,
 ) -> (
+    Vec<[f32; 2]>,
+    Vec<[f32; 4]>,
     Vec<(usize, usize, usize)>,
     Vec<(Uuid, Vec<(usize, usize, usize)>)>,
+    Vec<[f32; 2]>,
 ) {
     let mut defaults = Vec::new();
     let mut per_tile: FxHashMap<Uuid, Vec<(usize, usize, usize)>> = FxHashMap::default();
 
     let Some(map) = overrides else {
+        let world_vertices = build_world_vertices(uvs, surface);
         defaults.extend_from_slice(indices);
-        return (defaults, Vec::new());
+        let uvs_local = uvs.to_vec();
+        return (
+            uvs.to_vec(),
+            world_vertices,
+            defaults,
+            Vec::new(),
+            uvs_local,
+        );
     };
 
-    for &(a, b, c) in indices {
-        let (Some(uv_a), Some(uv_b), Some(uv_c)) = (uvs.get(a), uvs.get(b), uvs.get(c)) else {
-            defaults.push((a, b, c));
-            continue;
+    // Subdivide each triangle against 1x1 UV tiles to make per-tile batches deterministic
+    let (tiled_uvs, tiled_world, tiled_tris, vertex_cells) =
+        subdivide_triangles_into_tiles(indices, uvs, surface);
+
+    // Build a per-vertex UV set that is local to each tile (0..1), used for overrides
+    let mut uvs_local = tiled_uvs.clone();
+    for (i, uv) in uvs_local.iter_mut().enumerate() {
+        let (tx, ty) = vertex_cells[i];
+        uv[0] -= tx as f32;
+        uv[1] -= ty as f32;
+    }
+
+    for (tile_cell, tri) in tiled_tris {
+        if let Some(ps) = map.get(&tile_cell) {
+            if let Some(tile) = ps.tile_from_tile_list(assets) {
+                per_tile.entry(tile.id).or_default().push(tri);
+                continue;
+            }
+        }
+        defaults.push(tri);
+    }
+
+    (
+        tiled_uvs,
+        tiled_world,
+        defaults,
+        per_tile.into_iter().collect(),
+        uvs_local,
+    )
+}
+
+fn subdivide_triangles_into_tiles(
+    indices: &[(usize, usize, usize)],
+    verts_uv: &[[f32; 2]],
+    surface: &crate::Surface,
+) -> (
+    Vec<[f32; 2]>,
+    Vec<[f32; 4]>,
+    Vec<((i32, i32), (usize, usize, usize))>,
+    Vec<(i32, i32)>,
+) {
+    // Clip a polygon against an axis-aligned plane (x or y) using Sutherland–Hodgman
+    const EPS: f32 = 1e-5;
+    let clip_axis = |poly: Vec<vek::Vec2<f32>>,
+                     axis: usize,
+                     keep_min: bool,
+                     bound: f32|
+     -> Vec<vek::Vec2<f32>> {
+        if poly.is_empty() {
+            return poly;
+        }
+        let mut res = Vec::new();
+        let mut prev = *poly.last().unwrap();
+        let mut prev_inside = if axis == 0 {
+            if keep_min {
+                prev.x >= bound - EPS
+            } else {
+                prev.x <= bound + EPS
+            }
+        } else if keep_min {
+            prev.y >= bound - EPS
+        } else {
+            prev.y <= bound + EPS
         };
 
-        let cell_a = (uv_a[0].floor() as i32, uv_a[1].floor() as i32);
-        let cell_b = (uv_b[0].floor() as i32, uv_b[1].floor() as i32);
-        let cell_c = (uv_c[0].floor() as i32, uv_c[1].floor() as i32);
+        for &curr in &poly {
+            let curr_inside = if axis == 0 {
+                if keep_min {
+                    curr.x >= bound - EPS
+                } else {
+                    curr.x <= bound + EPS
+                }
+            } else if keep_min {
+                curr.y >= bound - EPS
+            } else {
+                curr.y <= bound + EPS
+            };
 
-        if cell_a == cell_b && cell_a == cell_c {
-            if let Some(ps) = map.get(&cell_a) {
-                if let Some(tile) = ps.tile_from_tile_list(assets) {
-                    per_tile.entry(tile.id).or_default().push((a, b, c));
+            let delta = curr - prev;
+            let intersect = |a: vek::Vec2<f32>, d: vek::Vec2<f32>| -> vek::Vec2<f32> {
+                let t = if axis == 0 {
+                    if d.x.abs() < EPS {
+                        0.0
+                    } else {
+                        (bound - a.x) / d.x
+                    }
+                } else if d.y.abs() < EPS {
+                    0.0
+                } else {
+                    (bound - a.y) / d.y
+                };
+                a + d * t.clamp(0.0, 1.0)
+            };
+
+            if curr_inside {
+                if !prev_inside {
+                    res.push(intersect(prev, delta));
+                }
+                res.push(curr);
+            } else if prev_inside {
+                res.push(intersect(prev, delta));
+            }
+
+            prev = curr;
+            prev_inside = curr_inside;
+        }
+        res
+    };
+
+    let mut new_uvs = verts_uv.to_vec();
+    let mut new_world = build_world_vertices(verts_uv, surface);
+    let mut vertex_cells: Vec<(i32, i32)> = verts_uv
+        .iter()
+        .map(|uv| (uv[0].floor() as i32, uv[1].floor() as i32))
+        .collect();
+    let mut tiled_indices = Vec::new();
+
+    for &(a, b, c) in indices {
+        let pa = vek::Vec2::new(verts_uv[a][0], verts_uv[a][1]);
+        let pb = vek::Vec2::new(verts_uv[b][0], verts_uv[b][1]);
+        let pc = vek::Vec2::new(verts_uv[c][0], verts_uv[c][1]);
+        let tri = vec![pa, pb, pc];
+
+        let orig_sign = polygon_area(&tri).signum();
+        let min_tile_x = pa.x.min(pb.x).min(pc.x).floor() as i32;
+        let max_tile_x = pa.x.max(pb.x).max(pc.x).ceil() as i32;
+        let min_tile_y = pa.y.min(pb.y).min(pc.y).floor() as i32;
+        let max_tile_y = pa.y.max(pb.y).max(pc.y).ceil() as i32;
+
+        for tx in min_tile_x..max_tile_x {
+            for ty in min_tile_y..max_tile_y {
+                let mut poly = tri.clone();
+                let min = vek::Vec2::new(tx as f32, ty as f32);
+                let max = vek::Vec2::new(tx as f32 + 1.0, ty as f32 + 1.0);
+                poly = clip_axis(poly, 0, true, min.x);
+                poly = clip_axis(poly, 0, false, max.x);
+                poly = clip_axis(poly, 1, true, min.y);
+                poly = clip_axis(poly, 1, false, max.y);
+
+                if poly.len() < 3 {
                     continue;
+                }
+
+                let area = polygon_area(&poly);
+                if area.abs() < 1e-6 {
+                    continue;
+                }
+
+                if area.signum() * orig_sign < 0.0 {
+                    poly.reverse();
+                }
+
+                let base = new_uvs.len();
+                for p in &poly {
+                    new_uvs.push([p.x, p.y]);
+                    let w = surface.uv_to_world(*p);
+                    new_world.push([w.x, w.y, w.z, 1.0]);
+                    vertex_cells.push((tx, ty));
+                }
+
+                for i in 1..poly.len() - 1 {
+                    tiled_indices.push(((tx, ty), (base, base + i, base + i + 1)));
                 }
             }
         }
-
-        defaults.push((a, b, c));
     }
 
-    (defaults, per_tile.into_iter().collect())
+    (new_uvs, new_world, tiled_indices, vertex_cells)
 }
 
 impl Clone for D3ChunkBuilder {
@@ -186,17 +387,11 @@ impl ChunkBuilder for D3ChunkBuilder {
                         total_pts
                     );
                 }
-                if let Some((verts_uv, indices)) =
-                    earcut_with_holes(&mut outer_path, &mut holes_paths)
-                {
-                    // Map UV -> world via surface
-                    let world_vertices: Vec<[f32; 4]> = verts_uv
-                        .iter()
-                        .map(|uv| {
-                            let p = surface.uv_to_world(vek::Vec2::new(uv[0], uv[1]));
-                            [p.x, p.y, p.z, 1.0]
-                        })
-                        .collect();
+                // Always use earcut for triangulation
+                let triangulation_result = earcut_with_holes(&mut outer_path, &mut holes_paths);
+
+                if let Some((verts_uv, indices)) = triangulation_result {
+                    let world_vertices_for_fix = build_world_vertices(&verts_uv, surface);
 
                     if dbg {
                         println!(
@@ -207,24 +402,41 @@ impl ChunkBuilder for D3ChunkBuilder {
                     }
                     let mut indices = indices; // make mutable copy from earcut
                     let desired_n = surface.plane.normal;
-                    fix_winding(&world_vertices, &mut indices, desired_n);
+                    fix_winding(&world_vertices_for_fix, &mut indices, desired_n);
+
+                    let tile_overrides = sector.properties.get("tiles").and_then(|v| {
+                        if let Value::TileOverrides(map) = v {
+                            Some(map)
+                        } else {
+                            None
+                        }
+                    });
+
+                    let (verts_uv, world_vertices, default_indices, override_batches, override_uvs) =
+                        partition_triangles_with_tile_overrides(
+                            &indices,
+                            &verts_uv,
+                            tile_overrides,
+                            assets,
+                            surface,
+                        );
 
                     if dbg {
                         if let Some((a, b, c)) = indices.get(0).cloned() {
                             let va = vek::Vec3::new(
-                                world_vertices[a][0],
-                                world_vertices[a][1],
-                                world_vertices[a][2],
+                                world_vertices_for_fix[a][0],
+                                world_vertices_for_fix[a][1],
+                                world_vertices_for_fix[a][2],
                             );
                             let vb = vek::Vec3::new(
-                                world_vertices[b][0],
-                                world_vertices[b][1],
-                                world_vertices[b][2],
+                                world_vertices_for_fix[b][0],
+                                world_vertices_for_fix[b][1],
+                                world_vertices_for_fix[b][2],
                             );
                             let vc = vek::Vec3::new(
-                                world_vertices[c][0],
-                                world_vertices[c][1],
-                                world_vertices[c][2],
+                                world_vertices_for_fix[c][0],
+                                world_vertices_for_fix[c][1],
+                                world_vertices_for_fix[c][2],
                             );
                             let n = (vb - va).cross(vc - va);
                             let nn = {
@@ -246,34 +458,7 @@ impl ChunkBuilder for D3ChunkBuilder {
                         }
                     }
 
-                    // --- UV build (same as before) ---
-                    let tile_mode = sector.properties.get_int_default("tile_mode", 1);
-                    let mut minx = f32::INFINITY;
-                    let mut miny = f32::INFINITY;
-                    let mut maxx = f32::NEG_INFINITY;
-                    let mut maxy = f32::NEG_INFINITY;
-                    for v in &verts_uv {
-                        minx = minx.min(v[0]);
-                        maxx = maxx.max(v[0]);
-                        miny = miny.min(v[1]);
-                        maxy = maxy.max(v[1]);
-                    }
-                    let sx = (maxx - minx).max(1e-6);
-                    let sy = (maxy - miny).max(1e-6);
-                    let mut uvs: Vec<[f32; 2]> = Vec::with_capacity(verts_uv.len());
-                    if tile_mode == 0 {
-                        for v in &verts_uv {
-                            uvs.push([(v[0] - minx) / sx, (v[1] - miny) / sy]);
-                        }
-                    } else {
-                        let tex_scale_x =
-                            sector.properties.get_float_default("texture_scale_x", 1.0);
-                        let tex_scale_y =
-                            sector.properties.get_float_default("texture_scale_y", 1.0);
-                        for v in &verts_uv {
-                            uvs.push([(v[0] - minx) / tex_scale_x, (v[1] - miny) / tex_scale_y]);
-                        }
-                    }
+                    let uvs = build_surface_uvs(&verts_uv, sector);
                     #[derive(Clone, Copy)]
                     enum MaterialKind {
                         Cap,
@@ -438,47 +623,28 @@ impl ChunkBuilder for D3ChunkBuilder {
                     };
 
                     // Apply optional per-tile overrides for the main surface (jambs/caps unchanged).
-                    if let Some(Value::TileOverrides(tile_map)) = sector.properties.get("tiles") {
-                        let (default_indices, overrides) = partition_triangles_with_tile_overrides(
-                            &indices,
-                            &uvs,
-                            Some(tile_map),
-                            assets,
-                        );
-
-                        for (tile_id, inds) in overrides {
-                            if !inds.is_empty() {
-                                vmchunk.add_poly_3d(
-                                    GeoId::Sector(sector.id),
-                                    tile_id,
-                                    world_vertices.clone(),
-                                    uvs.clone(),
-                                    inds,
-                                    0,
-                                    true,
-                                );
-                            }
-                        }
-
-                        if !default_indices.is_empty() {
-                            push_with_material_kind_local(
-                                MaterialKind::Cap,
-                                sector,
-                                assets,
-                                vmchunk,
+                    for (tile_id, inds) in &override_batches {
+                        if !inds.is_empty() {
+                            vmchunk.add_poly_3d(
+                                GeoId::Sector(sector.id),
+                                *tile_id,
                                 world_vertices.clone(),
-                                default_indices,
-                                uvs.clone(),
+                                override_uvs.clone(),
+                                inds.clone(),
+                                0,
+                                true,
                             );
                         }
-                    } else {
+                    }
+
+                    if !default_indices.is_empty() {
                         push_with_material_kind_local(
                             MaterialKind::Cap,
                             sector,
                             assets,
                             vmchunk,
                             world_vertices.clone(),
-                            indices.clone(),
+                            default_indices.clone(),
                             uvs.clone(),
                         );
                     }
@@ -550,7 +716,7 @@ impl ChunkBuilder for D3ChunkBuilder {
                                 earcut_with_holes(&mut back_outer, &mut back_holes_paths)
                             {
                                 // Map UV to world on back plane
-                                let back_world_vertices: Vec<[f32; 4]> = back_verts_uv
+                                let back_world_vertices_for_fix: Vec<[f32; 4]> = back_verts_uv
                                     .iter()
                                     .map(|uv| {
                                         let p = surface.uv_to_world(vek::Vec2::new(uv[0], uv[1]))
@@ -561,53 +727,69 @@ impl ChunkBuilder for D3ChunkBuilder {
 
                                 // Faces should point opposite to front cap on the back
                                 fix_winding(
-                                    &back_world_vertices,
+                                    &back_world_vertices_for_fix,
                                     &mut back_indices,
                                     -surface.plane.normal,
                                 );
 
-                                // Build UVs same as front (scale/tiling based on sector props)
-                                let tile_mode = sector.properties.get_int_default("tile_mode", 1);
-                                let mut minx = f32::INFINITY;
-                                let mut miny = f32::INFINITY;
-                                let mut maxx = f32::NEG_INFINITY;
-                                let mut maxy = f32::NEG_INFINITY;
-                                for v in &back_verts_uv {
-                                    minx = minx.min(v[0]);
-                                    maxx = maxx.max(v[0]);
-                                    miny = miny.min(v[1]);
-                                    maxy = maxy.max(v[1]);
-                                }
-                                let sx = (maxx - minx).max(1e-6);
-                                let sy = (maxy - miny).max(1e-6);
-                                let mut back_uvs: Vec<[f32; 2]> =
-                                    Vec::with_capacity(back_verts_uv.len());
-                                if tile_mode == 0 {
-                                    for v in &back_verts_uv {
-                                        back_uvs.push([(v[0] - minx) / sx, (v[1] - miny) / sy]);
+                                let tile_overrides = sector.properties.get("tiles").and_then(|v| {
+                                    if let Value::TileOverrides(map) = v {
+                                        Some(map)
+                                    } else {
+                                        None
                                     }
-                                } else {
-                                    let tex_scale_x =
-                                        sector.properties.get_float_default("texture_scale_x", 1.0);
-                                    let tex_scale_y =
-                                        sector.properties.get_float_default("texture_scale_y", 1.0);
-                                    for v in &back_verts_uv {
-                                        back_uvs.push([
-                                            (v[0] - minx) / tex_scale_x,
-                                            (v[1] - miny) / tex_scale_y,
-                                        ]);
+                                });
+
+                                let (
+                                    back_verts_uv,
+                                    back_world_vertices,
+                                    back_default_indices,
+                                    back_override_batches,
+                                    back_override_uvs,
+                                ) = partition_triangles_with_tile_overrides(
+                                    &back_indices,
+                                    &back_verts_uv,
+                                    tile_overrides,
+                                    assets,
+                                    surface,
+                                );
+
+                                let mut back_world_vertices = back_world_vertices;
+                                for v in back_world_vertices.iter_mut() {
+                                    let p = vek::Vec3::new(v[0], v[1], v[2]) + n * depth;
+                                    v[0] = p.x;
+                                    v[1] = p.y;
+                                    v[2] = p.z;
+                                }
+
+                                let back_uvs = build_surface_uvs(&back_verts_uv, sector);
+
+                                for (tile_id, inds) in &back_override_batches {
+                                    if !inds.is_empty() {
+                                        // shift to back plane (already baked during build)
+                                        vmchunk.add_poly_3d(
+                                            GeoId::Sector(sector.id),
+                                            *tile_id,
+                                            back_world_vertices.clone(),
+                                            back_override_uvs.clone(),
+                                            inds.clone(),
+                                            0,
+                                            true,
+                                        );
                                     }
                                 }
 
-                                push_with_material_kind_local(
-                                    MaterialKind::Cap,
-                                    sector,
-                                    assets,
-                                    vmchunk,
-                                    back_world_vertices,
-                                    back_indices,
-                                    back_uvs,
-                                );
+                                if !back_default_indices.is_empty() {
+                                    push_with_material_kind_local(
+                                        MaterialKind::Cap,
+                                        sector,
+                                        assets,
+                                        vmchunk,
+                                        back_world_vertices,
+                                        back_default_indices,
+                                        back_uvs,
+                                    );
+                                }
                             }
                         }
 
@@ -646,35 +828,30 @@ impl ChunkBuilder for D3ChunkBuilder {
                 }
             } else {
                 // Fallback: no profile info; triangulate whole surface as-is
-                if let Some((world_vertices, indices, verts_uv)) = surface.triangulate(sector, map)
+                if let Some((_world_vertices, indices, verts_uv)) = surface.triangulate(sector, map)
                 {
-                    let tile_mode = sector.properties.get_int_default("tile_mode", 1);
-                    let mut minx = f32::INFINITY;
-                    let mut miny = f32::INFINITY;
-                    let mut maxx = f32::NEG_INFINITY;
-                    let mut maxy = f32::NEG_INFINITY;
-                    for v in &verts_uv {
-                        minx = minx.min(v[0]);
-                        maxx = maxx.max(v[0]);
-                        miny = miny.min(v[1]);
-                        maxy = maxy.max(v[1]);
-                    }
-                    let sx = (maxx - minx).max(1e-6);
-                    let sy = (maxy - miny).max(1e-6);
-                    let mut uvs: Vec<[f32; 2]> = Vec::with_capacity(verts_uv.len());
-                    if tile_mode == 0 {
-                        for v in &verts_uv {
-                            uvs.push([(v[0] - minx) / sx, (v[1] - miny) / sy]);
+                    let world_vertices_for_fix = build_world_vertices(&verts_uv, surface);
+                    let mut indices = indices;
+                    fix_winding(&world_vertices_for_fix, &mut indices, surface.plane.normal);
+
+                    let tile_overrides = sector.properties.get("tiles").and_then(|v| {
+                        if let Value::TileOverrides(map) = v {
+                            Some(map)
+                        } else {
+                            None
                         }
-                    } else {
-                        let tex_scale_x =
-                            sector.properties.get_float_default("texture_scale_x", 1.0);
-                        let tex_scale_y =
-                            sector.properties.get_float_default("texture_scale_y", 1.0);
-                        for v in &verts_uv {
-                            uvs.push([(v[0] - minx) / tex_scale_x, (v[1] - miny) / tex_scale_y]);
-                        }
-                    }
+                    });
+
+                    let (verts_uv, world_vertices, default_indices, override_batches, override_uvs) =
+                        partition_triangles_with_tile_overrides(
+                            &indices,
+                            &verts_uv,
+                            tile_overrides,
+                            assets,
+                            surface,
+                        );
+
+                    let uvs = build_surface_uvs(&verts_uv, sector);
                     #[allow(dead_code)]
                     #[derive(Clone, Copy)]
                     enum MaterialKind {
@@ -732,47 +909,42 @@ impl ChunkBuilder for D3ChunkBuilder {
                         }
                     }
 
-                    if let Some(Value::TileOverrides(tile_map)) = sector.properties.get("tiles") {
-                        let (default_indices, overrides) = partition_triangles_with_tile_overrides(
-                            &indices,
-                            &uvs,
-                            Some(tile_map),
-                            assets,
-                        );
-
-                        for (tile_id, inds) in overrides {
-                            if !inds.is_empty() {
-                                vmchunk.add_poly_3d(
-                                    GeoId::Sector(sector.id),
-                                    tile_id,
-                                    world_vertices.clone(),
-                                    uvs.clone(),
-                                    inds,
-                                    0,
-                                    true,
-                                );
-                            }
-                        }
-
-                        if !default_indices.is_empty() {
-                            push_with_material_kind_local(
-                                MaterialKind::Cap,
-                                sector,
-                                assets,
-                                vmchunk,
-                                world_vertices,
-                                default_indices,
-                                uvs,
+                    for (tile_id, inds) in &override_batches {
+                        if !inds.is_empty() {
+                            vmchunk.add_poly_3d(
+                                GeoId::Sector(sector.id),
+                                *tile_id,
+                                world_vertices.clone(),
+                                uvs.clone(),
+                                inds.clone(),
+                                0,
+                                true,
                             );
                         }
-                    } else {
+                    }
+
+                    for (tile_id, inds) in &override_batches {
+                        if !inds.is_empty() {
+                            vmchunk.add_poly_3d(
+                                GeoId::Sector(sector.id),
+                                *tile_id,
+                                world_vertices.clone(),
+                                override_uvs.clone(),
+                                inds.clone(),
+                                0,
+                                true,
+                            );
+                        }
+                    }
+
+                    if !default_indices.is_empty() {
                         push_with_material_kind_local(
                             MaterialKind::Cap,
                             sector,
                             assets,
                             vmchunk,
                             world_vertices,
-                            indices,
+                            default_indices,
                             uvs,
                         );
                     }
