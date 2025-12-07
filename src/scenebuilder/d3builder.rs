@@ -425,23 +425,57 @@ impl D3Builder {
             if show_entity {
                 // Find light on entity
                 if let Some(Value::Light(light)) = entity.attributes.get("light") {
-                    let mut light = light.clone();
-                    light.set_position(entity.position);
-                    scene.dynamic_lights.push(light.compile());
+                    let light = light.clone();
+                    scene_handler.vm.execute(Atom::AddLight {
+                        id: GeoId::ItemLight(entity.id),
+                        light: Light::new_pointlight(entity.position)
+                            .with_color(Vec3::from(light.get_color().map(|c| c.powf(2.2)))) // Convert light to linear
+                            .with_intensity(light.get_intensity())
+                            .with_emitting(light.active)
+                            .with_start_distance(light.get_start_distance())
+                            .with_end_distance(light.get_end_distance())
+                            .with_flicker(light.get_flicker()),
+                    });
                 }
 
                 // Find light on entity items
                 for (_, item) in entity.iter_inventory() {
                     if let Some(Value::Light(light)) = item.attributes.get("light") {
-                        let mut light = light.clone();
-                        light.set_position(entity.position);
-                        scene.dynamic_lights.push(light.compile());
+                        let light = light.clone();
+                        scene_handler.vm.execute(Atom::AddLight {
+                            id: GeoId::ItemLight(item.id),
+                            light: Light::new_pointlight(entity.position)
+                                .with_color(Vec3::from(light.get_color().map(|c| c.powf(2.2)))) // Convert light to linear
+                                .with_intensity(light.get_intensity())
+                                .with_emitting(light.active)
+                                .with_start_distance(light.get_start_distance())
+                                .with_end_distance(light.get_end_distance())
+                                .with_flicker(light.get_flicker()),
+                        });
                     }
                 }
 
                 if let Some(Value::Source(source)) = entity.attributes.get("source") {
                     if entity.attributes.get_bool_default("visible", false) {
                         let size = 2.0;
+                        if let Some(tile) = source.tile_from_tile_list(assets) {
+                            let center3 =
+                                Vec3::new(entity.position.x, size * 0.5, entity.position.z);
+
+                            let dynamic = DynamicObject::billboard_tile(
+                                GeoId::Item(entity.id),
+                                tile.id,
+                                center3,
+                                basis.1,
+                                basis.2,
+                                size,
+                                size,
+                            );
+                            scene_handler
+                                .vm
+                                .execute(Atom::AddDynamic { object: dynamic });
+                        }
+
                         let center3 = Vec3::new(entity.position.x, size * 0.5, entity.position.z);
                         if let Some(tile) = source.tile_from_tile_list(assets) {
                             if let Some(texture_index) = assets.tile_index(&tile.id) {

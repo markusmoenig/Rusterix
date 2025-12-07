@@ -36,6 +36,7 @@ pub enum Value {
     ParticleEmitter(ParticleEmitter),
     MaterialProfile(MaterialProfile),
     HeightPoints(Vec<HeightControlPoint>),
+    #[serde(with = "vectorize")]
     TileOverrides(FxHashMap<(i32, i32), PixelSource>),
 }
 

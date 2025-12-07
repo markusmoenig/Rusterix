@@ -525,40 +525,6 @@ impl RegionInstance {
                 let chunk_collision =
                     chunk_builder.build_collision(&ctx.map, chunk_origin, chunk_size);
 
-                // Debug output
-                println!(
-                    "[COLLISION] Chunk ({}, {}): {} static volumes, {} dynamic openings, {} walkable floors",
-                    cx,
-                    cy,
-                    chunk_collision.static_volumes.len(),
-                    chunk_collision.dynamic_openings.len(),
-                    chunk_collision.walkable_floors.len()
-                );
-
-                for (i, vol) in chunk_collision.static_volumes.iter().enumerate() {
-                    println!(
-                        "  Static Volume {}: min=({:.2},{:.2},{:.2}) max=({:.2},{:.2},{:.2})",
-                        i, vol.min.x, vol.min.y, vol.min.z, vol.max.x, vol.max.y, vol.max.z
-                    );
-                }
-
-                for (i, opening) in chunk_collision.dynamic_openings.iter().enumerate() {
-                    println!(
-                        "  Dynamic Opening {}: type={:?} floor={:.2} ceiling={:.2} boundary_points={}",
-                        i,
-                        opening.opening_type,
-                        opening.floor_height,
-                        opening.ceiling_height,
-                        opening.boundary_2d.len()
-                    );
-                    if opening.boundary_2d.len() > 0 {
-                        println!(
-                            "    First point: ({:.2},{:.2})",
-                            opening.boundary_2d[0].x, opening.boundary_2d[0].y
-                        );
-                    }
-                }
-
                 ctx.collision_world
                     .update_chunk(chunk_origin, chunk_collision);
             }
