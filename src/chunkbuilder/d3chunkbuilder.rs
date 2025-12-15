@@ -5,7 +5,7 @@ use crate::chunkbuilder::terrain_generator::{TerrainConfig, TerrainGenerator};
 use crate::collision_world::{BlockingVolume, DynamicOpening, OpeningType, WalkableFloor};
 use crate::{Assets, Batch3D, Chunk, ChunkBuilder, Map, PixelSource, Value};
 use crate::{BillboardAnimation, GeometrySource, LoopOp, ProfileLoop, RepeatMode, Sector};
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 use scenevm::GeoId;
 use std::str::FromStr;
 use uuid::Uuid;
@@ -283,15 +283,18 @@ impl ChunkBuilder for D3ChunkBuilder {
         chunk: &mut Chunk,
         vmchunk: &mut scenevm::Chunk,
     ) {
+        let mut hidden: FxHashSet<GeoId> = FxHashSet::default();
+
         // For each surface in the map
         for surface in map.surfaces.values() {
             let Some(sector) = map.find_sector(surface.sector_id) else {
                 continue;
             };
 
+            // Keep track of hidden sectors so that we can set them as not visible later
             let visible = sector.properties.get_bool_default("visible", true);
             if !visible {
-                continue;
+                hidden.insert(GeoId::Sector(sector.id));
             }
 
             let bbox = sector.bounding_box(map);
@@ -948,6 +951,15 @@ impl ChunkBuilder for D3ChunkBuilder {
                             uvs,
                         );
                     }
+                }
+            }
+        }
+
+        // Set all hidden geometry as not visible
+        for hidden in hidden {
+            if let Some(poly) = vmchunk.polys3d_map.get_mut(&hidden) {
+                for p in poly {
+                    p.visible = false;
                 }
             }
         }
