@@ -1392,65 +1392,91 @@ fn generate_terrain(
         chunk.bbox
     );
 
+    // Get default terrain tile ID from map properties
+    let default_tile_id =
+        if let Some(Value::Source(pixel_source)) = map.properties.get("default_terrain_tile") {
+            if let Some(tile) = pixel_source.tile_from_tile_list(assets) {
+                println!("[TERRAIN] Using default terrain tile: {}", tile.id);
+                tile.id
+            } else {
+                println!("[TERRAIN] Default terrain tile not found in assets, using fallback");
+                Uuid::from_str(DEFAULT_TILE_ID).unwrap()
+            }
+        } else {
+            println!("[TERRAIN] No default_terrain_tile property, using fallback");
+            Uuid::from_str(DEFAULT_TILE_ID).unwrap()
+        };
+
+    // Get tile overrides from map properties (same as surface builder)
+    let tile_overrides = map.properties.get("terrain_tiles").and_then(|v| {
+        if let Value::TileOverrides(map) = v {
+            Some(map)
+        } else {
+            None
+        }
+    });
+
+    if tile_overrides.is_some() {
+        println!("[TERRAIN] Using tile overrides for terrain");
+    }
+
     // Create terrain generator with default config
     let config = TerrainConfig::default();
     let generator = TerrainGenerator::new(config);
 
     // Generate terrain meshes for this chunk (grouped by tile)
-    if let Some(meshes) = generator.generate(map, chunk) {
+    if let Some(meshes) = generator.generate(map, chunk, assets, default_tile_id, tile_overrides) {
         println!(
             "[TERRAIN] Generated {} separate meshes (grouped by tile)",
             meshes.len()
         );
 
         // Process each mesh (one per tile)
-        for (mesh_idx, (vertices, indices, uvs, vertex_id)) in meshes.iter().enumerate() {
+        for (mesh_idx, (tile_id, vertices, indices, uvs)) in meshes.iter().enumerate() {
             println!(
-                "[TERRAIN] Mesh {}: {} vertices, {} triangles, vertex_id: {}",
+                "[TERRAIN] Mesh {}: {} vertices, {} triangles, tile_id: {}",
                 mesh_idx,
                 vertices.len(),
                 indices.len() / 3,
-                vertex_id
+                tile_id
             );
 
-            // Look up tile from the vertex (vertex_id 0 means no control vertex, use default)
-            let tile_id = if *vertex_id == 0 {
-                println!("[TERRAIN] No control vertex for this mesh, using default");
-                Uuid::from_str(DEFAULT_TILE_ID).unwrap()
-            } else if let Some(vertex) = map.find_vertex(*vertex_id) {
-                // Look up source property from vertex (using PixelSource pattern like actions)
-                if let Some(Value::Source(pixelsource)) = vertex.properties.get("source") {
-                    if let Some(tile) = pixelsource.tile_from_tile_list(assets) {
-                        println!("[TERRAIN] Using tile from vertex: {}", tile.id);
-                        tile.id
-                    } else {
-                        println!("[TERRAIN] No tile found in assets, using default");
-                        Uuid::from_str(DEFAULT_TILE_ID).unwrap()
-                    }
-                } else {
-                    println!("[TERRAIN] No source property on vertex, using default");
-                    Uuid::from_str(DEFAULT_TILE_ID).unwrap()
+            // Debug: print first few vertices and UVs
+            if mesh_idx == 0 {
+                for i in 0..vertices.len().min(3) {
+                    println!(
+                        "[TERRAIN] Vertex {}: pos=({:.2}, {:.2}, {:.2}), uv=({:.2}, {:.2})",
+                        i, vertices[i].x, vertices[i].y, vertices[i].z, uvs[i][0], uvs[i][1]
+                    );
                 }
-            } else {
-                println!("[TERRAIN] Vertex {} not found, using default", vertex_id);
-                Uuid::from_str(DEFAULT_TILE_ID).unwrap()
-            };
+                // Print first triangle
+                if indices.len() >= 3 {
+                    println!(
+                        "[TERRAIN] First triangle indices: {}, {}, {}",
+                        indices[0], indices[1], indices[2]
+                    );
+                }
+            }
 
             // Convert vertices from Vec3<f32> to [f32; 4] (homogeneous coordinates)
             let vertices_4d: Vec<[f32; 4]> =
                 vertices.iter().map(|v| [v.x, v.y, v.z, 1.0]).collect();
 
             // Convert indices from Vec<u32> to Vec<(usize, usize, usize)>
-            let indices_tuples: Vec<(usize, usize, usize)> = indices
+            let mut indices_tuples: Vec<(usize, usize, usize)> = indices
                 .chunks_exact(3)
                 .map(|chunk| (chunk[0] as usize, chunk[1] as usize, chunk[2] as usize))
                 .collect();
+
+            // Fix winding order so terrain normals point upward (positive Y)
+            let desired_normal = Vec3::new(0.0, 1.0, 0.0);
+            mesh_fix_winding(&vertices_4d, &mut indices_tuples, desired_normal);
 
             // Add terrain mesh to vmchunk with unique GeoId per mesh
             let mesh_terrain_id = terrain_id * 1000 + mesh_idx as u32;
             vmchunk.add_poly_3d(
                 GeoId::Terrain(mesh_terrain_id),
-                tile_id,
+                *tile_id,
                 vertices_4d,
                 uvs.clone(),
                 indices_tuples,
