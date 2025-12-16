@@ -32,10 +32,10 @@ pub struct TerrainConfig {
 impl Default for TerrainConfig {
     fn default() -> Self {
         Self {
-            subdivisions: 1, // 1 quad per world tile
-            idw_power: 2.0,
-            max_influence_distance: 50.0,
-            smoothness: 1.0, // Default smoothness
+            subdivisions: 1,              // 1 quad per world tile
+            idw_power: 3.0,               // Increased from 2.0 for steeper, more cone-like falloff
+            max_influence_distance: 50.0, // Large enough to avoid hard edges between chunks
+            smoothness: 1.0,              // Default smoothness
         }
     }
 }
@@ -61,8 +61,9 @@ impl TerrainGenerator {
         default_tile_id: Uuid,
         tile_overrides: Option<&FxHashMap<(i32, i32), PixelSource>>,
     ) -> Option<Vec<(Uuid, Vec<Vec3<f32>>, Vec<u32>, Vec<[f32; 2]>)>> {
-        // 1. Collect control points from vertices within influence range
-        let control_points = self.collect_control_points(map, &chunk.bbox);
+        // 1. Collect ALL control points from entire map (global, not per-chunk)
+        // This ensures consistent terrain interpolation across chunk boundaries
+        let control_points = self.collect_control_points(map);
 
         // 2. Identify sectors marked for terrain exclusion
         let excluded_sectors = self.collect_excluded_sectors(map, &chunk.bbox);
@@ -70,8 +71,23 @@ impl TerrainGenerator {
         // 3. Generate grid mesh
         let grid = self.generate_grid(&chunk.bbox);
 
-        // 4. Interpolate heights at grid points with edge-based falloff
-        let heights = self.interpolate_heights(&grid, &control_points, &chunk.bbox);
+        // 4. Get map bounding box for edge falloff
+        // Note: In 2D editor, -Y is up, so we need to flip Y coordinates
+        let map_bbox = if let Some(bounds) = map.bounding_box() {
+            BBox {
+                min: Vec2::new(bounds.x, -bounds.w), // Flip Y: max becomes min
+                max: Vec2::new(bounds.z, -bounds.y), // Flip Y: min becomes max
+            }
+        } else {
+            // Fallback: use a large default map if no geometry exists
+            BBox {
+                min: Vec2::new(-100.0, -100.0),
+                max: Vec2::new(100.0, 100.0),
+            }
+        };
+
+        // 5. Interpolate heights at grid points with map edge falloff
+        let heights = self.interpolate_heights(&grid, &control_points, &map_bbox);
 
         // 5. Cut holes for excluded sectors
         let (vertices, indices, uvs) =
@@ -100,19 +116,10 @@ impl TerrainGenerator {
     }
 
     /// Collect height control points from vertices (position, height, smoothness)
-    fn collect_control_points(&self, map: &Map, bbox: &BBox) -> Vec<(Vec2<f32>, f32, f32)> {
+    /// Now collects ALL control points from the entire map to ensure consistent
+    /// terrain interpolation across chunk boundaries
+    fn collect_control_points(&self, map: &Map) -> Vec<(Vec2<f32>, f32, f32)> {
         let mut points = Vec::new();
-
-        // Expand bbox to include vertices that might influence this chunk
-        let expanded = bbox.expanded(Vec2::broadcast(self.config.max_influence_distance));
-
-        println!(
-            "[TERRAIN] Searching for control vertices in bbox: min=({:.2}, {:.2}), max=({:.2}, {:.2})",
-            expanded.min.x, expanded.min.y, expanded.max.x, expanded.max.y
-        );
-
-        let mut terrain_control_count = 0;
-        let mut in_range_count = 0;
 
         for vertex in &map.vertices {
             // Only include vertices marked as terrain control points
@@ -121,36 +128,15 @@ impl TerrainGenerator {
                 continue;
             }
 
-            terrain_control_count += 1;
-
             let pos = vertex.as_vec2();
-
-            // Only include vertices within influence range
-            if expanded.contains(pos) {
-                // Use vertex Z coordinate as height (in world space, this becomes Y)
-                let height = vertex.z;
-                // Get smoothness from vertex properties, default to global smoothness
-                let smoothness = vertex
-                    .properties
-                    .get_float_default("smoothness", self.config.smoothness);
-                points.push((pos, height, smoothness));
-                in_range_count += 1;
-                println!(
-                    "[TERRAIN] Found control vertex at ({:.2}, {:.2}), height={:.2}, smoothness={:.2}",
-                    pos.x, pos.y, height, smoothness
-                );
-            }
+            // Use vertex Z coordinate as height (in world space, this becomes Y)
+            let height = vertex.z;
+            // Get smoothness from vertex properties, default to global smoothness
+            let smoothness = vertex
+                .properties
+                .get_float_default("smoothness", self.config.smoothness);
+            points.push((pos, height, smoothness));
         }
-
-        println!(
-            "[TERRAIN] Total vertices with terrain_control=true: {}",
-            terrain_control_count
-        );
-        println!(
-            "[TERRAIN] Control vertices in influence range: {}",
-            in_range_count
-        );
-        println!("[TERRAIN] Final control points collected: {}", points.len());
 
         points
     }
@@ -218,13 +204,14 @@ impl TerrainGenerator {
             .collect()
     }
 
-    /// Interpolate height at a single point using IDW with edge-based falloff
-    /// Heights start at 0 at chunk edges and transition to control point heights
+    /// Interpolate height at a single point using IDW (Inverse Distance Weighting)
+    /// Creates smooth hills that blend naturally based on control point influence
+    /// Heights fade to 0 at the map boundaries
     fn interpolate_height_at(
         &self,
         point: Vec2<f32>,
         control_points: &[(Vec2<f32>, f32, f32)],
-        bbox: &BBox,
+        map_bbox: &BBox,
     ) -> f32 {
         if control_points.is_empty() {
             return 0.0;
@@ -233,50 +220,67 @@ impl TerrainGenerator {
         // Check for exact match first (avoid division by zero)
         for &(cp_pos, cp_height, _) in control_points {
             if (point - cp_pos).magnitude() < 1e-6 {
-                // Even at exact control point, apply edge falloff
-                let edge_factor = self.calculate_edge_falloff(point, bbox);
+                // Apply map edge falloff even at exact control point
+                let edge_factor = self.calculate_map_edge_falloff(point, map_bbox);
                 return cp_height * edge_factor;
             }
         }
 
-        // Inverse Distance Weighting with per-vertex smoothness
-        let mut weighted_sum = 0.0;
-        let mut weight_sum = 0.0;
+        // Use distance-based falloff with smoothness control
+        let mut max_height = 0.0;
 
         for &(cp_pos, cp_height, smoothness) in control_points {
             let distance = (point - cp_pos).magnitude();
 
-            // Skip control points beyond max influence distance
-            if distance > self.config.max_influence_distance {
-                continue;
-            }
+            // Use smoothness to control the radius of influence (like a brush)
+            // smoothness directly represents the radius in tiles
+            // Lower smoothness (e.g., 1.0) = 1 tile radius, small steep rounded hill
+            // Higher smoothness (e.g., 20.0) = 20 tile radius, large gentle hill
+            //
+            let smoothness = smoothness * 2.0;
+            let effective_radius = smoothness;
 
-            // Use smoothness to adjust effective distance (higher smoothness = wider influence)
-            let effective_distance = distance / smoothness.max(0.1);
-            let weight = 1.0 / effective_distance.powf(self.config.idw_power);
-            weighted_sum += weight * cp_height;
-            weight_sum += weight;
+            // Circle SDF-based falloff for smooth, round hills (like painting with a brush)
+            // Scale smoothing with radius for consistent appearance at all sizes
+            let smoothing = effective_radius; // 100% of radius for smooth falloff
+
+            // SDF distance from edge of circle (negative inside, positive outside)
+            let sdf_dist = distance - effective_radius;
+
+            // Smooth falloff using smoothstep on the SDF
+            let falloff = if sdf_dist < -smoothing {
+                1.0 // Full height inside the circle
+            } else if sdf_dist > smoothing {
+                0.0 // Zero outside the circle
+            } else {
+                // Smooth transition at the edge
+                let t = (smoothing - sdf_dist) / (2.0 * smoothing);
+                t * t * (3.0 - 2.0 * t) // Smoothstep
+            };
+
+            let height_contribution = cp_height * falloff;
+
+            // Take the maximum height contribution from all control points
+            if height_contribution > max_height {
+                max_height = height_contribution;
+            }
         }
 
-        let base_height = if weight_sum > 0.0 {
-            weighted_sum / weight_sum
-        } else {
-            0.0
-        };
+        let base_height = max_height;
 
-        // Apply edge-based falloff: height transitions to 0 at chunk edges
-        let edge_factor = self.calculate_edge_falloff(point, bbox);
+        // Apply map edge falloff: height transitions to 0 at map boundaries
+        let edge_factor = self.calculate_map_edge_falloff(point, map_bbox);
         base_height * edge_factor
     }
 
-    /// Calculate falloff factor based on distance from chunk edge
-    /// Returns 0.0 at edge, 1.0 at center
-    fn calculate_edge_falloff(&self, point: Vec2<f32>, bbox: &BBox) -> f32 {
-        // Calculate distance from each edge
-        let dist_from_left = point.x - bbox.min.x;
-        let dist_from_right = bbox.max.x - point.x;
-        let dist_from_bottom = point.y - bbox.min.y;
-        let dist_from_top = bbox.max.y - point.y;
+    /// Calculate falloff factor based on distance from map edge
+    /// Returns 0.0 at map edge, 1.0 far from edges
+    fn calculate_map_edge_falloff(&self, point: Vec2<f32>, map_bbox: &BBox) -> f32 {
+        // Calculate distance from each map edge
+        let dist_from_left = point.x - map_bbox.min.x;
+        let dist_from_right = map_bbox.max.x - point.x;
+        let dist_from_bottom = point.y - map_bbox.min.y;
+        let dist_from_top = map_bbox.max.y - point.y;
 
         // Find minimum distance to any edge
         let min_edge_dist = dist_from_left
@@ -284,11 +288,11 @@ impl TerrainGenerator {
             .min(dist_from_bottom)
             .min(dist_from_top);
 
-        // Define falloff distance (e.g., 2 world units from edge)
-        let falloff_distance = 2.0;
+        // Define falloff distance (distance from map edge where falloff starts)
+        let falloff_distance = 10.0; // Adjust this to control how far from edge the falloff extends
 
         if min_edge_dist <= 0.0 {
-            0.0 // At or beyond edge
+            0.0 // At or beyond map edge
         } else if min_edge_dist >= falloff_distance {
             1.0 // Far from edge
         } else {
@@ -339,28 +343,6 @@ impl TerrainGenerator {
             .map(|chunk| (chunk[0] as usize, chunk[1] as usize, chunk[2] as usize))
             .collect();
 
-        println!(
-            "[TERRAIN] Starting clipping: {} triangles, {} excluded sectors",
-            triangles.len(),
-            excluded_sectors.len()
-        );
-
-        // Debug: show sample vertices to understand the grid
-        if !all_vertices.is_empty() {
-            println!(
-                "[TERRAIN]   Grid vertices range: first=({:.1},{:.1}), mid=({:.1},{:.1}), last=({:.1},{:.1})",
-                all_vertices[0].0.x,
-                all_vertices[0].0.y,
-                all_vertices[all_vertices.len() / 2].0.x,
-                all_vertices[all_vertices.len() / 2].0.y,
-                all_vertices[all_vertices.len() - 1].0.x,
-                all_vertices[all_vertices.len() - 1].0.y
-            );
-        }
-
-        let mut clipped_count = 0;
-        let mut kept_count = 0;
-
         for (i0, i1, i2) in triangles {
             let p0 = all_vertices[i0].0;
             let p1 = all_vertices[i1].0;
@@ -385,9 +367,7 @@ impl TerrainGenerator {
                 }
             }
 
-            if should_exclude {
-                clipped_count += 1;
-            } else {
+            if !should_exclude {
                 // Keep the triangle as-is
                 let base_idx = final_vertices.len();
                 final_vertices.push(Vec3::new(p0.x, h0, p0.y));
@@ -397,171 +377,11 @@ impl TerrainGenerator {
                 final_indices.push(base_idx as u32);
                 final_indices.push((base_idx + 1) as u32);
                 final_indices.push((base_idx + 2) as u32);
-                kept_count += 1;
             }
         }
-
-        println!(
-            "[TERRAIN] Clipping complete: {} kept, {} completely clipped",
-            kept_count, clipped_count
-        );
-        println!(
-            "[TERRAIN] Final mesh: {} vertices, {} triangles",
-            final_vertices.len(),
-            final_indices.len() / 3
-        );
 
         let uvs = self.generate_uvs(&final_vertices);
         (final_vertices, final_indices, uvs)
-    }
-
-    /// Clip a polygon (with heights) against a sector using Sutherland-Hodgman algorithm
-    fn clip_polygon_against_sector(
-        &self,
-        poly: &[(Vec2<f32>, f32)],
-        sector: &crate::Sector,
-        map: &crate::Map,
-    ) -> Vec<(Vec2<f32>, f32)> {
-        if poly.len() < 3 {
-            return vec![];
-        }
-
-        // Get sector boundary vertices
-        let mut sector_verts = Vec::new();
-        for &linedef_id in &sector.linedefs {
-            if let Some(linedef) = map.find_linedef(linedef_id) {
-                if let Some(start_vertex) = map.find_vertex(linedef.start_vertex) {
-                    sector_verts.push(Vec2::new(start_vertex.x, start_vertex.y));
-                }
-            }
-        }
-
-        if sector_verts.len() < 3 {
-            return poly.to_vec();
-        }
-
-        // Calculate the signed area to determine winding order
-        // Positive area = CCW, Negative area = CW
-        let mut signed_area = 0.0;
-        for i in 0..sector_verts.len() {
-            let v1 = sector_verts[i];
-            let v2 = sector_verts[(i + 1) % sector_verts.len()];
-            signed_area += (v2.x - v1.x) * (v2.y + v1.y);
-        }
-        let is_ccw = signed_area < 0.0;
-
-        let mut output = poly.to_vec();
-
-        // Clip against each edge of the sector
-        // For EXCLUSION, we keep points OUTSIDE the sector (inverted Sutherland-Hodgman)
-        for i in 0..sector_verts.len() {
-            if output.len() < 3 {
-                break;
-            }
-
-            let edge_start = sector_verts[i];
-            let edge_end = sector_verts[(i + 1) % sector_verts.len()];
-
-            output =
-                self.clip_polygon_against_edge_exclusion(&output, edge_start, edge_end, is_ccw);
-        }
-
-        output
-    }
-
-    /// Clip a polygon against a single edge for EXCLUSION (keeps points outside)
-    /// This is inverted Sutherland-Hodgman clipping
-    fn clip_polygon_against_edge_exclusion(
-        &self,
-        poly: &[(Vec2<f32>, f32)],
-        edge_start: Vec2<f32>,
-        edge_end: Vec2<f32>,
-        is_ccw: bool,
-    ) -> Vec<(Vec2<f32>, f32)> {
-        const EPS: f32 = 1e-5;
-
-        if poly.is_empty() {
-            return vec![];
-        }
-
-        let mut result = Vec::new();
-        let edge_vec = edge_end - edge_start;
-
-        // For EXCLUSION: keep points OUTSIDE the sector
-        // For CCW polygon: inside is LEFT (positive cross), so outside is RIGHT (negative cross)
-        // For CW polygon: inside is RIGHT (negative cross), so outside is LEFT (positive cross)
-        let is_outside = |p: Vec2<f32>| -> bool {
-            let to_point = p - edge_start;
-            let cross = edge_vec.x * to_point.y - edge_vec.y * to_point.x;
-            if is_ccw {
-                cross <= -EPS // CCW: outside is right (negative cross)
-            } else {
-                cross >= EPS // CW: outside is left (positive cross)
-            }
-        };
-
-        let mut prev = poly[poly.len() - 1];
-        let mut prev_outside = is_outside(prev.0);
-
-        for &curr in poly {
-            let curr_outside = is_outside(curr.0);
-
-            if curr_outside {
-                if !prev_outside {
-                    // Entering visible region - add intersection
-                    if let Some(intersection) = self.intersect_segment_with_edge(
-                        prev.0, prev.1, curr.0, curr.1, edge_start, edge_end,
-                    ) {
-                        result.push(intersection);
-                    }
-                }
-                result.push(curr);
-            } else if prev_outside {
-                // Leaving visible region - add intersection
-                if let Some(intersection) = self.intersect_segment_with_edge(
-                    prev.0, prev.1, curr.0, curr.1, edge_start, edge_end,
-                ) {
-                    result.push(intersection);
-                }
-            }
-
-            prev = curr;
-            prev_outside = curr_outside;
-        }
-
-        result
-    }
-
-    /// Find intersection of segment with edge, interpolating height
-    fn intersect_segment_with_edge(
-        &self,
-        seg_start: Vec2<f32>,
-        seg_start_h: f32,
-        seg_end: Vec2<f32>,
-        seg_end_h: f32,
-        edge_start: Vec2<f32>,
-        edge_end: Vec2<f32>,
-    ) -> Option<(Vec2<f32>, f32)> {
-        // Line-line intersection
-        let s1 = seg_end - seg_start;
-        let s2 = edge_end - edge_start;
-
-        let denom = s1.x * s2.y - s1.y * s2.x;
-        if denom.abs() < 1e-8 {
-            return None; // Parallel
-        }
-
-        let diff = edge_start - seg_start;
-        let t = (diff.x * s2.y - diff.y * s2.x) / denom;
-
-        if t < 0.0 || t > 1.0 {
-            return None; // Intersection outside segment
-        }
-
-        let intersection_pos = seg_start + s1 * t;
-        let intersection_height = seg_start_h + (seg_end_h - seg_start_h) * t;
-
-        Some((intersection_pos, intersection_height))
     }
 
     /// Triangulate the grid

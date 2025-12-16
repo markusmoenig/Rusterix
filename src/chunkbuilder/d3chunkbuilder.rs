@@ -1378,7 +1378,7 @@ fn generate_terrain(
     assets: &Assets,
     chunk: &mut Chunk,
     vmchunk: &mut scenevm::Chunk,
-    terrain_id: u32,
+    _terrain_id: u32,
 ) {
     // Check if terrain generation is enabled for this map
     let terrain_enabled = map.properties.get_bool_default("terrain_enabled", false);
@@ -1387,23 +1387,15 @@ fn generate_terrain(
         return;
     }
 
-    println!(
-        "[TERRAIN] Terrain enabled for map, generating for chunk at {:?}",
-        chunk.bbox
-    );
-
     // Get default terrain tile ID from map properties
     let default_tile_id =
         if let Some(Value::Source(pixel_source)) = map.properties.get("default_terrain_tile") {
             if let Some(tile) = pixel_source.tile_from_tile_list(assets) {
-                println!("[TERRAIN] Using default terrain tile: {}", tile.id);
                 tile.id
             } else {
-                println!("[TERRAIN] Default terrain tile not found in assets, using fallback");
                 Uuid::from_str(DEFAULT_TILE_ID).unwrap()
             }
         } else {
-            println!("[TERRAIN] No default_terrain_tile property, using fallback");
             Uuid::from_str(DEFAULT_TILE_ID).unwrap()
         };
 
@@ -1416,48 +1408,14 @@ fn generate_terrain(
         }
     });
 
-    if tile_overrides.is_some() {
-        println!("[TERRAIN] Using tile overrides for terrain");
-    }
-
     // Create terrain generator with default config
     let config = TerrainConfig::default();
     let generator = TerrainGenerator::new(config);
 
     // Generate terrain meshes for this chunk (grouped by tile)
     if let Some(meshes) = generator.generate(map, chunk, assets, default_tile_id, tile_overrides) {
-        println!(
-            "[TERRAIN] Generated {} separate meshes (grouped by tile)",
-            meshes.len()
-        );
-
         // Process each mesh (one per tile)
-        for (mesh_idx, (tile_id, vertices, indices, uvs)) in meshes.iter().enumerate() {
-            println!(
-                "[TERRAIN] Mesh {}: {} vertices, {} triangles, tile_id: {}",
-                mesh_idx,
-                vertices.len(),
-                indices.len() / 3,
-                tile_id
-            );
-
-            // Debug: print first few vertices and UVs
-            if mesh_idx == 0 {
-                for i in 0..vertices.len().min(3) {
-                    println!(
-                        "[TERRAIN] Vertex {}: pos=({:.2}, {:.2}, {:.2}), uv=({:.2}, {:.2})",
-                        i, vertices[i].x, vertices[i].y, vertices[i].z, uvs[i][0], uvs[i][1]
-                    );
-                }
-                // Print first triangle
-                if indices.len() >= 3 {
-                    println!(
-                        "[TERRAIN] First triangle indices: {}, {}, {}",
-                        indices[0], indices[1], indices[2]
-                    );
-                }
-            }
-
+        for (_mesh_idx, (tile_id, vertices, indices, uvs)) in meshes.iter().enumerate() {
             // Convert vertices from Vec3<f32> to [f32; 4] (homogeneous coordinates)
             let vertices_4d: Vec<[f32; 4]> =
                 vertices.iter().map(|v| [v.x, v.y, v.z, 1.0]).collect();
@@ -1472,20 +1430,36 @@ fn generate_terrain(
             let desired_normal = Vec3::new(0.0, 1.0, 0.0);
             mesh_fix_winding(&vertices_4d, &mut indices_tuples, desired_normal);
 
-            // Add terrain mesh to vmchunk with unique GeoId per mesh
-            let mesh_terrain_id = terrain_id * 1000 + mesh_idx as u32;
-            vmchunk.add_poly_3d(
-                GeoId::Terrain(mesh_terrain_id),
-                *tile_id,
-                vertices_4d,
-                uvs.clone(),
-                indices_tuples,
-                0,
-                true,
-            );
-        }
+            // Add each triangle individually with GeoId based on its tile coordinates
+            for triangle in &indices_tuples {
+                let i0 = triangle.0;
+                let i1 = triangle.1;
+                let i2 = triangle.2;
 
-        println!("[TERRAIN] All meshes added to vmchunk");
+                // Calculate triangle center from UVs (which are in world space)
+                let center_u = (uvs[i0][0] + uvs[i1][0] + uvs[i2][0]) / 3.0;
+                let center_v = (uvs[i0][1] + uvs[i1][1] + uvs[i2][1]) / 3.0;
+
+                // Get tile coordinates (can be negative)
+                let tile_x = center_u.floor() as i32;
+                let tile_z = center_v.floor() as i32;
+
+                // Create vertices and UVs for this triangle
+                let tri_vertices = vec![vertices_4d[i0], vertices_4d[i1], vertices_4d[i2]];
+                let tri_uvs = vec![uvs[i0], uvs[i1], uvs[i2]];
+                let tri_indices = vec![(0, 1, 2)];
+
+                vmchunk.add_poly_3d(
+                    GeoId::Terrain(tile_x, tile_z),
+                    *tile_id,
+                    tri_vertices,
+                    tri_uvs,
+                    tri_indices,
+                    0,
+                    true,
+                );
+            }
+        }
     }
 }
 
