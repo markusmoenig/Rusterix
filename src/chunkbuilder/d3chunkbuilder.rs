@@ -1400,7 +1400,7 @@ fn generate_terrain(
         };
 
     // Get tile overrides from map properties (same as surface builder)
-    let tile_overrides = map.properties.get("terrain_tiles").and_then(|v| {
+    let tile_overrides = map.properties.get("tiles").and_then(|v| {
         if let Value::TileOverrides(map) = v {
             Some(map)
         } else {
