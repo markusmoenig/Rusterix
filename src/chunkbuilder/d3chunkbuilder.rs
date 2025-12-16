@@ -1446,7 +1446,12 @@ fn generate_terrain(
 
                 // Create vertices and UVs for this triangle
                 let tri_vertices = vec![vertices_4d[i0], vertices_4d[i1], vertices_4d[i2]];
-                let tri_uvs = vec![uvs[i0], uvs[i1], uvs[i2]];
+                // Flip V coordinate because -Z is up in editor
+                let tri_uvs = vec![
+                    [uvs[i0][0], 1.0 - uvs[i0][1]],
+                    [uvs[i1][0], 1.0 - uvs[i1][1]],
+                    [uvs[i2][0], 1.0 - uvs[i2][1]],
+                ];
                 let tri_indices = vec![(0, 1, 2)];
 
                 vmchunk.add_poly_3d(
