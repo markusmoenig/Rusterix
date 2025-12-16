@@ -18,6 +18,7 @@ use uuid::Uuid;
 use vek::{Vec2, Vec3};
 
 /// Terrain generation settings
+#[derive(Clone)]
 pub struct TerrainConfig {
     /// Subdivision level: 1 = one quad per world tile, 2 = 4 quads per tile, etc.
     pub subdivisions: u32,
@@ -48,6 +49,122 @@ pub struct TerrainGenerator {
 impl TerrainGenerator {
     pub fn new(config: TerrainConfig) -> Self {
         Self { config }
+    }
+
+    /// Sample terrain height at a specific world position (static helper)
+    /// This is useful for getting terrain height at arbitrary points (e.g., for tile outlines)
+    /// Uses the exact same interpolation logic as the main terrain generation
+    pub fn sample_height_at(map: &Map, point: Vec2<f32>, config: &TerrainConfig) -> f32 {
+        // Collect all control points from the map (same as collect_control_points)
+        let mut control_points = Vec::new();
+        for vertex in &map.vertices {
+            let is_terrain_control = vertex.properties.get_bool_default("terrain_control", false);
+            if !is_terrain_control {
+                continue;
+            }
+            let pos = vertex.as_vec2();
+            let height = vertex.z;
+            let smoothness = vertex
+                .properties
+                .get_float_default("smoothness", config.smoothness);
+            control_points.push((pos, height, smoothness));
+        }
+
+        // Get map bounding box for edge falloff (same as generate())
+        let map_bbox = if let Some(bounds) = map.bounding_box() {
+            BBox {
+                min: Vec2::new(bounds.x, -bounds.w),
+                max: Vec2::new(bounds.z, -bounds.y),
+            }
+        } else {
+            BBox {
+                min: Vec2::new(-100.0, -100.0),
+                max: Vec2::new(100.0, 100.0),
+            }
+        };
+
+        // Create a temporary generator instance to use interpolate_height_at
+        let generator = TerrainGenerator::new(config.clone());
+        generator.interpolate_height_at(point, &control_points, &map_bbox)
+    }
+
+    /// Calculate terrain normal at a point by sampling neighboring heights
+    pub fn sample_normal_at(map: &Map, point: Vec2<f32>, config: &TerrainConfig) -> Vec3<f32> {
+        let delta = 0.1; // Sample distance for normal calculation
+
+        // Sample heights at neighboring points
+        let h_center = Self::sample_height_at(map, point, config);
+        let h_right = Self::sample_height_at(map, point + Vec2::new(delta, 0.0), config);
+        let h_up = Self::sample_height_at(map, point + Vec2::new(0.0, delta), config);
+
+        // Calculate tangent vectors
+        let tangent_x = Vec3::new(delta, h_right - h_center, 0.0);
+        let tangent_z = Vec3::new(0.0, h_up - h_center, delta);
+
+        // Cross product to get normal (and normalize)
+        let normal = tangent_x.cross(tangent_z).normalized();
+        normal
+    }
+
+    /// Get the terrain normal at the center of a tile
+    pub fn tile_normal(map: &Map, tile: (i32, i32), config: &TerrainConfig) -> Vec3<f32> {
+        let (tx, tz) = tile;
+        // Sample at the center of the tile
+        let center = Vec2::new(tx as f32 + 0.5, tz as f32 + 0.5);
+        Self::sample_normal_at(map, center, config)
+    }
+
+    /// Get the world-space outline of a 1x1 terrain tile at the given tile coordinates.
+    /// Returns points around the tile perimeter, sampled at subdivision resolution for accuracy.
+    /// Points form a closed loop (last point connects back to first)
+    pub fn tile_outline_world(
+        map: &Map,
+        tile: (i32, i32),
+        config: &TerrainConfig,
+    ) -> Vec<Vec3<f32>> {
+        let (tx, tz) = tile;
+        let subdivisions = config.subdivisions.max(1);
+        let step = 1.0 / subdivisions as f32;
+
+        let mut outline = Vec::new();
+
+        // Bottom edge (left to right)
+        for i in 0..subdivisions {
+            let x = tx as f32 + i as f32 * step;
+            let z = tz as f32;
+            let pos = Vec2::new(x, z);
+            let height = Self::sample_height_at(map, pos, config);
+            outline.push(Vec3::new(pos.x, height, pos.y));
+        }
+
+        // Right edge (bottom to top)
+        for i in 0..subdivisions {
+            let x = tx as f32 + 1.0;
+            let z = tz as f32 + i as f32 * step;
+            let pos = Vec2::new(x, z);
+            let height = Self::sample_height_at(map, pos, config);
+            outline.push(Vec3::new(pos.x, height, pos.y));
+        }
+
+        // Top edge (right to left)
+        for i in 0..subdivisions {
+            let x = tx as f32 + 1.0 - i as f32 * step;
+            let z = tz as f32 + 1.0;
+            let pos = Vec2::new(x, z);
+            let height = Self::sample_height_at(map, pos, config);
+            outline.push(Vec3::new(pos.x, height, pos.y));
+        }
+
+        // Left edge (top to bottom)
+        for i in 0..subdivisions {
+            let x = tx as f32;
+            let z = tz as f32 + 1.0 - i as f32 * step;
+            let pos = Vec2::new(x, z);
+            let height = Self::sample_height_at(map, pos, config);
+            outline.push(Vec3::new(pos.x, height, pos.y));
+        }
+
+        outline
     }
 
     /// Generate terrain mesh for the given chunk
