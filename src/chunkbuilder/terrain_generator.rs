@@ -564,7 +564,7 @@ impl TerrainGenerator {
             .collect()
     }
 
-    /// Check if a point is inside a sector using ray casting algorithm
+    /// Check if a point is inside or on the boundary of a sector using ray casting algorithm
     fn point_in_sector(&self, point: Vec2<f32>, sector: &crate::Sector, map: &crate::Map) -> bool {
         // Get sector boundary vertices
         let mut sector_verts = Vec::new();
@@ -580,9 +580,35 @@ impl TerrainGenerator {
             return false;
         }
 
+        // Small epsilon for boundary detection - points within this distance are considered on the boundary
+        let epsilon = 0.01;
+
+        // First check if point is very close to any edge (on the boundary)
+        let mut j = sector_verts.len() - 1;
+        for i in 0..sector_verts.len() {
+            let vi = sector_verts[i];
+            let vj = sector_verts[j];
+
+            // Calculate distance from point to line segment
+            let edge = vj - vi;
+            let edge_length_sq = edge.magnitude_squared();
+
+            if edge_length_sq > 0.0 {
+                let t = ((point - vi).dot(edge) / edge_length_sq).clamp(0.0, 1.0);
+                let projection = vi + edge * t;
+                let dist = (point - projection).magnitude();
+
+                if dist < epsilon {
+                    return true; // Point is on the boundary, treat as inside
+                }
+            }
+
+            j = i;
+        }
+
         // Ray casting algorithm: count intersections with edges
         let mut inside = false;
-        let mut j = sector_verts.len() - 1;
+        j = sector_verts.len() - 1;
 
         for i in 0..sector_verts.len() {
             let vi = sector_verts[i];
