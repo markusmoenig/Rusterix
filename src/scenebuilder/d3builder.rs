@@ -575,6 +575,29 @@ impl D3Builder {
             }
         }
 
+        // Vertices with billboards
+        for vertex in &map.vertices {
+            if let Some(Value::Source(PixelSource::TileId(tile_id))) =
+                vertex.properties.get("source")
+            {
+                let size = 1.0;
+                let center3 = Vec3::new(vertex.x, vertex.z + size * 0.5, vertex.y);
+
+                let dynamic = DynamicObject::billboard_tile(
+                    GeoId::Vertex(vertex.id),
+                    *tile_id,
+                    center3,
+                    basis.1,
+                    basis.2,
+                    size,
+                    size,
+                );
+                scene_handler
+                    .vm
+                    .execute(Atom::AddDynamic { object: dynamic });
+            }
+        }
+
         // Billboards (doors/gates)
         for (geo_id, billboard) in &scene_handler.billboards {
             // TODO: Query server/client for current state of this GeoId
@@ -606,161 +629,4 @@ impl D3Builder {
         scene.dynamic_textures = vec![];
         scene.compute_dynamic_normals();
     }
-
-    /*
-    /// Adds a wall to the appropriate batch based on up to 4 input textures.
-    #[allow(clippy::too_many_arguments)]
-    fn add_wall(
-        &self,
-        sector_elevation: f32,
-        start_vertex: &Vec2<f32>,
-        end_vertex: &Vec2<f32>,
-        wall_height: f32,
-        row1_source: Option<&PixelSource>,
-        row2_source: Option<&PixelSource>,
-        row3_source: Option<&PixelSource>,
-        row4_source: Option<&PixelSource>,
-        repeat_last_row: bool,
-        assets: &Assets,
-        properties: &ValueContainer,
-        map: &Map,
-        repeated_offsets: &mut FxHashMap<Uuid, usize>,
-        repeated_batches: &mut Vec<Batch3D>,
-        textures: &mut Vec<Tile>,
-        sample_mode: &SampleMode,
-    ) {
-        let row_heights = if wall_height <= 1.0 {
-            vec![wall_height]
-        } else if wall_height <= 2.0 {
-            vec![1.0, wall_height - 1.0]
-        } else if wall_height <= 3.0 {
-            vec![1.0, 1.0, wall_height - 2.0]
-        } else {
-            vec![1.0, 1.0, 1.0, wall_height - 3.0]
-        };
-
-        let mut add_row = |start_height: f32, end_height: f32, tile: &Tile| {
-            let row_vertices = vec![
-                [start_vertex.x, start_height, start_vertex.y, 1.0],
-                [start_vertex.x, end_height, start_vertex.y, 1.0],
-                [end_vertex.x, end_height, end_vertex.y, 1.0],
-                [end_vertex.x, start_height, end_vertex.y, 1.0],
-            ];
-
-            let row_uvs =
-                if (end_vertex.x - start_vertex.x).abs() > (end_vertex.y - start_vertex.y).abs() {
-                    vec![
-                        [start_vertex.x, end_height],
-                        [start_vertex.x, start_height],
-                        [end_vertex.x, start_height],
-                        [end_vertex.x, end_height],
-                    ]
-                } else {
-                    vec![
-                        [start_vertex.y, end_height],
-                        [start_vertex.y, start_height],
-                        [end_vertex.y, start_height],
-                        [end_vertex.y, end_height],
-                    ]
-                };
-
-            let row_indices = vec![(0, 1, 2), (0, 2, 3)];
-
-            if let Some(texture_index) = assets.tile_index(&tile.id) {
-                let batch = Batch3D::new(row_vertices, row_indices, row_uvs)
-                    .repeat_mode(crate::RepeatMode::RepeatXY)
-                    .source(PixelSource::StaticTileIndex(texture_index));
-            }
-        };
-
-        let sources = [row1_source, row2_source, row3_source, row4_source];
-        let mut current_height = 0.0;
-        let mut last_tile: Option<Tile> = None;
-
-        for (i, height) in row_heights.iter().enumerate() {
-            if current_height >= wall_height {
-                break;
-            }
-
-            let source_tile = sources[i].and_then(|source| source.tile_from_tile_list(assets));
-
-            let tile_to_use = if let Some(tile) = source_tile {
-                last_tile = Some(tile.clone());
-                Some(tile)
-            } else if repeat_last_row {
-                last_tile.clone()
-            } else {
-                None
-            };
-
-            if let Some(tile) = tile_to_use {
-                let next_height = (current_height + height).min(wall_height);
-                add_row(
-                    sector_elevation + current_height,
-                    sector_elevation + next_height,
-                    &tile,
-                );
-                current_height = next_height;
-            } else {
-                current_height += height;
-            }
-        }
-
-        // Fill to the top with the last tile if repeat_last_row is enabled
-        if repeat_last_row {
-            if let Some(tile) = last_tile {
-                while current_height < wall_height {
-                    let next_height = (current_height + 1.0).min(wall_height);
-                    add_row(
-                        sector_elevation + current_height,
-                        sector_elevation + next_height,
-                        &tile,
-                    );
-                    current_height = next_height;
-                }
-            }
-        }
-    }*/
-
-    /*
-    /// Adds a skybox or skymap
-    fn add_sky(
-        texture_id: &Uuid,
-        tiles: &FxHashMap<Uuid, Tile>,
-        repeated_offsets: &mut FxHashMap<Uuid, usize>,
-        repeated_batches: &mut Vec<Batch3D>,
-        textures: &mut Vec<Tile>,
-    ) {
-        // Define sky vertices
-        let sky_vertices = vec![
-            [-1000.0, 10.0, -1000.0, 1.0],
-            [1000.0, 10.0, -1000.0, 1.0],
-            [1000.0, 10.0, 1000.0, 1.0],
-            [-1000.0, 10.0, 1000.0, 1.0],
-        ];
-
-        // Define UV coordinates for the sky texture
-        let sky_uvs = vec![[0.0, 15.0], [15.0, 15.0], [15.0, 0.0], [0.0, 0.0]];
-
-        // Define indices for rendering the quad
-        let sky_indices = vec![(0, 1, 2), (0, 2, 3)];
-
-        // if let Some(tile) = tiles.get(texture_id) {
-        //     // Create a new batch for the sky texture
-        //     let texture_index = textures.len();
-
-        //     let mut batch = Batch::emptyd3()
-        //         .repeat_mode(crate::RepeatMode::RepeatXY)
-        //         .cull_mode(crate::CullMode::Off)
-        //         .sample_mode(crate::SampleMode::Linear)
-        //         .texture_index(texture_index)
-        //         .receives_light(false);
-
-        //     batch.add(sky_vertices, sky_indices, sky_uvs);
-
-        //     textures.push(tile.clone());
-        //     repeated_offsets.insert(tile.id, repeated_batches.len());
-        //     repeated_batches.push(batch);
-        // }
-    }*/
 }
