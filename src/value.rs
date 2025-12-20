@@ -1,5 +1,6 @@
 use crate::{
     Light, MaterialProfile, ParticleEmitter, Pixel, PixelSource, PlayerCamera, SampleMode, Texture,
+    VertexBlendPreset,
 };
 use rustpython::vm::*;
 use std::fmt;
@@ -38,6 +39,8 @@ pub enum Value {
     HeightPoints(Vec<HeightControlPoint>),
     #[serde(with = "vectorize")]
     TileOverrides(FxHashMap<(i32, i32), PixelSource>),
+    #[serde(with = "vectorize")]
+    BlendOverrides(FxHashMap<(i32, i32), (VertexBlendPreset, PixelSource)>),
 }
 
 impl Value {
@@ -182,6 +185,7 @@ impl fmt::Display for Value {
             Value::MaterialProfile(_) => write!(f, "MaterialProfile"),
             Value::HeightPoints(points) => write!(f, "HeightPoints({})", points.len()),
             Value::TileOverrides(_) => write!(f, "TileOverrides"),
+            Value::BlendOverrides(_) => write!(f, "BlendOverrides"),
         }
     }
 }
@@ -475,6 +479,7 @@ impl ValueContainer {
             Some(Value::MaterialProfile(_)) => 15,
             Some(Value::HeightPoints(_)) => 16,
             Some(Value::TileOverrides(_)) => 17,
+            Some(Value::BlendOverrides(_)) => 17,
             Some(Value::NoValue) => 18,
             None => 99, // If key is missing, push to the end
         }

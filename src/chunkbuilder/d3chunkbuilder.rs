@@ -3,7 +3,7 @@ use crate::chunkbuilder::surface_mesh_builder::{
 };
 use crate::chunkbuilder::terrain_generator::{TerrainConfig, TerrainGenerator};
 use crate::collision_world::{BlockingVolume, DynamicOpening, OpeningType, WalkableFloor};
-use crate::{Assets, Batch3D, Chunk, ChunkBuilder, Map, PixelSource, Value};
+use crate::{Assets, Batch3D, Chunk, ChunkBuilder, Map, PixelSource, Value, VertexBlendPreset};
 use crate::{BillboardAnimation, GeometrySource, LoopOp, ProfileLoop, RepeatMode, Sector};
 use rustc_hash::{FxHashMap, FxHashSet};
 use scenevm::GeoId;
@@ -62,23 +62,29 @@ fn build_surface_uvs(verts_uv: &[[f32; 2]], sector: &Sector) -> Vec<[f32; 2]> {
 
 /// Split triangles into per-tile batches using 1x1 UV cells. Only routes a triangle
 /// to an override if all three vertices fall into the same overridden cell.
-fn partition_triangles_with_tile_overrides(
+fn partition_triangles_with_tile_and_blend_overrides(
     indices: &[(usize, usize, usize)],
     uvs: &[[f32; 2]],
-    overrides: Option<&FxHashMap<(i32, i32), PixelSource>>,
+    tile_overrides: Option<&FxHashMap<(i32, i32), PixelSource>>,
+    blend_overrides: Option<&FxHashMap<(i32, i32), (VertexBlendPreset, PixelSource)>>,
     assets: &Assets,
     surface: &crate::Surface,
+    default_tile_id: Uuid,
 ) -> (
     Vec<[f32; 2]>,
     Vec<[f32; 4]>,
     Vec<(usize, usize, usize)>,
     Vec<(Uuid, Vec<(usize, usize, usize)>)>,
+    Vec<(Uuid, Uuid, Vec<f32>, Vec<(usize, usize, usize)>)>,
     Vec<[f32; 2]>,
 ) {
     let mut defaults = Vec::new();
     let mut per_tile: FxHashMap<Uuid, Vec<(usize, usize, usize)>> = FxHashMap::default();
+    let mut per_blend: FxHashMap<(Uuid, Uuid, VertexBlendPreset), Vec<(usize, usize, usize)>> =
+        FxHashMap::default();
 
-    let Some(map) = overrides else {
+    // If no overrides at all, return early
+    if tile_overrides.is_none() && blend_overrides.is_none() {
         let world_vertices = build_world_vertices(uvs, surface);
         defaults.extend_from_slice(indices);
         let uvs_local = uvs.to_vec();
@@ -87,11 +93,12 @@ fn partition_triangles_with_tile_overrides(
             world_vertices,
             defaults,
             Vec::new(),
+            Vec::new(),
             uvs_local,
         );
     };
 
-    // Subdivide each triangle against 1x1 UV tiles to make per-tile batches deterministic
+    // Subdivide each triangle against 1x1 UV tiles - do this ONCE
     let (tiled_uvs, tiled_world, tiled_tris, vertex_cells) =
         subdivide_triangles_into_tiles(indices, uvs, surface);
 
@@ -104,20 +111,75 @@ fn partition_triangles_with_tile_overrides(
     }
 
     for (tile_cell, tri) in tiled_tris {
-        if let Some(ps) = map.get(&tile_cell) {
-            if let Some(tile) = ps.tile_from_tile_list(assets) {
-                per_tile.entry(tile.id).or_default().push(tri);
-                continue;
+        // Check blend overrides first (higher priority)
+        if let Some(blend_map) = blend_overrides {
+            if let Some((preset, ps)) = blend_map.get(&tile_cell) {
+                if let Some(tile2) = ps.tile_from_tile_list(assets) {
+                    // Determine the base tile: use tile override if present, otherwise default
+                    let base_tile_id = if let Some(tile_map) = tile_overrides {
+                        if let Some(base_ps) = tile_map.get(&tile_cell) {
+                            if let Some(base_tile) = base_ps.tile_from_tile_list(assets) {
+                                base_tile.id
+                            } else {
+                                default_tile_id
+                            }
+                        } else {
+                            default_tile_id
+                        }
+                    } else {
+                        default_tile_id
+                    };
+
+                    per_blend
+                        .entry((base_tile_id, tile2.id, *preset))
+                        .or_default()
+                        .push(tri);
+                    continue;
+                }
             }
         }
+
+        // Then check tile overrides
+        if let Some(tile_map) = tile_overrides {
+            if let Some(ps) = tile_map.get(&tile_cell) {
+                if let Some(tile) = ps.tile_from_tile_list(assets) {
+                    per_tile.entry(tile.id).or_default().push(tri);
+                    continue;
+                }
+            }
+        }
+
         defaults.push(tri);
     }
+
+    // Convert blend batches to final format with calculated weights
+    let blend_batches: Vec<(Uuid, Uuid, Vec<f32>, Vec<(usize, usize, usize)>)> = per_blend
+        .into_iter()
+        .map(|((tile_id, tile_id2, preset), tris)| {
+            let weights = preset.weights();
+            let mut per_vertex_weights = vec![0.0; tiled_uvs.len()];
+
+            for &(a, b, c) in &tris {
+                for &idx in &[a, b, c] {
+                    let uv_local = uvs_local[idx];
+                    let weight = weights[0] * (1.0 - uv_local[0]) * (1.0 - uv_local[1])
+                        + weights[1] * uv_local[0] * (1.0 - uv_local[1])
+                        + weights[2] * uv_local[0] * uv_local[1]
+                        + weights[3] * (1.0 - uv_local[0]) * uv_local[1];
+                    per_vertex_weights[idx] = weight;
+                }
+            }
+
+            (tile_id, tile_id2, per_vertex_weights, tris)
+        })
+        .collect();
 
     (
         tiled_uvs,
         tiled_world,
         defaults,
         per_tile.into_iter().collect(),
+        blend_batches,
         uvs_local,
     )
 }
@@ -415,14 +477,43 @@ impl ChunkBuilder for D3ChunkBuilder {
                         }
                     });
 
-                    let (verts_uv, world_vertices, default_indices, override_batches, override_uvs) =
-                        partition_triangles_with_tile_overrides(
-                            &indices,
-                            &verts_uv,
-                            tile_overrides,
-                            assets,
-                            surface,
-                        );
+                    let blend_overrides = sector.properties.get("blend_tiles").and_then(|v| {
+                        if let Value::BlendOverrides(map) = v {
+                            Some(map)
+                        } else {
+                            None
+                        }
+                    });
+
+                    // Get default tile for blending
+                    let default_tile_id =
+                        if let Some(Value::Source(ps)) = sector.properties.get("source") {
+                            if let Some(tile) = ps.tile_from_tile_list(assets) {
+                                tile.id
+                            } else {
+                                Uuid::from_str(DEFAULT_TILE_ID).unwrap()
+                            }
+                        } else {
+                            Uuid::from_str(DEFAULT_TILE_ID).unwrap()
+                        };
+
+                    // Apply BOTH tile overrides and blend overrides in a single pass
+                    let (
+                        verts_uv,
+                        world_vertices,
+                        default_indices,
+                        override_batches,
+                        blend_batches,
+                        override_uvs,
+                    ) = partition_triangles_with_tile_and_blend_overrides(
+                        &indices,
+                        &verts_uv,
+                        tile_overrides,
+                        blend_overrides,
+                        assets,
+                        surface,
+                        default_tile_id,
+                    );
 
                     if dbg {
                         if let Some((a, b, c)) = indices.get(0).cloned() {
@@ -640,6 +731,25 @@ impl ChunkBuilder for D3ChunkBuilder {
                         }
                     }
 
+                    // Apply blended batches if present
+                    if !blend_batches.is_empty() {
+                        for (tile_id, tile_id2, blend_weights, inds) in &blend_batches {
+                            if !inds.is_empty() {
+                                vmchunk.add_poly_3d_blended(
+                                    GeoId::Sector(sector.id),
+                                    *tile_id,
+                                    *tile_id2,
+                                    world_vertices.clone(),
+                                    override_uvs.clone(),
+                                    blend_weights.clone(),
+                                    inds.clone(),
+                                    0,
+                                    true,
+                                );
+                            }
+                        }
+                    }
+
                     if !default_indices.is_empty() {
                         push_with_material_kind_local(
                             MaterialKind::Cap,
@@ -743,18 +853,22 @@ impl ChunkBuilder for D3ChunkBuilder {
                                     }
                                 });
 
+                                // Apply both blend and tile overrides to back cap in a single pass
                                 let (
                                     back_verts_uv,
                                     back_world_vertices,
                                     back_default_indices,
                                     back_override_batches,
+                                    back_blend_batches,
                                     back_override_uvs,
-                                ) = partition_triangles_with_tile_overrides(
+                                ) = partition_triangles_with_tile_and_blend_overrides(
                                     &back_indices,
                                     &back_verts_uv,
                                     tile_overrides,
+                                    blend_overrides,
                                     assets,
                                     surface,
+                                    default_tile_id,
                                 );
 
                                 let mut back_world_vertices = back_world_vertices;
@@ -779,6 +893,26 @@ impl ChunkBuilder for D3ChunkBuilder {
                                             0,
                                             true,
                                         );
+                                    }
+                                }
+
+                                if !back_blend_batches.is_empty() {
+                                    for (tile_id, tile_id2, blend_weights, inds) in
+                                        &back_blend_batches
+                                    {
+                                        if !inds.is_empty() {
+                                            vmchunk.add_poly_3d_blended(
+                                                GeoId::Sector(sector.id),
+                                                *tile_id,
+                                                *tile_id2,
+                                                back_world_vertices.clone(),
+                                                back_override_uvs.clone(),
+                                                blend_weights.clone(),
+                                                inds.clone(),
+                                                0,
+                                                true,
+                                            );
+                                        }
                                     }
                                 }
 
@@ -845,14 +979,43 @@ impl ChunkBuilder for D3ChunkBuilder {
                         }
                     });
 
-                    let (verts_uv, world_vertices, default_indices, override_batches, override_uvs) =
-                        partition_triangles_with_tile_overrides(
-                            &indices,
-                            &verts_uv,
-                            tile_overrides,
-                            assets,
-                            surface,
-                        );
+                    let blend_overrides = sector.properties.get("blend_tiles").and_then(|v| {
+                        if let Value::BlendOverrides(map) = v {
+                            Some(map)
+                        } else {
+                            None
+                        }
+                    });
+
+                    // Get default tile for blending
+                    let default_tile_id =
+                        if let Some(Value::Source(ps)) = sector.properties.get("source") {
+                            if let Some(tile) = ps.tile_from_tile_list(assets) {
+                                tile.id
+                            } else {
+                                Uuid::from_str(DEFAULT_TILE_ID).unwrap()
+                            }
+                        } else {
+                            Uuid::from_str(DEFAULT_TILE_ID).unwrap()
+                        };
+
+                    // Apply both blend and tile overrides (fallback path) in a single pass
+                    let (
+                        verts_uv,
+                        world_vertices,
+                        default_indices,
+                        override_batches,
+                        blend_batches,
+                        override_uvs,
+                    ) = partition_triangles_with_tile_and_blend_overrides(
+                        &indices,
+                        &verts_uv,
+                        tile_overrides,
+                        blend_overrides,
+                        assets,
+                        surface,
+                        default_tile_id,
+                    );
 
                     let uvs = build_surface_uvs(&verts_uv, sector);
                     #[allow(dead_code)]
@@ -926,6 +1089,24 @@ impl ChunkBuilder for D3ChunkBuilder {
                         }
                     }
 
+                    if !blend_batches.is_empty() {
+                        for (tile_id, tile_id2, blend_weights, inds) in &blend_batches {
+                            if !inds.is_empty() {
+                                vmchunk.add_poly_3d_blended(
+                                    GeoId::Sector(sector.id),
+                                    *tile_id,
+                                    *tile_id2,
+                                    world_vertices.clone(),
+                                    override_uvs.clone(),
+                                    blend_weights.clone(),
+                                    inds.clone(),
+                                    0,
+                                    true,
+                                );
+                            }
+                        }
+                    }
+
                     for (tile_id, inds) in &override_batches {
                         if !inds.is_empty() {
                             vmchunk.add_poly_3d(
@@ -933,6 +1114,22 @@ impl ChunkBuilder for D3ChunkBuilder {
                                 *tile_id,
                                 world_vertices.clone(),
                                 override_uvs.clone(),
+                                inds.clone(),
+                                0,
+                                true,
+                            );
+                        }
+                    }
+
+                    for (tile_id, tile_id2, blend_weights, inds) in &blend_batches {
+                        if !inds.is_empty() {
+                            vmchunk.add_poly_3d_blended(
+                                GeoId::Sector(sector.id),
+                                *tile_id,
+                                *tile_id2,
+                                world_vertices.clone(),
+                                override_uvs.clone(),
+                                blend_weights.clone(),
                                 inds.clone(),
                                 0,
                                 true,
@@ -1408,6 +1605,15 @@ fn generate_terrain(
         }
     });
 
+    // Get blend tile overrides from map properties
+    let blend_overrides = map.properties.get("blend_tiles").and_then(|v| {
+        if let Value::BlendOverrides(map) = v {
+            Some(map)
+        } else {
+            None
+        }
+    });
+
     // Create terrain generator with default config
     let config = TerrainConfig::default();
     let generator = TerrainGenerator::new(config);
@@ -1430,8 +1636,11 @@ fn generate_terrain(
             let desired_normal = Vec3::new(0.0, 1.0, 0.0);
             mesh_fix_winding(&vertices_4d, &mut indices_tuples, desired_normal);
 
-            // Add each triangle individually with GeoId based on its tile coordinates
-            for triangle in &indices_tuples {
+            // Group triangles by tile coordinates and check for blend overrides
+            let mut tile_batches: FxHashMap<(i32, i32), Vec<(usize, usize, usize)>> =
+                FxHashMap::default();
+
+            for &triangle in &indices_tuples {
                 let i0 = triangle.0;
                 let i1 = triangle.1;
                 let i2 = triangle.2;
@@ -1444,25 +1653,96 @@ fn generate_terrain(
                 let tile_x = center_u.floor() as i32;
                 let tile_z = center_v.floor() as i32;
 
-                // Create vertices and UVs for this triangle
-                let tri_vertices = vec![vertices_4d[i0], vertices_4d[i1], vertices_4d[i2]];
-                // Flip V coordinate because -Z is up in editor
-                let tri_uvs = vec![
-                    [uvs[i0][0], 1.0 - uvs[i0][1]],
-                    [uvs[i1][0], 1.0 - uvs[i1][1]],
-                    [uvs[i2][0], 1.0 - uvs[i2][1]],
-                ];
-                let tri_indices = vec![(0, 1, 2)];
+                tile_batches
+                    .entry((tile_x, tile_z))
+                    .or_default()
+                    .push(triangle);
+            }
 
-                vmchunk.add_poly_3d(
-                    GeoId::Terrain(tile_x, tile_z),
-                    *tile_id,
-                    tri_vertices,
-                    tri_uvs,
-                    tri_indices,
-                    0,
-                    true,
-                );
+            // Process each tile batch
+            for ((tile_x, tile_z), triangles) in tile_batches {
+                // Check if this tile has blend overrides
+                if let Some(blend_map) = blend_overrides {
+                    if let Some((preset, ps)) = blend_map.get(&(tile_x, tile_z)) {
+                        if let Some(tile2) = ps.tile_from_tile_list(assets) {
+                            // Build blend weights for each vertex
+                            let weights_4 = preset.weights();
+                            let mut blend_weights = Vec::new();
+                            let mut blended_verts = Vec::new();
+                            let mut blended_uvs = Vec::new();
+                            let mut blended_indices = Vec::new();
+
+                            for &(i0, i1, i2) in &triangles {
+                                let base_idx = blended_verts.len();
+
+                                // Add vertices
+                                blended_verts.push(vertices_4d[i0]);
+                                blended_verts.push(vertices_4d[i1]);
+                                blended_verts.push(vertices_4d[i2]);
+
+                                // Add UVs (flipped V)
+                                blended_uvs.push([uvs[i0][0], 1.0 - uvs[i0][1]]);
+                                blended_uvs.push([uvs[i1][0], 1.0 - uvs[i1][1]]);
+                                blended_uvs.push([uvs[i2][0], 1.0 - uvs[i2][1]]);
+
+                                // Add triangle indices
+                                blended_indices.push((base_idx, base_idx + 1, base_idx + 2));
+
+                                // Calculate blend weights for each vertex
+                                for &vi in &[i0, i1, i2] {
+                                    let u = (uvs[vi][0] - tile_x as f32).clamp(0.0, 1.0);
+                                    let v = (uvs[vi][1] - tile_z as f32).clamp(0.0, 1.0);
+
+                                    // Bilinear interpolation: TL, TR, BR, BL
+                                    let top = weights_4[0] * (1.0 - u) + weights_4[1] * u;
+                                    let bottom = weights_4[3] * (1.0 - u) + weights_4[2] * u;
+                                    let weight = top * (1.0 - v) + bottom * v;
+
+                                    blend_weights.push(weight);
+                                }
+                            }
+
+                            // Add blended poly
+                            vmchunk.add_poly_3d_blended(
+                                GeoId::Terrain(tile_x, tile_z),
+                                *tile_id,
+                                tile2.id,
+                                blended_verts,
+                                blended_uvs,
+                                blend_weights,
+                                blended_indices,
+                                0,
+                                true,
+                            );
+                            continue;
+                        }
+                    }
+                }
+
+                // No blend override - add as regular poly
+                for &triangle in &triangles {
+                    let i0 = triangle.0;
+                    let i1 = triangle.1;
+                    let i2 = triangle.2;
+
+                    let tri_vertices = vec![vertices_4d[i0], vertices_4d[i1], vertices_4d[i2]];
+                    let tri_uvs = vec![
+                        [uvs[i0][0], 1.0 - uvs[i0][1]],
+                        [uvs[i1][0], 1.0 - uvs[i1][1]],
+                        [uvs[i2][0], 1.0 - uvs[i2][1]],
+                    ];
+                    let tri_indices = vec![(0, 1, 2)];
+
+                    vmchunk.add_poly_3d(
+                        GeoId::Terrain(tile_x, tile_z),
+                        *tile_id,
+                        tri_vertices,
+                        tri_uvs,
+                        tri_indices,
+                        0,
+                        true,
+                    );
+                }
             }
         }
     }

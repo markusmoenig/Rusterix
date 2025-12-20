@@ -30,6 +30,7 @@ pub mod tracer;
 pub mod utils;
 pub mod value;
 pub mod value_toml;
+pub mod vertexblend;
 pub mod wavefront;
 
 #[cfg(feature = "single_thread")]
@@ -172,6 +173,7 @@ pub use crate::{
     tracer::{HitInfo, Ray, buffer::AccumBuffer, trace::Tracer},
     value::{HeightControlPoint, Value, ValueContainer},
     value_toml::{ValueGroups, ValueTomlLoader},
+    vertexblend::VertexBlendPreset,
 };
 
 // Prelude
