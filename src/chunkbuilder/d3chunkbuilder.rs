@@ -130,8 +130,11 @@ fn partition_triangles_with_tile_and_blend_overrides(
                         default_tile_id
                     };
 
+                    // Orient preset to world space based on surface normal
+                    let oriented_preset = preset.orient_to_world(surface.plane.normal);
+
                     per_blend
-                        .entry((base_tile_id, tile2.id, *preset))
+                        .entry((base_tile_id, tile2.id, oriented_preset))
                         .or_default()
                         .push(tri);
                     continue;

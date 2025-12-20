@@ -106,6 +106,39 @@ impl VertexBlendPreset {
         }
     }
 
+    /// Transform preset based on surface orientation in world space.
+    /// For non-horizontal surfaces (walls, slopes), flip Top/Bottom since UV-up points world-up.
+    ///
+    /// surface_normal: the normal vector of the surface
+    pub fn orient_to_world(self, surface_normal: vek::Vec3<f32>) -> Self {
+        // Only keep Top/Bottom as-is for very flat horizontal surfaces (floors/ceilings)
+        // For everything else (walls, slopes), flip Top/Bottom
+        let is_flat_horizontal = surface_normal.y.abs() > 0.9;
+
+        let mut result = self;
+
+        if !is_flat_horizontal {
+            // On non-horizontal surfaces (walls, slopes), flip Top/Bottom
+            result = match result {
+                Self::Top => Self::Bottom,
+                Self::Bottom => Self::Top,
+                Self::TopSoft => Self::BottomSoft,
+                Self::BottomSoft => Self::TopSoft,
+                Self::TopLeft => Self::BottomLeft,
+                Self::TopRight => Self::BottomRight,
+                Self::BottomLeft => Self::TopLeft,
+                Self::BottomRight => Self::TopRight,
+                Self::TopLeftSoft => Self::BottomLeftSoft,
+                Self::TopRightSoft => Self::BottomRightSoft,
+                Self::BottomLeftSoft => Self::TopLeftSoft,
+                Self::BottomRightSoft => Self::TopRightSoft,
+                _ => result,
+            };
+        }
+
+        result
+    }
+
     pub fn preview_vertex_blend(
         &self,
         weights: [f32; 4], // [TL, TR, BR, BL] in 0.0..1.0
