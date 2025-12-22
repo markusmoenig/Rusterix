@@ -356,6 +356,12 @@ impl ChunkBuilder for D3ChunkBuilder {
                 continue;
             };
 
+            // Skip sectors in ridge mode - they only contribute height to terrain, not surfaces
+            let terrain_mode = sector.properties.get_int_default("terrain_mode", 0);
+            if terrain_mode == 2 {
+                continue;
+            }
+
             // Keep track of hidden sectors so that we can set them as not visible later
             let visible = sector.properties.get_bool_default("visible", true);
             if !visible {

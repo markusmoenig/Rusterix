@@ -83,9 +83,78 @@ impl TerrainGenerator {
             }
         };
 
-        // Create a temporary generator instance to use interpolate_height_at
+        // Collect ridge sectors (same as generate())
+        let mut ridge_sectors = Vec::new();
+        for sector in &map.sectors {
+            let terrain_mode = sector.properties.get_int_default("terrain_mode", 0);
+            if terrain_mode != 2 {
+                continue;
+            }
+
+            let height = sector.properties.get_float_default("ridge_height", 1.0);
+            let plateau_width = sector
+                .properties
+                .get_float_default("ridge_plateau_width", 0.0);
+            let falloff_distance = sector
+                .properties
+                .get_float_default("ridge_falloff_distance", 5.0);
+            let falloff_steepness = sector
+                .properties
+                .get_float_default("ridge_falloff_steepness", 2.0);
+
+            ridge_sectors.push((
+                sector.id,
+                height,
+                plateau_width,
+                falloff_distance,
+                falloff_steepness,
+            ));
+        }
+
+        // Collect terrain linedefs (same as generate())
+        let mut terrain_linedefs = Vec::new();
+        for linedef in &map.linedefs {
+            let terrain_smooth = linedef.properties.get_bool_default("terrain_smooth", false);
+            if !terrain_smooth {
+                continue;
+            }
+
+            let start_vert = &map.vertices[linedef.start_vertex as usize];
+            let end_vert = &map.vertices[linedef.end_vertex as usize];
+
+            let start_pos = Vec2::new(start_vert.x, start_vert.y);
+            let end_pos = Vec2::new(end_vert.x, end_vert.y);
+
+            // Use vertex Z coordinates for height (interpolated along the linedef)
+            let start_height = start_vert.z;
+            let end_height = end_vert.z;
+
+            let width = linedef.properties.get_float_default("terrain_width", 2.0);
+            let falloff_distance = linedef
+                .properties
+                .get_float_default("terrain_falloff_distance", 3.0);
+            let falloff_steepness = linedef
+                .properties
+                .get_float_default("terrain_falloff_steepness", 2.0);
+
+            terrain_linedefs.push((
+                start_pos,
+                end_pos,
+                start_height,
+                end_height,
+                width,
+                falloff_distance,
+                falloff_steepness,
+            ));
+        }
+
+        // Create a temporary generator instance to use interpolate_height_at, calculate_ridge_height_at, and apply_linedef_smoothing
         let generator = TerrainGenerator::new(config.clone());
-        generator.interpolate_height_at(point, &control_points, &map_bbox)
+        let base_height = generator.interpolate_height_at(point, &control_points, &map_bbox);
+        let ridge_height = generator.calculate_ridge_height_at(point, &ridge_sectors, map);
+        let smoothed_height =
+            generator.apply_linedef_smoothing(point, base_height + ridge_height, &terrain_linedefs);
+        smoothed_height
     }
 
     /// Calculate terrain normal at a point by sampling neighboring heights
@@ -182,13 +251,19 @@ impl TerrainGenerator {
         // This ensures consistent terrain interpolation across chunk boundaries
         let control_points = self.collect_control_points(map);
 
-        // 2. Identify sectors marked for terrain exclusion
+        // 2. Collect ridge sectors
+        let ridge_sectors = self.collect_ridge_sectors(map);
+
+        // 3. Collect terrain linedefs for road smoothing
+        let terrain_linedefs = self.collect_terrain_linedefs(map);
+
+        // 4. Identify sectors marked for terrain exclusion
         let excluded_sectors = self.collect_excluded_sectors(map, &chunk.bbox);
 
-        // 3. Generate grid mesh
+        // 4. Generate grid mesh
         let grid = self.generate_grid(&chunk.bbox);
 
-        // 4. Get map bounding box for edge falloff
+        // 5. Get map bounding box for edge falloff
         // Note: In 2D editor, -Y is up, so we need to flip Y coordinates
         let map_bbox = if let Some(bounds) = map.bounding_box() {
             BBox {
@@ -203,8 +278,15 @@ impl TerrainGenerator {
             }
         };
 
-        // 5. Interpolate heights at grid points with map edge falloff
-        let heights = self.interpolate_heights(&grid, &control_points, &map_bbox);
+        // 6. Interpolate heights at grid points with map edge falloff, ridge, and linedef smoothing
+        let heights = self.interpolate_heights(
+            &grid,
+            &control_points,
+            &ridge_sectors,
+            &terrain_linedefs,
+            map,
+            &map_bbox,
+        );
 
         // 5. Cut holes for excluded sectors
         let (vertices, indices, uvs) =
@@ -258,6 +340,90 @@ impl TerrainGenerator {
         points
     }
 
+    /// Collect sectors marked as ridges for terrain generation
+    /// Returns: Vec<(sector_id, height, plateau_width, falloff_distance, falloff_steepness)>
+    fn collect_ridge_sectors(&self, map: &Map) -> Vec<(u32, f32, f32, f32, f32)> {
+        let mut ridges = Vec::new();
+
+        for sector in &map.sectors {
+            // Check if sector terrain_mode is 2 (ridge)
+            let terrain_mode = sector.properties.get_int_default("terrain_mode", 0);
+            if terrain_mode != 2 {
+                continue;
+            }
+
+            let height = sector.properties.get_float_default("ridge_height", 1.0);
+            let plateau_width = sector
+                .properties
+                .get_float_default("ridge_plateau_width", 0.0);
+            let falloff_distance = sector
+                .properties
+                .get_float_default("ridge_falloff_distance", 5.0);
+            let falloff_steepness = sector
+                .properties
+                .get_float_default("ridge_falloff_steepness", 2.0);
+
+            ridges.push((
+                sector.id,
+                height,
+                plateau_width,
+                falloff_distance,
+                falloff_steepness,
+            ));
+        }
+
+        ridges
+    }
+
+    /// Collect linedefs marked for terrain smoothing (roads, paths)
+    /// Returns: Vec<(start_pos, end_pos, start_height, end_height, width, falloff_distance, falloff_steepness)>
+    fn collect_terrain_linedefs(
+        &self,
+        map: &Map,
+    ) -> Vec<(Vec2<f32>, Vec2<f32>, f32, f32, f32, f32, f32)> {
+        let mut terrain_lines = Vec::new();
+
+        for linedef in &map.linedefs {
+            // Check if linedef is marked for terrain smoothing
+            let terrain_smooth = linedef.properties.get_bool_default("terrain_smooth", false);
+            if !terrain_smooth {
+                continue;
+            }
+
+            // Get vertices
+            let start_vert = &map.vertices[linedef.start_vertex as usize];
+            let end_vert = &map.vertices[linedef.end_vertex as usize];
+
+            let start_pos = Vec2::new(start_vert.x, start_vert.y);
+            let end_pos = Vec2::new(end_vert.x, end_vert.y);
+
+            // Use vertex Z coordinates for height (interpolated along the linedef)
+            let start_height = start_vert.z;
+            let end_height = end_vert.z;
+
+            // Get smoothing parameters
+            let width = linedef.properties.get_float_default("terrain_width", 2.0);
+            let falloff_distance = linedef
+                .properties
+                .get_float_default("terrain_falloff_distance", 3.0);
+            let falloff_steepness = linedef
+                .properties
+                .get_float_default("terrain_falloff_steepness", 2.0);
+
+            terrain_lines.push((
+                start_pos,
+                end_pos,
+                start_height,
+                end_height,
+                width,
+                falloff_distance,
+                falloff_steepness,
+            ));
+        }
+
+        terrain_lines
+    }
+
     /// Collect sectors marked for terrain exclusion
     fn collect_excluded_sectors(&self, map: &Map, bbox: &BBox) -> Vec<u32> {
         let mut excluded = Vec::new();
@@ -270,10 +436,9 @@ impl TerrainGenerator {
             }
 
             // Check terrain_mode property
-            let terrain_mode = sector
-                .properties
-                .get_str_default("terrain_mode", "none".to_string());
-            if terrain_mode == "exclude" {
+            let terrain_mode = sector.properties.get_int_default("terrain_mode", 0);
+            if terrain_mode == 1 {
+                // terrain_mode = 1 means exclude
                 excluded.push(sector.id);
             }
         }
@@ -314,11 +479,155 @@ impl TerrainGenerator {
         &self,
         grid: &[Vec2<f32>],
         control_points: &[(Vec2<f32>, f32, f32)],
+        ridge_sectors: &[(u32, f32, f32, f32, f32)],
+        terrain_linedefs: &[(Vec2<f32>, Vec2<f32>, f32, f32, f32, f32, f32)],
+        map: &Map,
         bbox: &BBox,
     ) -> Vec<f32> {
         grid.iter()
-            .map(|&grid_point| self.interpolate_height_at(grid_point, control_points, bbox))
+            .map(|&grid_point| {
+                let base_height = self.interpolate_height_at(grid_point, control_points, bbox);
+                let ridge_height = self.calculate_ridge_height_at(grid_point, ridge_sectors, map);
+                let smoothed_height = self.apply_linedef_smoothing(
+                    grid_point,
+                    base_height + ridge_height,
+                    terrain_linedefs,
+                );
+                smoothed_height
+            })
             .collect()
+    }
+
+    /// Calculate ridge height contribution at a point from all ridge sectors
+    /// Ridges create elevated areas along sector boundaries with configurable falloff
+    fn calculate_ridge_height_at(
+        &self,
+        point: Vec2<f32>,
+        ridge_sectors: &[(u32, f32, f32, f32, f32)],
+        map: &Map,
+    ) -> f32 {
+        let mut total_height = 0.0;
+
+        for &(sector_id, height, plateau_width, falloff_distance, falloff_steepness) in
+            ridge_sectors
+        {
+            if let Some(sector) = map.sectors.iter().find(|s| s.id == sector_id) {
+                // Calculate distance from point to sector polygon edges
+                let dist_to_sector = self.distance_to_polygon_edge(point, sector, map);
+
+                // Ridge height calculation with plateau
+                let ridge_contribution = if dist_to_sector <= plateau_width {
+                    // Inside plateau - full height
+                    height
+                } else {
+                    // Outside plateau - apply falloff
+                    let falloff_dist = dist_to_sector - plateau_width;
+                    if falloff_dist >= falloff_distance {
+                        0.0
+                    } else {
+                        // Smooth falloff using power function
+                        let t = 1.0 - (falloff_dist / falloff_distance);
+                        let smoothed = t.powf(falloff_steepness);
+                        height * smoothed
+                    }
+                };
+
+                total_height += ridge_contribution;
+            }
+        }
+
+        total_height
+    }
+
+    /// Apply linedef-based terrain smoothing for roads and paths
+    /// Smooths terrain toward a target height in a corridor along the linedef
+    /// Height is interpolated from start to end vertex Z coordinates
+    fn apply_linedef_smoothing(
+        &self,
+        point: Vec2<f32>,
+        current_height: f32,
+        terrain_linedefs: &[(Vec2<f32>, Vec2<f32>, f32, f32, f32, f32, f32)],
+    ) -> f32 {
+        let mut final_height = current_height;
+        let mut total_influence = 0.0;
+
+        for &(
+            start_pos,
+            end_pos,
+            start_height,
+            end_height,
+            width,
+            falloff_distance,
+            falloff_steepness,
+        ) in terrain_linedefs
+        {
+            // Calculate distance from point to line segment and get the closest point parameter
+            let seg = end_pos - start_pos;
+            let len_sq = seg.magnitude_squared();
+
+            let (dist_to_line, t_param) = if len_sq < 1e-8 {
+                // Degenerate segment - treat as point
+                ((point - start_pos).magnitude(), 0.0)
+            } else {
+                // Project point onto line segment
+                let t = ((point - start_pos).dot(seg) / len_sq).clamp(0.0, 1.0);
+                let projection = start_pos + seg * t;
+                ((point - projection).magnitude(), t)
+            };
+
+            // Interpolate target height based on position along the line segment
+            let target_height = start_height + (end_height - start_height) * t_param;
+
+            // Calculate influence based on distance
+            let influence = if dist_to_line <= width {
+                // Inside the road width - full influence
+                1.0
+            } else {
+                // Outside road - apply falloff
+                let falloff_dist = dist_to_line - width;
+                if falloff_dist >= falloff_distance {
+                    0.0
+                } else {
+                    // Smooth falloff using power function
+                    let t = 1.0 - (falloff_dist / falloff_distance);
+                    t.powf(falloff_steepness)
+                }
+            };
+
+            if influence > 0.0 {
+                // Blend toward target height based on influence
+                // Multiple linedefs can affect the same point - accumulate influences
+                total_influence += influence;
+                final_height = final_height * (1.0 - influence) + target_height * influence;
+            }
+        }
+
+        // Clamp total influence to avoid over-smoothing when multiple roads overlap
+        if total_influence > 1.0 {
+            // Normalize back toward original height to prevent artifacts
+            let excess = total_influence - 1.0;
+            final_height = final_height * (1.0 - excess * 0.5) + current_height * (excess * 0.5);
+        }
+
+        final_height
+    }
+
+    /// Calculate distance from a point to the nearest edge of a polygon
+    fn distance_to_polygon_edge(&self, point: Vec2<f32>, sector: &crate::Sector, map: &Map) -> f32 {
+        let mut min_dist = f32::INFINITY;
+
+        for &linedef_id in &sector.linedefs {
+            if let Some(linedef) = map.linedefs.iter().find(|l| l.id == linedef_id) {
+                let v0 = map.vertices[linedef.start_vertex as usize].as_vec2();
+                let v1 = map.vertices[linedef.end_vertex as usize].as_vec2();
+
+                // Calculate distance to line segment
+                let dist = Self::distance_point_to_segment(point, v0, v1);
+                min_dist = min_dist.min(dist);
+            }
+        }
+
+        min_dist
     }
 
     /// Interpolate height at a single point using IDW (Inverse Distance Weighting)
@@ -708,5 +1017,26 @@ impl TerrainGenerator {
         }
 
         result
+    }
+
+    /// Calculate distance from a point to a line segment
+    fn distance_point_to_segment(
+        point: Vec2<f32>,
+        seg_start: Vec2<f32>,
+        seg_end: Vec2<f32>,
+    ) -> f32 {
+        let seg = seg_end - seg_start;
+        let len_sq = seg.magnitude_squared();
+
+        if len_sq < 1e-8 {
+            // Segment is essentially a point
+            return (point - seg_start).magnitude();
+        }
+
+        // Project point onto line segment
+        let t = ((point - seg_start).dot(seg) / len_sq).clamp(0.0, 1.0);
+        let projection = seg_start + seg * t;
+
+        (point - projection).magnitude()
     }
 }
