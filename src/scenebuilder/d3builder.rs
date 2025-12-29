@@ -580,7 +580,7 @@ impl D3Builder {
             if let Some(Value::Source(PixelSource::TileId(tile_id))) =
                 vertex.properties.get("source")
             {
-                let size = 1.0;
+                let size = vertex.properties.get_float_default("source_size", 1.0);
                 let center3 = Vec3::new(vertex.x, vertex.z + size * 0.5, vertex.y);
 
                 let dynamic = DynamicObject::billboard_tile(

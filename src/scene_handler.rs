@@ -1,6 +1,8 @@
 use std::str::FromStr;
 
-use crate::{Assets, BillboardMetadata, D3Camera, Map, RenderSettings, Texture, Tile, Value};
+use crate::{
+    Assets, BillboardMetadata, D3Camera, Map, PixelSource, RenderSettings, Texture, Tile, Value,
+};
 use indexmap::IndexMap;
 use rust_embed::EmbeddedFile;
 use rustc_hash::FxHashMap;
@@ -411,6 +413,27 @@ impl SceneHandler {
                         }
                     }
                 }
+            }
+        }
+
+        // Vertices with billboards
+        for vertex in &map.vertices {
+            if let Some(Value::Source(PixelSource::TileId(tile_id))) =
+                vertex.properties.get("source")
+            {
+                let size = vertex.properties.get_float_default("source_size", 1.0);
+                let center3 = Vec3::new(vertex.x, vertex.z + size * 0.5, vertex.y);
+
+                let dynamic = DynamicObject::billboard_tile(
+                    GeoId::Vertex(vertex.id),
+                    *tile_id,
+                    center3,
+                    basis.1,
+                    basis.2,
+                    size,
+                    size,
+                );
+                self.vm.execute(Atom::AddDynamic { object: dynamic });
             }
         }
 
