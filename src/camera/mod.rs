@@ -39,6 +39,11 @@ pub trait D3Camera: Send + Sync {
 
     fn projection_matrix(&self, width: f32, height: f32) -> Mat4<f32>;
 
+    /// Get an f32 parameter.
+    fn get_parameter_f32(&mut self, key: &str) -> f32 {
+        0.0
+    }
+
     /// Set an f32 parameter.
     fn set_parameter_f32(&mut self, key: &str, value: f32) {}
 

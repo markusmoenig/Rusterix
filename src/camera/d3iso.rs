@@ -119,6 +119,14 @@ impl D3Camera for D3IsoCamera {
         })
     }
 
+    fn get_parameter_f32(&mut self, key: &str) -> f32 {
+        match key {
+            "azimuth_deg" | "yaw_deg" => self.azimuth_deg,
+            "elevation_deg" | "pitch_deg" => self.elevation_deg,
+            _ => 0.0,
+        }
+    }
+
     fn set_parameter_f32(&mut self, key: &str, value: f32) {
         match key {
             "scale" => self.scale = value.max(0.001),
