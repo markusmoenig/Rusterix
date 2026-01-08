@@ -12,8 +12,9 @@ pub struct Linedef {
     pub start_vertex: u32,
     pub end_vertex: u32,
 
-    pub front_sector: Option<u32>,
-    pub back_sector: Option<u32>,
+    // List of sector IDs this linedef belongs to
+    #[serde(default)]
+    pub sector_ids: Vec<u32>,
 
     pub properties: ValueContainer,
 }
@@ -27,8 +28,7 @@ impl Linedef {
             name: String::new(),
             start_vertex,
             end_vertex,
-            front_sector: None,
-            back_sector: None,
+            sector_ids: Vec::new(),
 
             properties,
         }

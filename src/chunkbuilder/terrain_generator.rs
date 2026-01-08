@@ -119,8 +119,13 @@ impl TerrainGenerator {
                 continue;
             }
 
-            let start_vert = &map.vertices[linedef.start_vertex as usize];
-            let end_vert = &map.vertices[linedef.end_vertex as usize];
+            let Some(start_vert) = map.vertices.iter().find(|v| v.id == linedef.start_vertex)
+            else {
+                continue;
+            };
+            let Some(end_vert) = map.vertices.iter().find(|v| v.id == linedef.end_vertex) else {
+                continue;
+            };
 
             let start_pos = Vec2::new(start_vert.x, start_vert.y);
             let end_pos = Vec2::new(end_vert.x, end_vert.y);
@@ -391,8 +396,13 @@ impl TerrainGenerator {
             }
 
             // Get vertices
-            let start_vert = &map.vertices[linedef.start_vertex as usize];
-            let end_vert = &map.vertices[linedef.end_vertex as usize];
+            let Some(start_vert) = map.vertices.iter().find(|v| v.id == linedef.start_vertex)
+            else {
+                continue;
+            };
+            let Some(end_vert) = map.vertices.iter().find(|v| v.id == linedef.end_vertex) else {
+                continue;
+            };
 
             let start_pos = Vec2::new(start_vert.x, start_vert.y);
             let end_pos = Vec2::new(end_vert.x, end_vert.y);
@@ -618,8 +628,12 @@ impl TerrainGenerator {
 
         for &linedef_id in &sector.linedefs {
             if let Some(linedef) = map.linedefs.iter().find(|l| l.id == linedef_id) {
-                let v0 = map.vertices[linedef.start_vertex as usize].as_vec2();
-                let v1 = map.vertices[linedef.end_vertex as usize].as_vec2();
+                let Some(v0) = map.get_vertex(linedef.start_vertex) else {
+                    continue;
+                };
+                let Some(v1) = map.get_vertex(linedef.end_vertex) else {
+                    continue;
+                };
 
                 // Calculate distance to line segment
                 let dist = Self::distance_point_to_segment(point, v0, v1);

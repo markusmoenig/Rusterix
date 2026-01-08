@@ -4863,7 +4863,6 @@ dependencies = [
 [[package]]
 name = "scenevm"
 version = "0.1.0"
-source = "git+https://github.com/markusmoenig/SceneVM#532353d1e680814b38ff3ea4d174e07355c47a5d"
 dependencies = [
  "bytemuck",
  "getrandom 0.3.4",
@@ -5339,7 +5338,6 @@ checksum = "c13547615a44dc9c452a8a534638acdf07120d4b6847c8178705da06306a3057"
 [[package]]
 name = "theframework"
 version = "0.1.40"
-source = "git+https://github.com/markusmoenig/theframework#299b2cb70b50de14454596c47dbe663dda7d2e0a"
 dependencies = [
  "arboard",
  "console_error_panic_hook",

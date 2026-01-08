@@ -18,8 +18,6 @@ use crate::{
 };
 use codegridfx::Module;
 use indexmap::IndexMap;
-use ordered_float::NotNan;
-use pathfinding::prelude::astar;
 use theframework::prelude::{FxHashMap, FxHashSet};
 
 use linedef::*;
@@ -304,7 +302,7 @@ impl Map {
         }
 
         for l in self.linedefs.iter() {
-            if l.front_sector.is_none() && l.back_sector.is_none() {
+            if l.sector_ids.is_empty() {
                 let wall_height = l.properties.get_float_default("wall_height", 0.0);
                 let mut add_it = false;
 
@@ -655,8 +653,9 @@ impl Map {
                 if let Some(linedef) = self.find_linedef_mut(id) {
                     // Assign the new sector on the freshly created edge if possible; the full
                     // assignment across the ring is handled inside create_sector_from_polygon.
-                    if linedef.front_sector.is_none() {
-                        linedef.front_sector = Some(sid);
+                    // Add sector to the sector_ids list
+                    if !linedef.sector_ids.contains(&sid) {
+                        linedef.sector_ids.push(sid);
                     }
                 }
                 sector_id = Some(sid);
@@ -708,16 +707,9 @@ impl Map {
         if let Some(sector_id) = self.find_free_sector_id() {
             for &id in &self.possible_polygon {
                 if let Some(linedef) = self.linedefs.iter_mut().find(|l| l.id == id) {
-                    // Assign the sector ID to the front or back
-                    if linedef.front_sector.is_none() {
-                        linedef.front_sector = Some(sector_id);
-                    } else if linedef.back_sector.is_none() {
-                        linedef.back_sector = Some(sector_id);
-                    } else {
-                        println!(
-                            "Warning: Linedef {} already has both front and back sectors assigned.",
-                            linedef.id
-                        );
+                    // Add sector to the sector_ids list
+                    if !linedef.sector_ids.contains(&sector_id) {
+                        linedef.sector_ids.push(sector_id);
                     }
                 }
             }
@@ -810,16 +802,8 @@ impl Map {
             // --
 
             for linedef in &mut self.linedefs {
-                if let Some(front) = linedef.front_sector {
-                    if sector_ids.contains(&front) {
-                        linedef.front_sector = None;
-                    }
-                }
-                if let Some(back) = linedef.back_sector {
-                    if sector_ids.contains(&back) {
-                        linedef.back_sector = None;
-                    }
-                }
+                // Remove deleted sectors from sector_ids list
+                linedef.sector_ids.retain(|sid| !sector_ids.contains(sid));
             }
         }
 
@@ -1008,107 +992,6 @@ impl Map {
             .find(|s| s.is_inside(self, position) && s.layer.is_none())
     }
 
-    /// Checks if a linedef is passable based on front and back sectors.
-    pub fn is_linedef_passable(&self, linedef_id: u32) -> bool {
-        if let Some(linedef) = self.linedefs.iter().find(|ld| ld.id == linedef_id) {
-            linedef.front_sector.is_some() && linedef.back_sector.is_some()
-        } else {
-            false
-        }
-    }
-
-    /// Gets the neighbors of a sector, considering passable linedefs
-    pub fn get_neighbors(&self, sector_id: u32) -> Vec<(u32, f32)> {
-        self.sectors
-            .iter()
-            .find(|s| s.id == sector_id)
-            .map(|sector| {
-                sector
-                    .linedefs
-                    .iter()
-                    .filter_map(|&linedef_id| {
-                        // Get the linedef and check if it's passable
-                        self.linedefs
-                            .iter()
-                            .find(|ld| ld.id == linedef_id)
-                            .filter(|_linedef| self.is_linedef_passable(linedef_id))
-                            .and_then(|linedef| {
-                                // Determine the neighbor sector
-                                linedef
-                                    .front_sector
-                                    .filter(|&id| id != sector_id)
-                                    .or_else(|| linedef.back_sector.filter(|&id| id != sector_id))
-                                    .map(|neighbor_id| (neighbor_id, 1.0))
-                            })
-                    })
-                    .collect()
-            })
-            .unwrap_or_else(Vec::new)
-    }
-
-    /// Finds the shortest path to a named sector using the A* algorithm.
-    pub fn find_path_to_sector(
-        &self,
-        start_sector_id: u32,
-        target_sector_name: &str,
-    ) -> Option<(Vec<u32>, f32)> {
-        // Find the target sector by name
-        let target_sector = self.sectors.iter().find(|s| s.name == target_sector_name)?;
-        let target_sector_id = target_sector.id;
-
-        // Use A* to find the shortest path
-        astar(
-            &start_sector_id,
-            |&current_sector_id| {
-                // Get the neighbors of the current sector and their costs
-                self.get_neighbors(current_sector_id)
-                    .into_iter()
-                    .map(|(neighbor_id, cost)| (neighbor_id, NotNan::new(cost).unwrap()))
-                    .collect::<Vec<(u32, NotNan<f32>)>>()
-            },
-            |&current_sector_id| {
-                // Heuristic: Euclidean distance between sector centers
-                let current_center = self
-                    .sectors
-                    .iter()
-                    .find(|s| s.id == current_sector_id)
-                    .and_then(|s| s.center(self));
-                let target_center = target_sector.center(self);
-
-                if let (Some(current), Some(target)) = (current_center, target_center) {
-                    NotNan::new((target - current).magnitude()).unwrap()
-                } else {
-                    NotNan::new(f32::INFINITY).unwrap()
-                }
-            },
-            |&current_sector_id| current_sector_id == target_sector_id, // Goal condition
-        )
-        .map(|(path, cost)| (path, cost.into_inner())) // Convert NotNan<f32> back to f32
-    }
-
-    /// Find the linedef which connects the two sectors.
-    pub fn get_connecting_linedef(
-        &self,
-        current_sector_id: u32,
-        next_sector_id: u32,
-    ) -> Option<u32> {
-        self.linedefs.iter().find_map(|linedef| {
-            if self.is_linedef_passable(linedef.id) {
-                if (linedef.front_sector == Some(current_sector_id)
-                    && linedef.back_sector == Some(next_sector_id))
-                    || (linedef.back_sector == Some(current_sector_id)
-                        && linedef.front_sector == Some(next_sector_id))
-                {
-                    Some(linedef.id)
-                } else {
-                    None
-                }
-            } else {
-                None
-            }
-        })
-    }
-
     /// Debug: Print all vertices with their current animated positions
     pub fn debug_print_vertices(&self) {
         for vertex in &self.vertices {
@@ -1130,6 +1013,34 @@ impl Map {
             self.linedefs.len(),
             self.sectors.len()
         )
+    }
+
+    /// Associates linedefs with their sectors by populating the sector_ids vector.
+    /// This should be called after loading a map or when sectors are modified.
+    pub fn associate_linedefs_with_sectors(&mut self) {
+        // First, clear all existing sector_ids
+        for linedef in &mut self.linedefs {
+            linedef.sector_ids.clear();
+        }
+
+        // Collect all linedef-to-sector associations
+        let mut associations: FxHashMap<u32, Vec<u32>> = FxHashMap::default();
+        for sector in &self.sectors {
+            let sector_id = sector.id;
+            for &linedef_id in &sector.linedefs {
+                associations
+                    .entry(linedef_id)
+                    .or_insert_with(Vec::new)
+                    .push(sector_id);
+            }
+        }
+
+        // Apply the associations to linedefs
+        for (linedef_id, sector_ids) in associations {
+            if let Some(linedef) = self.linedefs.iter_mut().find(|l| l.id == linedef_id) {
+                linedef.sector_ids = sector_ids;
+            }
+        }
     }
 
     // /// Returns true if the given vertex is part of a sector with rect rendering enabled.
@@ -1264,8 +1175,7 @@ impl Map {
                     new_ld.id = new_id;
                     new_ld.start_vertex = *old_to_new_vertex.get(&ld.start_vertex).unwrap();
                     new_ld.end_vertex = *old_to_new_vertex.get(&ld.end_vertex).unwrap();
-                    new_ld.front_sector = None;
-                    new_ld.back_sector = None;
+                    new_ld.sector_ids.clear();
                     old_to_new_linedef.insert(ld.id, new_id);
                     clipboard.linedefs.push(new_ld);
                 }
@@ -1284,7 +1194,20 @@ impl Map {
                             .iter()
                             .map(|id| *old_to_new_linedef.get(id).unwrap())
                             .collect();
-                        // old_to_new_sector.insert(s.id, new_id);
+
+                        // Update sector_ids in the linedefs
+                        for &old_lid in &s.linedefs {
+                            if let Some(&new_lid) = old_to_new_linedef.get(&old_lid) {
+                                if let Some(ld) =
+                                    clipboard.linedefs.iter_mut().find(|l| l.id == new_lid)
+                                {
+                                    if !ld.sector_ids.contains(&new_id) {
+                                        ld.sector_ids.push(new_id);
+                                    }
+                                }
+                            }
+                        }
+
                         clipboard.sectors.push(new_s);
                     }
                 }
@@ -1331,9 +1254,8 @@ impl Map {
                 new_l.id = new_id;
                 new_l.start_vertex = *vertex_map.get(&l.start_vertex).unwrap();
                 new_l.end_vertex = *vertex_map.get(&l.end_vertex).unwrap();
-                // Reset front/back sector
-                new_l.front_sector = None;
-                new_l.back_sector = None;
+                // Reset front/back sector and sector_ids
+                new_l.sector_ids.clear();
                 self.linedefs.push(new_l);
                 self.selected_linedefs.push(new_id);
                 linedef_map.insert(l.id, new_id);
@@ -1355,15 +1277,9 @@ impl Map {
                 for old_lid in &s.linedefs {
                     if let Some(&new_lid) = linedef_map.get(old_lid) {
                         if let Some(ld) = self.linedefs.iter_mut().find(|l| l.id == new_lid) {
-                            if ld.front_sector.is_none() {
-                                ld.front_sector = Some(new_id);
-                            } else if ld.back_sector.is_none() {
-                                ld.back_sector = Some(new_id);
-                            } else {
-                                eprintln!(
-                                    "Linedef {} already has front and back set. Skipping assignment.",
-                                    ld.id
-                                );
+                            // Add sector to sector_ids list
+                            if !ld.sector_ids.contains(&new_id) {
+                                ld.sector_ids.push(new_id);
                             }
                         }
                     }
@@ -1444,8 +1360,7 @@ impl Map {
                     let new_id = result.find_free_linedef_id().unwrap_or(l.id);
                     let mut l_clone = l.clone();
                     l_clone.id = new_id;
-                    l_clone.front_sector = None;
-                    l_clone.back_sector = None;
+                    l_clone.sector_ids.clear();
                     result.linedefs.push(l_clone);
                     linedef_map.insert(l.id, new_id);
 
@@ -1487,10 +1402,9 @@ impl Map {
                 for lid in &s.linedefs {
                     if let Some(&new_lid) = linedef_map.get(lid) {
                         if let Some(ld) = result.linedefs.iter_mut().find(|l| l.id == new_lid) {
-                            if ld.front_sector.is_none() {
-                                ld.front_sector = Some(new_id);
-                            } else if ld.back_sector.is_none() {
-                                ld.back_sector = Some(new_id);
+                            // Add sector to sector_ids list
+                            if !ld.sector_ids.contains(&new_id) {
+                                ld.sector_ids.push(new_id);
                             }
                         }
                     }

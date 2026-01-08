@@ -5,7 +5,6 @@ use crate::{
 use MapToolType::*;
 use scenevm::{Atom, DynamicObject, GeoId, Light};
 use theframework::prelude::*;
-use uuid::Uuid;
 use vek::Vec2;
 
 pub struct D2PreviewBuilder {
@@ -216,8 +215,7 @@ impl D2PreviewBuilder {
 
         // Add standalone walls
         for linedef in &map.linedefs {
-            if linedef.front_sector.is_none()
-                && linedef.back_sector.is_none()
+            if linedef.sector_ids.is_empty()
                 && linedef.properties.get_float_default("wall_width", 0.0) > 0.0
             {
                 if let Some(hash) =
@@ -558,56 +556,6 @@ impl D2PreviewBuilder {
             let mut non_selected_lines = vec![];
             let mut non_selected_lines_with_selected_graph = vec![];
 
-            // Find the selected graph
-            let mut selected_graph: Option<Uuid> = None;
-            if self.clip_rect.is_some() {
-                for sector in &map.sectors {
-                    if map.selected_sectors.contains(&sector.id) {
-                        if let Some(Value::Source(PixelSource::ShapeFXGraphId(id))) =
-                            sector.properties.get("shape_graph")
-                        {
-                            selected_graph = Some(*id);
-                            break;
-                        }
-                        if let Some(Value::Source(PixelSource::ShapeFXGraphId(id))) =
-                            sector.properties.get("screen_graph")
-                        {
-                            selected_graph = Some(*id);
-                            break;
-                        } else if let Some(PixelSource::ShapeFXGraphId(id)) =
-                            sector.properties.get_default_source()
-                        {
-                            selected_graph = Some(*id);
-                            break;
-                        }
-                    }
-                }
-
-                if selected_graph.is_none() {
-                    for linedef in &map.linedefs {
-                        if map.selected_linedefs.contains(&linedef.id) {
-                            if let Some(Value::Source(PixelSource::ShapeFXGraphId(id))) =
-                                linedef.properties.get("shape_graph")
-                            {
-                                selected_graph = Some(*id);
-                                break;
-                            }
-                            if let Some(Value::Source(PixelSource::ShapeFXGraphId(id))) =
-                                linedef.properties.get("screen_graph")
-                            {
-                                selected_graph = Some(*id);
-                                break;
-                            } else if let Some(Value::Source(PixelSource::ShapeFXGraphId(id))) =
-                                linedef.properties.get("row1_source")
-                            {
-                                selected_graph = Some(*id);
-                                break;
-                            }
-                        }
-                    }
-                }
-            }
-
             for linedef in &map.linedefs {
                 if !linedef.intersects_vertical_slice(map, self.editing_slice, 1.0) {
                     continue;
@@ -682,23 +630,11 @@ impl D2PreviewBuilder {
                                 || self.map_tool_type == MapToolType::General
                                 || self.map_tool_type == MapToolType::Selection
                             {
-                                // Check for sector selection when in sector mode.
-                                if let Some(front_sector) = linedef.front_sector {
-                                    if let Some(sector) = map.find_sector(front_sector) {
-                                        if self.hover.2 == Some(sector.id)
-                                            || map.selected_sectors.contains(&sector.id)
-                                        {
-                                            selected = true;
-                                        }
-                                    }
-                                }
-                                if let Some(back_sector) = linedef.back_sector {
-                                    if let Some(sector) = map.find_sector(back_sector) {
-                                        if self.hover.2 == Some(sector.id)
-                                            || map.selected_sectors.contains(&sector.id)
-                                        {
-                                            selected = true;
-                                        }
+                                for sector_id in &linedef.sector_ids {
+                                    if self.hover.2 == Some(*sector_id)
+                                        || map.selected_sectors.contains(sector_id)
+                                    {
+                                        selected = true;
                                     }
                                 }
                             }
@@ -710,76 +646,11 @@ impl D2PreviewBuilder {
                                     end_pos,
                                 ));
                             } else {
-                                let mut added_it = false;
-                                if let Some(Value::Source(PixelSource::ShapeFXGraphId(id))) =
-                                    linedef.properties.get("shape_graph")
-                                {
-                                    if selected_graph == Some(*id) {
-                                        non_selected_lines_with_selected_graph.push((
-                                            GeoId::Linedef(linedef.id),
-                                            start_pos,
-                                            end_pos,
-                                        ));
-                                        added_it = true;
-                                    }
-                                } else if let Some(Value::Source(PixelSource::ShapeFXGraphId(id))) =
-                                    linedef.properties.get("screen_graph")
-                                {
-                                    if selected_graph == Some(*id) {
-                                        non_selected_lines_with_selected_graph.push((
-                                            GeoId::Linedef(linedef.id),
-                                            start_pos,
-                                            end_pos,
-                                        ));
-                                        added_it = true;
-                                    }
-                                } else if let Some(Value::Source(PixelSource::ShapeFXGraphId(id))) =
-                                    linedef.properties.get("row1_source")
-                                {
-                                    if selected_graph == Some(*id) {
-                                        non_selected_lines_with_selected_graph.push((
-                                            GeoId::Linedef(linedef.id),
-                                            start_pos,
-                                            end_pos,
-                                        ));
-                                        added_it = true;
-                                    }
-                                } else if let Some(sector_id) = linedef.front_sector {
-                                    if let Some(sector) = map.find_sector(sector_id) {
-                                        if let Some(Value::Source(PixelSource::ShapeFXGraphId(
-                                            id,
-                                        ))) = sector.properties.get("shape_graph")
-                                        {
-                                            if selected_graph == Some(*id) {
-                                                non_selected_lines_with_selected_graph.push((
-                                                    GeoId::Linedef(linedef.id),
-                                                    start_pos,
-                                                    end_pos,
-                                                ));
-                                                added_it = true;
-                                            }
-                                        } else if let Some(PixelSource::ShapeFXGraphId(id)) =
-                                            sector.properties.get_default_source()
-                                        {
-                                            if selected_graph == Some(*id) {
-                                                non_selected_lines_with_selected_graph.push((
-                                                    GeoId::Linedef(linedef.id),
-                                                    start_pos,
-                                                    end_pos,
-                                                ));
-                                                added_it = true;
-                                            }
-                                        }
-                                    }
-                                }
-
-                                if !added_it {
-                                    non_selected_lines.push((
-                                        GeoId::Linedef(linedef.id),
-                                        start_pos,
-                                        end_pos,
-                                    ));
-                                }
+                                non_selected_lines.push((
+                                    GeoId::Linedef(linedef.id),
+                                    start_pos,
+                                    end_pos,
+                                ));
                             }
                         }
                     }

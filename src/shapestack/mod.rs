@@ -212,7 +212,7 @@ impl ShapeStack {
 
                     // And now the standalone linedefs
                     for linedef in &map.linedefs {
-                        if linedef.front_sector.is_none() && linedef.back_sector.is_none() {
+                        if linedef.sector_ids.is_empty() {
                             if let Some(Value::Source(PixelSource::ShapeFXGraphId(graph_id))) =
                                 linedef.properties.get(linedef_graph_name)
                             {

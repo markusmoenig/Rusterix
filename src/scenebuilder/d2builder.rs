@@ -147,8 +147,7 @@ impl D2Builder {
 
         // Add standalone walls
         for linedef in &map.linedefs {
-            if linedef.front_sector.is_none()
-                && linedef.back_sector.is_none()
+            if linedef.sector_ids.is_empty()
                 && linedef.properties.get_float_default("wall_width", 0.0) > 0.0
             {
                 if let Some(hash) =

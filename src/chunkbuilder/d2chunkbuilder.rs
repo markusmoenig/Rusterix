@@ -156,8 +156,7 @@ impl ChunkBuilder for D2ChunkBuilder {
             let bbox = linedef.bounding_box(map);
             if bbox.intersects(&chunk.bbox)
                 && chunk.bbox.contains(bbox.center())
-                && linedef.front_sector.is_none()
-                && linedef.back_sector.is_none()
+                && linedef.sector_ids.is_empty()
                 && linedef.properties.get_float_default("wall_width", 0.0) > 0.0
             {
                 if let Some(hash) =
