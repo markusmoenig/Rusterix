@@ -807,6 +807,17 @@ impl Map {
             }
         }
 
+        // Step 3.5: Before deleting vertices, collect linedefs that reference them
+        for &vertex_id in &all_vertex_ids {
+            for linedef in &self.linedefs {
+                if (linedef.start_vertex == vertex_id || linedef.end_vertex == vertex_id)
+                    && !all_linedef_ids.contains(&linedef.id)
+                {
+                    all_linedef_ids.push(linedef.id);
+                }
+            }
+        }
+
         // Step 4: Delete linedefs
         if !all_linedef_ids.is_empty() {
             self.linedefs
@@ -820,6 +831,9 @@ impl Map {
             self.vertices
                 .retain(|vertex| !all_vertex_ids.contains(&vertex.id));
         }
+
+        // Step 6: Sanitize to ensure consistency (rebuild surfaces, clean up any remaining issues)
+        self.sanitize();
     }
 
     /// Cleans up sectors to ensure no references to deleted linedefs remain.
@@ -1015,10 +1029,251 @@ impl Map {
         )
     }
 
-    /// Associates linedefs with their sectors by populating the sector_ids vector.
+    /// Sanitizes and associates linedefs with their sectors by populating the sector_ids vector.
+    /// Removes orphaned linedefs that reference non-existent vertices.
     /// This should be called after loading a map or when sectors are modified.
-    pub fn associate_linedefs_with_sectors(&mut self) {
-        // First, clear all existing sector_ids
+    pub fn sanitize(&mut self) {
+        // First, sanitize: remove linedefs that reference non-existent vertices
+        let valid_vertex_ids: std::collections::HashSet<u32> =
+            self.vertices.iter().map(|v| v.id).collect();
+
+        let mut orphaned_linedef_ids = Vec::new();
+
+        for linedef in &self.linedefs {
+            if !valid_vertex_ids.contains(&linedef.start_vertex)
+                || !valid_vertex_ids.contains(&linedef.end_vertex)
+            {
+                println!(
+                    "Sanitizing: removing orphaned linedef {} (references vertices {} -> {})",
+                    linedef.id, linedef.start_vertex, linedef.end_vertex
+                );
+                orphaned_linedef_ids.push(linedef.id);
+            }
+        }
+
+        if !orphaned_linedef_ids.is_empty() {
+            self.linedefs
+                .retain(|linedef| !orphaned_linedef_ids.contains(&linedef.id));
+
+            // Collect sectors before cleanup to remove their surfaces
+            let sectors_before: std::collections::HashSet<u32> =
+                self.sectors.iter().map(|s| s.id).collect();
+
+            // Clean up sectors that reference these linedefs (removes invalid refs and empty sectors)
+            self.cleanup_sectors();
+
+            // Find which sectors were removed
+            let sectors_after: std::collections::HashSet<u32> =
+                self.sectors.iter().map(|s| s.id).collect();
+            let removed_sector_ids: Vec<u32> =
+                sectors_before.difference(&sectors_after).copied().collect();
+
+            // Remove surfaces for deleted sectors
+            if !removed_sector_ids.is_empty() {
+                let mut surfaces_to_remove: Vec<uuid::Uuid> = Vec::new();
+                for (surf_id, surf) in self.surfaces.iter() {
+                    if removed_sector_ids.contains(&surf.sector_id) {
+                        if let Some(profile_id) = surf.profile {
+                            self.profiles.remove(&profile_id);
+                        }
+                        surfaces_to_remove.push(*surf_id);
+                    }
+                }
+
+                for sid in surfaces_to_remove {
+                    let _ = self.surfaces.shift_remove(&sid);
+                }
+
+                println!(
+                    "Sanitized: removed {} sector(s) and their surfaces",
+                    removed_sector_ids.len()
+                );
+            }
+
+            println!(
+                "Sanitized: removed {} orphaned linedef(s)",
+                orphaned_linedef_ids.len()
+            );
+        }
+
+        // Additional validation: check for sectors with invalid geometry
+        let mut invalid_sectors = Vec::new();
+        for sector in &self.sectors {
+            // Check if sector has enough linedefs to form a polygon
+            if sector.linedefs.len() < 3 {
+                println!(
+                    "Sanitizing: sector {} has only {} linedef(s), need at least 3",
+                    sector.id,
+                    sector.linedefs.len()
+                );
+                invalid_sectors.push(sector.id);
+                continue;
+            }
+
+            // Check if all linedefs in the sector reference valid vertices
+            let mut has_invalid_linedef = false;
+            for &linedef_id in &sector.linedefs {
+                if let Some(linedef) = self.find_linedef(linedef_id) {
+                    if self.find_vertex(linedef.start_vertex).is_none()
+                        || self.find_vertex(linedef.end_vertex).is_none()
+                    {
+                        println!(
+                            "Sanitizing: sector {} has linedef {} with invalid vertices",
+                            sector.id, linedef_id
+                        );
+                        has_invalid_linedef = true;
+                        break;
+                    }
+                } else {
+                    println!(
+                        "Sanitizing: sector {} references non-existent linedef {}",
+                        sector.id, linedef_id
+                    );
+                    has_invalid_linedef = true;
+                    break;
+                }
+            }
+            if has_invalid_linedef {
+                invalid_sectors.push(sector.id);
+                continue;
+            }
+
+            // Check if the sector forms a closed loop
+            if let Some(first_linedef) = self.find_linedef(sector.linedefs[0]) {
+                if let Some(last_linedef) =
+                    self.find_linedef(sector.linedefs[sector.linedefs.len() - 1])
+                {
+                    if last_linedef.end_vertex != first_linedef.start_vertex {
+                        println!(
+                            "Sanitizing: sector {} does not form a closed loop (last vertex {} != first vertex {})",
+                            sector.id, last_linedef.end_vertex, first_linedef.start_vertex
+                        );
+                        invalid_sectors.push(sector.id);
+                        continue;
+                    }
+                }
+            }
+
+            // Check for consecutive duplicate vertices (zero-length edges)
+            let mut has_zero_length = false;
+            for &linedef_id in &sector.linedefs {
+                if let Some(linedef) = self.find_linedef(linedef_id) {
+                    if linedef.start_vertex == linedef.end_vertex {
+                        println!(
+                            "Sanitizing: sector {} has linedef {} with same start and end vertex {}",
+                            sector.id, linedef_id, linedef.start_vertex
+                        );
+                        has_zero_length = true;
+                        break;
+                    }
+                }
+            }
+            if has_zero_length {
+                invalid_sectors.push(sector.id);
+                continue;
+            }
+
+            // Check for NaN or infinite vertex coordinates
+            let mut has_invalid_coords = false;
+            for &linedef_id in &sector.linedefs {
+                if let Some(linedef) = self.find_linedef(linedef_id) {
+                    if let Some(start_v) = self.find_vertex(linedef.start_vertex) {
+                        if !start_v.x.is_finite()
+                            || !start_v.y.is_finite()
+                            || !start_v.z.is_finite()
+                        {
+                            println!(
+                                "Sanitizing: sector {} has vertex {} with invalid coordinates: ({}, {}, {})",
+                                sector.id, linedef.start_vertex, start_v.x, start_v.y, start_v.z
+                            );
+                            has_invalid_coords = true;
+                            break;
+                        }
+                    }
+                    if let Some(end_v) = self.find_vertex(linedef.end_vertex) {
+                        if !end_v.x.is_finite() || !end_v.y.is_finite() || !end_v.z.is_finite() {
+                            println!(
+                                "Sanitizing: sector {} has vertex {} with invalid coordinates: ({}, {}, {})",
+                                sector.id, linedef.end_vertex, end_v.x, end_v.y, end_v.z
+                            );
+                            has_invalid_coords = true;
+                            break;
+                        }
+                    }
+                }
+            }
+            if has_invalid_coords {
+                invalid_sectors.push(sector.id);
+            }
+        }
+
+        // Remove invalid sectors
+        if !invalid_sectors.is_empty() {
+            // Remove surfaces for these sectors
+            let mut surfaces_to_remove: Vec<uuid::Uuid> = Vec::new();
+            for (surf_id, surf) in self.surfaces.iter() {
+                if invalid_sectors.contains(&surf.sector_id) {
+                    if let Some(profile_id) = surf.profile {
+                        self.profiles.remove(&profile_id);
+                    }
+                    surfaces_to_remove.push(*surf_id);
+                }
+            }
+
+            for sid in surfaces_to_remove {
+                let _ = self.surfaces.shift_remove(&sid);
+            }
+
+            self.sectors.retain(|s| !invalid_sectors.contains(&s.id));
+
+            println!(
+                "Sanitized: removed {} invalid sector(s)",
+                invalid_sectors.len()
+            );
+        }
+
+        // Rebuild surfaces for remaining sectors and check for invalid transforms
+        self.update_surfaces();
+
+        let mut invalid_surface_sectors = Vec::new();
+        for (_surface_id, surface) in &self.surfaces {
+            if !surface.is_valid() {
+                println!(
+                    "Sanitizing: sector {} has surface with invalid transform (NaN/Inf)",
+                    surface.sector_id
+                );
+                invalid_surface_sectors.push(surface.sector_id);
+            }
+        }
+
+        // Remove sectors with invalid surfaces
+        if !invalid_surface_sectors.is_empty() {
+            // Remove the invalid surfaces and profiles
+            let mut surfaces_to_remove: Vec<uuid::Uuid> = Vec::new();
+            for (surf_id, surf) in self.surfaces.iter() {
+                if invalid_surface_sectors.contains(&surf.sector_id) {
+                    if let Some(profile_id) = surf.profile {
+                        self.profiles.remove(&profile_id);
+                    }
+                    surfaces_to_remove.push(*surf_id);
+                }
+            }
+
+            for sid in surfaces_to_remove {
+                let _ = self.surfaces.shift_remove(&sid);
+            }
+
+            // Remove the sectors themselves
+            self.sectors
+                .retain(|s| !invalid_surface_sectors.contains(&s.id));
+
+            println!(
+                "Sanitized: removed {} sector(s) with invalid surfaces",
+                invalid_surface_sectors.len()
+            );
+        }
+
+        // Now, clear all existing sector_ids
         for linedef in &mut self.linedefs {
             linedef.sector_ids.clear();
         }
@@ -1041,6 +1296,11 @@ impl Map {
                 linedef.sector_ids = sector_ids;
             }
         }
+    }
+
+    /// Alias for sanitize() to maintain backward compatibility.
+    pub fn associate_linedefs_with_sectors(&mut self) {
+        self.sanitize();
     }
 
     // /// Returns true if the given vertex is part of a sector with rect rendering enabled.

@@ -356,6 +356,16 @@ impl ChunkBuilder for D3ChunkBuilder {
                 continue;
             };
 
+            // Check for invalid surface - this shouldn't happen after sanitization,
+            // but acts as a safety net. We can't rebuild here since we only have a reference to map.
+            if !surface.is_valid() {
+                println!(
+                    "[SURFACE SKIP] Sector {} surface has invalid transform (NaN/Inf) - this should have been caught by sanitize()",
+                    surface.sector_id
+                );
+                continue;
+            }
+
             // Skip sectors in ridge mode - they only contribute height to terrain, not surfaces
             let terrain_mode = sector.properties.get_int_default("terrain_mode", 0);
             if terrain_mode == 2 {
@@ -1983,14 +1993,51 @@ fn earcut_with_holes(
         }
     }
 
+    // Validation: check for duplicate vertices
+    for i in 0..verts_uv.len() {
+        for j in (i + 1)..verts_uv.len() {
+            if (verts_uv[i][0] - verts_uv[j][0]).abs() < 0.0001
+                && (verts_uv[i][1] - verts_uv[j][1]).abs() < 0.0001
+            {
+                println!(
+                    "[EARCUT WARNING] Duplicate vertices detected at index {} and {}: [{}, {}]",
+                    i, j, verts_uv[i][0], verts_uv[i][1]
+                );
+                return None;
+            }
+        }
+    }
+
     // Build f64 flat list
     let flattened: Vec<f64> = verts_uv
         .iter()
         .flat_map(|v| [v[0] as f64, v[1] as f64])
         .collect();
 
-    // Run earcut
-    let idx = earcutr::earcut(&flattened, &holes_idx, 2).ok()?;
+    // Run earcut with panic protection
+    let idx_result = std::panic::catch_unwind(|| earcutr::earcut(&flattened, &holes_idx, 2));
+
+    let idx = match idx_result {
+        Ok(Ok(indices)) => indices,
+        Ok(Err(e)) => {
+            println!("[EARCUT ERROR] Earcut failed: {:?}", e);
+            println!("  outer vertices: {}", outer.len());
+            println!("  holes: {}", holes.len());
+            println!("  total vertices: {}", verts_uv.len());
+            return None;
+        }
+        Err(_) => {
+            println!("[EARCUT PANIC] Earcut panicked!");
+            println!("  outer vertices: {}", outer.len());
+            println!("  holes: {}", holes.len());
+            println!("  total vertices: {}", verts_uv.len());
+            for (i, v) in verts_uv.iter().enumerate() {
+                println!("    vertex[{}] = [{}, {}]", i, v[0], v[1]);
+            }
+            return None;
+        }
+    };
+
     let indices: Vec<(usize, usize, usize)> =
         idx.chunks_exact(3).map(|c| (c[2], c[1], c[0])).collect();
 

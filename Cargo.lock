@@ -4868,6 +4868,7 @@ dependencies = [
  "getrandom 0.3.4",
  "image",
  "pollster",
+ "rayon",
  "rfd",
  "rust-embed",
  "rustc-hash 2.1.1",

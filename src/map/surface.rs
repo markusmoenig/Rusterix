@@ -199,6 +199,25 @@ impl Surface {
         }
     }
 
+    /// Returns true if the surface has valid (finite) transform values
+    pub fn is_valid(&self) -> bool {
+        self.plane.origin.x.is_finite()
+            && self.plane.origin.y.is_finite()
+            && self.plane.origin.z.is_finite()
+            && self.plane.normal.x.is_finite()
+            && self.plane.normal.y.is_finite()
+            && self.plane.normal.z.is_finite()
+            && self.frame.right.x.is_finite()
+            && self.frame.right.y.is_finite()
+            && self.frame.right.z.is_finite()
+            && self.frame.up.x.is_finite()
+            && self.frame.up.y.is_finite()
+            && self.frame.up.z.is_finite()
+            && self.frame.normal.x.is_finite()
+            && self.frame.normal.y.is_finite()
+            && self.frame.normal.z.is_finite()
+    }
+
     /// Calculate the geometry
     pub fn calculate_geometry(&mut self, map: &Map) {
         if let Some(sector) = map.find_sector(self.sector_id) {

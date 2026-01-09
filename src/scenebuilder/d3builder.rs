@@ -231,7 +231,7 @@ impl D3Builder {
                     // Generate wall geometry
                     if !add_it_as_floor {
                         for &linedef_id in &sector.linedefs {
-                            if let Some(linedef) = map.linedefs.get(linedef_id as usize) {
+                            if let Some(linedef) = map.find_linedef(linedef_id) {
                                 if let Some(start_vertex) = map.find_vertex(linedef.start_vertex) {
                                     if let Some(end_vertex) = map.find_vertex(linedef.end_vertex) {
                                         // Check for wall lights
