@@ -549,7 +549,7 @@ impl Client {
     /// Draw the 3D scene.
     pub fn draw_d3(
         &mut self,
-        _map: &Map,
+        map: &Map,
         pixels: &mut [u8],
         width: usize,
         height: usize,
@@ -581,6 +581,29 @@ impl Client {
 
         if scene_handler.vm.vm_layer_count() > 1 {
             scene_handler.vm.set_active_vm(1);
+
+            let screen_size = Vec2::new(width as f32, height as f32);
+            let translation_matrix = Mat3::<f32>::translation_2d(Vec2::new(
+                map.offset.x + screen_size.x / 2.0,
+                -map.offset.y + screen_size.y / 2.0,
+            ));
+            let scale_matrix = Mat3::new(
+                map.grid_size,
+                0.0,
+                0.0,
+                0.0,
+                map.grid_size,
+                0.0,
+                0.0,
+                0.0,
+                1.0,
+            );
+            let transform = translation_matrix * scale_matrix;
+            scene_handler
+                .vm
+                .execute(scenevm::Atom::SetTransform2D(transform));
+
+            scene_handler.vm.set_active_vm(2);
             scene_handler.vm.execute(scenevm::Atom::SetCamera3D {
                 camera: self.camera_d3.as_scenevm_camera(),
             });

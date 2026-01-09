@@ -435,7 +435,7 @@ impl D2PreviewBuilder {
 
                         if let Some(pixelsource) = source {
                             if let Some(tile) = pixelsource.tile_from_tile_list(assets) {
-                                scene_handler.overlay.add_poly_2d(
+                                scene_handler.overlay_2d.add_poly_2d(
                                     GeoId::Sector(sector.id),
                                     tile.id,
                                     vertices,
@@ -508,7 +508,7 @@ impl D2PreviewBuilder {
 
                     if self.hover.0 == Some(vertex.id) || map.selected_vertices.contains(&vertex.id)
                     {
-                        scene_handler.overlay.add_square_2d(
+                        scene_handler.overlay_2d.add_square_2d(
                             GeoId::Vertex(vertex.id),
                             scene_handler.selected,
                             [pos.x, pos.y],
@@ -523,7 +523,7 @@ impl D2PreviewBuilder {
                         //     size_y * 2.0,
                         // );
                     } else {
-                        scene_handler.overlay.add_square_2d(
+                        scene_handler.overlay_2d.add_square_2d(
                             GeoId::Vertex(vertex.id),
                             scene_handler.white,
                             [pos.x, pos.y],
@@ -779,7 +779,7 @@ impl D2PreviewBuilder {
                         .source(PixelSource::DynamicTileIndex(2));
                     scene.d2_dynamic.push(batch);
 
-                    scene_handler.overlay.add_square_2d(
+                    scene_handler.overlay_2d.add_square_2d(
                         GeoId::Item(item_counter),
                         scene_handler.item_on,
                         [pos.x, pos.y],
@@ -793,7 +793,7 @@ impl D2PreviewBuilder {
                         .source(PixelSource::DynamicTileIndex(3));
                     scene.d2_dynamic.push(batch);
 
-                    scene_handler.overlay.add_square_2d(
+                    scene_handler.overlay_2d.add_square_2d(
                         GeoId::Item(item_counter),
                         scene_handler.item_off,
                         [pos.x, pos.y],
@@ -883,7 +883,7 @@ impl D2PreviewBuilder {
                     //     .source(PixelSource::DynamicTileIndex(0));
                     // scene.d2_dynamic.push(batch);
 
-                    scene_handler.overlay.add_square_2d(
+                    scene_handler.overlay_2d.add_square_2d(
                         GeoId::Character(entity_counter),
                         scene_handler.character_on,
                         [pos.x, pos.y],
@@ -897,7 +897,7 @@ impl D2PreviewBuilder {
                     //     .source(PixelSource::DynamicTileIndex(1));
                     // scene.d2_dynamic.push(batch);
 
-                    scene_handler.overlay.add_square_2d(
+                    scene_handler.overlay_2d.add_square_2d(
                         GeoId::Character(entity_counter),
                         scene_handler.character_off,
                         [pos.x, pos.y],
@@ -996,7 +996,7 @@ impl D2PreviewBuilder {
                 // );
                 // scene.d2_dynamic.push(yellow_batch);
 
-                scene_handler.overlay.add_square_2d(
+                scene_handler.overlay_2d.add_square_2d(
                     GeoId::Triangle(1000),
                     scene_handler.yellow,
                     [hover_pos.x, hover_pos.y],

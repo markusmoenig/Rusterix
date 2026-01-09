@@ -12,8 +12,11 @@ use theframework::prelude::*;
 pub struct SceneHandler {
     pub vm: SceneVM,
 
-    pub overlay_id: Uuid,
-    pub overlay: Chunk,
+    pub overlay_2d_id: Uuid,
+    pub overlay_2d: Chunk,
+
+    pub overlay_3d_id: Uuid,
+    pub overlay_3d: Chunk,
 
     pub character_off: Uuid,
     pub character_on: Uuid,
@@ -48,8 +51,11 @@ impl SceneHandler {
         Self {
             vm,
 
-            overlay_id: Uuid::new_v4(),
-            overlay: Chunk::default(),
+            overlay_2d_id: Uuid::new_v4(),
+            overlay_2d: Chunk::default(),
+
+            overlay_3d_id: Uuid::new_v4(),
+            overlay_3d: Chunk::default(),
 
             character_off: Uuid::new_v4(),
             character_on: Uuid::new_v4(),
@@ -181,30 +187,51 @@ impl SceneHandler {
 
     pub fn clear_overlay(&mut self) {
         if self.vm.vm_layer_count() == 1 {
+            // 2D Overlay layer
             let idx = self.vm.add_vm_layer();
             self.vm.set_active_vm(idx);
+
+            self.vm.execute(scenevm::Atom::SetBackground(Vec4::zero()));
             if let Some(bytes) = crate::Embedded::get("shader/2d_overlay_shader.wgsl") {
                 if let Ok(source) = std::str::from_utf8(bytes.data.as_ref()) {
                     self.vm.execute(Atom::SetSource2D(source.into()));
                 }
             }
+            self.vm
+                .execute(scenevm::Atom::SetRenderMode(scenevm::RenderMode::Compute2D));
+
+            // 3D Overlay layer
+            let idx = self.vm.add_vm_layer();
+            self.vm.set_active_vm(idx);
+
+            self.vm.execute(scenevm::Atom::SetBackground(Vec4::zero()));
             if let Some(bytes) = crate::Embedded::get("shader/3d_overlay_shader.wgsl") {
                 if let Ok(source) = std::str::from_utf8(bytes.data.as_ref()) {
                     self.vm.execute(Atom::SetSource3D(source.into()));
                 }
             }
+            self.vm
+                .execute(scenevm::Atom::SetRenderMode(scenevm::RenderMode::Compute3D));
         }
         self.vm.set_active_vm(0);
 
-        self.overlay = Chunk::default();
-        self.overlay.priority = 1;
+        self.overlay_2d = Chunk::default();
+        self.overlay_2d.priority = 0;
+
+        self.overlay_3d = Chunk::default();
+        self.overlay_3d.priority = 0;
     }
 
     pub fn set_overlay(&mut self) {
         self.vm.set_active_vm(1);
         self.vm.execute(Atom::AddChunk {
-            id: self.overlay_id,
-            chunk: self.overlay.clone(),
+            id: self.overlay_2d_id,
+            chunk: self.overlay_2d.clone(),
+        });
+        self.vm.set_active_vm(2);
+        self.vm.execute(Atom::AddChunk {
+            id: self.overlay_3d_id,
+            chunk: self.overlay_3d.clone(),
         });
         self.vm.set_active_vm(0);
     }
@@ -217,7 +244,7 @@ impl SceneHandler {
         color: Uuid,
         layer: i32,
     ) {
-        self.overlay.add_line_strip_2d_px(
+        self.overlay_2d.add_line_strip_2d_px(
             id,
             color,
             vec![start.into_array(), end.into_array()],
