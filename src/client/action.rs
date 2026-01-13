@@ -1,8 +1,9 @@
+use crate::vm::*;
 use crate::{Assets, EntityAction, Value};
 use rustpython::vm::*;
 use std::{
     str::FromStr,
-    sync::{Arc, LazyLock, Mutex, RwLock},
+    sync::{LazyLock, RwLock},
 };
 
 pub static ACTIONCMD: LazyLock<RwLock<EntityAction>> =
@@ -21,12 +22,14 @@ fn intent(intent: String) {
 }
 
 /// Set the current debug location in the grid.
-fn set_debug_loc(_event: String, _x: u32, _y: u32, _vm: &VirtualMachine) {}
+fn _set_debug_loc(_event: String, _x: u32, _y: u32, _vm: &VirtualMachine) {}
 
 pub struct ClientAction {
-    interp: Interpreter,
-    scope: Arc<Mutex<rustpython_vm::scope::Scope>>,
+    // interp: Interpreter,
+    // scope: Arc<Mutex<rustpython_vm::scope::Scope>>,
+    vm: VM,
     class_name: String,
+    exec: Execution,
 }
 
 impl Default for ClientAction {
@@ -37,6 +40,7 @@ impl Default for ClientAction {
 
 impl ClientAction {
     pub fn new() -> Self {
+        /*
         let interp = rustpython::InterpreterConfig::new()
             .init_stdlib()
             .interpreter();
@@ -60,17 +64,21 @@ impl ClientAction {
                 vm,
             );
         });
+        */
 
         Self {
-            interp,
-            scope,
+            // interp,
+            // scope,
+            vm: VM::default(),
             class_name: String::new(),
+            exec: Execution::new(0),
         }
     }
 
     /// Init
     pub fn init(&mut self, class_name: String, assets: &Assets) {
-        if let Some((entity_source, _)) = assets.entities.get(&class_name) {
+        if let Some((_entity_source, _)) = assets.entities.get(&class_name) {
+            /*
             if let Err(err) = self.execute(entity_source) {
                 println!(
                     "Client: Error Compiling {} Character Class: {}",
@@ -82,6 +90,34 @@ impl ClientAction {
                     "Client: Error Installing {} Character Class: {}",
                     class_name, err,
                 );
+            }*/
+
+            let _result = self.vm.prepare_str(
+                r#"
+                fn user_event(event, value) {
+                    if event == "key_down" {
+                        if value == "w" {
+                            action("forward");
+                        }
+                        if value == "a" {
+                            action("left");
+                        }
+                        if value == "d" {
+                            action("right");
+                        }
+                        if value == "s" {
+                            action("backward");
+                        }
+                    }
+                    if event == "key_up" {
+                        action("none");
+                    }
+                }
+                "#,
+            );
+            match _result {
+                Ok(_) => self.exec.reset(self.vm.context.globals.len()),
+                Err(e) => eprintln!("Client: error compiling user_event: {}", e),
             }
             self.class_name = class_name;
         }
@@ -89,46 +125,32 @@ impl ClientAction {
 
     /// Execute the user event
     pub fn user_event(&mut self, event: String, value: Value) -> EntityAction {
-        let cmd = format!("{}.user_event('{}', '{}')", self.class_name, event, value);
-        if let Err(err) = self.execute(&cmd) {
-            println!("Client: Error {} User Event: {}", self.class_name, err,);
+        if let Some(index) = self
+            .vm
+            .context
+            .program
+            .user_functions_name_map
+            .get("user_event")
+            .copied()
+        {
+            self.exec.reset(self.vm.context.globals.len());
+            let args = [VMValue::from_string(event), VMValue::from_value(&value)];
+            let _ = self
+                .exec
+                .execute_function(&args, index, &self.vm.context.program);
+
+            if let Some(action_val) = self.exec.outputs.get("action") {
+                if let Some(s) = action_val.as_string() {
+                    action(s.to_string());
+                }
+            }
+            if let Some(intent_val) = self.exec.outputs.get("intent") {
+                if let Some(s) = intent_val.as_string() {
+                    intent(s.to_string());
+                }
+            }
         }
 
         ACTIONCMD.read().unwrap().clone()
-    }
-
-    /// Execute a script.
-    pub fn execute(&self, source: &str) -> Result<PyObjectRef, String> {
-        let scope = self.scope.lock().unwrap();
-
-        self.interp.enter(|vm| {
-            let rc = vm.run_block_expr(scope.clone(), source);
-            match rc {
-                Ok(obj) => Ok(obj),
-                Err(error) => {
-                    let mut err_line: Option<u32> = None;
-
-                    if let Some(tb) = error.__traceback__() {
-                        // let file_name = tb.frame.code.source_path.as_str();
-                        let instruction_index =
-                            tb.frame.lasti.load(std::sync::atomic::Ordering::Relaxed);
-                        err_line = Some(instruction_index / 2);
-                        // let function_name = tb.frame.code.obj_name.as_str();
-                    }
-
-                    let mut err_string = String::new();
-                    if let Some(err) = error.args().first() {
-                        if let Ok(msg) = err.str(vm) {
-                            err_string = msg.to_string();
-                        }
-                    }
-
-                    if let Some(err_line) = err_line {
-                        err_string = format!("{} at line {}.", err_string, err_line);
-                    }
-                    Err(err_string)
-                }
-            }
-        })
     }
 }

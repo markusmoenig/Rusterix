@@ -2,6 +2,7 @@ use super::Location;
 use std::{fmt, path::PathBuf};
 
 /// Represents a parser error.
+#[derive(Debug)]
 pub struct ParseError {
     pub message: String,
     pub line: usize,
@@ -73,6 +74,59 @@ impl fmt::Display for RuntimeError {
             } else {
                 write!(f, "{} in <unknown file>.", self.message)
             }
+        }
+    }
+}
+
+/// Unified VM error for parse/compile steps.
+pub enum VMError {
+    Parse(ParseError),
+    Compile(RuntimeError),
+}
+
+impl fmt::Debug for VMError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{self}")
+    }
+}
+
+impl fmt::Display for VMError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            VMError::Parse(e) => write!(f, "{e}"),
+            VMError::Compile(e) => write!(f, "{e}"),
+        }
+    }
+}
+
+impl std::error::Error for VMError {}
+
+impl From<ParseError> for VMError {
+    fn from(value: ParseError) -> Self {
+        VMError::Parse(value)
+    }
+}
+
+impl From<RuntimeError> for VMError {
+    fn from(value: RuntimeError) -> Self {
+        VMError::Compile(value)
+    }
+}
+
+impl VMError {
+    /// Return the 1-based line number if available.
+    pub fn line(&self) -> Option<usize> {
+        match self {
+            VMError::Parse(err) => Some(err.line).filter(|l| *l > 0),
+            VMError::Compile(err) => Some(err.line).filter(|l| *l > 0),
+        }
+    }
+
+    /// Return the underlying error message text.
+    pub fn text(&self) -> &str {
+        match self {
+            VMError::Parse(err) => &err.message,
+            VMError::Compile(err) => &err.message,
         }
     }
 }

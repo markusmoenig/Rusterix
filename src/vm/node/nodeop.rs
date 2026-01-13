@@ -66,6 +66,8 @@ pub enum NodeOp {
     Pow,
     Log,
     Print,
+    Action,
+    Intent,
     Eq,
     Ne,
     Lt,
@@ -77,5 +79,4 @@ pub enum NodeOp {
     Not,
     Neg,
     Time,
-    PaletteIndex,
 }

@@ -1,7 +1,6 @@
 use crate::vm::{NodeOp, Program, VMValue};
-use theframework::thepalette::ThePalette;
+use rustc_hash::FxHashMap;
 
-#[derive(Clone)]
 pub struct Execution {
     /// Global variables. The parser keeps count of all global variables and we allocate the array on creation.
     pub globals: Vec<VMValue>,
@@ -20,6 +19,9 @@ pub struct Execution {
 
     /// Time
     pub time: VMValue,
+
+    /// Custom outputs set by special ops (e.g., Action)
+    pub outputs: FxHashMap<String, VMValue>,
 }
 
 impl Execution {
@@ -31,6 +33,7 @@ impl Execution {
             stack: Vec::with_capacity(32),
             return_value: None,
             time: VMValue::zero(),
+            outputs: FxHashMap::default(),
         }
     }
 
@@ -42,6 +45,7 @@ impl Execution {
             stack: Vec::with_capacity(32),
             return_value: None,
             time: VMValue::zero(),
+            outputs: FxHashMap::default(),
         }
     }
 
@@ -51,9 +55,10 @@ impl Execution {
         if var_size != self.globals.len() {
             self.globals.resize(var_size, VMValue::zero());
         }
+        self.outputs.clear();
     }
 
-    pub fn execute(&mut self, code: &[NodeOp], program: &Program, palette: &ThePalette) {
+    pub fn execute(&mut self, code: &[NodeOp], program: &Program) {
         for op in code {
             // Unwind if return is set
             if self.return_value.is_some() {
@@ -146,7 +151,7 @@ impl Execution {
 
                     // Execute the function body
                     let body = program.user_functions[*index].clone(); // Arc clone
-                    self.execute(&body, program, palette);
+                    self.execute(&body, program);
 
                     // Retrieve the return VMValue. A function always returns exactly one VMValue.
                     let ret = if self.return_value.is_some() {
@@ -195,11 +200,11 @@ impl Execution {
                 NodeOp::For(init, cond, incr, body) => {
                     let base = self.stack.len();
                     let mut iter = 0usize;
-                    self.execute(init, program, palette);
+                    self.execute(init, program);
                     self.stack.truncate(base);
 
                     loop {
-                        self.execute(cond, program, palette);
+                        self.execute(cond, program);
 
                         let z = self.stack.pop().unwrap();
                         if !z.is_truthy() {
@@ -207,10 +212,10 @@ impl Execution {
                         }
                         self.stack.truncate(base);
 
-                        self.execute(body, program, palette);
+                        self.execute(body, program);
                         self.stack.truncate(base);
 
-                        self.execute(incr, program, palette);
+                        self.execute(incr, program);
                         self.stack.truncate(base);
 
                         iter += 1;
@@ -222,9 +227,9 @@ impl Execution {
                 NodeOp::If(then_code, else_code) => {
                     let value = self.stack.pop().unwrap().is_truthy();
                     if value {
-                        self.execute(then_code, program, palette);
+                        self.execute(then_code, program);
                     } else if let Some(else_code) = else_code {
-                        self.execute(else_code, program, palette);
+                        self.execute(else_code, program);
                     }
                 }
                 // Math
@@ -557,16 +562,16 @@ impl Execution {
                         println!("print: {:?}", a.to_vec3());
                     }
                 }
+                NodeOp::Action => {
+                    let a = self.stack.pop().unwrap();
+                    self.outputs.insert("action".to_string(), a);
+                }
+                NodeOp::Intent => {
+                    let a = self.stack.pop().unwrap();
+                    self.outputs.insert("intent".to_string(), a);
+                }
                 NodeOp::Time => {
                     self.stack.push(self.time.clone());
-                }
-                NodeOp::PaletteIndex => {
-                    let a = self.stack.pop().unwrap();
-                    if let Some(col) = palette.colors.get(a.x as usize) {
-                        if let Some(col) = col {
-                            self.stack.push(VMValue::from_vec3(col.to_vec3()));
-                        }
-                    }
                 }
             }
         }
@@ -586,17 +591,12 @@ impl Execution {
 
     /// Call a function with no arguments
     #[inline]
-    pub fn execute_function_no_args(
-        &mut self,
-        index: usize,
-        program: &Program,
-        palette: &ThePalette,
-    ) -> VMValue {
+    pub fn execute_function_no_args(&mut self, index: usize, program: &Program) -> VMValue {
         // Reset state for this call
         self.stack.truncate(0);
         self.return_value = None;
 
-        self.execute(&program.user_functions[index], program, palette);
+        self.execute(&program.user_functions[index], program);
 
         // Prefer an explicit return VMValue; else top of stack; else zero
         if let Some(ret) = self.return_value.take() {
@@ -616,7 +616,6 @@ impl Execution {
         args: &[VMValue],
         index: usize,
         program: &Program,
-        palette: &ThePalette,
     ) -> VMValue {
         // Reset state for this call
         self.stack.truncate(0);
@@ -630,7 +629,7 @@ impl Execution {
         // Copy args into locals in order (0..argc)
         self.locals[..argc].clone_from_slice(args);
 
-        self.execute(&program.user_functions[index], program, palette);
+        self.execute(&program.user_functions[index], program);
 
         // Prefer an explicit return VMValue; else top of stack; else zero
         if let Some(ret) = self.return_value.take() {

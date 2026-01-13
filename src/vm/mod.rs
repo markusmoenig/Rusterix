@@ -1,5 +1,6 @@
 pub mod ast;
 pub mod astvalue;
+pub mod builtin;
 pub mod compile;
 pub mod context;
 pub mod environment;
@@ -12,138 +13,7 @@ pub mod optimize;
 pub mod parser;
 pub mod renderbuffer;
 pub mod scanner;
-
-use std::ops::{Add, Div, Mul, Neg, Sub};
-use vek::Vec3;
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct VMValue {
-    pub x: f32,
-    pub y: f32,
-    pub z: f32,
-    pub string: Option<String>,
-}
-
-impl VMValue {
-    pub fn new(x: f32, y: f32, z: f32) -> Self {
-        Self {
-            x,
-            y,
-            z,
-            string: None,
-        }
-    }
-
-    pub fn broadcast(v: f32) -> Self {
-        Self {
-            x: v,
-            y: v,
-            z: v,
-            string: None,
-        }
-    }
-
-    pub fn zero() -> Self {
-        Self::broadcast(0.0)
-    }
-
-    pub fn from_vec3(v: Vec3<f32>) -> Self {
-        Self {
-            x: v.x,
-            y: v.y,
-            z: v.z,
-            string: None,
-        }
-    }
-
-    pub fn to_vec3(&self) -> Vec3<f32> {
-        Vec3::new(self.x, self.y, self.z)
-    }
-
-    pub fn from_string<S: Into<String>>(s: S) -> Self {
-        Self {
-            x: 0.0,
-            y: 0.0,
-            z: 0.0,
-            string: Some(s.into()),
-        }
-    }
-
-    pub fn as_string(&self) -> Option<&str> {
-        self.string.as_deref()
-    }
-
-    pub fn is_truthy(&self) -> bool {
-        if let Some(s) = &self.string {
-            !s.is_empty()
-        } else {
-            self.x != 0.0 || self.y != 0.0 || self.z != 0.0
-        }
-    }
-
-    pub fn magnitude(&self) -> f32 {
-        self.to_vec3().magnitude()
-    }
-
-    pub fn map<F: Fn(f32) -> f32>(&self, f: F) -> Self {
-        VMValue::new(f(self.x), f(self.y), f(self.z))
-    }
-
-    pub fn map2<F: Fn(f32, f32) -> f32>(&self, other: VMValue, f: F) -> Self {
-        VMValue::new(f(self.x, other.x), f(self.y, other.y), f(self.z, other.z))
-    }
-
-    pub fn dot(&self, other: VMValue) -> f32 {
-        self.to_vec3().dot(other.to_vec3())
-    }
-
-    pub fn cross(&self, other: VMValue) -> Self {
-        VMValue::from_vec3(self.to_vec3().cross(other.to_vec3()))
-    }
-}
-
-impl Add for VMValue {
-    type Output = VMValue;
-
-    fn add(self, rhs: VMValue) -> Self::Output {
-        match (self.string, rhs.string) {
-            (Some(a), Some(b)) => VMValue::from_string(format!("{a}{b}")),
-            _ => VMValue::new(self.x + rhs.x, self.y + rhs.y, self.z + rhs.z),
-        }
-    }
-}
-
-impl Sub for VMValue {
-    type Output = VMValue;
-
-    fn sub(self, rhs: VMValue) -> Self::Output {
-        VMValue::new(self.x - rhs.x, self.y - rhs.y, self.z - rhs.z)
-    }
-}
-
-impl Mul for VMValue {
-    type Output = VMValue;
-
-    fn mul(self, rhs: VMValue) -> Self::Output {
-        VMValue::new(self.x * rhs.x, self.y * rhs.y, self.z * rhs.z)
-    }
-}
-
-impl Div for VMValue {
-    type Output = VMValue;
-
-    fn div(self, rhs: VMValue) -> Self::Output {
-        VMValue::new(self.x / rhs.x, self.y / rhs.y, self.z / rhs.z)
-    }
-}
-
-impl Neg for VMValue {
-    type Output = VMValue;
-
-    fn neg(self) -> Self::Output {
-        VMValue::new(-self.x, -self.y, -self.z)
-    }
-}
+pub mod value;
 
 pub use self::{
     ast::{
@@ -154,7 +24,7 @@ pub use self::{
     compile::CompileVisitor,
     context::Context,
     environment::Environment,
-    errors::{ParseError, RuntimeError},
+    errors::{ParseError, RuntimeError, VMError},
     idverifier::IdVerifier,
     module::Module,
     node::execution::Execution,
@@ -163,6 +33,7 @@ pub use self::{
     parser::Parser,
     renderbuffer::RenderBuffer,
     scanner::{Scanner, Token, TokenType},
+    value::VMValue,
 };
 
 use rustc_hash::FxHashMap;
@@ -226,19 +97,26 @@ impl VM {
         }
 
         // println!("{:?}", self.context.program.user_functions);
-        optimize(&mut self.context.program.body);
+        // optimize(&mut self.context.program.body);
 
         self.context.program.globals = self.context.globals.len();
 
         Ok(())
     }
 
+    /// Parse and compile a string in one step, returning the compiled module or a unified error.
+    pub fn prepare_str(&mut self, src: &str) -> Result<Module, VMError> {
+        let module = self.parse_str(src).map_err(VMError::from)?;
+        self.compile(&module).map_err(VMError::from)?;
+        Ok(module)
+    }
+
     /// Compile the voxels into the VoxelGrid.
-    pub fn execute(&mut self, palette: &ThePalette) -> Option<VMValue> {
+    pub fn execute(&mut self, _palette: &ThePalette) -> Option<VMValue> {
         let mut execution = Execution::new(self.context.globals.len());
 
         // Execute the main program to compile all voxels.
-        execution.execute(&&self.context.program.body, &self.context.program, palette);
+        execution.execute(&&self.context.program.body, &self.context.program);
 
         execution.stack.pop()
     }
@@ -338,5 +216,34 @@ mod tests {
             &ThePalette::default(),
         );
         assert_eq!(result.unwrap().as_string(), Some("yes"));
+    }
+
+    #[test]
+    fn user_event_invocation() {
+        let mut script = VM::default();
+        let module = script
+            .parse_str(
+                r#"
+                fn user_event(event, value) {
+                    // no-op handler
+                }
+                "#,
+            )
+            .unwrap();
+        script.compile(&module).unwrap();
+
+        let func_index = script
+            .context
+            .program
+            .user_functions_name_map
+            .get("user_event")
+            .copied()
+            .unwrap();
+
+        let mut exec = Execution::new(script.context.globals.len());
+        exec.reset(script.context.globals.len());
+        let args = [VMValue::broadcast(1.0), VMValue::broadcast(2.0)];
+        let result = exec.execute_function(&args, func_index, &script.context.program);
+        assert_eq!(result.x, 0.0);
     }
 }

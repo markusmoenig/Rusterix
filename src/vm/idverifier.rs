@@ -1,4 +1,4 @@
-use super::ParseError;
+use super::{ParseError, builtin::Builtins};
 use rustc_hash::FxHashMap;
 
 #[derive(Debug)]
@@ -28,61 +28,12 @@ impl IdVerifier {
     pub fn new() -> Self {
         let mut inbuilt = FxHashMap::default();
 
-        let inbuilt_functions = vec![
-            "rotate2d",
-            "dot",
-            "dot2",
-            "dot3",
-            "cross",
-            "mix",
-            "smoothstep",
-            "length",
-            "length2",
-            "length3",
-            "normalize",
-            "sin",
-            "sin1",
-            "sin2",
-            "cos",
-            "cos1",
-            "cos2",
-            "sqrt",
-            "ceil",
-            "floor",
-            "fract",
-            "abs",
-            "tan",
-            "degrees",
-            "radians",
-            "min",
-            "max",
-            "pow",
-            "rand",
-            "clamp",
-            "sign",
-            "atan",
-            "atan2",
-            "mod",
-            "step",
-            "exp",
-            "log",
-            "print",
-            "sample",
-            "sample_normal",
-            "alloc",
-            "iterate",
-            "save",
-            "rotate2d",
-            "palette",
-            "round",
-        ];
-
-        for func in inbuilt_functions {
+        for (func, _) in Builtins::default().entries() {
             inbuilt.insert(
-                func.to_string(),
+                func.clone(),
                 Var {
-                    name: func.to_string(),
-                    original_name: func.to_string(),
+                    name: func.clone(),
+                    original_name: func.clone(),
                     is_function: true,
                     is_const: true,
                     is_global: true,
