@@ -54,7 +54,6 @@ impl Default for Assets {
 
 impl Assets {
     pub fn new() -> Self {
-        rusteria::ensure_patterns_initialized();
         Self {
             map_sources: FxHashMap::default(),
             maps: FxHashMap::default(),

@@ -31,6 +31,7 @@ pub mod utils;
 pub mod value;
 pub mod value_toml;
 pub mod vertexblend;
+pub mod vm;
 pub mod wavefront;
 
 #[cfg(feature = "single_thread")]

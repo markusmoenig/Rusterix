@@ -95,7 +95,7 @@ impl TheTrait for Cube {
                 roughness = 0.6 + cathedral * 0.3;
 
                 // 16 Colors
-                //let color_steps = 16.0;    
+                //let color_steps = 16.0;
                 //color = floor(color * color_steps) / color_steps;
             }
         "#,
