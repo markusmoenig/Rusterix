@@ -18,6 +18,7 @@ use crate::{
 };
 use codegridfx::Module;
 use indexmap::IndexMap;
+use std::collections::VecDeque;
 use theframework::prelude::{FxHashMap, FxHashSet};
 
 use linedef::*;
@@ -629,6 +630,8 @@ impl Map {
 
     // Create a new (or use an existing) linedef for the given vertices and closes a polygon sector if it detects a loop.
     pub fn create_linedef(&mut self, start_vertex: u32, end_vertex: u32) -> (u32, Option<u32>) {
+        let mut sector_id: Option<u32> = None;
+
         // Reuse an existing linedef only if it matches the requested winding direction exactly.
         if let Some(existing) = self
             .linedefs
@@ -636,35 +639,102 @@ impl Map {
             .find(|l| l.start_vertex == start_vertex && l.end_vertex == end_vertex)
         {
             let id = existing.id;
-            self.possible_polygon.push(id);
-            let sector_id = self.create_sector_from_polygon();
+            if let Some(polygon) = self.find_directed_cycle_from_edge(id) {
+                self.possible_polygon = polygon;
+                sector_id = self.create_sector_from_polygon();
+            }
             return (id, sector_id);
         }
 
         // Create a new linedef as before and try to close a sector.
-        let mut sector_id: Option<u32> = None;
-
         if let Some(id) = self.find_free_linedef_id() {
             let linedef = Linedef::new(id, start_vertex, end_vertex);
             self.linedefs.push(linedef);
-            self.possible_polygon.push(id);
 
-            if let Some(sid) = self.create_sector_from_polygon() {
-                if let Some(linedef) = self.find_linedef_mut(id) {
-                    // Assign the new sector on the freshly created edge if possible; the full
-                    // assignment across the ring is handled inside create_sector_from_polygon.
-                    // Add sector to the sector_ids list
-                    if !linedef.sector_ids.contains(&sid) {
-                        linedef.sector_ids.push(sid);
+            if let Some(polygon) = self.find_directed_cycle_from_edge(id) {
+                self.possible_polygon = polygon;
+
+                if let Some(sid) = self.create_sector_from_polygon() {
+                    if let Some(linedef) = self.find_linedef_mut(id) {
+                        // Assign the new sector on the freshly created edge if possible; the full
+                        // assignment across the ring is handled inside create_sector_from_polygon.
+                        if !linedef.sector_ids.contains(&sid) {
+                            linedef.sector_ids.push(sid);
+                        }
                     }
+                    sector_id = Some(sid);
                 }
-                sector_id = Some(sid);
             }
             (id, sector_id)
         } else {
             println!("No free linedef ID available");
             (0, None)
         }
+    }
+
+    /// Attempts to find a closed directed cycle that uses the provided linedef ID.
+    /// The traversal walks forward along linedef winding to keep sector orientation deterministic.
+    fn find_directed_cycle_from_edge(&self, edge_id: u32) -> Option<Vec<u32>> {
+        let edge = self.find_linedef(edge_id)?;
+
+        // We look for a directed path from the end of the new edge back to its start.
+        let path = self.find_directed_path(edge.end_vertex, edge.start_vertex, edge_id)?;
+
+        // A polygon needs at least three edges: path (>=1) + the new edge.
+        if path.len() + 1 < 3 {
+            return None;
+        }
+
+        let mut cycle = path;
+        cycle.push(edge_id);
+        Some(cycle)
+    }
+
+    /// Breadth-first search for a directed path from `from` to `to`, following linedef winding.
+    /// The search is iterative (no recursion) and skips the provided `skip_edge` ID.
+    fn find_directed_path(&self, from: u32, to: u32, skip_edge: u32) -> Option<Vec<u32>> {
+        let mut queue = VecDeque::new();
+        let mut visited = FxHashSet::default();
+        let mut parent: FxHashMap<u32, (u32, u32)> = FxHashMap::default(); // vertex -> (prev_vertex, edge_id)
+
+        queue.push_back(from);
+        visited.insert(from);
+
+        while let Some(v) = queue.pop_front() {
+            // Collect all outgoing edges that respect winding (start == v)
+            for edge in self.linedefs.iter().filter(|e| e.start_vertex == v) {
+                if edge.id == skip_edge {
+                    continue;
+                }
+                let next = edge.end_vertex;
+
+                if visited.contains(&next) {
+                    continue;
+                }
+
+                parent.insert(next, (v, edge.id));
+
+                if next == to {
+                    // Reconstruct edge list from `from` -> ... -> `to`
+                    let mut path = Vec::new();
+                    let mut current = to;
+                    while let Some((prev_vertex, edge_id)) = parent.get(&current) {
+                        path.push(*edge_id);
+                        if *prev_vertex == from {
+                            break;
+                        }
+                        current = *prev_vertex;
+                    }
+                    path.reverse();
+                    return Some(path);
+                }
+
+                visited.insert(next);
+                queue.push_back(next);
+            }
+        }
+
+        None
     }
 
     /// Check if the `possible_polygon` forms a closed loop
