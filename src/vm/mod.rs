@@ -305,4 +305,19 @@ mod tests {
             "none"
         );
     }
+
+    #[test]
+    fn format_variadic() {
+        let mut script = VM::default();
+        let result = script.execute_string(r#"format("pos {} {}", 1, 2);"#, &ThePalette::default());
+        assert_eq!(result.unwrap().as_string(), Some("pos 1 2"));
+    }
+
+    #[test]
+    fn print_multiple_args() {
+        let mut script = VM::default();
+        let result =
+            script.execute_string(r#"print("hello", 1, 2); "done";"#, &ThePalette::default());
+        assert_eq!(result.unwrap().as_string(), Some("done"));
+    }
 }

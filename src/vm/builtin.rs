@@ -65,10 +65,13 @@ impl Default for Builtins {
         b.insert("sqrt", 1, NodeOp::Sqrt);
         b.insert("log", 1, NodeOp::Log);
         b.insert("pow", 2, NodeOp::Pow);
-        b.insert("print", 1, NodeOp::Print);
+        // print is variadic; arity handled in compiler
+        b.insert("print", 0, NodeOp::Print(0));
         b.insert("action", 1, NodeOp::Action);
         b.insert("intent", 1, NodeOp::Intent);
         b.insert("message", 2, NodeOp::Message);
+        // format is variadic; arity handled specially in compiler.
+        b.insert("format", 0, NodeOp::Format(0));
         b
     }
 }

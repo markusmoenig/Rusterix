@@ -550,13 +550,31 @@ impl Execution {
                 let a = self.stack.pop().unwrap();
                 self.stack.push(-a);
             }
-            NodeOp::Print => {
-                let a = self.stack.pop().unwrap();
-                if let Some(s) = a.as_string() {
-                    println!("print: {}", s);
-                } else {
-                    println!("print: {:?}", a.to_vec3());
+            NodeOp::Print(count) => {
+                let mut args = Vec::with_capacity(*count as usize);
+                for _ in 0..*count as usize {
+                    if let Some(v) = self.stack.pop() {
+                        args.push(v);
+                    }
                 }
+                args.reverse();
+                let text = args
+                    .iter()
+                    .map(vm_value_to_string)
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                println!("print: {}", text);
+            }
+            NodeOp::Format(count) => {
+                let mut args = Vec::with_capacity(*count as usize);
+                for _ in 0..*count as usize {
+                    if let Some(v) = self.stack.pop() {
+                        args.push(v);
+                    }
+                }
+                args.reverse();
+                let formatted = format_vm_string(&args);
+                self.stack.push(VMValue::from_string(formatted));
             }
             NodeOp::Action => {
                 let a = self.stack.pop().unwrap();
@@ -782,4 +800,36 @@ impl Execution {
             VMValue::zero()
         }
     }
+}
+
+fn vm_value_to_string(val: &VMValue) -> String {
+    if let Some(s) = val.as_string() {
+        s.to_string()
+    } else if val.y == val.x && val.z == val.x {
+        format!("{}", val.x)
+    } else {
+        format!("{},{},{}", val.x, val.y, val.z)
+    }
+}
+
+fn format_vm_string(args: &[VMValue]) -> String {
+    if args.is_empty() {
+        return String::new();
+    }
+    let mut iter = args.iter();
+    let template = iter.next().unwrap();
+    let tmpl = template
+        .as_string()
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| template.x.to_string());
+
+    let mut out = String::new();
+    let mut parts = tmpl.split("{}");
+    out.push_str(parts.next().unwrap_or_default());
+    for (slot, val) in parts.zip(iter) {
+        let val_str = vm_value_to_string(val);
+        out.push_str(&val_str);
+        out.push_str(slot);
+    }
+    out
 }

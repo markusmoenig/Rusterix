@@ -501,24 +501,39 @@ impl Visitor for CompileVisitor {
 
         if let ASTValue::Function(name, _func_args, _returns) = callee {
             if let Some(func) = &self.functions.get(&name).cloned() {
-                if func.arguments as usize == args.len() {
+                if name == "format" {
                     for arg in args {
                         _ = arg.accept(self, ctx)?;
                     }
-                    ctx.emit(func.op.clone());
+                    ctx.emit(NodeOp::Format(args.len() as u8));
                     if !swizzle.is_empty() {
                         ctx.emit(NodeOp::GetComponents(swizzle.to_vec()));
                     }
+                } else if name == "print" {
+                    for arg in args {
+                        _ = arg.accept(self, ctx)?;
+                    }
+                    ctx.emit(NodeOp::Print(args.len() as u8));
                 } else {
-                    return Err(RuntimeError::new(
-                        format!(
-                            "Wrong amount of arguments for '{}', expected '{}' got '{}'",
-                            name,
-                            func.arguments as usize,
-                            args.len(),
-                        ),
-                        loc,
-                    ));
+                    if func.arguments as usize == args.len() {
+                        for arg in args {
+                            _ = arg.accept(self, ctx)?;
+                        }
+                        ctx.emit(func.op.clone());
+                        if !swizzle.is_empty() {
+                            ctx.emit(NodeOp::GetComponents(swizzle.to_vec()));
+                        }
+                    } else {
+                        return Err(RuntimeError::new(
+                            format!(
+                                "Wrong amount of arguments for '{}', expected '{}' got '{}'",
+                                name,
+                                func.arguments as usize,
+                                args.len(),
+                            ),
+                            loc,
+                        ));
+                    }
                 }
             } else if let Some((arity, params, index)) = self.user_functions.get(&name) {
                 let func_index = *index;
