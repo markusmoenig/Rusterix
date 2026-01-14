@@ -1,5 +1,4 @@
 use crate::server::py_fn::*;
-use crate::vm::*;
 use crate::{
     Assets, Choice, Currency, Entity, EntityAction, Item, Map, MultipleChoice, PixelSource,
     PlayerCamera, RegionCtx, Value, ValueContainer,
@@ -70,8 +69,6 @@ use RegionMessage::*;
 
 pub struct RegionInstance {
     pub id: u32,
-
-    vm: VM,
 
     interp: Interpreter,
     scope: Arc<Mutex<rustpython_vm::scope::Scope>>,
@@ -352,8 +349,6 @@ impl RegionInstance {
         Self {
             id: region_id,
 
-            vm: VM::default(),
-
             interp,
             scope,
 
@@ -399,23 +394,6 @@ impl RegionInstance {
             max_limit: None,
         });
         ctx.currencies.base_currency = "G".to_string();
-
-        // Compile Entity Template Scripts
-        for (name, (entity_source, _entity_data)) in &assets.entities {
-            match self.vm.prepare_str(entity_source) {
-                Ok(program) => {
-                    ctx.entity_programs.insert(name.clone(), program);
-                }
-                Err(error) => {
-                    ctx.startup_errors.push(format!(
-                        "{}: Error Compiling {} Character Class: {}",
-                        self.name,
-                        name,
-                        error.to_string(),
-                    ));
-                }
-            }
-        }
 
         // Installing Entity Class Templates
         for (name, (entity_source, entity_data)) in &assets.entities {

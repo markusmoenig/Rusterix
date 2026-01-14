@@ -34,6 +34,7 @@ pub struct ClientAction {
     vm: VM,
     class_name: String,
     exec: Execution,
+    program: Option<Program>,
 }
 
 impl Default for ClientAction {
@@ -76,12 +77,13 @@ impl ClientAction {
             vm: VM::default(),
             class_name: String::new(),
             exec: Execution::new(0),
+            program: None,
         }
     }
 
     /// Init
     pub fn init(&mut self, class_name: String, assets: &Assets) {
-        if let Some((_entity_source, _)) = assets.entities.get(&class_name) {
+        if let Some((entity_source, _)) = assets.entities.get(&class_name) {
             /*
             if let Err(err) = self.execute(entity_source) {
                 println!(
@@ -96,34 +98,12 @@ impl ClientAction {
                 );
             }*/
 
-            let _result = self.vm.prepare_str(
-                r#"
-                fn user_event(event, value) {
-                    match event {
-                        "key_down" {
-                            if value == "w" {
-                                action("forward");
-                            }
-                            if value == "a" {
-                                action("left");
-                            }
-                            if value == "d" {
-                                action("right");
-                            }
-                            if value == "s" {
-                                action("backward");
-                            }
-                        }
-                        "key_up" {
-                            action("none");
-                        }
-                        _ {}
-                    }
+            let result = self.vm.prepare_str(entity_source);
+            match result {
+                Ok(program) => {
+                    self.exec.reset(program.globals);
+                    self.program = Some(program);
                 }
-                "#,
-            );
-            match _result {
-                Ok(_) => self.exec.reset(self.vm.context.globals.len()),
                 Err(e) => eprintln!("Client: error compiling user_event: {}", e),
             }
             self.class_name = class_name;
@@ -132,26 +112,18 @@ impl ClientAction {
 
     /// Execute the user event
     pub fn user_event(&mut self, event: String, value: Value) -> EntityAction {
-        if let Some(index) = self
-            .vm
-            .context
-            .program
-            .user_functions_name_map
-            .get("user_event")
-            .copied()
-        {
-            self.exec.reset(self.vm.context.globals.len());
-            let mut handler = ClientHostHandler::default();
-            let args = [VMValue::from_string(event), VMValue::from_value(&value)];
-            let _ = self.exec.execute_function_host(
-                &args,
-                index,
-                &self.vm.context.program,
-                &mut handler,
-            );
+        if let Some(program) = &self.program {
+            if let Some(index) = program.user_functions_name_map.get("user_event").copied() {
+                self.exec.reset(program.globals);
+                let mut handler = ClientHostHandler::default();
+                let args = [VMValue::from_string(event), VMValue::from_value(&value)];
+                let _ = self
+                    .exec
+                    .execute_function_host(&args, index, program, &mut handler);
 
-            if let Some(act) = handler.action {
-                return act;
+                if let Some(act) = handler.action {
+                    return act;
+                }
             }
         }
 

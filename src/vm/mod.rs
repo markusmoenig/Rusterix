@@ -28,7 +28,7 @@ pub use self::{
     idverifier::IdVerifier,
     module::Module,
     node::execution::Execution,
-    node::{nodeop::NodeOp, program::Program},
+    node::{hosthandler::HostHandler, nodeop::NodeOp, program::Program},
     optimize::optimize,
     parser::Parser,
     renderbuffer::RenderBuffer,
@@ -104,11 +104,11 @@ impl VM {
         Ok(())
     }
 
-    /// Parse and compile a string in one step, returning the compiled module or a unified error.
-    pub fn prepare_str(&mut self, src: &str) -> Result<Module, VMError> {
+    /// Parse and compile a string in one step, returning the compiled program or a unified error.
+    pub fn prepare_str(&mut self, src: &str) -> Result<Program, VMError> {
         let module = self.parse_str(src).map_err(VMError::from)?;
         self.compile(&module).map_err(VMError::from)?;
-        Ok(module)
+        Ok(self.context.program.clone())
     }
 
     /// Compile the voxels into the VoxelGrid.

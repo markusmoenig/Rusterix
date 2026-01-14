@@ -6,6 +6,7 @@ pub mod item;
 pub mod message;
 pub mod py_fn;
 pub mod region;
+pub mod region_host;
 pub mod regionctx;
 
 use crossbeam_channel::{Receiver, Sender};

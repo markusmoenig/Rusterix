@@ -67,6 +67,8 @@ pub enum NodeOp {
     Log,
     Print(u8),
     Format(u8),
+    SetDebugLoc,
+    SetPlayerCamera,
     Action,
     Intent,
     Message,

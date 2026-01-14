@@ -67,6 +67,8 @@ impl Default for Builtins {
         b.insert("pow", 2, NodeOp::Pow);
         // print is variadic; arity handled in compiler
         b.insert("print", 0, NodeOp::Print(0));
+        b.insert("set_debug_loc", 3, NodeOp::SetDebugLoc);
+        b.insert("set_player_camera", 1, NodeOp::SetPlayerCamera);
         b.insert("action", 1, NodeOp::Action);
         b.insert("intent", 1, NodeOp::Intent);
         b.insert("message", 2, NodeOp::Message);

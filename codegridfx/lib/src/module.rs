@@ -1056,41 +1056,42 @@ impl Module {
         out
     }
 
-    /// Build the module into Python source
+    /// Build the module into script source
     pub fn build(&self, debug: bool) -> String {
         let mut out = String::new();
 
         if self.module_type == ModuleType::CharacterTemplate
             || self.module_type == ModuleType::ItemTemplate
         {
-            out += &format!("class {}:\n", self.name);
-            out += "    def event(self, event, value):\n";
+            out += "fn event(event, value) {\n";
 
             let mut contains_user_events = false;
 
             // Build non user_events first
             for r in self.routines.values() {
                 if !USER_EVENTS.contains(&r.name.as_str()) {
-                    r.build_python(&mut out, 8, debug);
+                    r.build_source(&mut out, 4, debug);
                 } else {
                     contains_user_events = true;
                 }
             }
+            out += "}\n\n";
 
             if contains_user_events {
-                out += "    def user_event(self, event, value):\n";
+                out += "fn user_event(event, value) {\n";
                 // Build user_event (if any)
                 for r in self.routines.values() {
                     if USER_EVENTS.contains(&r.name.as_str()) {
-                        r.build_python(&mut out, 8, debug);
+                        r.build_source(&mut out, 4, debug);
                     }
                 }
             }
+            out += "}\n";
         } else {
-            out += "def setup():\n";
+            out += "fn setup() {\n";
 
             for r in self.routines.values() {
-                r.build_python(&mut out, 4, debug);
+                r.build_source(&mut out, 4, debug);
             }
         }
         out

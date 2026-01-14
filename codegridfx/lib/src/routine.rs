@@ -515,12 +515,12 @@ impl Routine {
         *out += "}\n";
     }
 
-    /// Build the routine into Python source
-    pub fn build_python(&self, out: &mut String, indent: usize, debug: bool) {
+    /// Build the routine into source
+    pub fn build_source(&self, out: &mut String, indent: usize, debug: bool) {
         let mut indent = indent;
 
         if self.name != "instantiation" {
-            *out += &format!("{:indent$}if event == \"{}\":\n", "", self.name);
+            *out += &format!("{:indent$}if event == \"{}\" {{\n", "", self.name);
             indent += 4;
         }
 
@@ -543,21 +543,24 @@ impl Routine {
                 ""
             );
         } else if self.name == "key_down" || self.name == "key_up" {
-            *out += &format!("{:indent$}key = value\n", "");
+            *out += &format!("{:indent$}let key = value;\n", "");
         }
 
         let rows = self.grid.grid_by_rows();
 
         // If empty just add a "pass" statement
-        if rows.len() <= 1 {
-            *out += &format!("{:indent$}pass\n", "");
-        }
+        // if rows.len() <= 1 {
+        //     *out += &format!("{:indent$}pass\n", "");
+        // }
+        //
+
+        let mut prev_row_indent = indent;
 
         for row in rows {
-            let mut row_code = String::new();
-
             let mut is_if = false;
             let mut is_else = false;
+            let mut row_code = String::new();
+
             let mut ind = indent;
 
             if debug {
@@ -580,7 +583,17 @@ impl Routine {
                     }
 
                     if let Some(i) = self.grid.row_indents.get(&pos.1) {
-                        ind += *i as usize * 4;
+                        let target_ind = indent + *i as usize * 4;
+                        while prev_row_indent > target_ind {
+                            prev_row_indent -= 4;
+                            *out += &format!("{:ind$}}}\n", "", ind = prev_row_indent);
+                        }
+                        ind = target_ind;
+                    } else if prev_row_indent > ind {
+                        while prev_row_indent > ind {
+                            prev_row_indent -= 4;
+                            *out += &format!("{:ind$}}}\n", "", ind = prev_row_indent);
+                        }
                     }
                 }
 
@@ -604,7 +617,7 @@ impl Routine {
 
                 if index == row.len() - 1 {
                     if is_if || is_else {
-                        row_code += ":";
+                        row_code += "{";
                     } else {
                         row_code += " ";
                     }
@@ -613,7 +626,26 @@ impl Routine {
                 }
             }
 
-            *out += &format!("{:ind$}{}\n", "", row_code);
+            let mut cleaned = row_code.trim().to_string();
+
+            if !cleaned.is_empty() {
+                if !cleaned.ends_with("{") {
+                    cleaned += ";";
+                }
+
+                *out += &format!("{:ind$}{}\n", "", cleaned);
+                prev_row_indent = ind;
+            }
+        }
+
+        while prev_row_indent > indent {
+            prev_row_indent -= 4;
+            *out += &format!("{:ind$}}}\n", "", ind = prev_row_indent);
+        }
+
+        if self.name != "instantiation" {
+            indent -= 4;
+            *out += &format!("{:indent$}}}\n", "");
         }
     }
 

@@ -591,6 +591,16 @@ impl Execution {
                 self.outputs
                     .insert("message_category".to_string(), category);
             }
+            NodeOp::SetDebugLoc => {
+                // Pop and discard to keep stack consistent in pure VM runs
+                let _y = self.stack.pop();
+                let _x = self.stack.pop();
+                let _event = self.stack.pop();
+            }
+            NodeOp::SetPlayerCamera => {
+                // Pop and discard; host is responsible when present
+                let _mode = self.stack.pop();
+            }
             NodeOp::Time => {
                 self.stack.push(self.time.clone());
             }
@@ -604,20 +614,11 @@ impl Execution {
         program: &Program,
         host: &mut H,
     ) {
+        if host.handle_host_op(op, &mut self.stack) {
+            return;
+        }
+
         match op {
-            NodeOp::Action => {
-                let a = self.stack.pop().unwrap();
-                host.on_action(&a);
-            }
-            NodeOp::Intent => {
-                let a = self.stack.pop().unwrap();
-                host.on_intent(&a);
-            }
-            NodeOp::Message => {
-                let category = self.stack.pop().unwrap();
-                let text = self.stack.pop().unwrap();
-                host.on_message(&text, &category);
-            }
             NodeOp::FunctionCall(arity, total_locals, index) => {
                 self.push_locals_state();
                 self.locals = vec![VMValue::zero(); *total_locals as usize];
