@@ -1,3 +1,4 @@
+use super::hosthandler::HostHandler;
 use crate::vm::{NodeOp, Program, VMValue};
 use rustc_hash::FxHashMap;
 
@@ -20,7 +21,7 @@ pub struct Execution {
     /// Time
     pub time: VMValue,
 
-    /// Custom outputs set by special ops (e.g., Action)
+    /// Custom outputs set by special ops (legacy; prefer HostHandler)
     pub outputs: FxHashMap<String, VMValue>,
 }
 
@@ -565,9 +566,102 @@ impl Execution {
                 let a = self.stack.pop().unwrap();
                 self.outputs.insert("intent".to_string(), a);
             }
+            NodeOp::Message => {
+                let category = self.stack.pop().unwrap();
+                let text = self.stack.pop().unwrap();
+                self.outputs.insert("message_text".to_string(), text);
+                self.outputs
+                    .insert("message_category".to_string(), category);
+            }
             NodeOp::Time => {
                 self.stack.push(self.time.clone());
             }
+        }
+    }
+
+    #[inline(always)]
+    pub fn execute_op_host<H: HostHandler>(
+        &mut self,
+        op: &NodeOp,
+        program: &Program,
+        host: &mut H,
+    ) {
+        match op {
+            NodeOp::Action => {
+                let a = self.stack.pop().unwrap();
+                host.on_action(&a);
+            }
+            NodeOp::Intent => {
+                let a = self.stack.pop().unwrap();
+                host.on_intent(&a);
+            }
+            NodeOp::Message => {
+                let category = self.stack.pop().unwrap();
+                let text = self.stack.pop().unwrap();
+                host.on_message(&text, &category);
+            }
+            NodeOp::FunctionCall(arity, total_locals, index) => {
+                self.push_locals_state();
+                self.locals = vec![VMValue::zero(); *total_locals as usize];
+
+                for idx in (0..*arity as usize).rev() {
+                    if let Some(arg) = self.stack.pop() {
+                        self.locals[idx] = arg;
+                    }
+                }
+
+                let stack_base = self.stack.len();
+                let body = program.user_functions[*index].clone();
+                self.execute_host(&body, program, host);
+
+                let ret = if self.return_value.is_some() {
+                    self.return_value.take().unwrap_or(VMValue::zero())
+                } else if self.stack.len() > stack_base {
+                    self.stack.pop().unwrap()
+                } else {
+                    VMValue::zero()
+                };
+
+                self.stack.truncate(stack_base);
+                self.pop_locals_state();
+                self.stack.push(ret);
+            }
+            NodeOp::For(init, cond, incr, body) => {
+                let base = self.stack.len();
+                let mut iter = 0usize;
+                self.execute_host(init, program, host);
+                self.stack.truncate(base);
+
+                loop {
+                    self.execute_host(cond, program, host);
+
+                    let z = self.stack.pop().unwrap();
+                    if !z.is_truthy() {
+                        break;
+                    }
+                    self.stack.truncate(base);
+
+                    self.execute_host(body, program, host);
+                    self.stack.truncate(base);
+
+                    self.execute_host(incr, program, host);
+                    self.stack.truncate(base);
+
+                    iter += 1;
+                    if iter > 10_000_000 {
+                        panic!("Inifinite for loop detected");
+                    }
+                }
+            }
+            NodeOp::If(then_code, else_code) => {
+                let value = self.stack.pop().unwrap().is_truthy();
+                if value {
+                    self.execute_host(then_code, program, host);
+                } else if let Some(else_code) = else_code {
+                    self.execute_host(else_code, program, host);
+                }
+            }
+            _ => self.execute_op(op, program),
         }
     }
 
@@ -578,6 +672,20 @@ impl Execution {
                 break;
             }
             self.execute_op(op, program);
+        }
+    }
+
+    pub fn execute_host<H: HostHandler>(
+        &mut self,
+        code: &[NodeOp],
+        program: &Program,
+        host: &mut H,
+    ) {
+        for op in code {
+            if self.return_value.is_some() {
+                break;
+            }
+            self.execute_op_host(op, program, host);
         }
     }
 
@@ -636,6 +744,35 @@ impl Execution {
         self.execute(&program.user_functions[index], program);
 
         // Prefer an explicit return VMValue; else top of stack; else zero
+        if let Some(ret) = self.return_value.take() {
+            return ret;
+        }
+        if let Some(rc) = self.stack.pop() {
+            rc
+        } else {
+            VMValue::zero()
+        }
+    }
+
+    /// Execute a user function, invoking host handler methods inline for host-sensitive ops.
+    pub fn execute_function_host<H: HostHandler>(
+        &mut self,
+        args: &[VMValue],
+        index: usize,
+        program: &Program,
+        host: &mut H,
+    ) -> VMValue {
+        self.stack.truncate(0);
+        self.return_value = None;
+
+        let argc = args.len();
+        if self.locals.len() < argc {
+            self.locals.resize(argc, VMValue::zero());
+        }
+        self.locals[..argc].clone_from_slice(args);
+
+        self.execute_host(&program.user_functions[index], program, host);
+
         if let Some(ret) = self.return_value.take() {
             return ret;
         }

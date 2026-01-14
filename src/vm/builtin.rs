@@ -68,6 +68,7 @@ impl Default for Builtins {
         b.insert("print", 1, NodeOp::Print);
         b.insert("action", 1, NodeOp::Action);
         b.insert("intent", 1, NodeOp::Intent);
+        b.insert("message", 2, NodeOp::Message);
         b
     }
 }

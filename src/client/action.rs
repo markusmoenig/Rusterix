@@ -1,24 +1,28 @@
+use crate::vm::node::hosthandler::HostHandler;
 use crate::vm::*;
 use crate::{Assets, EntityAction, Value};
 use rustpython::vm::*;
-use std::{
-    str::FromStr,
-    sync::{LazyLock, RwLock},
-};
+use std::str::FromStr;
 
-pub static ACTIONCMD: LazyLock<RwLock<EntityAction>> =
-    LazyLock::new(|| RwLock::new(EntityAction::Off));
-
-pub static INTENTCMD: LazyLock<RwLock<String>> = LazyLock::new(|| RwLock::new(String::new()));
-
-fn action(action_str: String) {
-    if let Ok(action) = EntityAction::from_str(&action_str) {
-        *ACTIONCMD.write().unwrap() = action;
-    }
+#[derive(Default)]
+struct ClientHostHandler {
+    pub action: Option<EntityAction>,
 }
 
-fn intent(intent: String) {
-    *ACTIONCMD.write().unwrap() = EntityAction::Intent(intent.clone());
+impl HostHandler for ClientHostHandler {
+    fn on_action(&mut self, v: &VMValue) {
+        if let Some(s) = v.as_string() {
+            if let Ok(parsed) = EntityAction::from_str(s) {
+                self.action = Some(parsed);
+            }
+        }
+    }
+
+    fn on_intent(&mut self, v: &VMValue) {
+        if let Some(s) = v.as_string() {
+            self.action = Some(EntityAction::Intent(s.to_string()));
+        }
+    }
 }
 
 /// Set the current debug location in the grid.
@@ -137,23 +141,20 @@ impl ClientAction {
             .copied()
         {
             self.exec.reset(self.vm.context.globals.len());
+            let mut handler = ClientHostHandler::default();
             let args = [VMValue::from_string(event), VMValue::from_value(&value)];
-            let _ = self
-                .exec
-                .execute_function(&args, index, &self.vm.context.program);
+            let _ = self.exec.execute_function_host(
+                &args,
+                index,
+                &self.vm.context.program,
+                &mut handler,
+            );
 
-            if let Some(action_val) = self.exec.outputs.get("action") {
-                if let Some(s) = action_val.as_string() {
-                    action(s.to_string());
-                }
-            }
-            if let Some(intent_val) = self.exec.outputs.get("intent") {
-                if let Some(s) = intent_val.as_string() {
-                    intent(s.to_string());
-                }
+            if let Some(act) = handler.action {
+                return act;
             }
         }
 
-        ACTIONCMD.read().unwrap().clone()
+        EntityAction::Off
     }
 }

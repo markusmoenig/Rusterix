@@ -68,6 +68,7 @@ pub enum NodeOp {
     Print,
     Action,
     Intent,
+    Message,
     Eq,
     Ne,
     Lt,
