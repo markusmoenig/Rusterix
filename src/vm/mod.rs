@@ -246,4 +246,63 @@ mod tests {
         let result = exec.execute_function(&args, func_index, &script.context.program);
         assert_eq!(result.x, 0.0);
     }
+
+    #[test]
+    fn match_syntax_event() {
+        let mut script = VM::default();
+        let module = script
+            .parse_str(
+                r#"
+                fn user_event(event, value) {
+                    match event {
+                        "key_down" {
+                            if value == "w" {
+                                action("forward");
+                            }
+                        }
+                        "key_up" {
+                            action("none");
+                        }
+                        _ {
+                            action("noop");
+                        }
+                    }
+                }
+                "#,
+            )
+            .unwrap();
+        script.compile(&module).unwrap();
+
+        let func_index = script
+            .context
+            .program
+            .user_functions_name_map
+            .get("user_event")
+            .copied()
+            .unwrap();
+
+        let mut exec = Execution::new(script.context.globals.len());
+
+        exec.reset(script.context.globals.len());
+        let args = [VMValue::from_string("key_down"), VMValue::from_string("w")];
+        let _ = exec.execute_function(&args, func_index, &script.context.program);
+        assert_eq!(
+            exec.outputs
+                .get("action")
+                .and_then(|v| v.as_string())
+                .unwrap(),
+            "forward"
+        );
+
+        exec.reset(script.context.globals.len());
+        let args = [VMValue::from_string("key_up"), VMValue::from_string("w")];
+        let _ = exec.execute_function(&args, func_index, &script.context.program);
+        assert_eq!(
+            exec.outputs
+                .get("action")
+                .and_then(|v| v.as_string())
+                .unwrap(),
+            "none"
+        );
+    }
 }

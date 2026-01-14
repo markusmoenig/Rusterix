@@ -1,7 +1,7 @@
 use super::{
     ASTValue, AssignmentOperator, BinaryOperator, ComparisonOperator, EqualityOperator, Expr,
     IdVerifier, Location, LogicalOperator, Module, ParseError, Scanner, Stmt, Token, TokenType,
-    UnaryOperator, objectd::FunctionD,
+    UnaryOperator, builtin::Builtins, objectd::FunctionD,
 };
 use crate::zero_expr_float;
 use indexmap::IndexMap;
@@ -232,9 +232,9 @@ impl Parser {
                 }
 
                 // Import variables
+                let base = self.globals_map.len() as u32;
                 for (name, mat) in parser.globals_map {
-                    self.globals_map
-                        .insert(name, mat + self.globals_map.len() as u32);
+                    self.globals_map.insert(name, mat + base);
                 }
 
                 module = Some(m);
@@ -338,6 +338,8 @@ impl Parser {
     fn statement(&mut self) -> Result<Stmt, ParseError> {
         if self.match_token(vec![TokenType::If]) {
             self.if_statement()
+        } else if self.match_token(vec![TokenType::Match]) {
+            self.match_statement()
         } else if self.match_token(vec![TokenType::LeftBrace]) {
             self.block()
         } else if self.match_token(vec![TokenType::Return]) {
@@ -440,6 +442,120 @@ impl Parser {
 
     fn expression(&mut self) -> Result<Expr, ParseError> {
         self.assignment()
+    }
+
+    fn match_statement(&mut self) -> Result<Stmt, ParseError> {
+        let line = self.current_line;
+        let scrutinee = self.expression()?;
+        self.consume(
+            TokenType::LeftBrace,
+            "Expect '{' after match expression",
+            line,
+        )?;
+
+        let mut arms: Vec<(Expr, Vec<Box<Stmt>>)> = vec![];
+        let mut default_arm: Option<Vec<Box<Stmt>>> = None;
+
+        while !self.check(TokenType::RightBrace) && !self.is_at_end() {
+            let token = self.peek();
+            let is_default = token.kind == TokenType::Identifier && token.lexeme == "_";
+            let pattern_expr = if is_default {
+                self.advance();
+                None
+            } else {
+                match token.kind {
+                    TokenType::String => {
+                        let t = self.advance().unwrap();
+                        Some(Expr::Value(
+                            ASTValue::String(t.lexeme.clone().replace("\"", "")),
+                            vec![],
+                            vec![],
+                            self.create_loc(t.line),
+                        ))
+                    }
+                    TokenType::IntegerNumber => {
+                        let t = self.advance().unwrap();
+                        let num = t.lexeme.parse::<f32>().map_err(|_| {
+                            ParseError::new("Invalid integer literal", t.line, &self.path)
+                        })?;
+                        Some(Expr::Value(
+                            ASTValue::Float(num),
+                            vec![],
+                            vec![],
+                            self.create_loc(t.line),
+                        ))
+                    }
+                    TokenType::FloatNumber => {
+                        let t = self.advance().unwrap();
+                        let num = t.lexeme.parse::<f32>().map_err(|_| {
+                            ParseError::new("Invalid float literal", t.line, &self.path)
+                        })?;
+                        Some(Expr::Value(
+                            ASTValue::Float(num),
+                            vec![],
+                            vec![],
+                            self.create_loc(t.line),
+                        ))
+                    }
+                    _ => {
+                        return Err(ParseError::new(
+                            "Expected string/number literal or _ in match arm",
+                            token.line,
+                            &self.path,
+                        ));
+                    }
+                }
+            };
+
+            self.consume(
+                TokenType::LeftBrace,
+                "Expect '{' to start match arm block",
+                line,
+            )?;
+            let mut stmts = vec![];
+            while !self.check(TokenType::RightBrace) && !self.is_at_end() {
+                stmts.push(Box::new(self.statement()?));
+            }
+            self.consume(
+                TokenType::RightBrace,
+                "Expect '}' after match arm block",
+                line,
+            )?;
+
+            if let Some(pat) = pattern_expr {
+                arms.push((pat, stmts));
+            } else {
+                default_arm = Some(stmts);
+            }
+        }
+
+        self.consume(TokenType::RightBrace, "Expect '}' after match arms", line)?;
+
+        // Desugar into nested if/else statements
+        let mut current_else: Option<Box<Stmt>> =
+            default_arm.map(|b| Box::new(Stmt::Block(b, self.create_loc(line))));
+        for (pattern, block) in arms.into_iter().rev() {
+            let cond = Expr::Equality(
+                Box::new(scrutinee.clone()),
+                EqualityOperator::Equal,
+                Box::new(pattern),
+                self.create_loc(line),
+            );
+            let then_block = Box::new(Stmt::Block(block, self.create_loc(line)));
+            let if_stmt = Stmt::If(
+                Box::new(cond),
+                then_block,
+                current_else,
+                self.create_loc(line),
+            );
+            current_else = Some(Box::new(if_stmt));
+        }
+
+        if let Some(stmt) = current_else {
+            Ok(*stmt)
+        } else {
+            Ok(Stmt::Empty)
+        }
     }
 
     fn assignment(&mut self) -> Result<Expr, ParseError> {
@@ -966,25 +1082,6 @@ impl Parser {
                         swizzle = self.get_swizzle_at_current();
                     }
                 }
-                if token.lexeme == "uv"
-                    || token.lexeme == "color"
-                    || token.lexeme == "roughness"
-                    || token.lexeme == "metallic"
-                    || token.lexeme == "emissive"
-                    || token.lexeme == "opacity"
-                    || token.lexeme == "bump"
-                    || token.lexeme == "normal"
-                    || token.lexeme == "hitpoint"
-                    || token.lexeme == "time"
-                {
-                    Ok(Expr::Variable(
-                        token.lexeme.clone(),
-                        swizzle,
-                        field_path,
-                        self.create_loc(token.line),
-                    ))
-                } else
-                // Local variables in functions
                 if self.locals_map.contains_key(&token.lexeme) {
                     Ok(Expr::Variable(
                         token.lexeme,
@@ -1008,8 +1105,14 @@ impl Parser {
                         field_path,
                         self.create_loc(token.line),
                     ))
+                } else if Builtins::default().get(&token.lexeme).is_some() {
+                    Ok(Expr::Variable(
+                        token.lexeme,
+                        swizzle,
+                        field_path,
+                        self.create_loc(token.line),
+                    ))
                 } else {
-                    // Check against inbuilt functions
                     Err(ParseError::new(
                         format!("Unknown identifier '{}'", token.lexeme),
                         token.line,

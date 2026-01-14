@@ -46,6 +46,7 @@ pub enum TokenType {
     Else,
     False,
     For,
+    Match,
     Fn,
     If,
     Void,
@@ -135,6 +136,7 @@ impl Scanner {
         keywords.insert("else", TokenType::Else);
         keywords.insert("false", TokenType::False);
         keywords.insert("for", TokenType::For);
+        keywords.insert("match", TokenType::Match);
         keywords.insert("fn", TokenType::Fn);
         keywords.insert("if", TokenType::If);
         keywords.insert("void", TokenType::Void);
