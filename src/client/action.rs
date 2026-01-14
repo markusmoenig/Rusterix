@@ -23,14 +23,14 @@ impl HostHandler for ClientHostHandler {
             self.action = Some(EntityAction::Intent(s.to_string()));
         }
     }
+
+    fn on_set_debug_loc(&mut self, _event: &VMValue, _x: &VMValue, _y: &VMValue) {}
 }
 
 /// Set the current debug location in the grid.
 fn _set_debug_loc(_event: String, _x: u32, _y: u32, _vm: &VirtualMachine) {}
 
 pub struct ClientAction {
-    // interp: Interpreter,
-    // scope: Arc<Mutex<rustpython_vm::scope::Scope>>,
     vm: VM,
     class_name: String,
     exec: Execution,
@@ -45,35 +45,7 @@ impl Default for ClientAction {
 
 impl ClientAction {
     pub fn new() -> Self {
-        /*
-        let interp = rustpython::InterpreterConfig::new()
-            .init_stdlib()
-            .interpreter();
-
-        let scope = Arc::new(Mutex::new(interp.enter(|vm| vm.new_scope_with_builtins())));
-
-        interp.enter(|vm| {
-            let scope = scope.lock().unwrap();
-
-            let _ = scope
-                .globals
-                .set_item("action", vm.new_function("action", action).into(), vm);
-
-            let _ = scope
-                .globals
-                .set_item("intent", vm.new_function("intent", intent).into(), vm);
-
-            let _ = scope.globals.set_item(
-                "set_debug_loc",
-                vm.new_function("set_debug_loc", set_debug_loc).into(),
-                vm,
-            );
-        });
-        */
-
         Self {
-            // interp,
-            // scope,
             vm: VM::default(),
             class_name: String::new(),
             exec: Execution::new(0),
@@ -84,20 +56,6 @@ impl ClientAction {
     /// Init
     pub fn init(&mut self, class_name: String, assets: &Assets) {
         if let Some((entity_source, _)) = assets.entities.get(&class_name) {
-            /*
-            if let Err(err) = self.execute(entity_source) {
-                println!(
-                    "Client: Error Compiling {} Character Class: {}",
-                    class_name, err,
-                );
-            }
-            if let Err(err) = self.execute(&format!("{} = {}()", class_name, class_name)) {
-                println!(
-                    "Client: Error Installing {} Character Class: {}",
-                    class_name, err,
-                );
-            }*/
-
             let result = self.vm.prepare_str(entity_source);
             match result {
                 Ok(program) => {

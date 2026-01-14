@@ -14,6 +14,9 @@ pub struct Program {
     /// Code of all user defined functions.
     pub user_functions: Vec<Arc<[NodeOp]>>,
 
+    /// Locals count per user function (parameters + locals).
+    pub user_functions_locals: Vec<usize>,
+
     /// Map of user function names to their indices.
     pub user_functions_name_map: FxHashMap<String, usize>,
 }
@@ -25,6 +28,7 @@ impl Program {
             user_functions: vec![],
             user_functions_name_map: FxHashMap::default(),
             globals: 0,
+            user_functions_locals: vec![],
         }
     }
 }

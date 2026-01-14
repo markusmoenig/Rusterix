@@ -21,7 +21,7 @@ pub struct CompileVisitor {
     pub environment: Environment,
     functions: FxHashMap<String, ASTFunction>,
 
-    user_functions: IndexMap<String, (usize, IndexMap<String, Option<Vec<NodeOp>>>, usize)>,
+    user_functions: IndexMap<String, (usize, IndexMap<String, Option<Vec<NodeOp>>>, usize, usize)>,
 
     /// List of local variables which are in scope (inside functions)
     locals: IndexSet<String>,
@@ -119,10 +119,20 @@ impl Visitor for CompileVisitor {
     ) -> Result<ASTValue, RuntimeError> {
         _ = expression.accept(self, ctx)?;
 
-        if let Some(index) = self.locals.get_index_of(name) {
+        if self.locals.is_empty() {
+            // Global scope
+            if let Some(index) = ctx.globals.get(name) {
+                ctx.emit(NodeOp::StoreGlobal(*index as usize));
+            }
+        } else {
+            // Function scope: ensure the local exists, then store.
+            let index = if let Some(idx) = self.locals.get_index_of(name) {
+                idx
+            } else {
+                self.locals.insert(name.to_string());
+                self.locals.get_index_of(name).unwrap()
+            };
             ctx.emit(NodeOp::StoreLocal(index));
-        } else if let Some(index) = ctx.globals.get(name) {
-            ctx.emit(NodeOp::StoreGlobal(*index as usize));
         }
 
         // self.environment.define(name.to_string(), v);
@@ -263,7 +273,7 @@ impl Visitor for CompileVisitor {
         name: String,
         swizzle: &[u8],
         _field_path: &[String],
-        _loc: &Location,
+        loc: &Location,
         ctx: &mut Context,
     ) -> Result<ASTValue, RuntimeError> {
         let mut rc = ASTValue::None;
@@ -321,28 +331,26 @@ impl Visitor for CompileVisitor {
             if !swizzle.is_empty() {
                 ctx.emit(NodeOp::GetComponents(swizzle.to_vec()));
             }
-        } else if self.functions.contains_key(&name) {
-            rc = ASTValue::Function(name.clone(), vec![], Box::new(ASTValue::None));
-            if !swizzle.is_empty() {
-                ctx.emit(NodeOp::GetComponents(swizzle.to_vec()));
-            }
-        } else if self.user_functions.contains_key(&name) {
-            rc = ASTValue::Function(name.clone(), vec![], Box::new(ASTValue::None));
-            if !swizzle.is_empty() {
-                ctx.emit(NodeOp::GetComponents(swizzle.to_vec()));
-            }
         } else if let Some(index) = self.locals.get_index_of(&name) {
             ctx.emit(NodeOp::LoadLocal(index));
             if !swizzle.is_empty() {
                 ctx.emit(NodeOp::GetComponents(swizzle.to_vec()));
             }
-        } else {
-            if let Some(index) = ctx.globals.get(&name) {
-                ctx.emit(NodeOp::LoadGlobal(*index as usize));
-                if !swizzle.is_empty() {
-                    ctx.emit(NodeOp::GetComponents(swizzle.to_vec()));
-                }
+        } else if let Some(index) = ctx.globals.get(&name) {
+            ctx.emit(NodeOp::LoadGlobal(*index as usize));
+            if !swizzle.is_empty() {
+                ctx.emit(NodeOp::GetComponents(swizzle.to_vec()));
             }
+        } else if self.functions.contains_key(&name) || self.user_functions.contains_key(&name) {
+            rc = ASTValue::Function(name.clone(), vec![], Box::new(ASTValue::None));
+            if !swizzle.is_empty() {
+                ctx.emit(NodeOp::GetComponents(swizzle.to_vec()));
+            }
+        } else {
+            return Err(RuntimeError::new(
+                format!("Unknown identifier '{}'", name),
+                loc,
+            ));
         }
         // else if let Some(vv) = self.environment.get(&name) {
         //     rc = vv;
@@ -535,9 +543,10 @@ impl Visitor for CompileVisitor {
                         ));
                     }
                 }
-            } else if let Some((arity, params, index)) = self.user_functions.get(&name) {
+            } else if let Some((arity, params, locals_len, index)) = self.user_functions.get(&name)
+            {
                 let func_index = *index;
-                let total_locals = params.len();
+                let total_locals = *locals_len;
                 if *arity != args.len() {
                     return Err(RuntimeError::new(
                         format!(
@@ -626,8 +635,12 @@ impl Visitor for CompileVisitor {
 
         let index = ctx.program.user_functions.len();
 
-        self.user_functions
-            .insert(objectd.name.clone(), (objectd.arity, cp.clone(), index));
+        // locals_len counts parameters + any locals declared in the body.
+        let locals_len = cp.len();
+        self.user_functions.insert(
+            objectd.name.clone(),
+            (objectd.arity, cp.clone(), locals_len, index),
+        );
 
         objectd.block.accept(self, ctx)?;
         if let Some(mut codes) = ctx.take_last_custom_target() {
@@ -635,6 +648,7 @@ impl Visitor for CompileVisitor {
             ctx.program
                 .user_functions
                 .push(Arc::from(codes.into_boxed_slice()));
+            ctx.program.user_functions_locals.push(locals_len);
             ctx.program
                 .user_functions_name_map
                 .insert(objectd.name.clone(), index);

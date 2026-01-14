@@ -1,4 +1,5 @@
 use crate::server::py_fn::*;
+use crate::server::region_host::run_server_fn;
 use crate::vm::*;
 use crate::{
     Assets, Choice, Currency, Entity, EntityAction, Item, Map, MultipleChoice, PixelSource,
@@ -72,6 +73,7 @@ pub struct RegionInstance {
     pub id: u32,
 
     vm: VM,
+    exec: Execution,
 
     interp: Interpreter,
     scope: Arc<Mutex<rustpython_vm::scope::Scope>>,
@@ -353,6 +355,7 @@ impl RegionInstance {
             id: region_id,
 
             vm: VM::default(),
+            exec: Execution::default(),
 
             interp,
             scope,
@@ -404,7 +407,8 @@ impl RegionInstance {
         for (name, (entity_source, _entity_data)) in &assets.entities {
             match self.vm.prepare_str(entity_source) {
                 Ok(program) => {
-                    ctx.entity_programs.insert(name.clone(), program);
+                    ctx.entity_programs
+                        .insert(name.clone(), std::sync::Arc::new(program));
                 }
                 Err(error) => {
                     ctx.startup_errors.push(format!(
@@ -419,18 +423,18 @@ impl RegionInstance {
 
         // Installing Entity Class Templates
         for (name, (entity_source, entity_data)) in &assets.entities {
-            if let Err(err) = self.execute(entity_source) {
-                ctx.startup_errors.push(format!(
-                    "{}: Error Compiling {} Character Class: {}",
-                    self.name, name, err,
-                ));
-            }
-            if let Err(err) = self.execute(&format!("{} = {}()", name, name)) {
-                ctx.startup_errors.push(format!(
-                    "{}: Error Installing {} Character Class: {}",
-                    self.name, name, err,
-                ));
-            }
+            // if let Err(err) = self.execute(entity_source) {
+            //     ctx.startup_errors.push(format!(
+            //         "{}: Error Compiling {} Character Class: {}",
+            //         self.name, name, err,
+            //     ));
+            // }
+            // if let Err(err) = self.execute(&format!("{} = {}()", name, name)) {
+            //     ctx.startup_errors.push(format!(
+            //         "{}: Error Installing {} Character Class: {}",
+            //         self.name, name, err,
+            //     ));
+            // }
 
             // Store entity classes which handle player
             match entity_data.parse::<toml::Table>() {
@@ -459,18 +463,18 @@ impl RegionInstance {
 
         // Installing Item Class Templates
         for (name, (item_source, item_data)) in &assets.items {
-            if let Err(err) = self.execute(item_source) {
-                ctx.startup_errors.push(format!(
-                    "{}: Error Compiling {} Item Class: {}",
-                    self.name, name, err,
-                ));
-            }
-            if let Err(err) = self.execute(&format!("{} = {}()", name, name)) {
-                ctx.startup_errors.push(format!(
-                    "{}: Error Installing {} Item Class: {}",
-                    self.name, name, err,
-                ));
-            }
+            // if let Err(err) = self.execute(item_source) {
+            //     ctx.startup_errors.push(format!(
+            //         "{}: Error Compiling {} Item Class: {}",
+            //         self.name, name, err,
+            //     ));
+            // }
+            // if let Err(err) = self.execute(&format!("{} = {}()", name, name)) {
+            //     ctx.startup_errors.push(format!(
+            //         "{}: Error Installing {} Item Class: {}",
+            //         self.name, name, err,
+            //     ));
+            // }
             ctx.item_class_data.insert(name.clone(), item_data.clone());
         }
 
@@ -610,23 +614,31 @@ impl RegionInstance {
         // Send "startup" event to all entities.
         for entity in entities.iter() {
             if let Some(class_name) = entity.get_attr_string("class_name") {
-                let cmd = format!("{}.event(\"startup\", \"\")", class_name);
+                // let cmd = format!("{}.event(\"startup\", \"\")", class_name);
                 with_regionctx(self.id, |ctx: &mut RegionCtx| {
                     ctx.entity_classes.insert(entity.id, class_name.clone());
                     ctx.curr_entity_id = entity.id;
                 });
-                if let Err(err) = self.execute(&cmd) {
-                    send_log_message(
-                        self.id,
-                        format!(
-                            "{}: Event Error ({}) for '{}': {}",
-                            name,
-                            "startup",
-                            self.get_entity_name(entity.id),
-                            err,
-                        ),
-                    );
-                }
+
+                with_regionctx(self.id, |ctx: &mut RegionCtx| {
+                    if let Some(program) = ctx.entity_programs.get(&class_name).cloned() {
+                        let args = [VMValue::from_string("startup"), VMValue::zero()];
+                        run_server_fn(&mut self.exec, &args, &program, ctx);
+                    }
+                });
+
+                // if let Err(err) = self.execute(&cmd) {
+                //     send_log_message(
+                //         self.id,
+                //         format!(
+                //             "{}: Event Error ({}) for '{}': {}",
+                //             name,
+                //             "startup",
+                //             self.get_entity_name(entity.id),
+                //             err,
+                //         ),
+                //     );
+                // }
 
                 // Determine, set and notify the entity about the sector it is in.
                 let mut sector_name = String::new();
@@ -657,18 +669,18 @@ impl RegionInstance {
                     ctx.item_classes.insert(item.id, class_name.clone());
                     ctx.curr_item_id = Some(item.id);
                 });
-                if let Err(err) = self.execute(&cmd) {
-                    send_log_message(
-                        self.id,
-                        format!(
-                            "{}: Item Event Error ({}) for '{}': {}",
-                            name,
-                            "startup",
-                            self.get_entity_name(item.id),
-                            err,
-                        ),
-                    );
-                }
+                // if let Err(err) = self.execute(&cmd) {
+                //     send_log_message(
+                //         self.id,
+                //         format!(
+                //             "{}: Item Event Error ({}) for '{}': {}",
+                //             name,
+                //             "startup",
+                //             self.get_entity_name(item.id),
+                //             err,
+                //         ),
+                //     );
+                // }
             }
         }
         with_regionctx(self.id, |ctx| {
@@ -678,44 +690,44 @@ impl RegionInstance {
         // Running the character setup scripts for the class instances
         for entity in entities.iter() {
             if let Some(setup) = entity.get_attr_string("setup") {
-                if let Err(err) = self.execute(&setup) {
-                    send_log_message(
-                        self.id,
-                        format!(
-                            "{}: Setup '{}/{}': {}",
-                            name,
-                            entity.get_attr_string("name").unwrap_or("Unknown".into()),
-                            entity
-                                .get_attr_string("class_name")
-                                .unwrap_or("Unknown".into()),
-                            err,
-                        ),
-                    );
-                    with_regionctx(self.id, |ctx| {
-                        ctx.error_count += 1;
-                    });
-                }
+                // if let Err(err) = self.execute(&setup) {
+                //     send_log_message(
+                //         self.id,
+                //         format!(
+                //             "{}: Setup '{}/{}': {}",
+                //             name,
+                //             entity.get_attr_string("name").unwrap_or("Unknown".into()),
+                //             entity
+                //                 .get_attr_string("class_name")
+                //                 .unwrap_or("Unknown".into()),
+                //             err,
+                //         ),
+                //     );
+                //     with_regionctx(self.id, |ctx| {
+                //         ctx.error_count += 1;
+                //     });
+                // }
 
                 with_regionctx(self.id, |ctx| {
                     ctx.curr_entity_id = entity.id;
                 });
-                if let Err(err) = self.execute("setup()") {
-                    send_log_message(
-                        self.id,
-                        format!(
-                            "{}: Setup '{}/{}': {}",
-                            name,
-                            entity.get_attr_string("name").unwrap_or("Unknown".into()),
-                            entity
-                                .get_attr_string("class_name")
-                                .unwrap_or("Unknown".into()),
-                            err,
-                        ),
-                    );
-                    with_regionctx(self.id, |ctx| {
-                        ctx.error_count += 1;
-                    });
-                }
+                // if let Err(err) = self.execute("setup()") {
+                //     send_log_message(
+                //         self.id,
+                //         format!(
+                //             "{}: Setup '{}/{}': {}",
+                //             name,
+                //             entity.get_attr_string("name").unwrap_or("Unknown".into()),
+                //             entity
+                //                 .get_attr_string("class_name")
+                //                 .unwrap_or("Unknown".into()),
+                //             err,
+                //         ),
+                //     );
+                //     with_regionctx(self.id, |ctx| {
+                //         ctx.error_count += 1;
+                //     });
+                // }
 
                 /*
                 // Setting the data for the entity.
@@ -743,42 +755,42 @@ impl RegionInstance {
         });
         for item in items.iter_mut() {
             if let Some(setup) = item.get_attr_string("setup") {
-                if let Err(err) = self.execute(&setup) {
-                    send_log_message(
-                        self.id,
-                        format!(
-                            "{}: Item Setup '{}/{}': {}",
-                            name,
-                            item.get_attr_string("name").unwrap_or("Unknown".into()),
-                            item.get_attr_string("class_name")
-                                .unwrap_or("Unknown".into()),
-                            err,
-                        ),
-                    );
-                    with_regionctx(self.id, |ctx| {
-                        ctx.error_count += 1;
-                    });
-                }
+                // if let Err(err) = self.execute(&setup) {
+                //     send_log_message(
+                //         self.id,
+                //         format!(
+                //             "{}: Item Setup '{}/{}': {}",
+                //             name,
+                //             item.get_attr_string("name").unwrap_or("Unknown".into()),
+                //             item.get_attr_string("class_name")
+                //                 .unwrap_or("Unknown".into()),
+                //             err,
+                //         ),
+                //     );
+                //     with_regionctx(self.id, |ctx| {
+                //         ctx.error_count += 1;
+                //     });
+                // }
 
                 with_regionctx(self.id, |ctx| {
                     ctx.curr_item_id = Some(item.id);
                 });
-                if let Err(err) = self.execute("setup()") {
-                    send_log_message(
-                        self.id,
-                        format!(
-                            "{}: Item Setup '{}/{}': {}",
-                            name,
-                            item.get_attr_string("name").unwrap_or("Unknown".into()),
-                            item.get_attr_string("class_name")
-                                .unwrap_or("Unknown".into()),
-                            err,
-                        ),
-                    );
-                    with_regionctx(self.id, |ctx| {
-                        ctx.error_count += 1;
-                    });
-                }
+                // if let Err(err) = self.execute("setup()") {
+                //     send_log_message(
+                //         self.id,
+                //         format!(
+                //             "{}: Item Setup '{}/{}': {}",
+                //             name,
+                //             item.get_attr_string("name").unwrap_or("Unknown".into()),
+                //             item.get_attr_string("class_name")
+                //                 .unwrap_or("Unknown".into()),
+                //             err,
+                //         ),
+                //     );
+                //     with_regionctx(self.id, |ctx| {
+                //         ctx.error_count += 1;
+                //     });
+                // }
             }
             // Setting the data for the item.
             if let Some(class_name) = item.get_attr_string("class_name") {
@@ -1853,7 +1865,7 @@ impl RegionInstance {
     }
 
     /// Create a new entity instance.
-    pub fn create_entity_instance(&self, mut entity: Entity) {
+    pub fn create_entity_instance(&mut self, mut entity: Entity) {
         entity.id = get_global_id();
         entity.set_attribute(
             "_source_seq",
@@ -1908,24 +1920,31 @@ impl RegionInstance {
             });
 
             // Send "startup" event
-            let cmd = format!("{}.event(\"startup\", \"\")", class_name);
-            if let Err(err) = self.execute(&cmd) {
-                send_log_message(
-                    0,
-                    format!(
-                        "{}: Event Error ({}) for '{}': {}",
-                        self.name,
-                        "startup",
-                        self.get_entity_name(entity.id),
-                        err,
-                    ),
-                );
-            }
+            // let cmd = format!("{}.event(\"startup\", \"\")", class_name);
+            // if let Err(err) = self.execute(&cmd) {
+            //     send_log_message(
+            //         0,
+            //         format!(
+            //             "{}: Event Error ({}) for '{}': {}",
+            //             self.name,
+            //             "startup",
+            //             self.get_entity_name(entity.id),
+            //             err,
+            //         ),
+            //     );
+            // }
+            //
 
             // Determine, set and notify the entity about the sector it is in.
             let mut sector_name = String::new();
 
             with_regionctx(self.id, |ctx: &mut RegionCtx| {
+                // Send startup event
+                if let Some(program) = ctx.entity_programs.get(&class_name).cloned() {
+                    let args = [VMValue::from_string("startup"), VMValue::zero()];
+                    run_server_fn(&mut self.exec, &args, &program, ctx);
+                }
+
                 if let Some(sector) = ctx.map.find_sector_at(entity.get_pos_xz()) {
                     sector_name = sector.name.clone();
                 }

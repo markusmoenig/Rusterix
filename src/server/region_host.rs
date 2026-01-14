@@ -1,6 +1,5 @@
-use crate::vm::node::hosthandler::HostHandler;
-use crate::vm::{Execution, VMValue};
-use crate::{EntityAction, RegionCtx, Value};
+use crate::vm::*;
+use crate::{EntityAction, PlayerCamera, RegionCtx, Value};
 
 struct RegionHost<'a> {
     ctx: &'a mut RegionCtx,
@@ -44,16 +43,32 @@ impl<'a> HostHandler for RegionHost<'a> {
             println!("Message to {} [{}]: {}", self.ctx.curr_entity_id, cat, msg);
         }
     }
+
+    /// Set the player camera mode which maps abstract movement input ("left" etc) to movement.
+    fn on_set_player_camera(&mut self, mode: &VMValue) {
+        if let Some(entity) = self.ctx.get_current_entity_mut() {
+            if let Some(camera) = &mode.string {
+                let player_camera = match camera.as_str() {
+                    "iso" => PlayerCamera::D3Iso,
+                    "firstp" => PlayerCamera::D3FirstP,
+                    _ => PlayerCamera::D2,
+                };
+                entity.set_attribute("player_camera", Value::PlayerCamera(player_camera));
+            }
+        }
+    }
 }
 
 // Usage when executing a compiled function:
-fn run_server_fn(
+pub fn run_server_fn(
     exec: &mut Execution,
-    func_index: usize,
     args: &[VMValue],
     program: &crate::vm::Program,
     region_ctx: &mut RegionCtx,
 ) {
-    let mut host = RegionHost { ctx: region_ctx };
-    let _ret = exec.execute_function_host(args, func_index, program, &mut host);
+    if let Some(index) = program.user_functions_name_map.get("event").copied() {
+        exec.reset(program.globals);
+        let mut host = RegionHost { ctx: region_ctx };
+        let _ret = exec.execute_function_host(args, index, program, &mut host);
+    }
 }

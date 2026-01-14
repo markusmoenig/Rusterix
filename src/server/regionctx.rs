@@ -2,7 +2,7 @@ use crate::prelude::*;
 use crate::vm::Program;
 use crate::{CollisionWorld, MapMini};
 use crossbeam_channel::{Receiver, Sender};
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock};
 use theframework::prelude::*;
 use toml::Table;
 use uuid::Uuid;
@@ -48,8 +48,8 @@ pub struct RegionCtx {
     pub to_execute_entity: Vec<(u32, String, String)>,
     pub to_execute_item: Vec<(u32, String, String)>,
 
-    pub entity_programs: FxHashMap<String, Program>,
-    pub item_programs: FxHashMap<String, Program>,
+    pub entity_programs: FxHashMap<String, Arc<Program>>,
+    pub item_programs: FxHashMap<String, Arc<Program>>,
 
     pub error_count: u32,
     pub startup_errors: Vec<String>,
@@ -64,4 +64,46 @@ pub struct RegionCtx {
     pub health_attr: String,
 
     pub currencies: Currencies,
+}
+
+impl RegionCtx {
+    /// Search for a mutable reference to an entity with the given ID.
+    pub fn get_entity_mut(&mut self, entity_id: u32) -> Option<&mut Entity> {
+        self.map
+            .entities
+            .iter_mut()
+            .find(|entity| entity.id == entity_id)
+    }
+
+    /// Search for a mutable reference to the current entity.
+    pub fn get_current_entity_mut(&mut self) -> Option<&mut Entity> {
+        self.map
+            .entities
+            .iter_mut()
+            .find(|entity| entity.id == self.curr_entity_id)
+    }
+
+    /// Search for a mutable reference to an item with the given ID. Checks the map and the inventory of each entity.
+    pub fn get_item_mut(&mut self, item_id: u32) -> Option<&mut Item> {
+        if let Some(item) = self.map.items.iter_mut().find(|item| item.id == item_id) {
+            return Some(item);
+        }
+
+        // Look in each entity’s inventory
+        for entity in self.map.entities.iter_mut() {
+            for item in entity.inventory.iter_mut() {
+                if let Some(item) = item {
+                    if item.id == item_id {
+                        return Some(item);
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    /// Search for a mutable reference to the current item.
+    pub fn get_current_item_mut(&mut self) -> Option<&mut Item> {
+        self.curr_item_id.and_then(|id| self.get_item_mut(id))
+    }
 }

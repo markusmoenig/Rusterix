@@ -38,6 +38,10 @@ impl Execution {
         }
     }
 
+    pub fn default() -> Self {
+        Self::new(0)
+    }
+
     pub fn new_from_var(execution: &Execution) -> Self {
         Self {
             globals: execution.globals.clone(),
@@ -754,8 +758,9 @@ impl Execution {
 
         // Prepare locals without reallocating each time
         let argc = args.len();
-        if self.locals.len() < argc {
-            self.locals.resize(argc, VMValue::zero());
+        let total_locals = program.user_functions_locals[index];
+        if self.locals.len() < total_locals {
+            self.locals.resize(total_locals, VMValue::zero());
         }
         // Copy args into locals in order (0..argc)
         self.locals[..argc].clone_from_slice(args);
@@ -785,8 +790,9 @@ impl Execution {
         self.return_value = None;
 
         let argc = args.len();
-        if self.locals.len() < argc {
-            self.locals.resize(argc, VMValue::zero());
+        let total_locals = program.user_functions_locals[index];
+        if self.locals.len() < total_locals {
+            self.locals.resize(total_locals, VMValue::zero());
         }
         self.locals[..argc].clone_from_slice(args);
 
