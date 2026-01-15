@@ -404,13 +404,14 @@ impl RegionInstance {
         ctx.currencies.base_currency = "G".to_string();
 
         // Compile Entity Template Scripts
-        for (name, (entity_source, _entity_data)) in &assets.entities {
+        for (name, (entity_source, entity_data)) in &assets.entities {
             match self.vm.prepare_str(entity_source) {
                 Ok(program) => {
                     ctx.entity_programs
                         .insert(name.clone(), std::sync::Arc::new(program));
                 }
                 Err(error) => {
+                    println!("ERROR {}: {}", name, error.to_string());
                     ctx.startup_errors.push(format!(
                         "{}: Error Compiling {} Character Class: {}",
                         self.name,
@@ -419,22 +420,6 @@ impl RegionInstance {
                     ));
                 }
             }
-        }
-
-        // Installing Entity Class Templates
-        for (name, (entity_source, entity_data)) in &assets.entities {
-            // if let Err(err) = self.execute(entity_source) {
-            //     ctx.startup_errors.push(format!(
-            //         "{}: Error Compiling {} Character Class: {}",
-            //         self.name, name, err,
-            //     ));
-            // }
-            // if let Err(err) = self.execute(&format!("{} = {}()", name, name)) {
-            //     ctx.startup_errors.push(format!(
-            //         "{}: Error Installing {} Character Class: {}",
-            //         self.name, name, err,
-            //     ));
-            // }
 
             // Store entity classes which handle player
             match entity_data.parse::<toml::Table>() {
@@ -461,8 +446,65 @@ impl RegionInstance {
                 .insert(name.clone(), entity_data.clone());
         }
 
+        /*
+        // Installing Entity Class Templates
+        for (name, (entity_source, entity_data)) in &assets.entities {
+            if let Err(err) = self.execute(entity_source) {
+                ctx.startup_errors.push(format!(
+                    "{}: Error Compiling {} Character Class: {}",
+                    self.name, name, err,
+                ));
+            }
+            if let Err(err) = self.execute(&format!("{} = {}()", name, name)) {
+                ctx.startup_errors.push(format!(
+                    "{}: Error Installing {} Character Class: {}",
+                    self.name, name, err,
+                ));
+            }
+
+            // Store entity classes which handle player
+            match entity_data.parse::<toml::Table>() {
+                Ok(data) => {
+                    if let Some(game) = data.get("attributes").and_then(toml::Value::as_table) {
+                        if let Some(value) = game.get("player") {
+                            if let Some(v) = value.as_bool() {
+                                if v {
+                                    ctx.entity_player_classes.insert(name.clone());
+                                }
+                            }
+                        }
+                    }
+                }
+                Err(err) => {
+                    ctx.startup_errors.push(format!(
+                        "{}: Error Parsing {} Entity Class: {}",
+                        self.name, name, err,
+                    ));
+                }
+            }
+
+            ctx.entity_class_data
+                .insert(name.clone(), entity_data.clone());
+        }*/
+
         // Installing Item Class Templates
         for (name, (item_source, item_data)) in &assets.items {
+            match self.vm.prepare_str(item_source) {
+                Ok(program) => {
+                    ctx.item_programs
+                        .insert(name.clone(), std::sync::Arc::new(program));
+                }
+                Err(error) => {
+                    println!("ERROR {}: {}", name, error.to_string());
+                    ctx.startup_errors.push(format!(
+                        "{}: Error Compiling {} Item Class: {}",
+                        self.name,
+                        name,
+                        error.to_string(),
+                    ));
+                }
+            }
+
             // if let Err(err) = self.execute(item_source) {
             //     ctx.startup_errors.push(format!(
             //         "{}: Error Compiling {} Item Class: {}",
@@ -618,9 +660,7 @@ impl RegionInstance {
                 with_regionctx(self.id, |ctx: &mut RegionCtx| {
                     ctx.entity_classes.insert(entity.id, class_name.clone());
                     ctx.curr_entity_id = entity.id;
-                });
 
-                with_regionctx(self.id, |ctx: &mut RegionCtx| {
                     if let Some(program) = ctx.entity_programs.get(&class_name).cloned() {
                         let args = [VMValue::from_string("startup"), VMValue::zero()];
                         run_server_fn(&mut self.exec, &args, &program, ctx);
@@ -653,21 +693,33 @@ impl RegionInstance {
                             }
                         }
                     }
+
+                    if !sector_name.is_empty() {
+                        // let cmd = format!("{}.event(\"entered\", \"{}\")", class_name, sector_name);
+                        // _ = self.execute(&cmd);
+                        if let Some(program) = ctx.entity_programs.get(&class_name).cloned() {
+                            let args = [
+                                VMValue::from_string("entered"),
+                                VMValue::from_string(sector_name),
+                            ];
+                            run_server_fn(&mut self.exec, &args, &program, ctx);
+                        }
+                    }
                 });
-                if !sector_name.is_empty() {
-                    let cmd = format!("{}.event(\"entered\", \"{}\")", class_name, sector_name);
-                    _ = self.execute(&cmd);
-                }
             }
         }
 
         // Send "startup" event to all items.
         for item in items.iter() {
             if let Some(class_name) = item.get_attr_string("class_name") {
-                let cmd = format!("{}.event(\"startup\", \"\")", class_name);
                 with_regionctx(self.id, |ctx| {
                     ctx.item_classes.insert(item.id, class_name.clone());
                     ctx.curr_item_id = Some(item.id);
+
+                    if let Some(program) = ctx.item_programs.get(&class_name).cloned() {
+                        let args = [VMValue::from_string("startup"), VMValue::zero()];
+                        run_server_fn(&mut self.exec, &args, &program, ctx);
+                    }
                 });
                 // if let Err(err) = self.execute(&cmd) {
                 //     send_log_message(
@@ -689,7 +741,7 @@ impl RegionInstance {
 
         // Running the character setup scripts for the class instances
         for entity in entities.iter() {
-            if let Some(setup) = entity.get_attr_string("setup") {
+            if let Some(_setup) = entity.get_attr_string("setup") {
                 // if let Err(err) = self.execute(&setup) {
                 //     send_log_message(
                 //         self.id,
@@ -754,7 +806,7 @@ impl RegionInstance {
             items = ctx.map.items.clone();
         });
         for item in items.iter_mut() {
-            if let Some(setup) = item.get_attr_string("setup") {
+            if let Some(_setup) = item.get_attr_string("setup") {
                 // if let Err(err) = self.execute(&setup) {
                 //     send_log_message(
                 //         self.id,
@@ -794,7 +846,7 @@ impl RegionInstance {
             }
             // Setting the data for the item.
             if let Some(class_name) = item.get_attr_string("class_name") {
-                let mut cmd = String::new();
+                // let mut cmd = String::new();
                 with_regionctx(self.id, |ctx| {
                     if let Some(data) = ctx.item_class_data.get(&class_name) {
                         for i in ctx.map.items.iter_mut() {
@@ -805,17 +857,28 @@ impl RegionInstance {
                         }
                     }
                     // Send active state
-                    cmd = format!(
-                        "{}.event(\"active\", {})",
-                        class_name,
-                        if item.attributes.get_bool_default("active", false) {
-                            "True"
-                        } else {
-                            "False"
-                        }
-                    );
+                    // cmd = format!(
+                    //     "{}.event(\"active\", {})",
+                    //     class_name,
+                    //     if item.attributes.get_bool_default("active", false) {
+                    //         "true"
+                    //     } else {
+                    //         "false"
+                    //     }
+                    // );
+                    //
+                    let state = if item.attributes.get_bool_default("active", false) {
+                        true
+                    } else {
+                        false
+                    };
+
+                    if let Some(program) = ctx.item_programs.get(&class_name).cloned() {
+                        let args = [VMValue::from_string("active"), VMValue::from_bool(state)];
+                        run_server_fn(&mut self.exec, &args, &program, ctx);
+                    }
                 });
-                _ = self.execute(&cmd);
+                // _ = self.execute(&cmd);
             }
         }
 
@@ -834,7 +897,7 @@ impl RegionInstance {
     }
 
     /// System tick
-    pub fn system_tick(&self) {
+    pub fn system_tick(&mut self) {
         let mut ticks = 0;
 
         with_regionctx(self.id, |ctx| {
@@ -867,16 +930,21 @@ impl RegionInstance {
         };
         for (id, _tick, notification) in &to_process {
             if !is_entity_dead(self.id, *id) {
-                let mut cmd = String::new();
+                // let mut cmd = String::new();
                 with_regionctx(self.id, |ctx| {
                     if let Some(class_name) = ctx.entity_classes.get(id) {
-                        cmd = format!("{}.event(\"{}\", \"\")", class_name, notification);
+                        // cmd = format!("{}.event(\"{}\", \"\")", class_name, notification);
                         ctx.curr_entity_id = *id;
                         ctx.curr_item_id = None;
+
+                        if let Some(program) = ctx.entity_programs.get(class_name).cloned() {
+                            let args = [VMValue::from_string(notification), VMValue::zero()];
+                            run_server_fn(&mut self.exec, &args, &program, ctx);
+                        }
                     }
                 });
 
-                let _ = self.execute(&cmd);
+                // let _ = self.execute(&cmd);
             }
         }
 
@@ -902,17 +970,23 @@ impl RegionInstance {
                 .collect::<Vec<_>>()
         };
         for (id, _tick, notification) in &to_process {
-            let mut cmd = String::new();
+            // let mut cmd = String::new();
             with_regionctx(self.id, |ctx| {
                 if let Some(class_name) = ctx.item_classes.get(id) {
-                    cmd = format!("{}.event(\"{}\", \"\")", class_name, notification);
+                    // cmd = format!("{}.event(\"{}\", \"\")", class_name, notification);
                     ctx.curr_item_id = Some(*id);
+
+                    if let Some(program) = ctx.item_programs.get(class_name).cloned() {
+                        let args = [VMValue::from_string(notification), VMValue::zero()];
+                        run_server_fn(&mut self.exec, &args, &program, ctx);
+                        ctx.curr_item_id = None;
+                    }
                 }
             });
-            let _ = self.execute(&cmd);
-            with_regionctx(self.id, |ctx| {
-                ctx.curr_item_id = None;
-            });
+            // let _ = self.execute(&cmd);
+            // with_regionctx(self.id, |ctx| {
+            //     ctx.curr_item_id = None;
+            // });
         }
 
         with_regionctx(self.id, |ctx| {

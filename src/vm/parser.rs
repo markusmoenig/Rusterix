@@ -1,7 +1,7 @@
 use super::{
     ASTValue, AssignmentOperator, BinaryOperator, ComparisonOperator, EqualityOperator, Expr,
     IdVerifier, Location, LogicalOperator, Module, ParseError, Scanner, Stmt, Token, TokenType,
-    UnaryOperator, builtin::Builtins, objectd::FunctionD,
+    UnaryOperator, objectd::FunctionD,
 };
 use crate::zero_expr_float;
 use indexmap::IndexMap;
@@ -885,14 +885,13 @@ impl Parser {
         )?;
 
         let mut swizzle = vec![];
-        let field_path = vec![];
+        let mut field_path = vec![];
         if self.check(TokenType::Dot) {
             if self.is_swizzle_valid_at_current() {
                 swizzle = self.get_swizzle_at_current();
+            } else {
+                field_path = self.get_field_path_at_current();
             }
-            // else {
-            //     field_path = self.get_field_path_at_current();
-            // }
         }
 
         Ok(Expr::FunctionCall(
@@ -1076,12 +1075,33 @@ impl Parser {
                 self.advance();
 
                 let mut swizzle = vec![];
-                let field_path = vec![];
+                let mut field_path = vec![];
                 if self.check(TokenType::Dot) {
                     if self.is_swizzle_valid_at_current() {
                         swizzle = self.get_swizzle_at_current();
+                    } else {
+                        field_path = self.get_field_path_at_current();
                     }
                 }
+                if token.lexeme == "uv"
+                    || token.lexeme == "color"
+                    || token.lexeme == "roughness"
+                    || token.lexeme == "metallic"
+                    || token.lexeme == "emissive"
+                    || token.lexeme == "opacity"
+                    || token.lexeme == "bump"
+                    || token.lexeme == "normal"
+                    || token.lexeme == "hitpoint"
+                    || token.lexeme == "time"
+                {
+                    Ok(Expr::Variable(
+                        token.lexeme.clone(),
+                        swizzle,
+                        field_path,
+                        self.create_loc(token.line),
+                    ))
+                } else
+                // Local variables in functions
                 if self.locals_map.contains_key(&token.lexeme) {
                     Ok(Expr::Variable(
                         token.lexeme,
@@ -1105,14 +1125,8 @@ impl Parser {
                         field_path,
                         self.create_loc(token.line),
                     ))
-                } else if Builtins::default().get(&token.lexeme).is_some() {
-                    Ok(Expr::Variable(
-                        token.lexeme,
-                        swizzle,
-                        field_path,
-                        self.create_loc(token.line),
-                    ))
                 } else {
+                    // Check against inbuilt functions
                     Err(ParseError::new(
                         format!("Unknown identifier '{}'", token.lexeme),
                         token.line,
@@ -1192,6 +1206,22 @@ impl Parser {
         }
 
         swizzle
+    }
+
+    /// Returns the field path at the current token if any (e.g., `.string`).
+    pub fn get_field_path_at_current(&mut self) -> Vec<String> {
+        let mut path: Vec<String> = vec![];
+
+        if self.current + 1 < self.tokens.len()
+            && self.tokens[self.current].kind == TokenType::Dot
+            && self.tokens[self.current + 1].kind == TokenType::Identifier
+        {
+            let ident = self.tokens[self.current + 1].lexeme.clone();
+            path.push(ident);
+            self.current += 2;
+        }
+
+        path
     }
 
     /// Returns true if a swizzle is valid at the current token.

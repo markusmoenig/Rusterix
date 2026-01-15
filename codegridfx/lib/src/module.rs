@@ -1085,8 +1085,8 @@ impl Module {
                         r.build_source(&mut out, 4, debug);
                     }
                 }
+                out += "}\n";
             }
-            out += "}\n";
         } else {
             out += "fn setup() {\n";
 

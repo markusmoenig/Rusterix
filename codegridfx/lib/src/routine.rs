@@ -525,23 +525,30 @@ impl Routine {
         }
 
         if self.name == "take_damage" {
-            *out += &format!("{:indent$}amount = value[\"amount\"]\n", "");
-            *out += &format!("{:indent$}from_id = value[\"from\"]\n", "");
+            // *out += &format!("{:indent$}amount = value[\"amount\"]\n", "");
+            // *out += &format!("{:indent$}from_id = value[\"from\"]\n", "");
+            *out += &format!("{:indent$}let amount = 0;\n", "");
+            *out += &format!("{:indent$}let from_id = 0;\n", "");
         } else if self.name == "intent" {
-            *out += &format!("{:indent$}intent = value[\"intent\"]\n", "");
-            *out += &format!("{:indent$}distance = value[\"distance\"]\n", "");
-            *out += &format!(
-                "{:indent$}item_id = value[\"item_id\"] if \"item_id\" in value else -1\n",
-                ""
-            );
-            *out += &format!(
-                "{:indent$}entity_id = value[\"entity_id\"] if \"entity_id\" in value else -1\n",
-                ""
-            );
-            *out += &format!(
-                "{:indent$}target_id = value[\"target_id\"] if \"target_id\" in value else value.get(\"item_id\")\n",
-                ""
-            );
+            // *out += &format!("{:indent$}intent = value[\"intent\"]\n", "");
+            // *out += &format!("{:indent$}distance = value[\"distance\"]\n", "");
+            // *out += &format!(
+            //     "{:indent$}item_id = value[\"item_id\"] if \"item_id\" in value else -1\n",
+            //     ""
+            // );
+            // *out += &format!(
+            //     "{:indent$}entity_id = value[\"entity_id\"] if \"entity_id\" in value else -1\n",
+            //     ""
+            // );
+            // *out += &format!(
+            //     "{:indent$}target_id = value[\"target_id\"] if \"target_id\" in value else value.get(\"item_id\")\n",
+            //     ""
+            // );
+            *out += &format!("{:indent$}let intent = 0;\n", "");
+            *out += &format!("{:indent$}let distance = 1;\n", "");
+            *out += &format!("{:indent$}let item_id = 1;\n", "");
+            *out += &format!("{:indent$}let entity_id = 0;\n", "");
+            *out += &format!("{:indent$}let target_id = 0;\n", "");
         } else if self.name == "key_down" || self.name == "key_up" {
             *out += &format!("{:indent$}let key = value;\n", "");
         }
@@ -580,6 +587,10 @@ impl Routine {
                     }
                     if matches!(item.cell, Cell::Else) {
                         is_else = true;
+                    }
+
+                    if row.len() > 1 && matches!(item.cell, Cell::Variable(_)) {
+                        row_code += "let ";
                     }
 
                     if let Some(i) = self.grid.row_indents.get(&pos.1) {

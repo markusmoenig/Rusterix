@@ -1,7 +1,6 @@
 use crate::vm::node::hosthandler::HostHandler;
 use crate::vm::*;
 use crate::{Assets, EntityAction, Value};
-use rustpython::vm::*;
 use std::str::FromStr;
 
 #[derive(Default)]
@@ -10,25 +9,25 @@ struct ClientHostHandler {
 }
 
 impl HostHandler for ClientHostHandler {
-    fn on_action(&mut self, v: &VMValue) {
-        if let Some(s) = v.as_string() {
-            if let Ok(parsed) = EntityAction::from_str(s) {
-                self.action = Some(parsed);
+    fn on_host_call(&mut self, name: &str, args: &[VMValue]) -> Option<VMValue> {
+        match name {
+            "action" => {
+                if let Some(s) = args.get(0).and_then(|v| v.as_string()) {
+                    if let Ok(parsed) = EntityAction::from_str(s) {
+                        self.action = Some(parsed);
+                    }
+                }
             }
+            "intent" => {
+                if let Some(s) = args.get(0).and_then(|v| v.as_string()) {
+                    self.action = Some(EntityAction::Intent(s.to_string()));
+                }
+            }
+            _ => {}
         }
+        None
     }
-
-    fn on_intent(&mut self, v: &VMValue) {
-        if let Some(s) = v.as_string() {
-            self.action = Some(EntityAction::Intent(s.to_string()));
-        }
-    }
-
-    fn on_set_debug_loc(&mut self, _event: &VMValue, _x: &VMValue, _y: &VMValue) {}
 }
-
-/// Set the current debug location in the grid.
-fn _set_debug_loc(_event: String, _x: u32, _y: u32, _vm: &VirtualMachine) {}
 
 pub struct ClientAction {
     vm: VM,
@@ -62,7 +61,10 @@ impl ClientAction {
                     self.exec.reset(program.globals);
                     self.program = Some(program);
                 }
-                Err(e) => eprintln!("Client: error compiling user_event: {}", e),
+                Err(e) => {
+                    eprintln!("{}", entity_source);
+                    eprintln!("Client: error compiling user_event: {}", e)
+                }
             }
             self.class_name = class_name;
         }

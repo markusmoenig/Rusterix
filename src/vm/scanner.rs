@@ -60,23 +60,6 @@ pub enum TokenType {
     Const,
     Struct,
 
-    Material,
-    Medium,
-    Voxel,
-    Shape,
-    Segment,
-    Pattern,
-    Place,
-    IfClear,
-    Config,
-    Camera,
-    Distance,
-    Volume,
-    ProfileOffset,
-    ProfileScale,
-    Heightmap,
-    Recursive,
-
     Let,
     Import,
 
@@ -159,28 +142,6 @@ impl Scanner {
         keywords.insert("mat2", TokenType::Mat2);
         keywords.insert("mat3", TokenType::Mat3);
         keywords.insert("mat4", TokenType::Mat4);
-
-        keywords.insert("export", TokenType::Export);
-        keywords.insert("const", TokenType::Const);
-        keywords.insert("struct", TokenType::Struct);
-
-        keywords.insert("material", TokenType::Material);
-        keywords.insert("voxel", TokenType::Voxel);
-        keywords.insert("shape", TokenType::Shape);
-        keywords.insert("segment", TokenType::Segment);
-        keywords.insert("pattern", TokenType::Pattern);
-        keywords.insert("place", TokenType::Place);
-        keywords.insert("config", TokenType::Config);
-        keywords.insert("camera", TokenType::Camera);
-        keywords.insert("medium", TokenType::Medium);
-        keywords.insert("distance", TokenType::Distance);
-        keywords.insert("volume", TokenType::Volume);
-        keywords.insert("profile_offset", TokenType::ProfileOffset);
-        keywords.insert("profile_scale", TokenType::ProfileScale);
-        keywords.insert("heightmap", TokenType::Heightmap);
-        keywords.insert("recursive", TokenType::Recursive);
-
-        keywords.insert("if_clear", TokenType::IfClear);
 
         keywords.insert("let", TokenType::Let);
         keywords.insert("import", TokenType::Import);

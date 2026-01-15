@@ -580,30 +580,56 @@ impl Execution {
                 let formatted = format_vm_string(&args);
                 self.stack.push(VMValue::from_string(formatted));
             }
-            NodeOp::Action => {
-                let a = self.stack.pop().unwrap();
-                self.outputs.insert("action".to_string(), a);
+            NodeOp::GetString => {
+                if let Some(v) = self.stack.pop() {
+                    if let Some(s) = v.as_string() {
+                        self.stack.push(VMValue::from_string(s.to_string()));
+                    } else {
+                        self.stack.push(VMValue::zero());
+                    }
+                }
             }
-            NodeOp::Intent => {
-                let a = self.stack.pop().unwrap();
-                self.outputs.insert("intent".to_string(), a);
+            NodeOp::SetString => {
+                if let (Some(new_str), Some(mut target)) = (self.stack.pop(), self.stack.pop()) {
+                    target.string = new_str.as_string().map(|s| s.to_string());
+                    self.stack.push(target);
+                }
             }
-            NodeOp::Message => {
-                let category = self.stack.pop().unwrap();
-                let text = self.stack.pop().unwrap();
-                self.outputs.insert("message_text".to_string(), text);
-                self.outputs
-                    .insert("message_category".to_string(), category);
-            }
-            NodeOp::SetDebugLoc => {
-                // Pop and discard to keep stack consistent in pure VM runs
-                let _y = self.stack.pop();
-                let _x = self.stack.pop();
-                let _event = self.stack.pop();
-            }
-            NodeOp::SetPlayerCamera => {
-                // Pop and discard; host is responsible when present
-                let _mode = self.stack.pop();
+            NodeOp::HostCall { name, argc } => {
+                let mut args = Vec::with_capacity(*argc as usize);
+                for _ in 0..*argc as usize {
+                    if let Some(v) = self.stack.pop() {
+                        args.push(v);
+                    }
+                }
+                args.reverse();
+                match name.as_str() {
+                    // In pure VM runs, record common host outputs for tests
+                    "action" => {
+                        if let Some(v) = args.get(0) {
+                            self.outputs.insert("action".to_string(), v.clone());
+                        }
+                    }
+                    "intent" => {
+                        if let Some(v) = args.get(0) {
+                            self.outputs.insert("intent".to_string(), v.clone());
+                        }
+                    }
+                    "message" => {
+                        if let Some(text) = args.get(1) {
+                            self.outputs
+                                .insert("message_text".to_string(), text.clone());
+                        }
+                        if let Some(cat) = args.get(2) {
+                            self.outputs
+                                .insert("message_category".to_string(), cat.clone());
+                        }
+                    }
+                    "id" => {
+                        self.stack.push(VMValue::zero());
+                    }
+                    _ => { /* discard in pure VM mode */ }
+                }
             }
             NodeOp::Time => {
                 self.stack.push(self.time.clone());

@@ -33,6 +33,10 @@ impl VMValue {
         Self::broadcast(0.0)
     }
 
+    pub fn from_bool(v: bool) -> Self {
+        Self::broadcast(if v { 1.0 } else { 0.0 })
+    }
+
     pub fn from_vec3(v: Vec3<f32>) -> Self {
         Self {
             x: v.x,
@@ -72,6 +76,17 @@ impl VMValue {
             Value::Vec4(v) => VMValue::new(v[0], v[1], v[2]),
             Value::Str(s) => VMValue::from_string(s.clone()),
             _ => VMValue::zero(),
+        }
+    }
+
+    /// Convert into a generic runtime Value.
+    pub fn to_value(&self) -> Value {
+        if let Some(s) = self.as_string() {
+            Value::Str(s.to_string())
+        } else if self.x == self.y && self.x == self.z {
+            Value::Float(self.x)
+        } else {
+            Value::Vec3([self.x, self.y, self.z])
         }
     }
 

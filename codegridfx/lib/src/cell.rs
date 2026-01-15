@@ -432,9 +432,9 @@ impl Cell {
             Integer(value) | Float(value) => value.clone(),
             Boolean(value) => {
                 if *value {
-                    "True".into()
+                    "true".into()
                 } else {
-                    "False".into()
+                    "false".into()
                 }
             }
             Str(value) => {

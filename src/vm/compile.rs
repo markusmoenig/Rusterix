@@ -145,7 +145,7 @@ impl Visitor for CompileVisitor {
         name: String,
         op: &AssignmentOperator,
         swizzle: &[u8],
-        _field_path: &[String],
+        field_path: &[String],
         expression: &Expr,
         _loc: &Location,
         ctx: &mut Context,
@@ -226,7 +226,7 @@ impl Visitor for CompileVisitor {
                 AssignmentOperator::Assign => unreachable!(),
             };
 
-            if swizzle.is_empty() {
+            if swizzle.is_empty() && field_path.is_empty() {
                 // Non-swizzled path
                 match op {
                     AssignmentOperator::Assign => {
@@ -241,7 +241,7 @@ impl Visitor for CompileVisitor {
                         store_target(ctx); // store back
                     }
                 }
-            } else {
+            } else if !swizzle.is_empty() {
                 // Swizzled path (handle both plain and compound)
                 match op {
                     AssignmentOperator::Assign => {
@@ -262,6 +262,25 @@ impl Visitor for CompileVisitor {
                         store_target(ctx);
                     }
                 }
+            } else if field_path.len() == 1 && field_path[0] == "string" {
+                match op {
+                    AssignmentOperator::Assign => {
+                        _ = expression.accept(self, ctx)?; // rhs
+                        load_target(ctx); // rhs, t
+                        ctx.emit(NodeOp::Swap); // t, rhs
+                        ctx.emit(NodeOp::SetString); // t'
+                        store_target(ctx);
+                    }
+                    _ => {
+                        load_target(ctx); // t
+                        ctx.emit(NodeOp::Dup); // t,t
+                        ctx.emit(NodeOp::GetString); // t, s
+                        _ = expression.accept(self, ctx)?; // t, s, rhs
+                        emit_comp(ctx); // t, combined (numeric op on strings makes little sense, but follow pattern)
+                        ctx.emit(NodeOp::SetString);
+                        store_target(ctx);
+                    }
+                }
             }
         }
 
@@ -272,7 +291,7 @@ impl Visitor for CompileVisitor {
         &mut self,
         name: String,
         swizzle: &[u8],
-        _field_path: &[String],
+        field_path: &[String],
         loc: &Location,
         ctx: &mut Context,
     ) -> Result<ASTValue, RuntimeError> {
@@ -330,21 +349,29 @@ impl Visitor for CompileVisitor {
             ctx.emit(NodeOp::Time);
             if !swizzle.is_empty() {
                 ctx.emit(NodeOp::GetComponents(swizzle.to_vec()));
+            } else if field_path.len() == 1 && field_path[0] == "string" {
+                ctx.emit(NodeOp::GetString);
             }
         } else if let Some(index) = self.locals.get_index_of(&name) {
             ctx.emit(NodeOp::LoadLocal(index));
             if !swizzle.is_empty() {
                 ctx.emit(NodeOp::GetComponents(swizzle.to_vec()));
+            } else if field_path.len() == 1 && field_path[0] == "string" {
+                ctx.emit(NodeOp::GetString);
             }
         } else if let Some(index) = ctx.globals.get(&name) {
             ctx.emit(NodeOp::LoadGlobal(*index as usize));
             if !swizzle.is_empty() {
                 ctx.emit(NodeOp::GetComponents(swizzle.to_vec()));
+            } else if field_path.len() == 1 && field_path[0] == "string" {
+                ctx.emit(NodeOp::GetString);
             }
         } else if self.functions.contains_key(&name) || self.user_functions.contains_key(&name) {
             rc = ASTValue::Function(name.clone(), vec![], Box::new(ASTValue::None));
             if !swizzle.is_empty() {
                 ctx.emit(NodeOp::GetComponents(swizzle.to_vec()));
+            } else if field_path.len() == 1 && field_path[0] == "string" {
+                ctx.emit(NodeOp::GetString);
             }
         } else {
             return Err(RuntimeError::new(
@@ -543,7 +570,7 @@ impl Visitor for CompileVisitor {
                         ));
                     }
                 }
-            } else if let Some((arity, params, locals_len, index)) = self.user_functions.get(&name)
+            } else if let Some((arity, _params, locals_len, index)) = self.user_functions.get(&name)
             {
                 let func_index = *index;
                 let total_locals = *locals_len;

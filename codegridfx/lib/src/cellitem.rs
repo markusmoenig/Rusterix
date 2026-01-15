@@ -2012,10 +2012,10 @@ impl CellItem {
             return self.cell.to_string() + "(";
         }
 
-        if self.special_role == CellItemSpecialRole::DealDamageValue {
-            // deal_damage(value, {"from": id(), "amount": random(1, 3)})
-            return format!("{{\"from\": id(), \"amount\": {}}}", self.cell.to_string());
-        }
+        // if self.special_role == CellItemSpecialRole::DealDamageValue {
+        // deal_damage(value, {"from": id(), "amount": random(1, 3)})
+        // return format!("{{\"from\": id(), \"amount\": {}}}", self.cell.to_string());
+        // }
 
         match self.cell {
             Variable(_) => match self.option {
