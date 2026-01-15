@@ -1,9 +1,19 @@
-use crate::RegionCtx;
-use crate::server::region::{add_debug_value, get_region_id, with_regionctx};
+// use crate::RegionCtx;
+// use crate::server::region::{add_debug_value, with_regionctx};
 use rand::*;
+use vek::Vec2;
+
+/// Find a random poition max_distance away from pos.
+pub fn find_random_position(pos: Vec2<f32>, max_distance: f32) -> Vec2<f32> {
+    let mut rng = rand::rng();
+    let angle = rng.random_range(0.0..std::f32::consts::TAU);
+    let dx = max_distance * angle.cos();
+    let dy = max_distance * angle.sin();
+    Vec2::new(pos.x + dx, pos.y + dy)
+}
+/*
 use rustpython::vm::*;
 use theframework::prelude::TheValue;
-use vek::Vec2;
 
 use rustpython_vm::builtins::PyDict;
 
@@ -127,15 +137,6 @@ pub fn random_in_range(
     }
 }
 
-/// Find a random poition max_distance away from pos.
-pub fn find_random_position(pos: Vec2<f32>, max_distance: f32) -> Vec2<f32> {
-    let mut rng = rand::rng();
-    let angle = rng.random_range(0.0..std::f32::consts::TAU);
-    let dx = max_distance * angle.cos();
-    let dy = max_distance * angle.sin();
-    Vec2::new(pos.x + dx, pos.y + dy)
-}
-
 /// Get an i32 value from an Python object with a default fallback.
 pub fn get_i32(value: PyObjectRef, default: i32, vm: &VirtualMachine) -> i32 {
     if value.class().is(vm.ctx.types.int_type) {
@@ -161,3 +162,4 @@ pub fn get_f32(value: PyObjectRef, default: f32, vm: &VirtualMachine) -> f32 {
         value.try_into_value::<f32>(vm).unwrap_or(default)
     }
 }
+*/

@@ -27,6 +27,18 @@ pub struct CompileVisitor {
     locals: IndexSet<String>,
 }
 
+impl CompileVisitor {
+    /// Map friendly field aliases to component indices.
+    fn component_alias(field: &str) -> Option<u8> {
+        match field {
+            "distance" => Some(0),
+            "subject_id" => Some(1),
+            // extend with additional aliases as needed
+            _ => None,
+        }
+    }
+}
+
 impl Visitor for CompileVisitor {
     fn new() -> Self
     where
@@ -262,6 +274,47 @@ impl Visitor for CompileVisitor {
                         store_target(ctx);
                     }
                 }
+            } else if field_path.len() == 1 {
+                if let Some(idx) = Self::component_alias(&field_path[0]) {
+                    let swz = vec![idx];
+                    match op {
+                        AssignmentOperator::Assign => {
+                            _ = expression.accept(self, ctx)?; // rhs
+                            load_target(ctx); // rhs, t
+                            ctx.emit(NodeOp::Swap); // t, rhs
+                            ctx.emit(NodeOp::SetComponents(swz)); // t'
+                            store_target(ctx);
+                        }
+                        _ => {
+                            load_target(ctx); // t
+                            ctx.emit(NodeOp::Dup); // t,t
+                            ctx.emit(NodeOp::GetComponents(swz.clone())); // t,a
+                            _ = expression.accept(self, ctx)?; // t,a,rhs
+                            emit_comp(ctx); // t,(a op rhs)
+                            ctx.emit(NodeOp::SetComponents(swz)); // t'
+                            store_target(ctx);
+                        }
+                    }
+                } else if field_path[0] == "string" {
+                    match op {
+                        AssignmentOperator::Assign => {
+                            _ = expression.accept(self, ctx)?; // rhs
+                            load_target(ctx); // rhs, t
+                            ctx.emit(NodeOp::Swap); // t, rhs
+                            ctx.emit(NodeOp::SetString); // t'
+                            store_target(ctx);
+                        }
+                        _ => {
+                            load_target(ctx); // t
+                            ctx.emit(NodeOp::Dup); // t,t
+                            ctx.emit(NodeOp::GetString); // t, s
+                            _ = expression.accept(self, ctx)?; // t, s, rhs
+                            emit_comp(ctx); // t, combined
+                            ctx.emit(NodeOp::SetString);
+                            store_target(ctx);
+                        }
+                    }
+                }
             } else if field_path.len() == 1 && field_path[0] == "string" {
                 match op {
                     AssignmentOperator::Assign => {
@@ -351,6 +404,10 @@ impl Visitor for CompileVisitor {
                 ctx.emit(NodeOp::GetComponents(swizzle.to_vec()));
             } else if field_path.len() == 1 && field_path[0] == "string" {
                 ctx.emit(NodeOp::GetString);
+            } else if field_path.len() == 1 {
+                if let Some(idx) = Self::component_alias(&field_path[0]) {
+                    ctx.emit(NodeOp::GetComponents(vec![idx]));
+                }
             }
         } else if let Some(index) = self.locals.get_index_of(&name) {
             ctx.emit(NodeOp::LoadLocal(index));
@@ -358,6 +415,10 @@ impl Visitor for CompileVisitor {
                 ctx.emit(NodeOp::GetComponents(swizzle.to_vec()));
             } else if field_path.len() == 1 && field_path[0] == "string" {
                 ctx.emit(NodeOp::GetString);
+            } else if field_path.len() == 1 {
+                if let Some(idx) = Self::component_alias(&field_path[0]) {
+                    ctx.emit(NodeOp::GetComponents(vec![idx]));
+                }
             }
         } else if let Some(index) = ctx.globals.get(&name) {
             ctx.emit(NodeOp::LoadGlobal(*index as usize));
@@ -365,6 +426,10 @@ impl Visitor for CompileVisitor {
                 ctx.emit(NodeOp::GetComponents(swizzle.to_vec()));
             } else if field_path.len() == 1 && field_path[0] == "string" {
                 ctx.emit(NodeOp::GetString);
+            } else if field_path.len() == 1 {
+                if let Some(idx) = Self::component_alias(&field_path[0]) {
+                    ctx.emit(NodeOp::GetComponents(vec![idx]));
+                }
             }
         } else if self.functions.contains_key(&name) || self.user_functions.contains_key(&name) {
             rc = ASTValue::Function(name.clone(), vec![], Box::new(ASTValue::None));
@@ -372,6 +437,10 @@ impl Visitor for CompileVisitor {
                 ctx.emit(NodeOp::GetComponents(swizzle.to_vec()));
             } else if field_path.len() == 1 && field_path[0] == "string" {
                 ctx.emit(NodeOp::GetString);
+            } else if field_path.len() == 1 {
+                if let Some(idx) = Self::component_alias(&field_path[0]) {
+                    ctx.emit(NodeOp::GetComponents(vec![idx]));
+                }
             }
         } else {
             return Err(RuntimeError::new(

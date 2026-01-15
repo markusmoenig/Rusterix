@@ -1,9 +1,10 @@
-use rusterix::prelude::*;
-use vek::{Vec2, Vec3};
+// use rusterix::prelude::*;
+// use vek::{Vec2, Vec3};
 
 use criterion::{Criterion, criterion_group, criterion_main};
 
-fn rasterize_map(c: &mut Criterion) {
+fn rasterize_map(_c: &mut Criterion) {
+    /*
     let mut camera: Box<dyn D3Camera> = Box::new(D3FirstPCamera::new());
     let mut scene = Scene::default();
 
@@ -55,6 +56,7 @@ fn rasterize_map(c: &mut Criterion) {
             .rasterize(&mut scene, &mut pixels[..], width, height, 40, &assets);
         })
     });
+    */
 }
 
 criterion_group!(benches, rasterize_map);

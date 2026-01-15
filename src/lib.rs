@@ -20,7 +20,7 @@ pub mod scene;
 pub mod scene_handler;
 pub mod scenebuilder;
 pub mod scenemanager;
-pub mod script;
+// pub mod script;
 pub mod server;
 pub mod shader;
 pub mod shapestack;
@@ -143,7 +143,7 @@ pub use crate::{
         d2builder::D2Builder, d2material::D2MaterialBuilder, d2preview::D2PreviewBuilder,
     },
     scenemanager::*,
-    script::mapscript::MapScript,
+    // script::mapscript::MapScript,
     server::{
         Server, ServerState,
         assets::Assets,
@@ -182,7 +182,7 @@ pub mod prelude {
     pub use crate::Chunk;
     pub use crate::Client;
     pub use crate::IntoDataInput;
-    pub use crate::MapScript;
+    // pub use crate::MapScript;
     pub use crate::Rasterizer;
     pub use crate::RenderMode;
     pub use crate::scenebuilder::{

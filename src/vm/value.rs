@@ -20,6 +20,16 @@ impl VMValue {
         }
     }
 
+    /// Construct with numeric components and an optional string payload.
+    pub fn new_with_string<S: Into<String>>(x: f32, y: f32, z: f32, s: S) -> Self {
+        Self {
+            x,
+            y,
+            z,
+            string: Some(s.into()),
+        }
+    }
+
     pub fn broadcast(v: f32) -> Self {
         Self {
             x: v,
@@ -35,6 +45,23 @@ impl VMValue {
 
     pub fn from_bool(v: bool) -> Self {
         Self::broadcast(if v { 1.0 } else { 0.0 })
+    }
+
+    pub fn from_i32(v: i32) -> Self {
+        Self::broadcast(v as f32)
+    }
+
+    pub fn from_f32(v: f32) -> Self {
+        Self::broadcast(v)
+    }
+
+    pub fn from_u32(v: u32) -> Self {
+        Self::broadcast(v as f32)
+    }
+
+    /// Generic helper leveraging `Into<VMValue>` implementations.
+    pub fn from<T: Into<VMValue>>(v: T) -> Self {
+        v.into()
     }
 
     pub fn from_vec3(v: Vec3<f32>) -> Self {
@@ -159,5 +186,53 @@ impl Neg for VMValue {
 
     fn neg(self) -> Self::Output {
         VMValue::new(-self.x, -self.y, -self.z)
+    }
+}
+
+impl From<bool> for VMValue {
+    fn from(v: bool) -> Self {
+        VMValue::from_bool(v)
+    }
+}
+
+impl From<i32> for VMValue {
+    fn from(v: i32) -> Self {
+        VMValue::from_i32(v)
+    }
+}
+
+impl From<u32> for VMValue {
+    fn from(v: u32) -> Self {
+        VMValue::from_u32(v)
+    }
+}
+
+impl From<f32> for VMValue {
+    fn from(v: f32) -> Self {
+        VMValue::from_f32(v)
+    }
+}
+
+impl From<String> for VMValue {
+    fn from(s: String) -> Self {
+        VMValue::from_string(s)
+    }
+}
+
+impl From<&str> for VMValue {
+    fn from(s: &str) -> Self {
+        VMValue::from_string(s)
+    }
+}
+
+impl From<Value> for VMValue {
+    fn from(v: Value) -> Self {
+        VMValue::from_value(&v)
+    }
+}
+
+impl From<Vec3<f32>> for VMValue {
+    fn from(v: Vec3<f32>) -> Self {
+        VMValue::from_vec3(v)
     }
 }

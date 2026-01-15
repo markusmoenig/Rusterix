@@ -44,7 +44,7 @@ impl TheTrait for Map {
         // Collect the assets and compile the world map.
         let mut assets = Assets::default();
         assets.collect_from_directory("minigame".into());
-        let _ = assets.compile_source_map("world".into());
+        // let _ = assets.compile_source_map("world".into());
 
         if let Some(map) = assets.get_map("world") {
             // Build 3D scene from the world map.

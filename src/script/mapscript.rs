@@ -1,7 +1,7 @@
 use crate::script::ParseError;
 use crate::{Entity, Light, Map, MapMeta, PixelSource, Texture, Tile, Value};
-use rustpython::vm;
-use rustpython::vm::*;
+// use rustpython::vm;
+// use rustpython::vm::*;
 use std::sync::{LazyLock, RwLock};
 use theframework::prelude::*;
 use vek::Vec2;

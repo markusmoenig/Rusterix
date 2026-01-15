@@ -22,7 +22,7 @@ impl TheTrait for MiniGame {
     {
         let mut assets = Assets::default();
         assets.collect_from_directory("minigame".to_string());
-        assets.compile_source_maps();
+        // assets.compile_source_maps();
 
         let mut rusterix = Rusterix::default();
         rusterix.set_assets(assets);

@@ -1,5 +1,5 @@
 use crate::prelude::*;
-use crate::vm::Program;
+use crate::vm::{Program, VMValue};
 use crate::{CollisionWorld, MapMini};
 use crossbeam_channel::{Receiver, Sender};
 use std::sync::{Arc, OnceLock};
@@ -45,8 +45,8 @@ pub struct RegionCtx {
     pub entity_state_data: FxHashMap<u32, ValueContainer>,
     pub item_state_data: FxHashMap<u32, ValueContainer>,
 
-    pub to_execute_entity: Vec<(u32, String, String)>,
-    pub to_execute_item: Vec<(u32, String, String)>,
+    pub to_execute_entity: Vec<(u32, String, VMValue)>,
+    pub to_execute_item: Vec<(u32, String, VMValue)>,
 
     pub entity_programs: FxHashMap<String, Arc<Program>>,
     pub item_programs: FxHashMap<String, Arc<Program>>,

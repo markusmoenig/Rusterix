@@ -1,5 +1,5 @@
 use crate::server::py_fn::*;
-use crate::server::region_host::run_server_fn;
+use crate::server::region_host::{run_client_fn, run_server_fn};
 use crate::vm::*;
 use crate::{
     Assets, Choice, Currency, Entity, EntityAction, Item, Map, MultipleChoice, PixelSource,
@@ -8,7 +8,6 @@ use crate::{
 use crossbeam_channel::{Receiver, Sender, unbounded};
 use rand::*;
 
-use rustpython::vm::*;
 use std::sync::{Arc, Mutex};
 use theframework::prelude::{FxHashMap, TheTime, Uuid};
 use vek::num_traits::zero;
@@ -50,11 +49,11 @@ where
 }
 
 /// Get the region id embedded in the VM
-pub fn get_region_id(vm: &VirtualMachine) -> Option<u32> {
-    let module = vm.import("__region_meta", 0).ok()?;
-    let obj = module.get_attr("__region_id", vm).ok()?;
-    obj.try_to_value::<u32>(vm).ok()
-}
+// pub fn get_region_id(vm: &VirtualMachine) -> Option<u32> {
+//     let module = vm.import("__region_meta", 0).ok()?;
+//     let obj = module.get_attr("__region_id", vm).ok()?;
+//     obj.try_to_value::<u32>(vm).ok()
+// }
 
 // Global Id Generator over all threads and regions
 static GLOBAL_ID_GEN: AtomicU32 = AtomicU32::new(0);
@@ -75,9 +74,6 @@ pub struct RegionInstance {
     vm: VM,
     exec: Execution,
 
-    interp: Interpreter,
-    scope: Arc<Mutex<rustpython_vm::scope::Scope>>,
-
     name: String,
 
     /// Send messages to this region
@@ -94,10 +90,9 @@ pub struct RegionInstance {
     entity_block_mode: i32,
 }
 
-use rustpython_vm::{PyObjectRef, VirtualMachine, builtins::PyModule};
-
 impl RegionInstance {
     pub fn new(region_id: u32) -> Self {
+        /*
         let interp = rustpython::InterpreterConfig::new()
             .init_stdlib()
             .interpreter();
@@ -347,6 +342,7 @@ impl RegionInstance {
                 vm,
             );
         });
+        */
 
         let (to_sender, to_receiver) = unbounded::<RegionMessage>();
         let (from_sender, from_receiver) = unbounded::<RegionMessage>();
@@ -356,9 +352,6 @@ impl RegionInstance {
 
             vm: VM::default(),
             exec: Execution::default(),
-
-            interp,
-            scope,
 
             name: String::new(),
 
@@ -1002,20 +995,23 @@ impl RegionInstance {
             for (id, radius) in ctx.entity_proximity_alerts.iter() {
                 let entities = self.entities_in_radius(ctx, Some(*id), None, *radius);
                 if !entities.is_empty() {
-                    if let Some(class_name) = ctx.entity_classes.get(id) {
-                        let cmd = format!(
-                            "{}.event(\"{}\", [{}])",
-                            class_name,
-                            "proximity_warning",
-                            entities
-                                .iter()
-                                .map(|e| e.to_string())
-                                .collect::<Vec<_>>()
-                                .join(",")
-                        );
-                        ctx.to_execute_entity
-                            .push((*id, "proximity_warning".into(), cmd));
-                    }
+                    // if let Some(class_name) = ctx.entity_classes.get(id) {
+                    // let cmd = format!(
+                    //     "{}.event(\"{}\", [{}])",
+                    //     class_name,
+                    //     "proximity_warning",
+                    //     entities
+                    //         .iter()
+                    //         .map(|e| e.to_string())
+                    //         .collect::<Vec<_>>()
+                    //         .join(",")
+                    // );
+                    // }
+                    ctx.to_execute_entity.push((
+                        *id,
+                        "proximity_warning".into(),
+                        VMValue::from(entities[0]),
+                    ));
                 }
             }
 
@@ -1033,47 +1029,59 @@ impl RegionInstance {
         while let Ok(msg) = self.to_receiver.try_recv() {
             match msg {
                 Event(entity_id, event, value) => {
-                    let mut cmd = String::new();
+                    // let mut cmd = String::new();
                     with_regionctx(self.id, |ctx: &mut RegionCtx| {
                         if let Some(class_name) = ctx.entity_classes.get(&entity_id) {
-                            cmd = format!("{}.event('{}', {})", class_name, event, value);
+                            // cmd = format!("{}.event('{}', {})", class_name, event, value);
                             ctx.curr_entity_id = entity_id;
                             ctx.curr_item_id = None;
+
+                            if let Some(program) = ctx.entity_programs.get(class_name).cloned() {
+                                let args =
+                                    [VMValue::from_string(event), VMValue::from_value(&value)];
+                                run_server_fn(&mut self.exec, &args, &program, ctx);
+                            }
                         }
                     });
 
-                    if let Err(err) = self.execute(&cmd) {
-                        send_log_message(
-                            self.id,
-                            format!(
-                                "{}: Event Error for '{}': {}",
-                                self.name,
-                                self.get_entity_name(entity_id),
-                                err,
-                            ),
-                        );
-                    }
+                    // if let Err(err) = self.execute(&cmd) {
+                    //     send_log_message(
+                    //         self.id,
+                    //         format!(
+                    //             "{}: Event Error for '{}': {}",
+                    //             self.name,
+                    //             self.get_entity_name(entity_id),
+                    //             err,
+                    //         ),
+                    //     );
+                    // }
                 }
                 UserEvent(entity_id, event, value) => {
-                    let mut cmd = String::new();
+                    // let mut cmd = String::new();
                     with_regionctx(self.id, |ctx: &mut RegionCtx| {
                         if let Some(class_name) = ctx.entity_classes.get(&entity_id) {
-                            cmd = format!("{}.user_event('{}', '{}')", class_name, event, value);
+                            // cmd = format!("{}.user_event('{}', '{}')", class_name, event, value);
                             ctx.curr_entity_id = entity_id;
                             ctx.curr_item_id = None;
+
+                            if let Some(program) = ctx.entity_programs.get(class_name).cloned() {
+                                let args =
+                                    [VMValue::from_string(event), VMValue::from_value(&value)];
+                                run_client_fn(&mut self.exec, &args, &program, ctx);
+                            }
                         }
                     });
-                    if let Err(err) = self.execute(&cmd) {
-                        send_log_message(
-                            self.id,
-                            format!(
-                                "{}: User Event Error for '{}': {}",
-                                self.name,
-                                self.get_entity_name(entity_id),
-                                err,
-                            ),
-                        );
-                    }
+                    // if let Err(err) = self.execute(&cmd) {
+                    //     send_log_message(
+                    //         self.id,
+                    //         format!(
+                    //             "{}: User Event Error for '{}': {}",
+                    //             self.name,
+                    //             self.get_entity_name(entity_id),
+                    //             err,
+                    //         ),
+                    //     );
+                    // }
                 }
                 UserAction(entity_id, action) => match action {
                     Intent(intent) => {
@@ -1091,47 +1099,57 @@ impl RegionInstance {
                     EntityClicked(clicked_entity_id, distance) => {
                         with_regionctx(self.id, |ctx: &mut RegionCtx| {
                             if let Some(entity) = get_entity_mut(&mut ctx.map, entity_id) {
-                                if let Some(class_name) = ctx.entity_classes.get(&entity.id) {
+                                if let Some(_class_name) = ctx.entity_classes.get(&entity.id) {
                                     // Send "intent" event for the entity
-                                    let mut cont = ValueContainer::default();
-                                    cont.set("distance", Value::Float(distance));
-                                    cont.set("entity_id", Value::UInt(entity_id));
-                                    cont.set("target_id", Value::UInt(clicked_entity_id));
+                                    // let mut cont = ValueContainer::default();
+                                    // cont.set("distance", Value::Float(distance));
+                                    // cont.set("entity_id", Value::UInt(entity_id));
+                                    // cont.set("target_id", Value::UInt(clicked_entity_id));
 
                                     let intent =
                                         entity.attributes.get_str_default("intent", "".into());
-                                    cont.set("intent", Value::Str(intent.clone()));
+                                    // cont.set("intent", Value::Str(intent.clone()));
 
                                     let event_name = format!("intent: {}", intent);
 
-                                    let cmd = format!(
-                                        "{}.event('intent', {})",
-                                        class_name,
-                                        cont.to_python_dict_string()
-                                    );
+                                    // let cmd = format!(
+                                    //     "{}.event('intent', {})",
+                                    //     class_name,
+                                    //     cont.to_python_dict_string()
+                                    // );
                                     ctx.to_execute_entity.push((
                                         entity.id,
                                         event_name.clone(),
-                                        cmd.clone(),
+                                        VMValue::new_with_string(
+                                            distance as f32,
+                                            clicked_entity_id as f32,
+                                            0.0,
+                                            &intent,
+                                        ),
                                     ));
 
                                     // Send for the target
-                                    let mut cont = ValueContainer::default();
-                                    cont.set("distance", Value::Float(distance));
-                                    cont.set("entity_id", Value::UInt(entity_id));
-                                    cont.set("intent", Value::Str(intent));
-                                    if let Some(class_name) =
+                                    // let mut cont = ValueContainer::default();
+                                    // cont.set("distance", Value::Float(distance));
+                                    // cont.set("entity_id", Value::UInt(entity_id));
+                                    // cont.set("intent", Value::Str(intent));
+                                    if let Some(_class_name) =
                                         ctx.entity_classes.get(&clicked_entity_id)
                                     {
-                                        let cmd = format!(
-                                            "{}.event('intent', {})",
-                                            class_name,
-                                            cont.to_python_dict_string()
-                                        );
+                                        // let cmd = format!(
+                                        //     "{}.event('intent', {})",
+                                        //     class_name,
+                                        //     cont.to_python_dict_string()
+                                        // );
                                         ctx.to_execute_entity.push((
                                             clicked_entity_id,
                                             event_name,
-                                            cmd,
+                                            VMValue::new_with_string(
+                                                distance as f32,
+                                                entity_id as f32,
+                                                0.0,
+                                                intent,
+                                            ),
                                         ));
                                     }
 
@@ -1143,41 +1161,52 @@ impl RegionInstance {
                     ItemClicked(clicked_item_id, distance) => {
                         with_regionctx(self.id, |ctx: &mut RegionCtx| {
                             if let Some(entity) = get_entity_mut(&mut ctx.map, entity_id) {
-                                if let Some(class_name) = ctx.entity_classes.get(&entity.id) {
+                                if let Some(_class_name) = ctx.entity_classes.get(&entity.id) {
                                     // Send "intent" event for the entity
-                                    let mut cont = ValueContainer::default();
-                                    cont.set("distance", Value::Float(distance));
-                                    cont.set("item_id", Value::UInt(clicked_item_id));
-                                    cont.set("entity_id", Value::UInt(entity.id));
+                                    // let mut cont = ValueContainer::default();
+                                    // cont.set("distance", Value::Float(distance));
+                                    // cont.set("item_id", Value::UInt(clicked_item_id));
+                                    // cont.set("entity_id", Value::UInt(entity.id));
 
                                     let intent =
                                         entity.attributes.get_str_default("intent", "".into());
 
                                     let event_name = format!("intent: {}", intent);
 
-                                    cont.set("intent", Value::Str(intent));
-                                    let cmd = format!(
-                                        "{}.event('intent', {})",
-                                        class_name,
-                                        cont.to_python_dict_string()
-                                    );
+                                    // cont.set("intent", Value::Str(intent));
+                                    // let cmd = format!(
+                                    //     "{}.event('intent', {})",
+                                    //     class_name,
+                                    //     cont.to_python_dict_string()
+                                    // );
                                     ctx.to_execute_entity.push((
                                         entity.id,
                                         event_name.clone(),
-                                        cmd.clone(),
+                                        VMValue::new_with_string(
+                                            distance as f32,
+                                            clicked_item_id as f32,
+                                            0.0,
+                                            &intent,
+                                        ),
                                     ));
 
-                                    if let Some(class_name) = ctx.item_classes.get(&clicked_item_id)
+                                    if let Some(_class_name) =
+                                        ctx.item_classes.get(&clicked_item_id)
                                     {
-                                        let cmd = format!(
-                                            "{}.event('intent', {})",
-                                            class_name,
-                                            cont.to_python_dict_string()
-                                        );
+                                        // let cmd = format!(
+                                        //     "{}.event('intent', {})",
+                                        //     class_name,
+                                        //     cont.to_python_dict_string()
+                                        // );
                                         ctx.to_execute_item.push((
                                             clicked_item_id,
                                             event_name,
-                                            cmd,
+                                            VMValue::new_with_string(
+                                                distance as f32,
+                                                entity.id as f32,
+                                                0.0,
+                                                intent,
+                                            ),
                                         ));
                                     }
 
@@ -1243,10 +1272,13 @@ impl RegionInstance {
                         }
                         Choice::Cancel(from_id, to_id) => {
                             with_regionctx(self.id, |ctx: &mut RegionCtx| {
-                                if let Some(class_name) = ctx.entity_classes.get(from_id) {
-                                    let cmd = format!("{}.event('goodbye', {})", class_name, to_id);
-                                    ctx.to_execute_entity
-                                        .push((*from_id, "goodbye".into(), cmd));
+                                if let Some(_class_name) = ctx.entity_classes.get(from_id) {
+                                    // let cmd = format!("{}.event('goodbye', {})", class_name, to_id);
+                                    ctx.to_execute_entity.push((
+                                        *from_id,
+                                        "goodbye".into(),
+                                        VMValue::broadcast(*to_id as f32),
+                                    ));
                                 }
                             });
                         }
@@ -1430,15 +1462,15 @@ impl RegionInstance {
                                 entity.action = EntityAction::Off;
 
                                 // Send closed in event
-                                if let Some(class_name) = ctx.entity_classes.get(&entity.id) {
-                                    let cmd = format!(
-                                        "{}.event(\"closed_in\", {})",
-                                        class_name, target_id
-                                    );
+                                if let Some(_class_name) = ctx.entity_classes.get(&entity.id) {
+                                    // let cmd = format!(
+                                    //     "{}.event(\"closed_in\", {})",
+                                    //     class_name, target_id
+                                    // );
                                     ctx.to_execute_entity.push((
                                         entity.id,
                                         "closed_in".into(),
-                                        cmd,
+                                        VMValue::broadcast(target_id as f32),
                                     ));
                                 }
                             }
@@ -1470,13 +1502,13 @@ impl RegionInstance {
                             }
 
                             // Send arrived event
-                            if let Some(class_name) = ctx.entity_classes.get(&entity.id) {
-                                let cmd =
-                                    format!("{}.event('arrived', \"{}\")", class_name, sector_name);
+                            if let Some(_class_name) = ctx.entity_classes.get(&entity.id) {
+                                // let cmd =
+                                //     format!("{}.event('arrived', \"{}\")", class_name, sector_name);
                                 ctx.to_execute_entity.push((
                                     entity.id,
                                     "arrived".into(),
-                                    cmd.clone(),
+                                    VMValue::from(sector_name),
                                 ));
                             }
                         };
@@ -1645,17 +1677,24 @@ impl RegionInstance {
 
             with_regionctx(self.id, |ctx| {
                 ctx.entity_state_data = state_data;
+
+                if let Some(class_name) = ctx.entity_classes.get(&todo.0) {
+                    if let Some(program) = ctx.entity_programs.get(class_name).cloned() {
+                        let args = [VMValue::from_string(todo.1), todo.2];
+                        run_server_fn(&mut self.exec, &args, &program, ctx);
+                    }
+                }
             });
 
-            if let Err(err) = self.execute(&todo.2) {
-                send_log_message(
-                    self.id,
-                    format!(
-                        "TO_EXECUTE_ENTITY: Error for '{}': {}: {}",
-                        todo.0, todo.1, err,
-                    ),
-                );
-            }
+            // if let Err(err) = self.execute(&todo.2) {
+            //     send_log_message(
+            //         self.id,
+            //         format!(
+            //             "TO_EXECUTE_ENTITY: Error for '{}': {}: {}",
+            //             todo.0, todo.1, err,
+            //         ),
+            //     );
+            // }
         }
 
         // Execute delayed scrips for items.
@@ -1693,20 +1732,27 @@ impl RegionInstance {
 
             with_regionctx(self.id, |ctx| {
                 ctx.item_state_data = state_data;
+                if let Some(class_name) = ctx.item_classes.get(&todo.0) {
+                    if let Some(program) = ctx.item_programs.get(class_name).cloned() {
+                        let args = [VMValue::from_string(todo.1), todo.2];
+                        run_server_fn(&mut self.exec, &args, &program, ctx);
+                    }
+                }
             });
 
-            if let Err(err) = self.execute(&todo.2) {
-                send_log_message(
-                    self.id,
-                    format!(
-                        "TO_EXECUTE_ITEM: Error for '{}': {}: {}",
-                        todo.0, todo.1, err,
-                    ),
-                );
-            }
+            // if let Err(err) = self.execute(&todo.2) {
+            //     send_log_message(
+            //         self.id,
+            //         format!(
+            //             "TO_EXECUTE_ITEM: Error for '{}': {}: {}",
+            //             todo.0, todo.1, err,
+            //         ),
+            //     );
+            // }
         }
     }
 
+    /*
     /// Execute a script.
     pub fn execute(&self, source: &str) -> Result<PyObjectRef, String> {
         let scope = self.scope.lock().unwrap();
@@ -1741,7 +1787,7 @@ impl RegionInstance {
                 }
             }
         })
-    }
+    }*/
 
     /// Create a sleep action which switches back to the previous action.
     fn create_sleep_switch_action(&self, minutes: u32, switchback: EntityAction) -> EntityAction {
@@ -1784,24 +1830,27 @@ impl RegionInstance {
                     let dist_sq = dist_vec.magnitude_squared();
                     if dist_sq < combined_radius_sq {
                         // Send events
-                        if let Some(class_name) = ctx.entity_classes.get(&entity.id) {
-                            let cmd = format!(
-                                "{}.event('{}', {})",
-                                class_name, "bumped_into_entity", other.id
-                            );
+                        if let Some(_class_name) = ctx.entity_classes.get(&entity.id) {
+                            // let cmd = format!(
+                            //     "{}.event('{}', {})",
+                            //     class_name, "bumped_into_entity", other.id
+                            // );
                             ctx.to_execute_entity.push((
                                 entity.id,
                                 "bumped_into_entity".into(),
-                                cmd,
+                                VMValue::broadcast(other.id as f32),
                             ));
                         }
-                        if let Some(class_name) = ctx.entity_classes.get(&other.id) {
-                            let cmd = format!(
-                                "{}.event('{}', {})",
-                                class_name, "bumped_by_entity", entity.id
-                            );
-                            ctx.to_execute_entity
-                                .push((other.id, "bumped_by_entity".into(), cmd));
+                        if let Some(_class_name) = ctx.entity_classes.get(&other.id) {
+                            // let cmd = format!(
+                            //     "{}.event('{}', {})",
+                            //     class_name, "bumped_by_entity", entity.id
+                            // );
+                            ctx.to_execute_entity.push((
+                                other.id,
+                                "bumped_by_entity".into(),
+                                VMValue::broadcast(entity.id as f32),
+                            ));
                         }
 
                         // If blocking, we attempt to slide
@@ -1848,21 +1897,27 @@ impl RegionInstance {
                     let dist_sq = dist_vec.magnitude_squared();
                     if dist_sq < combined_radius_sq {
                         // Send events
-                        if let Some(class_name) = ctx.entity_classes.get(&entity.id) {
-                            let cmd = format!(
-                                "{}.event('{}', {})",
-                                class_name, "bumped_into_item", other.id
-                            );
-                            ctx.to_execute_entity
-                                .push((entity.id, "bumped_into_item".into(), cmd));
+                        if let Some(_class_name) = ctx.entity_classes.get(&entity.id) {
+                            // let cmd = format!(
+                            //     "{}.event('{}', {})",
+                            //     class_name, "bumped_into_item", other.id
+                            // );
+                            ctx.to_execute_entity.push((
+                                entity.id,
+                                "bumped_into_item".into(),
+                                VMValue::broadcast(other.id as f32),
+                            ));
                         }
-                        if let Some(class_name) = ctx.item_classes.get(&other.id) {
-                            let cmd = format!(
-                                "{}.event('{}', {})",
-                                class_name, "bumped_by_entity", entity.id
-                            );
-                            ctx.to_execute_item
-                                .push((other.id, "bumped_by_entity".into(), cmd));
+                        if let Some(_class_name) = ctx.item_classes.get(&other.id) {
+                            // let cmd = format!(
+                            //     "{}.event('{}', {})",
+                            //     class_name, "bumped_by_entity", entity.id
+                            // );
+                            ctx.to_execute_item.push((
+                                other.id,
+                                "bumped_by_entity".into(),
+                                VMValue::broadcast(entity.id as f32),
+                            ));
                         }
 
                         // If item is blocking, we attempt to slide
@@ -2029,54 +2084,66 @@ impl RegionInstance {
                         }
                     }
                 }
+
+                if !sector_name.is_empty() {
+                    if let Some(program) = ctx.entity_programs.get(&class_name).cloned() {
+                        let args = [
+                            VMValue::from_string("entered"),
+                            VMValue::from_string(sector_name),
+                        ];
+                        run_server_fn(&mut self.exec, &args, &program, ctx);
+                    }
+                }
             });
-            if !sector_name.is_empty() {
-                let cmd = format!("{}.event(\"entered\", \"{}\")", class_name, sector_name);
-                _ = self.execute(&cmd);
-            }
+            // if !sector_name.is_empty() {
+            //     let cmd = format!("{}.event(\"entered\", \"{}\")", class_name, sector_name);
+            //     _ = self.execute(&cmd);
+            // }
         }
 
         // Running the character setup script
         if let Some(setup) = entity.get_attr_string("setup") {
-            if let Err(err) = self.execute(&setup) {
-                send_log_message(
-                    self.id,
-                    format!(
-                        "{}: Setup '{}/{}': {}",
-                        self.name,
-                        entity.get_attr_string("name").unwrap_or("Unknown".into()),
-                        entity
-                            .get_attr_string("class_name")
-                            .unwrap_or("Unknown".into()),
-                        err,
-                    ),
-                );
-                with_regionctx(self.id, |ctx: &mut RegionCtx| {
-                    ctx.error_count += 1;
-                });
-            }
+            // TODO
+            // if let Err(err) = self.execute(&setup) {
+            //     send_log_message(
+            //         self.id,
+            //         format!(
+            //             "{}: Setup '{}/{}': {}",
+            //             self.name,
+            //             entity.get_attr_string("name").unwrap_or("Unknown".into()),
+            //             entity
+            //                 .get_attr_string("class_name")
+            //                 .unwrap_or("Unknown".into()),
+            //             err,
+            //         ),
+            //     );
+            //     with_regionctx(self.id, |ctx: &mut RegionCtx| {
+            //         ctx.error_count += 1;
+            //     });
+            // }
 
             with_regionctx(self.id, |ctx: &mut RegionCtx| {
                 ctx.curr_entity_id = entity.id;
             });
 
-            if let Err(err) = self.execute("setup()") {
-                send_log_message(
-                    self.id,
-                    format!(
-                        "{}: Setup '{}/{}': {}",
-                        self.name,
-                        entity.get_attr_string("name").unwrap_or("Unknown".into()),
-                        entity
-                            .get_attr_string("class_name")
-                            .unwrap_or("Unknown".into()),
-                        err,
-                    ),
-                );
-                with_regionctx(self.id, |ctx: &mut RegionCtx| {
-                    ctx.error_count += 1;
-                });
-            }
+            // TODO
+            // if let Err(err) = self.execute("setup()") {
+            //     send_log_message(
+            //         self.id,
+            //         format!(
+            //             "{}: Setup '{}/{}': {}",
+            //             self.name,
+            //             entity.get_attr_string("name").unwrap_or("Unknown".into()),
+            //             entity
+            //                 .get_attr_string("class_name")
+            //                 .unwrap_or("Unknown".into()),
+            //             err,
+            //         ),
+            //     );
+            //     with_regionctx(self.id, |ctx: &mut RegionCtx| {
+            //         ctx.error_count += 1;
+            //     });
+            // }
         }
 
         send_log_message(
@@ -2107,30 +2174,36 @@ impl RegionInstance {
     /// Send "intent" events for the entity or item at the given position.
     fn send_entity_intent_events(&self, entity: &mut Entity, position: Vec2<f32>) {
         with_regionctx(self.id, |ctx: &mut RegionCtx| {
-            if let Some(class_name) = ctx.entity_classes.get(&entity.id) {
+            if let Some(_class_name) = ctx.entity_classes.get(&entity.id) {
                 // Send "intent" event for the entity
-                let mut cont = ValueContainer::default();
-                cont.set("distance", Value::Float(1.0));
+                // let mut cont = ValueContainer::default();
+                // cont.set("distance", Value::Float(1.0));
+
+                let mut value = VMValue::broadcast(1.0);
 
                 let mut target_item_id = None;
                 let mut target_entity_id = None;
 
+                // TODO
+
                 let mut found_target = false;
                 if let Some(entity_id) = get_entity_at(ctx, position, entity.id) {
                     if entity_id != entity.id {
-                        cont.set("entity_id", Value::UInt(entity.id));
-                        cont.set("target_id", Value::UInt(entity_id));
-                        if let Some(i_id) = get_item_at(ctx, position) {
-                            cont.set("item_id", Value::UInt(i_id));
-                        }
+                        // cont.set("entity_id", Value::UInt(entity.id));
+                        // cont.set("target_id", Value::UInt(entity_id));
+                        // if let Some(i_id) = get_item_at(ctx, position) {
+                        //     cont.set("item_id", Value::UInt(i_id));
+                        // }
+                        value.y = entity.id as f32;
                         target_entity_id = Some(entity_id);
                         found_target = true;
                     }
                 }
                 if !found_target {
                     if let Some(i_id) = get_item_at(ctx, position) {
-                        cont.set("entity_id", Value::UInt(entity.id));
-                        cont.set("item_id", Value::UInt(i_id));
+                        // cont.set("entity_id", Value::UInt(entity.id));
+                        // cont.set("item_id", Value::UInt(i_id));
+                        value.y = i_id as f32;
                         target_item_id = Some(i_id);
                         found_target = true;
                     }
@@ -2146,34 +2219,35 @@ impl RegionInstance {
                 }
 
                 let event_name = format!("intent: {}", intent);
+                value.string = Some(intent.clone());
 
-                cont.set("intent", Value::Str(intent));
-                let cmd = format!(
-                    "{}.event('intent', {})",
-                    class_name,
-                    cont.to_python_dict_string()
-                );
+                // cont.set("intent", Value::Str(intent));
+                // let cmd = format!(
+                //     "{}.event('intent', {})",
+                //     class_name,
+                //     cont.to_python_dict_string()
+                // );
                 ctx.to_execute_entity
-                    .push((entity.id, event_name.clone(), cmd.clone()));
+                    .push((entity.id, event_name.clone(), value.clone()));
 
                 if let Some(target_entity_id) = target_entity_id {
-                    if let Some(class_name) = ctx.entity_classes.get(&target_entity_id) {
-                        let cmd = format!(
-                            "{}.event('intent', {})",
-                            class_name,
-                            cont.to_python_dict_string()
-                        );
+                    if let Some(_class_name) = ctx.entity_classes.get(&target_entity_id) {
+                        // let cmd = format!(
+                        //     "{}.event('intent', {})",
+                        //     class_name,
+                        //     cont.to_python_dict_string()
+                        // );
                         ctx.to_execute_entity
-                            .push((target_entity_id, event_name, cmd));
+                            .push((target_entity_id, event_name, value));
                     }
                 } else if let Some(item_id) = target_item_id {
-                    if let Some(class_name) = ctx.item_classes.get(&item_id) {
-                        let cmd = format!(
-                            "{}.event('intent', {})",
-                            class_name,
-                            cont.to_python_dict_string()
-                        );
-                        ctx.to_execute_item.push((item_id, event_name, cmd));
+                    if let Some(_class_name) = ctx.item_classes.get(&item_id) {
+                        // let cmd = format!(
+                        //     "{}.event('intent', {})",
+                        //     class_name,
+                        //     cont.to_python_dict_string()
+                        // );
+                        ctx.to_execute_item.push((item_id, event_name, value));
                     }
                 }
 
@@ -2243,21 +2317,27 @@ fn check_player_for_section_change(ctx: &mut RegionCtx, entity: &mut Entity) {
     if let Some(sector) = ctx.map.find_sector_at(entity.get_pos_xz()) {
         if let Some(Value::Str(old_sector_name)) = entity.attributes.get("sector") {
             if sector.name != *old_sector_name {
-                if let Some(class_name) = ctx.entity_classes.get(&entity.id) {
+                if let Some(_class_name) = ctx.entity_classes.get(&entity.id) {
                     // Send entered event
                     if !sector.name.is_empty() {
-                        let cmd = format!("{}.event(\"entered\", \"{}\")", class_name, sector.name);
+                        // let cmd = format!("{}.event(\"entered\", \"{}\")", class_name, sector.name);
                         // println!("{cmd}");
-                        ctx.to_execute_entity
-                            .push((entity.id, "bumped_into_item".into(), cmd));
+                        ctx.to_execute_entity.push((
+                            entity.id,
+                            "bumped_into_item".into(),
+                            VMValue::from(sector.name.clone()),
+                        ));
                     }
                     // Send left event
                     if !old_sector_name.is_empty() {
-                        let cmd =
-                            format!("{}.event(\"left\", \"{}\")", class_name, old_sector_name);
+                        // let cmd =
+                        //     format!("{}.event(\"left\", \"{}\")", class_name, old_sector_name);
                         // println!("{cmd}");
-                        ctx.to_execute_entity
-                            .push((entity.id, "bumped_into_item".into(), cmd));
+                        ctx.to_execute_entity.push((
+                            entity.id,
+                            "bumped_into_item".into(),
+                            VMValue::from(old_sector_name.clone()),
+                        ));
                     }
                 }
 
@@ -2269,11 +2349,14 @@ fn check_player_for_section_change(ctx: &mut RegionCtx, entity: &mut Entity) {
     } else if let Some(Value::Str(old_sector_name)) = entity.attributes.get("sector") {
         // Send left event
         if !old_sector_name.is_empty() {
-            if let Some(class_name) = ctx.entity_classes.get(&entity.id) {
-                let cmd = format!("{}.event(\"left\", \"{}\")", class_name, old_sector_name);
+            if let Some(_class_name) = ctx.entity_classes.get(&entity.id) {
+                // let cmd = format!("{}.event(\"left\", \"{}\")", class_name, old_sector_name);
                 // println!("{cmd}");
-                ctx.to_execute_entity
-                    .push((entity.id, "bumped_into_item".into(), cmd));
+                ctx.to_execute_entity.push((
+                    entity.id,
+                    "bumped_into_item".into(),
+                    VMValue::from(old_sector_name.clone()),
+                ));
             }
         }
         entity.attributes.set("sector", Value::Str(String::new()));
@@ -2281,6 +2364,7 @@ fn check_player_for_section_change(ctx: &mut RegionCtx, entity: &mut Entity) {
 }
 
 /// Set Player Camera
+/*
 fn set_player_camera(camera: String, vm: &VirtualMachine) {
     with_regionctx(get_region_id(vm).unwrap(), |ctx: &mut RegionCtx| {
         let player_camera = match camera.as_str() {
@@ -2293,7 +2377,7 @@ fn set_player_camera(camera: String, vm: &VirtualMachine) {
             entity.set_attribute("player_camera", Value::PlayerCamera(player_camera));
         }
     });
-}
+}*/
 
 /// Is the given entity dead.
 pub fn is_entity_dead(region_id: u32, id: u32) -> bool {
@@ -2351,6 +2435,162 @@ fn get_entity_mut<'a>(map: &'a mut Map, entity_id: u32) -> Option<&'a mut Entity
     None
 }
 
+pub fn send_log_message(id: u32, message: String) {
+    with_regionctx(id, |ctx| {
+        ctx.from_sender
+            .get()
+            .unwrap()
+            .send(RegionMessage::LogMessage(message))
+            .unwrap();
+    });
+}
+
+/// Get an i32 config value
+fn get_config_i32_default(ctx: &RegionCtx, table: &str, key: &str, default: i32) -> i32 {
+    let mut value = default;
+    let tab = &ctx.config;
+    if let Some(game) = tab.get(table).and_then(toml::Value::as_table) {
+        if let Some(val) = game.get(key) {
+            if let Some(v) = val.as_integer() {
+                value = v as i32;
+            }
+        }
+    }
+    value
+}
+
+/// Returns the entity at the given position (if any)
+fn get_entity_at(ctx: &RegionCtx, position: Vec2<f32>, but_not: u32) -> Option<u32> {
+    let mut entity = None;
+
+    for other in ctx.map.entities.iter() {
+        if other.id == but_not {
+            continue;
+        }
+        let other_position = other.get_pos_xz();
+
+        let distance = position.distance(other_position);
+
+        // Item is inside the radius
+        if distance < 1.0 {
+            entity = Some(other.id);
+            break; // We only need the first item found
+        }
+    }
+
+    entity
+}
+
+/// Returns the item at the given position (if any)
+fn get_item_at(ctx: &RegionCtx, position: Vec2<f32>) -> Option<u32> {
+    let mut item = None;
+
+    for other in ctx.map.items.iter() {
+        let other_position = other.get_pos_xz();
+
+        let distance = position.distance(other_position);
+
+        // Item is inside the radius
+        if distance < 1.0 {
+            item = Some(other.id);
+            break; // We only need the first item found
+        }
+    }
+
+    item
+}
+
+/// Received an entity from another region
+pub fn receive_entity(ctx: &mut RegionCtx, mut entity: Entity, dest_sector_name: String) {
+    entity.action = EntityAction::Off;
+
+    let mut entities = ctx.map.entities.clone();
+
+    let mut new_pos: Option<vek::Vec2<f32>> = None;
+    for sector in &ctx.map.sectors {
+        if sector.name == dest_sector_name {
+            new_pos = sector.center(&ctx.map);
+        }
+    }
+
+    if let Some(new_pos) = new_pos {
+        entity.set_pos_xz(new_pos);
+        check_player_for_section_change(ctx, &mut entity);
+    }
+
+    if let Some(class_name) = entity.get_attr_string("class_name") {
+        ctx.entity_classes.insert(entity.id, class_name.clone());
+    }
+
+    entities.push(entity);
+    ctx.map.entities = entities;
+}
+
+/// Add a debug value at the current debug position
+#[inline(always)]
+pub fn add_debug_value(ctx: &mut RegionCtx, value: TheValue, error: bool) {
+    if let Some((event, x, y)) = &ctx.curr_debug_loc {
+        if let Some(item_id) = ctx.curr_item_id {
+            ctx.debug.add_value(item_id, event, *x, *y, value);
+            if error {
+                ctx.debug.add_error(item_id, event, *x, *y);
+            } else {
+                ctx.debug.remove_error(item_id, event, *x, *y);
+            }
+        } else {
+            ctx.debug
+                .add_value(ctx.curr_entity_id, event, *x, *y, value);
+            if error {
+                ctx.debug.add_error(ctx.curr_entity_id, event, *x, *y);
+            } else {
+                ctx.debug.remove_error(ctx.curr_entity_id, event, *x, *y);
+            }
+        }
+
+        ctx.curr_debug_loc = None;
+    }
+}
+
+/*
+fn _get_config_f32_default(table: &str, key: &str, default: f32) -> f32 {
+    let tab = CONFIG.borrow();
+    if let Some(game) = tab.get(table).and_then(toml::Value::as_table) {
+        if let Some(value) = game.get(key) {
+            if let Some(v) = value.as_float() {
+                return v as f32;
+            }
+        }
+    }
+    default
+}
+
+fn _get_config_bool_default(table: &str, key: &str, default: bool) -> bool {
+    let tab = CONFIG.borrow();
+    if let Some(game) = tab.get(table).and_then(toml::Value::as_table) {
+        if let Some(value) = game.get(key) {
+            if let Some(v) = value.as_bool() {
+                return v;
+            }
+        }
+    }
+    default
+}
+*/
+
+fn get_config_string_default(ctx: &RegionCtx, table: &str, key: &str, default: &str) -> String {
+    let mut value = default.to_string();
+    let tab = &ctx.config;
+    if let Some(game) = tab.get(table).and_then(toml::Value::as_table) {
+        if let Some(val) = game.get(key) {
+            if let Some(v) = val.as_str() {
+                value = v.to_string();
+            }
+        }
+    }
+    value
+}
+
+/*
 /// Sets light emission to on / off
 fn set_emit_light(value: bool, vm: &VirtualMachine) {
     with_regionctx(get_region_id(vm).unwrap(), |ctx: &mut RegionCtx| {
@@ -2553,6 +2793,7 @@ pub fn block_events(args: rustpython_vm::function::FuncArgs, vm: &VirtualMachine
 
 /// Deal damage to the given entity. Sends an "take_damage" event to the other entity.
 fn deal_damage(id: u32, dict: PyObjectRef, vm: &VirtualMachine) {
+    /*
     let dict = extract_dictionary(dict, vm);
 
     with_regionctx(get_region_id(vm).unwrap(), |ctx: &mut RegionCtx| {
@@ -2569,8 +2810,10 @@ fn deal_damage(id: u32, dict: PyObjectRef, vm: &VirtualMachine) {
                 }
             }
         }
-    });
+    });*/
 }
+
+*/
 
 /// Send a message to the entity.
 fn send_message(ctx: &RegionCtx, id: u32, message: String, role: &str) {
@@ -2578,6 +2821,7 @@ fn send_message(ctx: &RegionCtx, id: u32, message: String, role: &str) {
     ctx.from_sender.get().unwrap().send(msg).unwrap();
 }
 
+/*
 /// An entity took damage. Send out messages and check for death.
 fn took_damage(from: u32, mut amount: i32, vm: &VirtualMachine) {
     let mut kill = false;
@@ -2601,6 +2845,7 @@ fn took_damage(from: u32, mut amount: i32, vm: &VirtualMachine) {
                 // Set the new health
                 entity.set_attribute(&health_attr, Value::Int(health));
 
+                /*
                 let mode = entity.attributes.get_str_default("mode", "".into());
                 if health <= 0 && mode != "dead" {
                     // Send "death" event
@@ -2614,10 +2859,11 @@ fn took_damage(from: u32, mut amount: i32, vm: &VirtualMachine) {
 
                         kill = true;
                     }
-                }
+                }*/
             }
         }
 
+        /*
         // if receiver got killed, send a "kill" event to the attacker
         if kill {
             if let Some(entity) = get_entity_mut(&mut ctx.map, from) {
@@ -2627,7 +2873,7 @@ fn took_damage(from: u32, mut amount: i32, vm: &VirtualMachine) {
                     ctx.to_execute_entity.push((from, "kill".into(), cmd));
                 }
             }
-        }
+        }*/
     });
 }
 
@@ -2766,7 +3012,7 @@ fn toggle_attr(key: String, vm: &VirtualMachine) {
                                 "False"
                             }
                         );
-                        ctx.to_execute_item.push((item.id, "active".into(), cmd));
+                        // ctx.to_execute_item.push((item.id, "active".into(), cmd));
                     }
                 }
             } else {
@@ -2800,7 +3046,7 @@ fn set_attr(key: PyObjectRef, value: PyObjectRef, vm: &VirtualMachine) {
                                         "False"
                                     }
                                 );
-                                ctx.to_execute_item.push((item.id, "active".into(), cmd));
+                                // ctx.to_execute_item.push((item.id, "active".into(), cmd));
                             }
                         }
                     }
@@ -3605,7 +3851,7 @@ fn create_item(ctx: &mut RegionCtx, class_name: String) -> Option<Item> {
     if let Some(class_name) = item.get_attr_string("class_name") {
         let cmd = format!("{}.event(\"startup\", \"\")", class_name);
         ctx.item_classes.insert(item.id, class_name.clone());
-        ctx.to_execute_item.push((item.id, "startup".into(), cmd));
+        // TODO ctx.to_execute_item.push((item.id, "startup".into(), cmd));
     }
 
     item.mark_all_dirty();
@@ -3620,7 +3866,7 @@ fn create_item(ctx: &mut RegionCtx, class_name: String) -> Option<Item> {
             "False"
         }
     );
-    ctx.to_execute_item.push((item.id, "active".into(), cmd));
+    // TODO ctx.to_execute_item.push((item.id, "active".into(), cmd));
 
     Some(item)
 }
@@ -3679,3 +3925,5 @@ fn set_debug_loc(event: String, x: u32, y: u32, vm: &VirtualMachine) {
         ctx.curr_debug_loc = Some((event, x, y));
     });
 }
+
+*/

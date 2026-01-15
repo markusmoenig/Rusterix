@@ -247,14 +247,16 @@ impl Assets {
         }
     }
 
+    /*
     /// Compile all source maps
     pub fn compile_source_maps(&mut self) {
         let keys = self.map_sources.keys().cloned().collect::<Vec<String>>();
         for name in keys {
             let _ = self.compile_source_map(name);
         }
-    }
+    }*/
 
+    /*
     /// Compile the given source map
     pub fn compile_source_map(&mut self, name: String) -> Result<(), Vec<String>> {
         if let Some(source) = self.map_sources.get(&name) {
@@ -270,7 +272,7 @@ impl Assets {
             }
         }
         Ok(())
-    }
+    }*/
 
     /// Get a map by name.
     pub fn get_map(&self, name: &str) -> Option<&Map> {

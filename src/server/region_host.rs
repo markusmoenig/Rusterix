@@ -481,7 +481,7 @@ fn vmvalue_to_value(v: &VMValue) -> Value {
     v.to_value()
 }
 
-// Usage when executing a compiled function:
+// Run an event
 pub fn run_server_fn(
     exec: &mut Execution,
     args: &[VMValue],
@@ -489,6 +489,20 @@ pub fn run_server_fn(
     region_ctx: &mut RegionCtx,
 ) {
     if let Some(index) = program.user_functions_name_map.get("event").copied() {
+        exec.reset(program.globals);
+        let mut host = RegionHost { ctx: region_ctx };
+        let _ret = exec.execute_function_host(args, index, program, &mut host);
+    }
+}
+
+// Run a user_event
+pub fn run_client_fn(
+    exec: &mut Execution,
+    args: &[VMValue],
+    program: &crate::vm::Program,
+    region_ctx: &mut RegionCtx,
+) {
+    if let Some(index) = program.user_functions_name_map.get("user_event").copied() {
         exec.reset(program.globals);
         let mut host = RegionHost { ctx: region_ctx };
         let _ret = exec.execute_function_host(args, index, program, &mut host);

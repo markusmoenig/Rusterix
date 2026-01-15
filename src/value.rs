@@ -2,7 +2,7 @@ use crate::{
     Light, MaterialProfile, ParticleEmitter, Pixel, PixelSource, PlayerCamera, SampleMode, Texture,
     VertexBlendPreset,
 };
-use rustpython::vm::*;
+// use rustpython::vm::*;
 use std::fmt;
 use theframework::prelude::*;
 
@@ -67,6 +67,7 @@ impl Value {
         }
     }
 
+    /*
     /// Convert from a Python object
     pub fn from_pyobject(value: PyObjectRef, vm: &VirtualMachine) -> Option<Self> {
         if value.class().is(vm.ctx.types.bool_type) {
@@ -117,8 +118,9 @@ impl Value {
         } else {
             None
         }
-    }
+    }*/
 
+    /*
     /// Convert to a Python object
     pub fn to_pyobject(&self, vm: &VirtualMachine) -> PyObjectRef {
         match self {
@@ -153,7 +155,7 @@ impl Value {
             Value::Id(uuid) => vm.ctx.new_str(uuid.to_string()).into(), // Convert UUID to string
             _ => vm.ctx.none(),
         }
-    }
+    }*/
 }
 
 // Implement Display for Python-compatible string representation
