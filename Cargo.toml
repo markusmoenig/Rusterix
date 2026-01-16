@@ -28,20 +28,6 @@ scenevm.workspace = true
 
 codegridfx = { path = "codegridfx/lib", default-features = true }
 
-# rustpython = { version = "0.4.0", features = [
-#     "stdlib",
-#     "threading",
-#     "freeze-stdlib",
-# ], default-features = false }
-
-rustpython = { features = [
-    "stdlib",
-    "threading",
-    "freeze-stdlib",
-], default-features = false, git = "https://github.com/RustPython/RustPython" }
-
-rustpython-vm = { git = "https://github.com/RustPython/RustPython", default-features = false }
-
 fontdue = "0.9.3"
 rayon = "1.10"
 vek = { version = "0.17.1", default-features = true }
