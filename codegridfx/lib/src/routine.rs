@@ -544,8 +544,8 @@ impl Routine {
             //     "{:indent$}target_id = value[\"target_id\"] if \"target_id\" in value else value.get(\"item_id\")\n",
             //     ""
             // );
-            *out += &format!("{:indent$}let intent = 0;\n", "");
-            *out += &format!("{:indent$}let distance = 1;\n", "");
+            *out += &format!("{:indent$}let intent = value.string;\n", "");
+            *out += &format!("{:indent$}let distance = value.distance;\n", "");
             *out += &format!("{:indent$}let item_id = 1;\n", "");
             *out += &format!("{:indent$}let entity_id = 0;\n", "");
             *out += &format!("{:indent$}let target_id = 0;\n", "");

@@ -31,11 +31,16 @@ impl CompileVisitor {
     /// Map friendly field aliases to component indices.
     fn component_alias(field: &str) -> Option<u8> {
         match field {
-            "distance" => Some(0),
-            "subject_id" => Some(1),
-            // extend with additional aliases as needed
+            "distance" => Some(1),
+            "subject_id" => Some(0),
+            "count" => Some(2),
             _ => None,
         }
+    }
+
+    #[inline]
+    fn is_string_alias(field: &str) -> bool {
+        matches!(field, "string" | "text")
     }
 }
 
@@ -402,7 +407,7 @@ impl Visitor for CompileVisitor {
             ctx.emit(NodeOp::Time);
             if !swizzle.is_empty() {
                 ctx.emit(NodeOp::GetComponents(swizzle.to_vec()));
-            } else if field_path.len() == 1 && field_path[0] == "string" {
+            } else if field_path.len() == 1 && Self::is_string_alias(&field_path[0]) {
                 ctx.emit(NodeOp::GetString);
             } else if field_path.len() == 1 {
                 if let Some(idx) = Self::component_alias(&field_path[0]) {
@@ -413,7 +418,7 @@ impl Visitor for CompileVisitor {
             ctx.emit(NodeOp::LoadLocal(index));
             if !swizzle.is_empty() {
                 ctx.emit(NodeOp::GetComponents(swizzle.to_vec()));
-            } else if field_path.len() == 1 && field_path[0] == "string" {
+            } else if field_path.len() == 1 && Self::is_string_alias(&field_path[0]) {
                 ctx.emit(NodeOp::GetString);
             } else if field_path.len() == 1 {
                 if let Some(idx) = Self::component_alias(&field_path[0]) {
@@ -424,7 +429,7 @@ impl Visitor for CompileVisitor {
             ctx.emit(NodeOp::LoadGlobal(*index as usize));
             if !swizzle.is_empty() {
                 ctx.emit(NodeOp::GetComponents(swizzle.to_vec()));
-            } else if field_path.len() == 1 && field_path[0] == "string" {
+            } else if field_path.len() == 1 && Self::is_string_alias(&field_path[0]) {
                 ctx.emit(NodeOp::GetString);
             } else if field_path.len() == 1 {
                 if let Some(idx) = Self::component_alias(&field_path[0]) {
@@ -435,7 +440,7 @@ impl Visitor for CompileVisitor {
             rc = ASTValue::Function(name.clone(), vec![], Box::new(ASTValue::None));
             if !swizzle.is_empty() {
                 ctx.emit(NodeOp::GetComponents(swizzle.to_vec()));
-            } else if field_path.len() == 1 && field_path[0] == "string" {
+            } else if field_path.len() == 1 && Self::is_string_alias(&field_path[0]) {
                 ctx.emit(NodeOp::GetString);
             } else if field_path.len() == 1 {
                 if let Some(idx) = Self::component_alias(&field_path[0]) {

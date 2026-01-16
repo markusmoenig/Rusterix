@@ -378,7 +378,7 @@ impl Module {
         let mut y: i32 = self.grid_ctx.offset_y;
         for r in self.routines.values_mut() {
             if y < buffer.dim().height {
-                buffer.copy_into(0, y as i32, &r.buffer);
+                buffer.copy_into(self.grid_ctx.offset_x, y as i32, &r.buffer);
                 r.module_offset = y as u32;
                 y += r.buffer.dim().height;
 
@@ -482,9 +482,12 @@ impl Module {
                 if id.name == self.get_view_name() {
                     if let Some(renderview) = ui.get_render_view(&self.get_view_name()) {
                         let view_port_height = renderview.dim().height;
+                        let view_port_width = renderview.dim().width;
                         let total_height = self.height();
+                        let total_width = self.width();
 
                         self.grid_ctx.offset_y -= coord.y;
+                        self.grid_ctx.offset_x -= coord.x;
                         // Clamp offset_y so content stays within the visible area
                         let vp_h_i32 = view_port_height as i32;
                         let total_h_i32 = total_height as i32;
@@ -500,6 +503,22 @@ impl Module {
                             }
                             if self.grid_ctx.offset_y > max_offset {
                                 self.grid_ctx.offset_y = max_offset;
+                            }
+                        }
+
+                        // Clamp offset_x similarly
+                        let vp_w_i32 = view_port_width as i32;
+                        let total_w_i32 = total_width as i32;
+                        if total_w_i32 <= vp_w_i32 {
+                            self.grid_ctx.offset_x = 0;
+                        } else {
+                            let min_offset = vp_w_i32 - total_w_i32;
+                            let max_offset = 0;
+                            if self.grid_ctx.offset_x < min_offset {
+                                self.grid_ctx.offset_x = min_offset;
+                            }
+                            if self.grid_ctx.offset_x > max_offset {
+                                self.grid_ctx.offset_x = max_offset;
                             }
                         }
                         self.draw(renderview.render_buffer_mut());
@@ -1003,6 +1022,15 @@ impl Module {
             height += r.buffer.dim().height as u32;
         }
         height
+    }
+
+    /// Returns the maximum width among routines
+    fn width(&self) -> u32 {
+        self.routines
+            .values()
+            .map(|r| r.buffer.dim().width as u32)
+            .max()
+            .unwrap_or(0)
     }
 
     /// Set the backround for a shader

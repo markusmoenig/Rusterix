@@ -292,26 +292,82 @@ impl<'a> HostHandler for RegionHost<'a> {
             }
             "inventory_items" => {
                 if let Some(entity) = self.ctx.get_current_entity_mut() {
-                    let ids: Vec<String> = entity
+                    let filter = args
+                        .get(0)
+                        .and_then(|v| v.as_string())
+                        .unwrap_or("")
+                        .to_string();
+                    let ids: Vec<u32> = entity
                         .iter_inventory()
-                        .map(|(_, i)| i.id.to_string())
+                        .filter(|(_, it)| {
+                            filter.is_empty()
+                                || it
+                                    .attributes
+                                    .get_str("name")
+                                    .map(|n| n.contains(&filter))
+                                    .unwrap_or(false)
+                                || it
+                                    .attributes
+                                    .get_str("class_name")
+                                    .map(|c| c.contains(&filter))
+                                    .unwrap_or(false)
+                        })
+                        .map(|(_, i)| i.id)
                         .collect();
-                    return Some(VMValue::from_string(ids.join(",")));
+                    let ids_str: Vec<String> = ids.iter().map(|i| i.to_string()).collect();
+                    let mut v = VMValue::zero();
+                    if let Some(id0) = ids.get(0) {
+                        v.x = *id0 as f32;
+                    }
+                    if let Some(id1) = ids.get(1) {
+                        v.y = *id1 as f32;
+                    }
+                    v.z = ids.len() as f32;
+                    v.string = Some(ids_str.join(","));
+                    return Some(v);
                 }
             }
             "inventory_items_of" => {
                 if let Some(entity_id) = args.get(0).map(|v| v.x as u32) {
                     if let Some(entity) = self.ctx.get_entity_mut(entity_id) {
-                        let ids: Vec<String> = entity
+                        let filter = args
+                            .get(1)
+                            .and_then(|v| v.as_string())
+                            .unwrap_or("")
+                            .to_string();
+                        let ids: Vec<u32> = entity
                             .iter_inventory()
-                            .map(|(_, i)| i.id.to_string())
+                            .filter(|(_, it)| {
+                                filter.is_empty()
+                                    || it
+                                        .attributes
+                                        .get_str("name")
+                                        .map(|n| n.contains(&filter))
+                                        .unwrap_or(false)
+                                    || it
+                                        .attributes
+                                        .get_str("class_name")
+                                        .map(|c| c.contains(&filter))
+                                        .unwrap_or(false)
+                            })
+                            .map(|(_, i)| i.id)
                             .collect();
-                        return Some(VMValue::from_string(ids.join(",")));
+                        let ids_str: Vec<String> = ids.iter().map(|i| i.to_string()).collect();
+                        let mut v = VMValue::zero();
+                        if let Some(id0) = ids.get(0) {
+                            v.x = *id0 as f32;
+                        }
+                        if let Some(id1) = ids.get(1) {
+                            v.y = *id1 as f32;
+                        }
+                        v.z = ids.len() as f32;
+                        v.string = Some(ids_str.join(","));
+                        return Some(v);
                     }
                 }
             }
             "entities_in_radius" => {
-                let mut ids = Vec::new();
+                let mut ids: Vec<u32> = Vec::new();
                 let pos = if let Some(item_id) = self.ctx.curr_item_id {
                     self.ctx.get_item_mut(item_id).map(|i| i.get_pos_xz())
                 } else {
@@ -327,7 +383,37 @@ impl<'a> HostHandler for RegionHost<'a> {
                     }
                 }
                 let ids_str: Vec<String> = ids.iter().map(|i| i.to_string()).collect();
-                return Some(VMValue::from_string(ids_str.join(",")));
+                let mut v = VMValue::zero();
+                if let Some(id0) = ids.get(0) {
+                    v.x = *id0 as f32;
+                }
+                if let Some(id1) = ids.get(1) {
+                    v.y = *id1 as f32;
+                }
+                v.z = ids.len() as f32;
+                v.string = Some(ids_str.join(","));
+                return Some(v);
+            }
+            "list_get" => {
+                // list is arg0 (comma-separated string), index is arg1
+                let idx = args.get(1).map(|v| v.x as i32).unwrap_or(0);
+                if let Some(list_str) = args.get(0).and_then(|v| v.as_string()) {
+                    let parts: Vec<&str> = list_str.split(',').filter(|s| !s.is_empty()).collect();
+                    if parts.is_empty() {
+                        return Some(VMValue::zero());
+                    }
+                    let clamped = if idx < 0 {
+                        0
+                    } else if (idx as usize) >= parts.len() {
+                        parts.len() - 1
+                    } else {
+                        idx as usize
+                    };
+                    if let Ok(val) = parts[clamped].parse::<f32>() {
+                        return Some(VMValue::broadcast(val));
+                    }
+                    return Some(VMValue::zero());
+                }
             }
             "deal_damage" => {
                 if let (Some(target), Some(amount)) = (args.get(0), args.get(1)) {

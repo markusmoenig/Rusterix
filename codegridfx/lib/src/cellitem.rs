@@ -651,7 +651,7 @@ impl CellItem {
                     && name == "cgfxVariableName"
                 {
                     if !module_type.is_shader() {
-                        if Self::is_valid_python_variable(&n) {
+                        if Self::is_valid_code_variable(&n) {
                             *var_name = n;
                         }
                     } else {
@@ -676,7 +676,7 @@ impl CellItem {
                 if let Some(v) = value.to_string()
                     && name == "cgfxValue"
                 {
-                    self.has_error = !Self::is_valid_python_integer(&v);
+                    self.has_error = !Self::is_valid_integer(&v);
                     *value_name = v;
                 }
             }
@@ -684,7 +684,7 @@ impl CellItem {
                 if let Some(v) = value.to_string()
                     && name == "cgfxValue"
                 {
-                    self.has_error = !Self::is_valid_python_float(&v);
+                    self.has_error = !Self::is_valid_float(&v);
                     *value_name = v;
                 }
             }
@@ -2038,33 +2038,22 @@ impl CellItem {
         }
     }
 
-    /// Checks if the string is a valid python variable name
-    pub fn is_valid_python_variable(name: &str) -> bool {
-        // Must not be empty, must start with a letter or underscore, and only contain letters, digits, or underscores
+    /// Checks if the string is a valid variable name
+    pub fn is_valid_code_variable(name: &str) -> bool {
+        // General identifier: non-empty, does not start with a digit or '.', and
+        // may contain letters, digits, underscores, or dots (for swizzles/paths).
         let mut chars = name.chars();
         match chars.next() {
-            Some(c) if c.is_ascii_alphabetic() || c == '_' => (),
+            Some(c) if c.is_ascii_alphabetic() || c == '_' => {}
             _ => return false,
         }
-        if name.is_empty() {
-            return false;
-        }
-        if name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
-            // Python keywords are not valid variable names
-            const PYTHON_KEYWORDS: &[&str] = &[
-                "False", "None", "True", "and", "as", "assert", "break", "class", "continue",
-                "def", "del", "elif", "else", "except", "finally", "for", "from", "global", "if",
-                "import", "in", "is", "lambda", "nonlocal", "not", "or", "pass", "raise", "return",
-                "try", "while", "with", "yield",
-            ];
-            !PYTHON_KEYWORDS.contains(&name)
-        } else {
-            false
-        }
+
+        name.chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '.')
     }
 
-    /// Checks if the string is a valid python number
-    pub fn is_valid_python_number(s: &str) -> bool {
+    /// Checks if the string is a valid number
+    pub fn is_valid_number(s: &str) -> bool {
         // Try to parse as integer
         if s.parse::<i64>().is_ok() {
             return true;
@@ -2076,8 +2065,8 @@ impl CellItem {
         false
     }
 
-    /// Checks if the string is a valid python integer
-    pub fn is_valid_python_integer(s: &str) -> bool {
+    /// Checks if the string is a valid integer
+    pub fn is_valid_integer(s: &str) -> bool {
         // Try to parse as integer
         if s.parse::<i64>().is_ok() {
             return true;
@@ -2085,9 +2074,9 @@ impl CellItem {
         false
     }
 
-    /// Checks if the string is a valid python float
-    pub fn is_valid_python_float(s: &str) -> bool {
-        // Try to parse as float (Python allows scientific notation, etc.)
+    /// Checks if the string is a valid float
+    pub fn is_valid_float(s: &str) -> bool {
+        // Try to parse as float
         if s.parse::<f64>().is_ok() {
             return true;
         }

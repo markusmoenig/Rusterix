@@ -245,6 +245,14 @@ impl Default for Builtins {
             },
         );
         b.insert(
+            "list_get",
+            2,
+            NodeOp::HostCall {
+                name: "list_get".into(),
+                argc: 2,
+            },
+        );
+        b.insert(
             "set_proximity_tracking",
             2,
             NodeOp::HostCall {

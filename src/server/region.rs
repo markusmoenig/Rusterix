@@ -9,14 +9,12 @@ use crossbeam_channel::{Receiver, Sender, unbounded};
 use rand::*;
 
 use std::sync::{Arc, Mutex};
-use theframework::prelude::{FxHashMap, TheTime, Uuid};
-use vek::num_traits::zero;
+use theframework::prelude::*;
 
 use std::sync::atomic::{AtomicU32, Ordering};
 use vek::Vec2;
 
 use std::sync::{LazyLock, RwLock};
-use theframework::prelude::TheValue;
 
 /// The global store of RegionCtx
 static REGIONCTX: LazyLock<RwLock<FxHashMap<u32, Arc<Mutex<RegionCtx>>>>> =
@@ -1110,7 +1108,7 @@ impl RegionInstance {
                                         entity.attributes.get_str_default("intent", "".into());
                                     // cont.set("intent", Value::Str(intent.clone()));
 
-                                    let event_name = format!("intent: {}", intent);
+                                    // let event_name = format!("intent: {}", intent);
 
                                     // let cmd = format!(
                                     //     "{}.event('intent', {})",
@@ -1119,10 +1117,10 @@ impl RegionInstance {
                                     // );
                                     ctx.to_execute_entity.push((
                                         entity.id,
-                                        event_name.clone(),
+                                        "intent".to_string(),
                                         VMValue::new_with_string(
-                                            distance as f32,
                                             clicked_entity_id as f32,
+                                            distance as f32,
                                             0.0,
                                             &intent,
                                         ),
@@ -1143,10 +1141,10 @@ impl RegionInstance {
                                         // );
                                         ctx.to_execute_entity.push((
                                             clicked_entity_id,
-                                            event_name,
+                                            "intent".to_string(),
                                             VMValue::new_with_string(
-                                                distance as f32,
                                                 entity_id as f32,
+                                                distance as f32,
                                                 0.0,
                                                 intent,
                                             ),
@@ -1171,7 +1169,7 @@ impl RegionInstance {
                                     let intent =
                                         entity.attributes.get_str_default("intent", "".into());
 
-                                    let event_name = format!("intent: {}", intent);
+                                    // let event_name = format!("intent: {}", intent);
 
                                     // cont.set("intent", Value::Str(intent));
                                     // let cmd = format!(
@@ -1181,10 +1179,10 @@ impl RegionInstance {
                                     // );
                                     ctx.to_execute_entity.push((
                                         entity.id,
-                                        event_name.clone(),
+                                        "intent".to_string(),
                                         VMValue::new_with_string(
-                                            distance as f32,
                                             clicked_item_id as f32,
+                                            distance as f32,
                                             0.0,
                                             &intent,
                                         ),
@@ -1200,10 +1198,10 @@ impl RegionInstance {
                                         // );
                                         ctx.to_execute_item.push((
                                             clicked_item_id,
-                                            event_name,
+                                            "intent".to_string(),
                                             VMValue::new_with_string(
-                                                distance as f32,
                                                 entity.id as f32,
+                                                distance as f32,
                                                 0.0,
                                                 intent,
                                             ),
@@ -2176,10 +2174,9 @@ impl RegionInstance {
         with_regionctx(self.id, |ctx: &mut RegionCtx| {
             if let Some(_class_name) = ctx.entity_classes.get(&entity.id) {
                 // Send "intent" event for the entity
-                // let mut cont = ValueContainer::default();
-                // cont.set("distance", Value::Float(1.0));
 
-                let mut value = VMValue::broadcast(1.0);
+                let mut value = VMValue::zero();
+                value.y = 1.0; // Distance
 
                 let mut target_item_id = None;
                 let mut target_entity_id = None;
@@ -2189,21 +2186,14 @@ impl RegionInstance {
                 let mut found_target = false;
                 if let Some(entity_id) = get_entity_at(ctx, position, entity.id) {
                     if entity_id != entity.id {
-                        // cont.set("entity_id", Value::UInt(entity.id));
-                        // cont.set("target_id", Value::UInt(entity_id));
-                        // if let Some(i_id) = get_item_at(ctx, position) {
-                        //     cont.set("item_id", Value::UInt(i_id));
-                        // }
-                        value.y = entity.id as f32;
+                        value.x = entity.id as f32;
                         target_entity_id = Some(entity_id);
                         found_target = true;
                     }
                 }
                 if !found_target {
                     if let Some(i_id) = get_item_at(ctx, position) {
-                        // cont.set("entity_id", Value::UInt(entity.id));
-                        // cont.set("item_id", Value::UInt(i_id));
-                        value.y = i_id as f32;
+                        value.x = i_id as f32;
                         target_item_id = Some(i_id);
                         found_target = true;
                     }
@@ -2218,37 +2208,17 @@ impl RegionInstance {
                     return;
                 }
 
-                let event_name = format!("intent: {}", intent);
                 value.string = Some(intent.clone());
 
-                // cont.set("intent", Value::Str(intent));
-                // let cmd = format!(
-                //     "{}.event('intent', {})",
-                //     class_name,
-                //     cont.to_python_dict_string()
-                // );
                 ctx.to_execute_entity
-                    .push((entity.id, event_name.clone(), value.clone()));
+                    .push((entity.id, "intent".to_string(), value.clone()));
 
                 if let Some(target_entity_id) = target_entity_id {
-                    if let Some(_class_name) = ctx.entity_classes.get(&target_entity_id) {
-                        // let cmd = format!(
-                        //     "{}.event('intent', {})",
-                        //     class_name,
-                        //     cont.to_python_dict_string()
-                        // );
-                        ctx.to_execute_entity
-                            .push((target_entity_id, event_name, value));
-                    }
+                    ctx.to_execute_entity
+                        .push((target_entity_id, "intent".to_string(), value));
                 } else if let Some(item_id) = target_item_id {
-                    if let Some(_class_name) = ctx.item_classes.get(&item_id) {
-                        // let cmd = format!(
-                        //     "{}.event('intent', {})",
-                        //     class_name,
-                        //     cont.to_python_dict_string()
-                        // );
-                        ctx.to_execute_item.push((item_id, event_name, value));
-                    }
+                    ctx.to_execute_item
+                        .push((item_id, "intent".to_string(), value));
                 }
 
                 entity.set_attribute("intent", Value::Str(String::new()));
