@@ -713,6 +713,53 @@ impl Map {
         }
     }
 
+
+    // Check if a vertex is used by any sector with the "rect" property
+    pub fn is_vertex_in_rect_sector(&self, vertex_id: u32) -> bool {
+        self.sectors.iter().any(|sector| {
+            if sector.properties.contains("rect") {
+                sector.linedefs.iter().any(|&line_id| {
+                    if let Some(line) = self.find_linedef(line_id) {
+                        line.start_vertex == vertex_id || line.end_vertex == vertex_id
+                    } else {
+                        false
+                    }
+                })
+            } else {
+                false
+            }
+        })
+    }
+
+    // Duplicate a vertex at the same position and return the new vertex ID
+    pub fn duplicate_vertex(&mut self, vertex_id: u32) -> Option<u32> {
+        if let Some(vertex) = self.find_vertex(vertex_id) {
+            let new_id = self.find_free_vertex_id()?;
+            let mut new_vertex = vertex.clone();
+            new_vertex.id = new_id;
+            self.vertices.push(new_vertex);
+            Some(new_id)
+        } else {
+            None
+        }
+    }
+
+    // Replace a vertex in a sector's linedefs with a new vertex
+    pub fn replace_vertex_in_sector(&mut self, sector_id: u32, old_vertex_id: u32, new_vertex_id: u32) {
+        if let Some(sector) = self.find_sector(sector_id) {
+            let linedef_ids: Vec<u32> = sector.linedefs.clone();
+            for linedef_id in linedef_ids {
+                if let Some(linedef) = self.find_linedef_mut(linedef_id) {
+                    if linedef.start_vertex == old_vertex_id {
+                        linedef.start_vertex = new_vertex_id;
+                    }
+                    if linedef.end_vertex == old_vertex_id {
+                        linedef.end_vertex = new_vertex_id;
+                    }
+                }
+            }
+        }
+    }
     /// Attempts to find a closed directed cycle that uses the provided linedef ID.
     /// The traversal walks forward along linedef winding to keep sector orientation deterministic.
     fn find_directed_cycle_from_edge(&self, edge_id: u32) -> Option<Vec<u32>> {
