@@ -671,6 +671,47 @@ impl Map {
             (0, None)
         }
     }
+    // Create a new (or use an existing) linedef for the given vertices WITHOUT auto-creating sectors.
+    // This is useful for manual polygon creation where the user is drawing a sequence of lines.
+    // The linedef ID is added to possible_polygon for later manual sector creation.
+    pub fn create_linedef_manual(&mut self, start_vertex: u32, end_vertex: u32) -> u32 {
+        // Reuse an existing linedef if it matches the requested winding direction exactly.
+        if let Some(existing) = self
+            .linedefs
+            .iter()
+            .find(|l| l.start_vertex == start_vertex && l.end_vertex == end_vertex)
+        {
+            let id = existing.id;
+            // Add to possible_polygon for manual tracking
+            if !self.possible_polygon.contains(&id) {
+                self.possible_polygon.push(id);
+            }
+            return id;
+        }
+
+        // Create a new linedef
+        if let Some(id) = self.find_free_linedef_id() {
+            let linedef = Linedef::new(id, start_vertex, end_vertex);
+            self.linedefs.push(linedef);
+            
+            // Add to possible_polygon for manual tracking
+            self.possible_polygon.push(id);
+            id
+        } else {
+            println!("No free linedef ID available");
+            0
+        }
+    }
+
+    // Manually close the current polygon tracked in possible_polygon if it forms a closed loop.
+    // Returns the sector ID if a sector was created, None otherwise.
+    pub fn close_polygon_manual(&mut self) -> Option<u32> {
+        if self.test_for_closed_polygon() {
+            self.create_sector_from_polygon()
+        } else {
+            None
+        }
+    }
 
     /// Attempts to find a closed directed cycle that uses the provided linedef ID.
     /// The traversal walks forward along linedef winding to keep sector orientation deterministic.
