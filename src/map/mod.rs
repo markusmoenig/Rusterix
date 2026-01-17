@@ -1834,4 +1834,82 @@ impl Map {
 
         result
     }
+
+    // Check if a point is inside a sector (using ray casting algorithm)
+    fn is_point_in_sector(&self, point: Vec2<f32>, sector_id: u32) -> bool {
+        if let Some(sector) = self.find_sector(sector_id) {
+            let mut vertices = Vec::new();
+            for &linedef_id in &sector.linedefs {
+                if let Some(linedef) = self.find_linedef(linedef_id) {
+                    if let Some(vertex) = self.find_vertex(linedef.start_vertex) {
+                        vertices.push(Vec2::new(vertex.x, vertex.y));
+                    }
+                }
+            }
+
+            // Ray casting algorithm
+            let mut inside = false;
+            let mut j = vertices.len() - 1;
+            for i in 0..vertices.len() {
+                if ((vertices[i].y > point.y) != (vertices[j].y > point.y))
+                    && (point.x < (vertices[j].x - vertices[i].x) * (point.y - vertices[i].y)
+                        / (vertices[j].y - vertices[i].y) + vertices[i].x)
+                {
+                    inside = !inside;
+                }
+                j = i;
+            }
+            inside
+        } else {
+            false
+        }
+    }
+
+    // Find all sectors that are completely embedded within a given sector
+    pub fn find_embedded_sectors(&self, container_sector_id: u32) -> Vec<u32> {
+        let mut embedded = Vec::new();
+
+        for sector in &self.sectors {
+            if sector.id == container_sector_id {
+                continue; // Skip the container itself
+            }
+
+            if sector.linedefs.is_empty() {
+                continue;
+            }
+
+            // Collect all unique vertices from the sector's linedefs
+            let mut vertices = Vec::new();
+            for &linedef_id in &sector.linedefs {
+                if let Some(linedef) = self.find_linedef(linedef_id) {
+                    if let Some(vertex) = self.find_vertex(linedef.start_vertex) {
+                        vertices.push(Vec2::new(vertex.x, vertex.y));
+                    }
+                    if let Some(vertex) = self.find_vertex(linedef.end_vertex) {
+                        vertices.push(Vec2::new(vertex.x, vertex.y));
+                    }
+                }
+            }
+
+            if vertices.is_empty() {
+                continue;
+            }
+
+            // Calculate the centroid (center point) of the sector
+            let mut centroid = Vec2::new(0.0, 0.0);
+            for vertex in &vertices {
+                centroid.x += vertex.x;
+                centroid.y += vertex.y;
+            }
+            centroid.x /= vertices.len() as f32;
+            centroid.y /= vertices.len() as f32;
+
+            // Check if the centroid is inside the container sector
+            if self.is_point_in_sector(centroid, container_sector_id) {
+                embedded.push(sector.id);
+            }
+        }
+
+        embedded
+    }
 }
