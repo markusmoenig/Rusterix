@@ -157,4 +157,100 @@ impl RegionCtx {
         }
         v
     }
+
+    /// Check if the player moved to a different sector and if yes send "enter" and "left" events
+    pub fn check_player_for_section_change(&mut self, entity: &mut Entity) {
+        // Determine, set and notify the entity about the sector it is in.
+        if let Some(sector) = self.map.find_sector_at(entity.get_pos_xz()) {
+            if let Some(Value::Str(old_sector_name)) = entity.attributes.get("sector") {
+                if sector.name != *old_sector_name {
+                    // Send entered event
+                    if !sector.name.is_empty() {
+                        self.to_execute_entity.push((
+                            entity.id,
+                            "entered".into(),
+                            VMValue::from(sector.name.clone()),
+                        ));
+                    }
+                    // Send left event
+                    if !old_sector_name.is_empty() {
+                        self.to_execute_entity.push((
+                            entity.id,
+                            "left".into(),
+                            VMValue::from(old_sector_name.clone()),
+                        ));
+                    }
+
+                    entity
+                        .attributes
+                        .set("sector", Value::Str(sector.name.clone()));
+                }
+            }
+        } else if let Some(Value::Str(old_sector_name)) = entity.attributes.get("sector") {
+            // Send left event
+            if !old_sector_name.is_empty() {
+                if let Some(_class_name) = self.entity_classes.get(&entity.id) {
+                    // let cmd = format!("{}.event(\"left\", \"{}\")", class_name, old_sector_name);
+                    // println!("{cmd}");
+                    self.to_execute_entity.push((
+                        entity.id,
+                        "bumped_into_item".into(),
+                        VMValue::from(old_sector_name.clone()),
+                    ));
+                }
+            }
+            entity.attributes.set("sector", Value::Str(String::new()));
+        }
+    }
+
+    pub fn check_player_for_section_change_id(&mut self, id: u32) {
+        if let Some(idx) = self.map.entities.iter().position(|e| e.id == id) {
+            // Read-only data first to avoid overlapping mutable borrows
+            let pos = self.map.entities[idx].get_pos_xz();
+            let old_sector = self
+                .map
+                .entities
+                .get(idx)
+                .and_then(|e| e.attributes.get_str("sector"))
+                .map(|s| s.to_string())
+                .unwrap_or_default();
+            let sector_name = self.map.find_sector_at(pos).map(|s| s.name.clone());
+
+            if let Some(entity) = self.map.entities.get_mut(idx) {
+                if let Some(sector_name) = sector_name {
+                    if sector_name != old_sector {
+                        if !sector_name.is_empty() {
+                            self.to_execute_entity.push((
+                                entity.id,
+                                "entered".into(),
+                                VMValue::from(sector_name.clone()),
+                            ));
+                        }
+                        if !old_sector.is_empty() {
+                            self.to_execute_entity.push((
+                                entity.id,
+                                "left".into(),
+                                VMValue::from(old_sector.clone()),
+                            ));
+                        }
+                        entity
+                            .attributes
+                            .set("sector", Value::Str(sector_name.clone()));
+                    }
+                } else {
+                    if !old_sector.is_empty() {
+                        self.to_execute_entity.push((
+                            entity.id,
+                            "left".into(),
+                            VMValue::from(old_sector.clone()),
+                        ));
+                    }
+                    entity
+                        .attributes
+                        .set("sector", Value::Str(String::new()));
+                }
+            }
+        }
+    }
+
 }

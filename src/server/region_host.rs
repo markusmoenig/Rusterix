@@ -854,31 +854,164 @@ impl<'a> HostHandler for RegionHost<'a> {
                 }
             }
             "teleport" => {
-                // destination, region (ignored)
                 if let Some(dest) = args.get(0).and_then(|v| v.as_string()) {
-                    let center = {
-                        let map = &self.ctx.map;
-                        map.sectors
-                            .iter()
-                            .find(|s| s.name == dest)
-                            .and_then(|s| s.center(map))
-                    };
-                    if let (Some(center), Some(entity)) =
-                        (center, self.ctx.get_current_entity_mut())
-                    {
-                        entity.set_pos_xz(center);
+                    let region_name = args.get(1).and_then(|v| v.as_string()).unwrap_or("");
+
+                    if region_name.is_empty() {
+                        // Teleport entity in this region to the given sector.
+                        let center = {
+                            let map = &self.ctx.map;
+                            map.sectors
+                                .iter()
+                                .find(|s| s.name == dest)
+                                .and_then(|s| s.center(map))
+                        };
+
+                        if let Some(center) = center {
+                            // First move the entity
+                            if let Some(entity) = self.ctx.get_current_entity_mut() {
+                                let id = entity.id;
+                                entity.set_pos_xz(center);
+                                // Then run section change checks using a fresh borrow
+                                self.ctx.check_player_for_section_change_id(id);
+                            }
+                        } else if self.ctx.debug_mode {
+                            add_debug_value(
+                                &mut self.ctx,
+                                TheValue::Text("Unknown Sector".into()),
+                                true,
+                            );
+                        }
+                    } else {
+                        // Remove the entity from this region and send it to another region.
+                        let entity_id = self.ctx.curr_entity_id;
+                        if let Some(pos) =
+                            self.ctx.map.entities.iter().position(|e| e.id == entity_id)
+                        {
+                            let removed = self.ctx.map.entities.remove(pos);
+                            self.ctx.entity_classes.remove(&removed.id);
+
+                            if let Some(sender) = self.ctx.from_sender.get() {
+                                let _ = sender.send(RegionMessage::TransferEntity(
+                                    self.ctx.region_id,
+                                    removed,
+                                    region_name.to_string(),
+                                    dest.to_string(),
+                                ));
+                            }
+                        }
                     }
                 }
             }
+            /*pub fn teleport(args: rustpython_vm::function::FuncArgs, vm: &VirtualMachine) -> PyResult<()> {
+                let mut sector_name = String::new();
+                let mut region_name = String::new();
+
+                for (i, arg) in args.args.iter().enumerate() {
+                    if i == 0 {
+                        if let Some(Value::Str(v)) = Value::from_pyobject(arg.clone(), vm) {
+                            sector_name = v.clone();
+                        }
+                    } else if i == 1 {
+                        if let Some(Value::Str(v)) = Value::from_pyobject(arg.clone(), vm) {
+                            region_name = v.clone();
+                        }
+                    }
+                }
+
+                with_regionctx(get_region_id(vm).unwrap(), |ctx: &mut RegionCtx| {
+                    if region_name.is_empty() {
+                        // Teleport entity in this region to the given sector.
+
+                        let mut new_pos: Option<vek::Vec2<f32>> = None;
+                        for sector in &ctx.map.sectors {
+                            if sector.name == sector_name {
+                                new_pos = sector.center(&ctx.map);
+                            }
+                        }
+
+                        if let Some(new_pos) = new_pos {
+                            let entity_id = ctx.curr_entity_id;
+                            let mut entities = ctx.map.entities.clone();
+                            if let Some(entity) = entities.iter_mut().find(|entity| entity.id == entity_id) {
+                                entity.set_pos_xz(new_pos);
+                                check_player_for_section_change(ctx, entity);
+                            }
+                            ctx.map.entities = entities;
+                        } else {
+                            if ctx.debug_mode {
+                                add_debug_value(ctx, TheValue::Text("Unknown Sector".into()), true);
+                            }
+                        }
+                    } else {
+                        // Remove the entity from this region and send it to the server to be moved
+                        // into a new region.
+
+                        let entity_id = ctx.curr_entity_id;
+                        if let Some(pos) = ctx.map.entities.iter().position(|e| e.id == entity_id) {
+                            let removed = ctx.map.entities.remove(pos);
+
+                            ctx.entity_classes.remove(&removed.id);
+
+                            let msg =
+                                RegionMessage::TransferEntity(ctx.region_id, removed, region_name, sector_name);
+                            ctx.from_sender.get().unwrap().send(msg).unwrap();
+                        }
+                    }
+                });
+
+                Ok(())
+            } */
             "goto" => {
-                if let Some(_dest) = args.get(0).and_then(|v| v.as_string()) {
+                if let Some(dest) = args.get(0).and_then(|v| v.as_string()) {
                     let speed = args.get(1).map(|v| v.x).unwrap_or(1.0);
-                    if let Some(entity) = self.ctx.get_current_entity_mut() {
-                        entity.action = EntityAction::Goto(Vec2::new(0.0, 0.0), speed);
-                        // destination resolution omitted
+                    let mut coord: Option<vek::Vec2<f32>> = None;
+                    for sector in &self.ctx.map.sectors {
+                        if sector.name == dest {
+                            coord = sector.center(&self.ctx.map);
+                        }
+                    }
+
+                    if let Some(coord) = coord {
+                        if let Some(entity) = self.ctx.get_current_entity_mut() {
+                            entity.action = EntityAction::Goto(coord, speed);
+                        }
+                    } else if self.ctx.debug_mode {
+                        add_debug_value(
+                            &mut self.ctx,
+                            TheValue::Text("Unknown Sector".into()),
+                            true,
+                        );
                     }
                 }
             }
+            /*fn goto(destination: String, speed: f32, vm: &VirtualMachine) {
+                let mut coord: Option<vek::Vec2<f32>> = None;
+
+                with_regionctx(get_region_id(vm).unwrap(), |ctx: &mut RegionCtx| {
+                    for sector in &ctx.map.sectors {
+                        if sector.name == destination {
+                            coord = sector.center(&ctx.map);
+                        }
+                    }
+
+                    if let Some(coord) = coord {
+                        let entity_id = ctx.curr_entity_id;
+                        if let Some(entity) = ctx
+                            .map
+                            .entities
+                            .iter_mut()
+                            .find(|entity| entity.id == entity_id)
+                        {
+                            entity.action = Goto(coord, speed);
+                        }
+                    } else {
+                        if ctx.debug_mode {
+                            add_debug_value(ctx, TheValue::Text("Unknown Sector".into()), true);
+                        }
+                    }
+                });
+            } */
             "close_in" => {
                 if let (Some(target), Some(radius), Some(speed)) =
                     (args.get(0), args.get(1), args.get(2))

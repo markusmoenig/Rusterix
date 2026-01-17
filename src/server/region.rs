@@ -1473,7 +1473,7 @@ impl RegionInstance {
                                 }
                             }
 
-                            check_player_for_section_change(ctx, entity);
+                            ctx.check_player_for_section_change(entity);
                         }
                     });
                 }
@@ -1510,7 +1510,7 @@ impl RegionInstance {
                                 ));
                             }
                         };
-                        check_player_for_section_change(ctx, entity);
+                        ctx.check_player_for_section_change(entity);
                     });
                 }
                 EntityAction::RandomWalk(distance, speed, max_sleep, state, target) => {
@@ -1985,7 +1985,7 @@ impl RegionInstance {
                 blocked
             };
 
-            check_player_for_section_change(ctx, entity);
+            ctx.check_player_for_section_change(entity);
             geometry_blocked || collision_blocked
         })
         .unwrap()
@@ -2281,58 +2281,6 @@ impl RegionInstance {
     }
 }
 
-/// Check if the player moved to a different sector and if yes send "enter" and "left" events
-fn check_player_for_section_change(ctx: &mut RegionCtx, entity: &mut Entity) {
-    // Determine, set and notify the entity about the sector it is in.
-    if let Some(sector) = ctx.map.find_sector_at(entity.get_pos_xz()) {
-        if let Some(Value::Str(old_sector_name)) = entity.attributes.get("sector") {
-            if sector.name != *old_sector_name {
-                if let Some(_class_name) = ctx.entity_classes.get(&entity.id) {
-                    // Send entered event
-                    if !sector.name.is_empty() {
-                        // let cmd = format!("{}.event(\"entered\", \"{}\")", class_name, sector.name);
-                        // println!("{cmd}");
-                        ctx.to_execute_entity.push((
-                            entity.id,
-                            "bumped_into_item".into(),
-                            VMValue::from(sector.name.clone()),
-                        ));
-                    }
-                    // Send left event
-                    if !old_sector_name.is_empty() {
-                        // let cmd =
-                        //     format!("{}.event(\"left\", \"{}\")", class_name, old_sector_name);
-                        // println!("{cmd}");
-                        ctx.to_execute_entity.push((
-                            entity.id,
-                            "bumped_into_item".into(),
-                            VMValue::from(old_sector_name.clone()),
-                        ));
-                    }
-                }
-
-                entity
-                    .attributes
-                    .set("sector", Value::Str(sector.name.clone()));
-            }
-        }
-    } else if let Some(Value::Str(old_sector_name)) = entity.attributes.get("sector") {
-        // Send left event
-        if !old_sector_name.is_empty() {
-            if let Some(_class_name) = ctx.entity_classes.get(&entity.id) {
-                // let cmd = format!("{}.event(\"left\", \"{}\")", class_name, old_sector_name);
-                // println!("{cmd}");
-                ctx.to_execute_entity.push((
-                    entity.id,
-                    "bumped_into_item".into(),
-                    VMValue::from(old_sector_name.clone()),
-                ));
-            }
-        }
-        entity.attributes.set("sector", Value::Str(String::new()));
-    }
-}
-
 /// Set Player Camera
 /*
 fn set_player_camera(camera: String, vm: &VirtualMachine) {
@@ -2466,7 +2414,7 @@ pub fn receive_entity(ctx: &mut RegionCtx, mut entity: Entity, dest_sector_name:
 
     if let Some(new_pos) = new_pos {
         entity.set_pos_xz(new_pos);
-        check_player_for_section_change(ctx, &mut entity);
+        ctx.check_player_for_section_change(&mut entity);
     }
 
     if let Some(class_name) = entity.get_attr_string("class_name") {
