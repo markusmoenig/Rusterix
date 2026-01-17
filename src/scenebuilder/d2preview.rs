@@ -572,8 +572,10 @@ impl D2PreviewBuilder {
                             if sector.properties.contains("rect")
                                 || sector.properties.contains("rect_rendering")
                             {
-                                draw = false;
-                                break;
+                                if sector.name.is_empty() {
+                                    draw = false;
+                                    break;
+                                }
                             }
                         }
                     }
