@@ -253,6 +253,30 @@ impl Default for Builtins {
             },
         );
         b.insert(
+            "is_item",
+            1,
+            NodeOp::HostCall {
+                name: "is_item".into(),
+                argc: 1,
+            },
+        );
+        b.insert(
+            "is_entity",
+            1,
+            NodeOp::HostCall {
+                name: "is_entity".into(),
+                argc: 1,
+            },
+        );
+        b.insert(
+            "distance_to",
+            1,
+            NodeOp::HostCall {
+                name: "distance_to".into(),
+                argc: 1,
+            },
+        );
+        b.insert(
             "set_proximity_tracking",
             2,
             NodeOp::HostCall {

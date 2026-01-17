@@ -2,8 +2,8 @@ use crate::server::py_fn::*;
 use crate::server::region_host::{run_client_fn, run_server_fn};
 use crate::vm::*;
 use crate::{
-    Assets, Choice, Currency, Entity, EntityAction, Item, Map, MultipleChoice, PixelSource,
-    PlayerCamera, RegionCtx, Value, ValueContainer,
+    Assets, Choice, Currency, Entity, EntityAction, Item, Map, PixelSource, PlayerCamera,
+    RegionCtx, Value, ValueContainer,
 };
 use crossbeam_channel::{Receiver, Sender, unbounded};
 use rand::*;
@@ -2100,7 +2100,7 @@ impl RegionInstance {
         }
 
         // Running the character setup script
-        if let Some(setup) = entity.get_attr_string("setup") {
+        if let Some(_setup) = entity.get_attr_string("setup") {
             // TODO
             // if let Err(err) = self.execute(&setup) {
             //     send_log_message(
@@ -2185,8 +2185,8 @@ impl RegionInstance {
 
                 let mut found_target = false;
                 if let Some(entity_id) = get_entity_at(ctx, position, entity.id) {
-                    if entity_id != entity.id {
-                        value.x = entity.id as f32;
+                    if entity_id != entity.id && !ctx.is_entity_dead_ctx(entity_id) {
+                        value.x = entity_id as f32;
                         target_entity_id = Some(entity_id);
                         found_target = true;
                     }
@@ -2371,25 +2371,6 @@ pub fn is_entity_dead_ctx(ctx: &RegionCtx, id: u32) -> bool {
         }
     }
     v
-}
-
-/// Search for a mutable reference to an item with the given ID. Checks the map and on each entity.
-fn get_item_mut<'a>(map: &'a mut Map, item_id: u32) -> Option<&'a mut Item> {
-    // Look in the top-level items
-    if let Some(item) = map.items.iter_mut().find(|item| item.id == item_id) {
-        return Some(item);
-    }
-    // Look in each entity’s inventory
-    for entity in map.entities.iter_mut() {
-        for item in entity.inventory.iter_mut() {
-            if let Some(item) = item {
-                if item.id == item_id {
-                    return Some(item);
-                }
-            }
-        }
-    }
-    None
 }
 
 /// Search for a mutable reference to an entity with the given ID.
@@ -3796,49 +3777,6 @@ fn get_attr_internal(ctx: &mut RegionCtx, key: &str) -> Option<Value> {
     };
 
     None
-}
-
-/// Create a new item with the given class name.
-fn create_item(ctx: &mut RegionCtx, class_name: String) -> Option<Item> {
-    if !ctx.assets.items.contains_key(&class_name) {
-        return None;
-    }
-
-    let id = get_global_id();
-    let mut item = Item {
-        id,
-        ..Default::default()
-    };
-
-    item.set_attribute("class_name", Value::Str(class_name.clone()));
-    item.set_attribute("name", Value::Str(class_name.clone()));
-
-    // Setting the data for the item.
-    if let Some(data) = ctx.item_class_data.get(&class_name) {
-        apply_item_data(&mut item, data);
-    }
-
-    if let Some(class_name) = item.get_attr_string("class_name") {
-        let cmd = format!("{}.event(\"startup\", \"\")", class_name);
-        ctx.item_classes.insert(item.id, class_name.clone());
-        // TODO ctx.to_execute_item.push((item.id, "startup".into(), cmd));
-    }
-
-    item.mark_all_dirty();
-
-    // Send active state
-    let cmd = format!(
-        "{}.event(\"active\", {})",
-        class_name,
-        if item.attributes.get_bool_default("active", false) {
-            "True"
-        } else {
-            "False"
-        }
-    );
-    // TODO ctx.to_execute_item.push((item.id, "active".into(), cmd));
-
-    Some(item)
 }
 
 /// Received an entity from another region

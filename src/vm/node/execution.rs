@@ -564,7 +564,13 @@ impl Execution {
                 args.reverse();
                 let text = args
                     .iter()
-                    .map(vm_value_to_string)
+                    .map(|v| {
+                        if let Some(s) = v.as_string() {
+                            format!("(x={} y={} z={} string={})", v.x, v.y, v.z, s)
+                        } else {
+                            format!("(x={} y={} z={} string=None)", v.x, v.y, v.z)
+                        }
+                    })
                     .collect::<Vec<_>>()
                     .join(" ");
                 println!("print: {}", text);

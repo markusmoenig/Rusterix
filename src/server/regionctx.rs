@@ -106,4 +106,55 @@ impl RegionCtx {
     pub fn get_current_item_mut(&mut self) -> Option<&mut Item> {
         self.curr_item_id.and_then(|id| self.get_item_mut(id))
     }
+
+    /// Create a new item with the given class name.
+    pub fn create_item(&mut self, class_name: String) -> Option<Item> {
+        if !self.assets.items.contains_key(&class_name) {
+            return None;
+        }
+
+        let id = crate::server::region::get_global_id();
+        let mut item = Item {
+            id,
+            ..Default::default()
+        };
+
+        item.set_attribute("class_name", Value::Str(class_name.clone()));
+        item.set_attribute("name", Value::Str(class_name.clone()));
+
+        // Setting the data for the item.
+        if let Some(data) = self.item_class_data.get(&class_name) {
+            super::data::apply_item_data(&mut item, data);
+        }
+
+        if let Some(class_name) = item.get_attr_string("class_name") {
+            // let cmd = format!("{}.event(\"startup\", \"\")", class_name);
+            self.item_classes.insert(item.id, class_name.clone());
+            self.to_execute_item
+                .push((item.id, "startup".into(), VMValue::zero()));
+        }
+
+        item.mark_all_dirty();
+
+        let value = if item.attributes.get_bool_default("active", false) {
+            VMValue::from_bool(true)
+        } else {
+            VMValue::from_bool(false)
+        };
+
+        self.to_execute_item.push((item.id, "active".into(), value));
+
+        Some(item)
+    }
+
+    /// Is the given entity dead.
+    pub fn is_entity_dead_ctx(&self, id: u32) -> bool {
+        let mut v = false;
+        for entity in &self.map.entities {
+            if entity.id == id {
+                v = entity.attributes.get_str_default("mode", "active".into()) == "dead";
+            }
+        }
+        v
+    }
 }

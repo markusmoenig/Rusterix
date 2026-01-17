@@ -32,6 +32,7 @@ impl CompileVisitor {
     fn component_alias(field: &str) -> Option<u8> {
         match field {
             "distance" => Some(1),
+            "amount" => Some(1),
             "subject_id" => Some(0),
             "count" => Some(2),
             _ => None,

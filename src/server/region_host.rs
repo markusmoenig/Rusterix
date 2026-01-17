@@ -131,18 +131,56 @@ impl<'a> HostHandler for RegionHost<'a> {
                 {
                     if let Some(item_id) = self.ctx.curr_item_id {
                         if let Some(item) = self.ctx.get_item_mut(item_id) {
-                            item.set_attribute(key, vmvalue_to_value(val));
+                            let converted =
+                                vmvalue_to_value_with_hint(val, item.attributes.get(key));
+                            item.set_attribute(key, converted);
+
+                            let (queue_active, queued_id, active_val) = if key == "active" {
+                                let active = item.attributes.get_bool_default("active", false);
+                                (
+                                    true,
+                                    item.id,
+                                    if active {
+                                        VMValue::from_bool(true)
+                                    } else {
+                                        VMValue::from_bool(false)
+                                    },
+                                )
+                            } else {
+                                (false, 0, VMValue::zero())
+                            };
+
+                            if queue_active {
+                                self.ctx.to_execute_item.push((
+                                    queued_id,
+                                    "active".into(),
+                                    active_val,
+                                ));
+                            }
                         }
                     } else if let Some(entity) = self.ctx.get_current_entity_mut() {
-                        entity.set_attribute(key, vmvalue_to_value(val));
+                        let converted = vmvalue_to_value_with_hint(val, entity.attributes.get(key));
+                        entity.set_attribute(key, converted);
                     }
                 }
             }
             "toggle_attr" => {
                 if let Some(key) = args.get(0).and_then(|v| v.as_string()) {
                     if let Some(item_id) = self.ctx.curr_item_id {
+                        let mut push_active: Option<(u32, String, VMValue)> = None;
                         if let Some(item) = self.ctx.get_item_mut(item_id) {
                             item.attributes.toggle(key);
+                            if key == "active" {
+                                if let Some(class_name) = item.attributes.get_str("class_name") {
+                                    let value = VMValue::from_bool(
+                                        item.attributes.get_bool_default("active", false),
+                                    );
+                                    push_active = Some((item.id, class_name.to_string(), value));
+                                }
+                            }
+                        }
+                        if let Some((id, _class_name, value)) = push_active {
+                            self.ctx.to_execute_item.push((id, "active".into(), value));
                         }
                     } else if let Some(entity) = self.ctx.get_current_entity_mut() {
                         entity.attributes.toggle(key);
@@ -268,14 +306,193 @@ impl<'a> HostHandler for RegionHost<'a> {
             }
             "take" => {
                 if let Some(item_id) = args.get(0).map(|v| v.x as u32) {
-                    if let Some(pos) = self.ctx.map.items.iter().position(|i| i.id == item_id) {
-                        let item = self.ctx.map.items.remove(pos);
-                        if let Some(entity) = self.ctx.get_current_entity_mut() {
-                            let _ = entity.add_item(item); // ignore errors (full inventory)
+                    let mut removed: Option<Item> = None;
+                    if let Some(pos) = self.ctx.map.items.iter().position(|item| {
+                        item.id == item_id && !item.attributes.get_bool_default("static", false)
+                    }) {
+                        removed = Some(self.ctx.map.items.remove(pos));
+                    }
+
+                    if let Some(item) = removed {
+                        let entity_id = self.ctx.curr_entity_id;
+                        let mut rc = true;
+
+                        if let Some(entity) = self
+                            .ctx
+                            .map
+                            .entities
+                            .iter_mut()
+                            .find(|entity| entity.id == entity_id)
+                        {
+                            let item_name = item
+                                .attributes
+                                .get_str("name")
+                                .map(|s| s.to_string())
+                                .unwrap_or_else(|| "Unknown".to_string());
+
+                            fn article_for(item_name: &str) -> (&'static str, String) {
+                                let name = item_name.to_ascii_lowercase();
+
+                                let pair_items =
+                                    ["trousers", "pants", "gloves", "boots", "scissors"];
+                                let mass_items = ["armor", "cloth", "water", "meat"];
+
+                                if pair_items.contains(&name.as_str()) {
+                                    ("a pair of", item_name.to_string())
+                                } else if mass_items.contains(&name.as_str()) {
+                                    ("some", item_name.to_string())
+                                } else {
+                                    let first = name.chars().next().unwrap_or('x');
+                                    let article = match first {
+                                        'a' | 'e' | 'i' | 'o' | 'u' => "an",
+                                        _ => "a",
+                                    };
+                                    (article, item_name.to_string())
+                                }
+                            }
+
+                            let mut message = format!(
+                                "You take {} {}",
+                                article_for(&item_name.to_lowercase()).0,
+                                item_name.to_lowercase()
+                            );
+
+                            if item.attributes.get_bool_default("monetary", false) {
+                                let amount = item.attributes.get_int_default("worth", 0);
+                                if amount > 0 {
+                                    message = format!("You take {} gold.", amount);
+                                    let _ = entity
+                                        .add_base_currency(amount as i64, &self.ctx.currencies);
+                                }
+                            } else if entity.add_item(item).is_err() {
+                                // TODO: Send message.
+                                println!("Take: Too many items");
+                                if self.ctx.debug_mode {
+                                    add_debug_value(
+                                        &mut self.ctx,
+                                        TheValue::Text("Inventory Full".into()),
+                                        true,
+                                    );
+                                }
+                                rc = false;
+                            }
+
+                            if self.ctx.debug_mode && rc {
+                                add_debug_value(&mut self.ctx, TheValue::Text("Ok".into()), false);
+                            }
+
+                            if let Some(sender) = self.ctx.from_sender.get() {
+                                let _ = sender
+                                    .send(RegionMessage::RemoveItem(self.ctx.region_id, item_id));
+
+                                let msg = RegionMessage::Message(
+                                    self.ctx.region_id,
+                                    Some(entity_id),
+                                    None,
+                                    entity_id,
+                                    message,
+                                    "system".into(),
+                                );
+                                let _ = sender.send(msg);
+                            }
                         }
+                    } else if self.ctx.debug_mode {
+                        add_debug_value(&mut self.ctx, TheValue::Text("Unknown Item".into()), true);
                     }
                 }
             }
+            /*fn take(item_id: u32, vm: &VirtualMachine) -> bool {
+                with_regionctx(get_region_id(vm).unwrap(), |ctx: &mut RegionCtx| {
+                    let entity_id = ctx.curr_entity_id;
+                    let mut rc = true;
+
+                    if let Some(pos) = ctx.map.items.iter().position(|item| {
+                        item.id == item_id && !item.attributes.get_bool_default("static", false)
+                    }) {
+                        let item = ctx.map.items.remove(pos);
+
+                        if let Some(entity) = ctx
+                            .map
+                            .entities
+                            .iter_mut()
+                            .find(|entity| entity.id == entity_id)
+                        {
+                            let mut item_name = "Unknown".to_string();
+                            if let Some(name) = item.attributes.get_str("name") {
+                                item_name = name.to_string();
+                            }
+
+                            fn article_for(item_name: &str) -> (&'static str, String) {
+                                let name = item_name.to_ascii_lowercase();
+
+                                let pair_items = ["trousers", "pants", "gloves", "boots", "scissors"];
+                                let mass_items = ["armor", "cloth", "water", "meat"];
+
+                                if pair_items.contains(&name.as_str()) {
+                                    ("a pair of", item_name.to_string())
+                                } else if mass_items.contains(&name.as_str()) {
+                                    ("some", item_name.to_string())
+                                } else {
+                                    let first = name.chars().next().unwrap_or('x');
+                                    let article = match first {
+                                        'a' | 'e' | 'i' | 'o' | 'u' => "an",
+                                        _ => "a",
+                                    };
+                                    (article, item_name.to_string())
+                                }
+                            }
+
+                            let mut message = format!(
+                                "You take {} {}",
+                                article_for(&item_name.to_lowercase()).0,
+                                item_name.to_lowercase()
+                            );
+
+                            if item.attributes.get_bool_default("monetary", false) {
+                                // This is not a standalone item but money
+                                let amount = item.attributes.get_int_default("worth", 0);
+                                if amount > 0 {
+                                    message = format!("You take {} gold.", amount);
+                                    _ = entity.add_base_currency(amount as i64, &ctx.currencies);
+                                }
+                            } else if entity.add_item(item).is_err() {
+                                // TODO: Send message.
+                                println!("Take: Too many items");
+                                if ctx.debug_mode {
+                                    add_debug_value(ctx, TheValue::Text("Inventory Full".into()), true);
+                                }
+                                rc = false;
+                            }
+
+                            if ctx.debug_mode && rc {
+                                add_debug_value(ctx, TheValue::Text("Ok".into()), false);
+                            }
+
+                            ctx.from_sender
+                                .get()
+                                .unwrap()
+                                .send(RegionMessage::RemoveItem(ctx.region_id, item_id))
+                                .unwrap();
+
+                            let msg = RegionMessage::Message(
+                                ctx.region_id,
+                                Some(entity_id),
+                                None,
+                                entity_id,
+                                message,
+                                "system".into(),
+                            );
+                            ctx.from_sender.get().unwrap().send(msg).unwrap();
+                        }
+                    } else {
+                        if ctx.debug_mode {
+                            add_debug_value(ctx, TheValue::Text("Unknown Item".into()), true);
+                        }
+                    }
+                    rc
+                })
+                .unwrap()
+            } */
             "equip" => {
                 if let Some(item_id) = args.get(0).map(|v| v.x as u32) {
                     if let Some(slot) = self
@@ -415,25 +632,122 @@ impl<'a> HostHandler for RegionHost<'a> {
                     return Some(VMValue::zero());
                 }
             }
+            "is_item" => {
+                if let Some(id) = args.get(0) {
+                    let item_id = id.x as u32;
+                    let exists = self.ctx.map.items.iter().any(|i| i.id == item_id)
+                        || self
+                            .ctx
+                            .map
+                            .entities
+                            .iter()
+                            .flat_map(|e| e.iter_inventory().map(|(_, it)| it.id))
+                            .any(|i| i == item_id);
+                    return Some(VMValue::broadcast(if exists { 1.0 } else { 0.0 }));
+                }
+            }
+            "is_entity" => {
+                if let Some(id) = args.get(0) {
+                    let entity_id = id.x as u32;
+                    let exists = self.ctx.map.entities.iter().any(|e| e.id == entity_id);
+                    return Some(VMValue::broadcast(if exists { 1.0 } else { 0.0 }));
+                }
+            }
+            "distance_to" => {
+                if let Some(id) = args.get(0) {
+                    let target = id.x as u32;
+                    let mut target_pos: Option<Vec2<f32>> = None;
+                    if let Some(e) = self.ctx.map.entities.iter().find(|e| e.id == target) {
+                        target_pos = Some(e.get_pos_xz());
+                    } else if let Some(i) = self.ctx.map.items.iter().find(|i| i.id == target) {
+                        target_pos = Some(i.get_pos_xz());
+                    }
+                    if let Some(target_pos) = target_pos {
+                        let pos = if let Some(item_id) = self.ctx.curr_item_id {
+                            self.ctx.get_item_mut(item_id).map(|i| i.get_pos_xz())
+                        } else {
+                            self.ctx.get_current_entity_mut().map(|e| e.get_pos_xz())
+                        };
+                        if let Some(pos) = pos {
+                            let dist = pos.distance(target_pos);
+                            return Some(VMValue::broadcast(dist));
+                        }
+                    }
+                    return Some(VMValue::zero());
+                }
+            }
             "deal_damage" => {
                 if let (Some(target), Some(amount)) = (args.get(0), args.get(1)) {
                     let id = target.x as u32;
                     let dmg = amount.x as i32;
-                    let attr = self.ctx.health_attr.clone();
-                    if let Some(entity) = self.ctx.get_entity_mut(id) {
-                        if let Some(mut health) = entity.attributes.get_int(&attr) {
-                            health = (health - dmg).max(0);
-                            entity.set_attribute(&attr, Value::Int(health));
-                            if health == 0 {
-                                entity.set_attribute("mode", Value::Str("dead".into()));
-                                entity.action = EntityAction::Off;
-                            }
-                        }
-                    }
+                    let subject_id = if self.ctx.curr_item_id.is_some() {
+                        self.ctx.curr_item_id.unwrap()
+                    } else {
+                        self.ctx.curr_entity_id
+                    };
+                    self.ctx.to_execute_entity.push((
+                        id,
+                        "take_damage".into(),
+                        VMValue::new(subject_id as f32, dmg as f32, 0.0),
+                    ));
                 }
             }
             "took_damage" => {
-                // already applied to current entity; nothing to return
+                if let (Some(from), Some(amount_val)) = (args.get(0), args.get(1)) {
+                    let mut kill = false;
+
+                    let from = from.x as u32;
+                    // Make sure we don't heal by accident
+                    let amount = amount_val.x.max(0.0) as i32;
+
+                    if amount == 0 {
+                        return None;
+                    }
+
+                    let id = self.ctx.curr_entity_id;
+                    let health_attr = self.ctx.health_attr.clone();
+
+                    let mut enqueue_death = false;
+
+                    // Check for death
+                    {
+                        if let Some(entity) = self.ctx.get_entity_mut(id) {
+                            if let Some(mut health) = entity.attributes.get_int(&health_attr) {
+                                // Reduce the health of the target
+                                health -= amount;
+                                health = health.max(0);
+                                // Set the new health
+                                entity.set_attribute(&health_attr, Value::Int(health));
+
+                                let mode = entity.attributes.get_str_default("mode", "".into());
+                                if health <= 0 && mode != "dead" {
+                                    enqueue_death = true;
+
+                                    entity.set_attribute("mode", Value::Str("dead".into()));
+                                    entity.action = EntityAction::Off;
+                                    self.ctx.entity_proximity_alerts.remove(&id);
+
+                                    kill = true;
+                                }
+                            }
+                        }
+                    }
+
+                    if enqueue_death {
+                        self.ctx
+                            .to_execute_entity
+                            .push((id, "death".into(), VMValue::zero()));
+                    }
+
+                    // if receiver got killed, send a "kill" event to the attacker
+                    if kill {
+                        self.ctx.to_execute_entity.push((
+                            from,
+                            "kill".into(),
+                            VMValue::broadcast(id as f32),
+                        ));
+                    }
+                }
             }
             "block_events" => {
                 if let (Some(minutes), Some(event)) =
@@ -455,52 +769,72 @@ impl<'a> HostHandler for RegionHost<'a> {
             }
             "add_item" => {
                 if let Some(class_name) = args.get(0).and_then(|v| v.as_string()) {
-                    // Minimal: create blank item with class_name and push into inventory
-                    if let Some(entity) = self.ctx.get_current_entity_mut() {
-                        let mut item = Item {
-                            id: crate::server::region::get_global_id(),
-                            ..Default::default()
-                        };
-                        item.set_attribute("class_name", Value::Str(class_name.to_string()));
-                        item.set_attribute("name", Value::Str(class_name.to_string()));
-                        let _ = entity.add_item(item);
-                    }
-                }
-            }
-            "drop_items" => {
-                if let Some(filter) = args.get(0).and_then(|v| v.as_string()) {
-                    if let Some(entity) = self.ctx.get_current_entity_mut() {
-                        let ids: Vec<u32> = entity
-                            .iter_inventory()
-                            .filter(|(_, it)| {
-                                let name = it.attributes.get_str("name").unwrap_or_default();
-                                let class_name =
-                                    it.attributes.get_str("class_name").unwrap_or_default();
-                                filter.is_empty()
-                                    || name.contains(filter)
-                                    || class_name.contains(filter)
-                            })
-                            .map(|(_, it)| it.id)
-                            .collect();
-                        let mut removed_items = Vec::new();
-                        for id in ids {
-                            if let Some(pos) = entity
-                                .inventory
-                                .iter()
-                                .position(|opt| opt.as_ref().map(|i| i.id) == Some(id))
-                            {
-                                if let Some(item) = entity.remove_item_from_slot(pos) {
-                                    removed_items.push(item);
+                    if let Some(item) = self.ctx.create_item(class_name.to_string()) {
+                        let id = self.ctx.curr_entity_id;
+                        if let Some(entity) = self.ctx.get_entity_mut(id) {
+                            let item_id = item.id;
+                            if entity.add_item(item).is_ok() {
+                                if self.ctx.debug_mode {
+                                    add_debug_value(self.ctx, TheValue::Text("Ok".into()), false);
                                 }
+                                return Some(VMValue::from_i32(item_id as i32));
+                            } else {
+                                if self.ctx.debug_mode {
+                                    add_debug_value(
+                                        self.ctx,
+                                        TheValue::Text("Inventory Full".into()),
+                                        true,
+                                    );
+                                }
+                                println!("add_item ({}): Inventory is full", class_name);
+                                return Some(VMValue::from_i32(-1));
                             }
+                        } else {
+                            return Some(VMValue::from_i32(-1));
                         }
-                        let _ = entity;
-                        self.ctx.map.items.extend(removed_items);
+                    } else {
+                        if self.ctx.debug_mode {
+                            add_debug_value(self.ctx, TheValue::Text("Unknown Item".into()), true);
+                        }
+                        return Some(VMValue::from_i32(-1));
                     }
                 }
             }
             "offer_inventory" => {
                 // Not modeled; ignore.
+            }
+            "drop_items" => {
+                if let Some(filter) = args.get(0).and_then(|v| v.as_string()) {
+                    if let Some(entity) = self.ctx.get_current_entity_mut() {
+                        let matching_slots: Vec<usize> = entity
+                            .iter_inventory()
+                            .filter_map(|(slot, it)| {
+                                let name = it.attributes.get_str("name").unwrap_or_default();
+                                let class_name =
+                                    it.attributes.get_str("class_name").unwrap_or_default();
+                                if filter.is_empty()
+                                    || name.contains(filter)
+                                    || class_name.contains(filter)
+                                {
+                                    Some(slot)
+                                } else {
+                                    None
+                                }
+                            })
+                            .collect();
+
+                        let mut removed_items = Vec::new();
+                        for slot in matching_slots {
+                            if let Some(mut item) = entity.remove_item_from_slot(slot) {
+                                // Drop at the entity position and mark dirty so the server transmits
+                                item.position = entity.position;
+                                item.mark_all_dirty();
+                                removed_items.push(item);
+                            }
+                        }
+                        self.ctx.map.items.extend(removed_items);
+                    }
+                }
             }
             "drop" => {
                 if let Some(item_id) = args.get(0).map(|v| v.x as u32) {
@@ -563,8 +897,28 @@ impl<'a> HostHandler for RegionHost<'a> {
     }
 }
 
-fn vmvalue_to_value(v: &VMValue) -> Value {
-    v.to_value()
+fn vmvalue_to_value_with_hint(v: &VMValue, hint: Option<&Value>) -> Value {
+    match hint {
+        Some(Value::Bool(_)) => Value::Bool(v.is_truthy()),
+        Some(Value::Int(_)) => Value::Int(v.x as i32),
+        Some(Value::UInt(_)) => Value::UInt(v.x.max(0.0) as u32),
+        Some(Value::Int64(_)) => Value::Int64(v.x as i64),
+        Some(Value::Float(_)) => Value::Float(v.x),
+        Some(Value::Vec2(_)) => Value::Vec2([v.x, v.y]),
+        Some(Value::Vec3(_)) => Value::Vec3([v.x, v.y, v.z]),
+        Some(Value::Vec4(_)) => Value::Vec4([v.x, v.y, v.z, 0.0]),
+        Some(Value::Str(_)) => Value::Str(
+            v.as_string()
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| format!("{}", v.x)),
+        ),
+        Some(Value::StrArray(_)) => Value::StrArray(vec![
+            v.as_string()
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| format!("{}", v.x)),
+        ]),
+        _ => Value::Int(v.x as i32),
+    }
 }
 
 // Run an event

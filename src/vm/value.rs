@@ -144,15 +144,45 @@ impl VMValue {
     pub fn cross(&self, other: VMValue) -> Self {
         VMValue::from_vec3(self.to_vec3().cross(other.to_vec3()))
     }
+
+    fn format_scalar(v: f32) -> String {
+        if v.fract() == 0.0 {
+            format!("{:.0}", v)
+        } else {
+            v.to_string()
+        }
+    }
+
+    fn to_string_lossy_components(x: f32, y: f32, z: f32) -> String {
+        if x == y && y == z {
+            Self::format_scalar(x)
+        } else {
+            format!("{},{},{}", x, y, z)
+        }
+    }
+
+    fn _to_string_lossy(&self) -> String {
+        Self::to_string_lossy_components(self.x, self.y, self.z)
+    }
 }
 
 impl Add for VMValue {
     type Output = VMValue;
 
     fn add(self, rhs: VMValue) -> Self::Output {
+        let (ax, ay, az) = (self.x, self.y, self.z);
+        let (bx, by, bz) = (rhs.x, rhs.y, rhs.z);
         match (self.string, rhs.string) {
             (Some(a), Some(b)) => VMValue::from_string(format!("{a}{b}")),
-            _ => VMValue::new(self.x + rhs.x, self.y + rhs.y, self.z + rhs.z),
+            (Some(a), None) => {
+                let b_str = VMValue::to_string_lossy_components(bx, by, bz);
+                VMValue::from_string(format!("{a}{b_str}"))
+            }
+            (None, Some(b)) => {
+                let a_str = VMValue::to_string_lossy_components(ax, ay, az);
+                VMValue::from_string(format!("{a_str}{b}"))
+            }
+            _ => VMValue::new(ax + bx, ay + by, az + bz),
         }
     }
 }

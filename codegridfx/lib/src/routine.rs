@@ -1,6 +1,7 @@
 use crate::{
     Cell, CellItem, DebugModule, Grid, GridCtx, ModuleType, cell::CellRole, cellitem::CellItemForm,
 };
+use serde::de::{self, Deserializer};
 use theframework::prelude::*;
 
 fn default_scale() -> f32 {
@@ -16,7 +17,11 @@ pub struct Routine {
     pub id: Uuid,
     pub name: String,
 
-    pub module_offset: u32,
+    #[serde(
+        default = "default_i32_zero",
+        deserialize_with = "deserialize_i32_from_any"
+    )]
+    pub module_offset: i32,
     pub visible: bool,
     pub folded: bool,
 
@@ -527,8 +532,8 @@ impl Routine {
         if self.name == "take_damage" {
             // *out += &format!("{:indent$}amount = value[\"amount\"]\n", "");
             // *out += &format!("{:indent$}from_id = value[\"from\"]\n", "");
-            *out += &format!("{:indent$}let amount = 0;\n", "");
-            *out += &format!("{:indent$}let from_id = 0;\n", "");
+            *out += &format!("{:indent$}let from_id = value.subject_id;\n", "");
+            *out += &format!("{:indent$}let amount = value.amount;\n", "");
         } else if self.name == "intent" {
             // *out += &format!("{:indent$}intent = value[\"intent\"]\n", "");
             // *out += &format!("{:indent$}distance = value[\"distance\"]\n", "");
@@ -690,5 +695,30 @@ impl Routine {
 
             _ => "custom event".into(),
         }
+    }
+}
+
+fn default_i32_zero() -> i32 {
+    0
+}
+
+fn deserialize_i32_from_any<'de, D>(deserializer: D) -> Result<i32, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let value = serde_json::Value::deserialize(deserializer)?;
+    match value {
+        serde_json::Value::Number(n) => {
+            if let Some(i) = n.as_i64() {
+                Ok(i as i32)
+            } else if let Some(u) = n.as_u64() {
+                Ok(u as i32)
+            } else if let Some(f) = n.as_f64() {
+                Ok(f as i32)
+            } else {
+                Err(de::Error::custom("invalid number for module_offset"))
+            }
+        }
+        _ => Err(de::Error::custom("expected number for module_offset")),
     }
 }

@@ -379,7 +379,8 @@ impl Module {
         for r in self.routines.values_mut() {
             if y < buffer.dim().height {
                 buffer.copy_into(self.grid_ctx.offset_x, y as i32, &r.buffer);
-                r.module_offset = y as u32;
+                // Store content-space offset (without scroll) for hit testing
+                r.module_offset = y - self.grid_ctx.offset_y;
                 y += r.buffer.dim().height;
 
                 r.visible = true;
@@ -435,9 +436,19 @@ impl Module {
     pub fn insert_module(&mut self, module: &Module, coord: Vec2<i32>) -> bool {
         let header_height = 35;
 
+        // Translate click coordinate into content space (accounts for scrolling)
+        let content = Vec2::new(
+            coord.x - self.grid_ctx.offset_x,
+            coord.y - self.grid_ctx.offset_y,
+        );
+
         for r in self.routines.values_mut() {
             if r.visible {
-                let loc = Vec2::new(coord.x as u32, coord.y as u32 - r.module_offset);
+                let loc_y = content.y - r.module_offset;
+                if loc_y < 0 {
+                    continue;
+                }
+                let loc = Vec2::new(content.x.max(0) as u32, loc_y as u32);
                 // TODO: Check for body hit too
                 if loc.y < header_height {
                     if let Some(shader) = module.routines.get_index(0) {
@@ -752,6 +763,8 @@ impl Module {
             TheEvent::Drop(coord, drop) => {
                 let mut handled = false;
                 let prev = self.to_json();
+                let content_x = coord.x as i32 - self.grid_ctx.offset_x;
+                let content_y = coord.y as i32 - self.grid_ctx.offset_y;
 
                 if drop.title == "Event" {
                     if self.module_type.is_instance() {
@@ -785,8 +798,12 @@ impl Module {
                 } else {
                     for r in self.routines.values_mut() {
                         if r.visible {
+                            let local_y = content_y - r.module_offset;
+                            if local_y < 0 {
+                                continue;
+                            }
                             handled = r.drop_at(
-                                Vec2::new(coord.x as u32, coord.y as u32 - r.module_offset),
+                                Vec2::new(content_x.max(0) as u32, local_y as u32),
                                 ui,
                                 ctx,
                                 &mut self.grid_ctx,
@@ -837,13 +854,16 @@ impl Module {
             }
             TheEvent::RenderViewContext(id, coord) => {
                 if id.name == self.get_view_name() {
+                    let content_x = coord.x as i32 - self.grid_ctx.offset_x;
+                    let content_y = coord.y as i32 - self.grid_ctx.offset_y;
                     for r in self.routines.values_mut() {
                         if r.visible {
-                            if let Some(menu) = r.context_at(
-                                Vec2::new(coord.x as u32, coord.y as u32 - r.module_offset),
-                                ctx,
-                                &mut self.grid_ctx,
-                            ) {
+                            let local_y = content_y - r.module_offset;
+                            if local_y < 0 {
+                                continue;
+                            }
+                            let loc = Vec2::new(content_x.max(0) as u32, local_y as u32);
+                            if let Some(menu) = r.context_at(loc, ctx, &mut self.grid_ctx) {
                                 r.draw(ctx, &mut self.grid_ctx, 0, None);
                                 if let Some(renderview) = ui.get_render_view(&self.get_view_name())
                                 {
@@ -860,11 +880,17 @@ impl Module {
             }
             TheEvent::RenderViewClicked(id, coord) => {
                 if id.name == self.get_view_name() {
+                    let content_x = coord.x as i32 - self.grid_ctx.offset_x;
+                    let content_y = coord.y as i32 - self.grid_ctx.offset_y;
                     let mut handled = false;
                     for r in self.routines.values_mut() {
                         if r.visible {
+                            let local_y = content_y - r.module_offset;
+                            if local_y < 0 {
+                                continue;
+                            }
                             handled = r.click_at(
-                                Vec2::new(coord.x as u32, coord.y as u32 - r.module_offset),
+                                Vec2::new(content_x.max(0) as u32, local_y as u32),
                                 ui,
                                 ctx,
                                 &mut self.grid_ctx,
