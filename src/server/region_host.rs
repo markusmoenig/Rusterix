@@ -1058,7 +1058,30 @@ impl<'a> HostHandler for RegionHost<'a> {
                 }
             }
             "debug" => {
-                // No-op for now.
+                let mut output = String::new();
+
+                for (i, arg) in args.iter().enumerate() {
+                    let arg_str = if let Some(s) = arg.as_string() {
+                        s.to_string()
+                    } else {
+                        format!("{}", arg.x)
+                    };
+
+                    if i > 0 {
+                        output.push(' ');
+                    }
+                    output.push_str(&arg_str);
+                }
+
+                if let Some(entity) = self.ctx.get_current_entity_mut() {
+                    if let Some(name) = entity.attributes.get_str("name") {
+                        output = format!("{}: {}", name, output);
+                    }
+                }
+
+                if let Some(sender) = self.ctx.from_sender.get() {
+                    let _ = sender.send(RegionMessage::LogMessage(output));
+                }
             }
             _ => {}
         }
