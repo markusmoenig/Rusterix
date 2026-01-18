@@ -1,7 +1,9 @@
 use crate::server::message::RegionMessage;
 use crate::server::region::add_debug_value;
 use crate::vm::*;
-use crate::{EntityAction, Item, PixelSource, PlayerCamera, RegionCtx, Value};
+use crate::{
+    Choice, EntityAction, Item, MultipleChoice, PixelSource, PlayerCamera, RegionCtx, Value,
+};
 use rand::Rng;
 use theframework::prelude::TheValue;
 use vek::Vec2;
@@ -801,7 +803,41 @@ impl<'a> HostHandler for RegionHost<'a> {
                 }
             }
             "offer_inventory" => {
-                // Not modeled; ignore.
+                if let (Some(to), Some(filter)) = (
+                    args.get(0).map(|v| v.x as u32),
+                    args.get(1).and_then(|v| v.as_string()),
+                ) {
+                    let region_id = self.ctx.region_id;
+                    if let Some(entity) = self.ctx.get_current_entity_mut() {
+                        let matching_item_ids: Vec<u32> = entity
+                            .iter_inventory()
+                            .filter_map(|(_, item)| {
+                                let name = item.attributes.get_str("name").unwrap_or_default();
+                                let class_name =
+                                    item.attributes.get_str("class_name").unwrap_or_default();
+
+                                if filter.is_empty()
+                                    || name.contains(filter)
+                                    || class_name.contains(filter)
+                                {
+                                    Some(item.id)
+                                } else {
+                                    None
+                                }
+                            })
+                            .collect();
+
+                        let mut choices = MultipleChoice::new(region_id, entity.id, to);
+                        for item_id in matching_item_ids {
+                            let choice = Choice::ItemToSell(item_id, entity.id, to);
+                            choices.add(choice);
+                        }
+
+                        if let Some(sender) = self.ctx.from_sender.get() {
+                            let _ = sender.send(RegionMessage::MultipleChoice(choices));
+                        }
+                    }
+                }
             }
             "drop_items" => {
                 if let Some(filter) = args.get(0).and_then(|v| v.as_string()) {

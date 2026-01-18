@@ -62,7 +62,6 @@ impl ClientAction {
                     self.program = Some(program);
                 }
                 Err(e) => {
-                    eprintln!("{}", entity_source);
                     eprintln!("Client: error compiling user_event: {}", e)
                 }
             }

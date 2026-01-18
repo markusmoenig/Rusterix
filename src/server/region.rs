@@ -1241,7 +1241,6 @@ impl RegionInstance {
                                     let mut item_to_sell: Option<Item> = None;
                                     if let Some(entity) = get_entity_mut(&mut ctx.map, *seller_id) {
                                         if let Some(item) = entity.remove_item(*item_id) {
-                                            // println!("itemtosell {:?}", item);
                                             item_to_sell = Some(item);
                                             _ = entity.add_base_currency(price, &ctx.currencies);
                                         }
@@ -2172,57 +2171,57 @@ impl RegionInstance {
     /// Send "intent" events for the entity or item at the given position.
     fn send_entity_intent_events(&self, entity: &mut Entity, position: Vec2<f32>) {
         with_regionctx(self.id, |ctx: &mut RegionCtx| {
-            if let Some(_class_name) = ctx.entity_classes.get(&entity.id) {
-                // Send "intent" event for the entity
+            // Send "intent" event for the entity
 
-                let mut value = VMValue::zero();
-                value.y = 1.0; // Distance
+            let mut value = VMValue::zero();
+            value.y = 1.0; // Distance
 
-                let mut target_item_id = None;
-                let mut target_entity_id = None;
+            let mut target_item_id = None;
+            let mut target_entity_id = None;
 
-                // TODO
+            // TODO
 
-                let mut found_target = false;
-                if let Some(entity_id) = get_entity_at(ctx, position, entity.id) {
-                    if entity_id != entity.id && !ctx.is_entity_dead_ctx(entity_id) {
-                        value.x = entity_id as f32;
-                        target_entity_id = Some(entity_id);
-                        found_target = true;
-                    }
+            let mut found_target = false;
+            if let Some(entity_id) = get_entity_at(ctx, position, entity.id) {
+                if entity_id != entity.id && !ctx.is_entity_dead_ctx(entity_id) {
+                    value.x = entity_id as f32;
+                    target_entity_id = Some(entity_id);
+                    found_target = true;
                 }
-                if !found_target {
-                    if let Some(i_id) = get_item_at(ctx, position) {
-                        value.x = i_id as f32;
-                        target_item_id = Some(i_id);
-                        found_target = true;
-                    }
-                }
-
-                let intent = entity.attributes.get_str_default("intent", "".into());
-
-                if !found_target {
-                    let message = format!("{{nothing_to_{}}}", intent);
-                    entity.set_attribute("intent", Value::Str(String::new()));
-                    send_message(ctx, entity.id, message, "system");
-                    return;
-                }
-
-                value.string = Some(intent.clone());
-
-                ctx.to_execute_entity
-                    .push((entity.id, "intent".to_string(), value.clone()));
-
-                if let Some(target_entity_id) = target_entity_id {
-                    ctx.to_execute_entity
-                        .push((target_entity_id, "intent".to_string(), value));
-                } else if let Some(item_id) = target_item_id {
-                    ctx.to_execute_item
-                        .push((item_id, "intent".to_string(), value));
-                }
-
-                entity.set_attribute("intent", Value::Str(String::new()));
             }
+            if !found_target {
+                if let Some(i_id) = get_item_at(ctx, position) {
+                    value.x = i_id as f32;
+                    target_item_id = Some(i_id);
+                    found_target = true;
+                }
+            }
+
+            let intent = entity.attributes.get_str_default("intent", "".into());
+
+            if !found_target {
+                let message = format!("{{nothing_to_{}}}", intent);
+                entity.set_attribute("intent", Value::Str(String::new()));
+                send_message(ctx, entity.id, message, "system");
+                return;
+            }
+
+            value.string = Some(intent.clone());
+
+            ctx.to_execute_entity
+                .push((entity.id, "intent".to_string(), value.clone()));
+
+            value.x = entity.id as f32;
+
+            if let Some(target_entity_id) = target_entity_id {
+                ctx.to_execute_entity
+                    .push((target_entity_id, "intent".to_string(), value));
+            } else if let Some(item_id) = target_item_id {
+                ctx.to_execute_item
+                    .push((item_id, "intent".to_string(), value));
+            }
+
+            entity.set_attribute("intent", Value::Str(String::new()));
         });
     }
 

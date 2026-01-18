@@ -551,9 +551,6 @@ impl Routine {
             // );
             *out += &format!("{:indent$}let intent = value.string;\n", "");
             *out += &format!("{:indent$}let distance = value.distance;\n", "");
-            *out += &format!("{:indent$}let item_id = 1;\n", "");
-            *out += &format!("{:indent$}let entity_id = 0;\n", "");
-            *out += &format!("{:indent$}let target_id = 0;\n", "");
         } else if self.name == "key_down" || self.name == "key_up" {
             *out += &format!("{:indent$}let key = value;\n", "");
         }
