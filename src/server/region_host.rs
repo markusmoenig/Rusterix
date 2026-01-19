@@ -798,6 +798,12 @@ impl<'a> HostHandler for RegionHost<'a> {
                         if self.ctx.debug_mode {
                             add_debug_value(self.ctx, TheValue::Text("Unknown Item".into()), true);
                         }
+                        self.ctx.send_log_message(format!(
+                            "[warn] {} ({}) => add_item: '{}' is not a valid item template.",
+                            self.ctx.get_entity_name(self.ctx.curr_entity_id),
+                            self.ctx.curr_entity_id,
+                            class_name
+                        ));
                         return Some(VMValue::from_i32(-1));
                     }
                 }

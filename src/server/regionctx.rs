@@ -158,6 +158,28 @@ impl RegionCtx {
         v
     }
 
+    /// Send a log message.
+    pub fn send_log_message(&mut self, message: String) {
+        self.from_sender
+            .get()
+            .unwrap()
+            .send(RegionMessage::LogMessage(message))
+            .unwrap();
+    }
+
+    /// Get the name of the entity with the given id.
+    pub fn get_entity_name(&self, id: u32) -> String {
+        let mut name = "Unknown".to_string();
+        for entity in self.map.entities.iter() {
+            if entity.id == id {
+                if let Some(n) = entity.attributes.get_str("name") {
+                    name = n.to_string();
+                }
+            }
+        }
+        name
+    }
+
     /// Check if the player moved to a different sector and if yes send "enter" and "left" events
     pub fn check_player_for_section_change(&mut self, entity: &mut Entity) {
         // Determine, set and notify the entity about the sector it is in.
@@ -245,12 +267,9 @@ impl RegionCtx {
                             VMValue::from(old_sector.clone()),
                         ));
                     }
-                    entity
-                        .attributes
-                        .set("sector", Value::Str(String::new()));
+                    entity.attributes.set("sector", Value::Str(String::new()));
                 }
             }
         }
     }
-
 }

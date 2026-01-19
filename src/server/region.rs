@@ -402,9 +402,8 @@ impl RegionInstance {
                         .insert(name.clone(), std::sync::Arc::new(program));
                 }
                 Err(error) => {
-                    println!("ERROR {}: {}", name, error.to_string());
                     ctx.startup_errors.push(format!(
-                        "{}: Error Compiling {} Character Class: {}",
+                        "[error] {}: Compiling Character '{}': {}",
                         self.name,
                         name,
                         error.to_string(),
@@ -427,7 +426,7 @@ impl RegionInstance {
                 }
                 Err(err) => {
                     ctx.startup_errors.push(format!(
-                        "{}: Error Parsing {} Entity Class: {}",
+                        "[error] {}: Character Attributes '{}': {}",
                         self.name, name, err,
                     ));
                 }
@@ -486,9 +485,8 @@ impl RegionInstance {
                         .insert(name.clone(), std::sync::Arc::new(program));
                 }
                 Err(error) => {
-                    println!("ERROR {}: {}", name, error.to_string());
                     ctx.startup_errors.push(format!(
-                        "{}: Error Compiling {} Item Class: {}",
+                        "[error] {}: Compiling Item '{}': {}",
                         self.name,
                         name,
                         error.to_string(),
@@ -604,12 +602,6 @@ impl RegionInstance {
             let mode = get_config_string_default(&ctx, "game", "entity_block_mode", "always");
             if mode == "always" { 1 } else { 0 }
         };
-
-        // Send startup messages
-        ctx.error_count = ctx.startup_errors.len() as u32;
-        for l in &ctx.startup_errors {
-            send_log_message(self.id, l.clone());
-        }
 
         let entities: Vec<Entity> = ctx.map.entities.clone();
         let items = ctx.map.items.clone();
@@ -877,7 +869,15 @@ impl RegionInstance {
         let mut error_count = 0;
         with_regionctx(self.id, |ctx| {
             ctx.curr_item_id = None;
+
+            // Send startup messages
+            ctx.error_count = ctx.startup_errors.len() as u32;
             error_count = ctx.error_count;
+
+            let messages = ctx.startup_errors.clone();
+            for l in messages {
+                ctx.send_log_message(l);
+            }
         });
 
         // Send startup log message

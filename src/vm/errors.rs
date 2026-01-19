@@ -25,8 +25,9 @@ impl ParseError {
 impl fmt::Display for ParseError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if self.line > 0 {
-            if let Some(file) = self.path.to_str() {
-                write!(f, "{} in {} at line {}.", self.message, file, self.line)
+            if let Some(_file) = self.path.to_str() {
+                // write!(f, "{} in {} at line {}.", self.message, file, self.line)
+                write!(f, "{} at line {}.", self.message, self.line)
             } else {
                 write!(f, "{} in <unknown file>.", self.message)
             }
@@ -63,8 +64,9 @@ impl RuntimeError {
 impl fmt::Display for RuntimeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if self.line > 0 {
-            if let Some(file) = self.path.to_str() {
-                write!(f, "{} in {} at line {}.", self.message, file, self.line)
+            if let Some(_file) = self.path.to_str() {
+                // write!(f, "{} in {} at line {}.", self.message, file, self.line)
+                write!(f, "{} at line {}.", self.message, self.line)
             } else {
                 write!(f, "{} in <unknown file>.", self.message)
             }
