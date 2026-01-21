@@ -892,6 +892,9 @@ impl RegionInstance {
         let mut ticks = 0;
 
         with_regionctx(self.id, |ctx| {
+            if ctx.paused {
+                return;
+            }
             ctx.ticks += 1;
             ticks = ctx.ticks;
 
@@ -1026,6 +1029,16 @@ impl RegionInstance {
         // Catch up with the server messages
         while let Ok(msg) = self.to_receiver.try_recv() {
             match msg {
+                Pause => {
+                    with_regionctx(self.id, |ctx: &mut RegionCtx| {
+                        ctx.paused = true;
+                    });
+                }
+                Continue => {
+                    with_regionctx(self.id, |ctx: &mut RegionCtx| {
+                        ctx.paused = false;
+                    });
+                }
                 Event(entity_id, event, value) => {
                     // let mut cmd = String::new();
                     with_regionctx(self.id, |ctx: &mut RegionCtx| {
@@ -1320,6 +1333,9 @@ impl RegionInstance {
 
         let mut entities = vec![];
         with_regionctx(self.id, |ctx: &mut RegionCtx| {
+            if ctx.paused {
+                return;
+            }
             entities = ctx.map.entities.clone();
         });
 

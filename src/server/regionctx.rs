@@ -13,6 +13,8 @@ pub struct RegionCtx {
     pub mapmini: MapMini,
     pub collision_world: CollisionWorld,
 
+    pub paused: bool,
+
     pub blocking_tiles: FxHashSet<Uuid>,
 
     pub debug_mode: bool,

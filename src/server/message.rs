@@ -35,6 +35,10 @@ pub enum RegionMessage {
     MultipleChoice(MultipleChoice),
     /// Send the debug id of a character or item
     DebugData(DebugModule),
+    /// Pause the server.
+    Pause,
+    /// Continue after pause
+    Continue,
     /// Stop processing and quit
     Quit,
 }

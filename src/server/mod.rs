@@ -530,6 +530,26 @@ impl Server {
         }
     }
 
+    /// Pause all region instances.
+    pub fn pause(&mut self) {
+        if let Ok(pipes) = REGIONPIPE.read() {
+            for sender in pipes.values() {
+                _ = sender.send(RegionMessage::Pause);
+            }
+        }
+        self.state = ServerState::Paused;
+    }
+
+    /// Continue all region instances.
+    pub fn continue_instances(&mut self) {
+        if let Ok(pipes) = REGIONPIPE.read() {
+            for sender in pipes.values() {
+                _ = sender.send(RegionMessage::Continue);
+            }
+        }
+        self.state = ServerState::Running;
+    }
+
     /// Shuts down all region instances.
     pub fn stop(&mut self) {
         if let Ok(pipes) = REGIONPIPE.read() {
