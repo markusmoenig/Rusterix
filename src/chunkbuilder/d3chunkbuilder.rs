@@ -3,7 +3,9 @@ use crate::chunkbuilder::surface_mesh_builder::{
 };
 use crate::chunkbuilder::terrain_generator::{TerrainConfig, TerrainGenerator};
 use crate::collision_world::{BlockingVolume, DynamicOpening, OpeningType, WalkableFloor};
-use crate::{Assets, Batch3D, Chunk, ChunkBuilder, Map, PixelSource, Value, VertexBlendPreset};
+use crate::{
+    Assets, Batch3D, Chunk, ChunkBuilder, Item, Map, PixelSource, Value, VertexBlendPreset,
+};
 use crate::{BillboardAnimation, GeometrySource, LoopOp, ProfileLoop, RepeatMode, Sector};
 use rustc_hash::{FxHashMap, FxHashSet};
 use scenevm::GeoId;
@@ -15,6 +17,24 @@ use vek::{Vec2, Vec3};
 pub const DEFAULT_TILE_ID: &str = "27826750-a9e7-4346-994b-fb318b238452";
 
 pub struct D3ChunkBuilder {}
+
+fn profile_sector_item(map: &Map, profile_id: Uuid, sector_id: u32) -> Option<&Item> {
+    let profile_map = map.profiles.get(&profile_id)?;
+    profile_map
+        .items
+        .iter()
+        .find(|item| match item.attributes.get("profile_sector_id") {
+            Some(Value::Int(id)) => *id as u32 == sector_id,
+            Some(Value::UInt(id)) => *id == sector_id,
+            Some(Value::Int64(id)) if *id >= 0 => *id as u32 == sector_id,
+            _ => false,
+        })
+}
+
+fn profile_sector_item_blocking(map: &Map, profile_id: Uuid, sector_id: u32) -> Option<bool> {
+    profile_sector_item(map, profile_id, sector_id)
+        .map(|item| item.attributes.get_bool_default("blocking", false))
+}
 
 fn build_world_vertices(verts_uv: &[[f32; 2]], surface: &crate::Surface) -> Vec<[f32; 4]> {
     verts_uv
@@ -1423,6 +1443,10 @@ impl ChunkBuilder for D3ChunkBuilder {
                                 floor_height,
                                 ceiling_height,
                                 opening_type,
+                                item_blocking: surface.profile.and_then(|pid| {
+                                    h.origin_profile_sector
+                                        .and_then(|sid| profile_sector_item_blocking(map, pid, sid))
+                                }),
                             });
                         }
                         LoopOp::Billboard { .. } => {
@@ -1467,6 +1491,10 @@ impl ChunkBuilder for D3ChunkBuilder {
                                 floor_height,
                                 ceiling_height,
                                 opening_type,
+                                item_blocking: surface.profile.and_then(|pid| {
+                                    h.origin_profile_sector
+                                        .and_then(|sid| profile_sector_item_blocking(map, pid, sid))
+                                }),
                             });
                         }
                         _ => {

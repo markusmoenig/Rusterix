@@ -36,6 +36,8 @@ pub struct BlockingVolume {
 pub struct DynamicOpening {
     /// GeoId for this opening (used to control state)
     pub geo_id: GeoId,
+    /// Optional blocking flag derived from the controlling item (if any)
+    pub item_blocking: Option<bool>,
     /// 2D boundary polygon in world space (XZ plane)
     pub boundary_2d: Vec<Vec2<f32>>,
     /// Floor height (Y coordinate)
@@ -380,11 +382,7 @@ impl CollisionWorld {
         false
     }
 
-    fn collect_blocking_segments(
-        &self,
-        position: Vec3<f32>,
-        radius: f32,
-    ) -> Vec<CollisionSegment> {
+    fn collect_blocking_segments(&self, position: Vec3<f32>, radius: f32) -> Vec<CollisionSegment> {
         let chunk_coords = self.world_to_chunk(Vec2::new(position.x, position.z));
         let mut segments = Vec::new();
 
@@ -439,11 +437,7 @@ impl CollisionWorld {
         });
     }
 
-    fn add_polygon_segments(
-        &self,
-        polygon: &[Vec2<f32>],
-        segments: &mut Vec<CollisionSegment>,
-    ) {
+    fn add_polygon_segments(&self, polygon: &[Vec2<f32>], segments: &mut Vec<CollisionSegment>) {
         if polygon.len() < 2 {
             return;
         }
@@ -459,11 +453,7 @@ impl CollisionWorld {
         match opening.opening_type {
             OpeningType::Passage => true,
             OpeningType::Window => false,
-            OpeningType::Door => self
-                .dynamic_states
-                .get(&opening.geo_id)
-                .map(|state| state.is_passable)
-                .unwrap_or(true),
+            OpeningType::Door => opening.item_blocking.map(|b| !b).unwrap_or(true),
         }
     }
 
@@ -471,11 +461,7 @@ impl CollisionWorld {
         match opening.opening_type {
             OpeningType::Passage => false,
             OpeningType::Window => true,
-            OpeningType::Door => self
-                .dynamic_states
-                .get(&opening.geo_id)
-                .map(|state| !state.is_passable)
-                .unwrap_or(false),
+            OpeningType::Door => opening.item_blocking.unwrap_or(false),
         }
     }
 

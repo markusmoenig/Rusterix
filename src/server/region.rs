@@ -541,6 +541,47 @@ impl RegionInstance {
             i.mark_all_dirty();
         }
 
+        // Create Items for Sectors
+        for s in &ctx.map.sectors {
+            if let Some(item_name) = s.properties.get_str("item") {
+                if item_name.is_empty() {
+                    continue;
+                }
+                // TODO
+            }
+        }
+
+        // Create Items for Profile Sectors
+        for (_, surface) in ctx.map.surfaces.iter_mut() {
+            if let Some(profile_id) = surface.profile {
+                if let Some(map) = ctx.map.profiles.get_mut(&profile_id) {
+                    for s in &map.sectors {
+                        if let Some(item_name) = s.properties.get_str("item") {
+                            if item_name.is_empty() {
+                                continue;
+                            }
+                            let mut item = Item::default();
+                            item.id = get_global_id();
+                            item.attributes
+                                .set("class_name", Value::Str(item_name.to_string()));
+                            item.attributes.set("static", Value::Bool(true));
+                            item.attributes
+                                .set("profile_host_sector_id", Value::UInt(surface.sector_id));
+                            item.attributes.set("profile_sector_id", Value::UInt(s.id));
+                            if let Some(pos) = s.center(map) {
+                                // Profile space uses -Y up; flip to UV and map onto the surface.
+                                let uv = Vec2::new(pos.x, -pos.y);
+                                let world_pos = surface.uv_to_world(uv);
+                                item.set_position(world_pos);
+                            }
+                            item.mark_all_dirty();
+                            map.items.push(item);
+                        }
+                    }
+                }
+            }
+        }
+
         // --- Startup
 
         ctx.from_sender.set(self.from_sender.clone()).unwrap();

@@ -5,11 +5,30 @@ use crate::{
     Choice, EntityAction, Item, MultipleChoice, PixelSource, PlayerCamera, RegionCtx, Value,
 };
 use rand::Rng;
+use scenevm::GeoId;
 use theframework::prelude::TheValue;
 use vek::Vec2;
 
 struct RegionHost<'a> {
     ctx: &'a mut RegionCtx,
+}
+
+fn opening_geo_for_item(item: &Item) -> Option<GeoId> {
+    let host_id = match item.attributes.get("profile_host_sector_id") {
+        Some(Value::Int(v)) if *v >= 0 => Some(*v as u32),
+        Some(Value::UInt(v)) => Some(*v),
+        Some(Value::Int64(v)) if *v >= 0 => Some(*v as u32),
+        _ => None,
+    }?;
+
+    let profile_id = match item.attributes.get("profile_sector_id") {
+        Some(Value::Int(v)) if *v >= 0 => Some(*v as u32),
+        Some(Value::UInt(v)) => Some(*v),
+        Some(Value::Int64(v)) if *v >= 0 => Some(*v as u32),
+        _ => None,
+    }?;
+
+    Some(GeoId::Hole(host_id, profile_id))
 }
 
 impl<'a> HostHandler for RegionHost<'a> {
@@ -151,6 +170,17 @@ impl<'a> HostHandler for RegionHost<'a> {
                             } else {
                                 (false, 0, VMValue::zero())
                             };
+
+                            if key == "blocking" {
+                                if let Some(geo_id) = opening_geo_for_item(item) {
+                                    let blocking =
+                                        item.attributes.get_bool_default("blocking", false);
+                                    // True blocking => not passable
+                                    self.ctx
+                                        .collision_world
+                                        .set_opening_state(geo_id, !blocking);
+                                }
+                            }
 
                             if queue_active {
                                 self.ctx.to_execute_item.push((
