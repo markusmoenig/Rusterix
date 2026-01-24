@@ -2023,12 +2023,6 @@ impl RegionInstance {
             // Now we set the new position after we've done all the entity/item collision resolution
             entity.set_pos_xz(new_position);
 
-            entity.position.y = ctx
-                .map
-                .terrain
-                .sample_height_bilinear(entity.position.x, entity.position.z)
-                + 1.5;
-
             // Finally, let the geometry/linedef collision do its thing (OLD SYSTEM)
             let (end_position, geometry_blocked) =
                 ctx.mapmini
@@ -2053,6 +2047,24 @@ impl RegionInstance {
                 entity.set_pos_xz(vek::Vec2::new(collision_pos.x, collision_pos.z));
                 blocked
             };
+
+            // Adjust vertical position based on collision floors/terrain at the final XZ.
+            let final_pos = entity.get_pos_xz();
+
+            let mut base_y = None;
+            // Fallback to terrain if no floor found.
+            if base_y.is_none() {
+                let config = crate::chunkbuilder::terrain_generator::TerrainConfig::default();
+                base_y = Some(
+                    crate::chunkbuilder::terrain_generator::TerrainGenerator::sample_height_at(
+                        &ctx.map, final_pos, &config,
+                    ),
+                );
+            }
+
+            if let Some(y) = base_y {
+                entity.position.y = y + 1.5;
+            }
 
             ctx.check_player_for_section_change(entity);
             geometry_blocked || collision_blocked
