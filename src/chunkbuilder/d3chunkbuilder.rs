@@ -80,6 +80,22 @@ fn build_surface_uvs(verts_uv: &[[f32; 2]], sector: &Sector) -> Vec<[f32; 2]> {
     uvs
 }
 
+fn shrink_polygon(points: &mut [Vec2<f32>], amount: f32) {
+    if points.is_empty() || amount <= 0.0 {
+        return;
+    }
+    let centroid =
+        points.iter().copied().fold(Vec2::zero(), |acc, p| acc + p) / (points.len() as f32);
+    for p in points.iter_mut() {
+        let dir = *p - centroid;
+        let len = dir.magnitude();
+        if len > f32::EPSILON {
+            let new_len = (len - amount).max(0.0);
+            *p = centroid + dir * (new_len / len);
+        }
+    }
+}
+
 /// Split triangles into per-tile batches using 1x1 UV cells. Only routes a triangle
 /// to an override if all three vertices fall into the same overridden cell.
 fn partition_triangles_with_tile_and_blend_overrides(
@@ -1381,7 +1397,7 @@ impl ChunkBuilder for D3ChunkBuilder {
                             // to create a passable corridor through the wall
                             let normal = surface.plane.normal;
                             let normal_2d = Vec2::new(normal.x, normal.z).normalized();
-                            const DOOR_DEPTH: f32 = 1.0; // Extend 1 unit on each side of wall
+                            const DOOR_DEPTH: f32 = 0.0; // No expansion; we'll shrink after
 
                             // Create expanded polygon by offsetting in both directions
                             let mut boundary_2d = Vec::new();
@@ -1393,6 +1409,9 @@ impl ChunkBuilder for D3ChunkBuilder {
                             for point in hole_points.iter().rev() {
                                 boundary_2d.push(*point - normal_2d * DOOR_DEPTH);
                             }
+
+                            // Slightly shrink the boundary to avoid overly generous collision
+                            shrink_polygon(&mut boundary_2d, 0.5);
 
                             // For door/window openings, use a simple approach:
                             // Doors/passages should allow passage from floor level up to a reasonable ceiling height
@@ -1463,7 +1482,7 @@ impl ChunkBuilder for D3ChunkBuilder {
 
                             let normal = surface.plane.normal;
                             let normal_2d = Vec2::new(normal.x, normal.z).normalized();
-                            const DOOR_DEPTH: f32 = 1.0;
+                            const DOOR_DEPTH: f32 = 0.0;
 
                             let mut boundary_2d = Vec::new();
                             for point in &hole_points {
@@ -1472,6 +1491,8 @@ impl ChunkBuilder for D3ChunkBuilder {
                             for point in hole_points.iter().rev() {
                                 boundary_2d.push(*point - normal_2d * DOOR_DEPTH);
                             }
+
+                            shrink_polygon(&mut boundary_2d, 0.5);
 
                             let floor_height = 0.0;
                             let ceiling_height = 10.0;

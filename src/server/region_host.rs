@@ -15,16 +15,12 @@ struct RegionHost<'a> {
 
 fn opening_geo_for_item(item: &Item) -> Option<GeoId> {
     let host_id = match item.attributes.get("profile_host_sector_id") {
-        Some(Value::Int(v)) if *v >= 0 => Some(*v as u32),
         Some(Value::UInt(v)) => Some(*v),
-        Some(Value::Int64(v)) if *v >= 0 => Some(*v as u32),
         _ => None,
     }?;
 
     let profile_id = match item.attributes.get("profile_sector_id") {
-        Some(Value::Int(v)) if *v >= 0 => Some(*v as u32),
         Some(Value::UInt(v)) => Some(*v),
-        Some(Value::Int64(v)) if *v >= 0 => Some(*v as u32),
         _ => None,
     }?;
 
@@ -616,21 +612,47 @@ impl<'a> HostHandler for RegionHost<'a> {
                 }
             }
             "entities_in_radius" => {
-                let mut ids: Vec<u32> = Vec::new();
-                let pos = if let Some(item_id) = self.ctx.curr_item_id {
-                    self.ctx.get_item_mut(item_id).map(|i| i.get_pos_xz())
+                // args: [radius], operates on current entity or item
+                let mut radius = args.get(0).map(|v| v.x.max(0.0)).unwrap_or(0.5);
+
+                // Determine source position and id
+                let (source_pos, source_entity_id, _source_item_id) = if let Some(item_id) =
+                    self.ctx.curr_item_id
+                {
+                    if let Some(item) = self.ctx.get_item_mut(item_id) {
+                        radius = radius.max(item.attributes.get_float_default("radius", radius));
+                    }
+                    (
+                        self.ctx.get_item_mut(item_id).map(|i| i.get_pos_xz()),
+                        None,
+                        Some(item_id),
+                    )
                 } else {
-                    self.ctx.get_current_entity_mut().map(|e| e.get_pos_xz())
+                    let mut pos = None;
+                    if let Some(entity) = self.ctx.get_current_entity_mut() {
+                        radius = radius.max(entity.attributes.get_float_default("radius", radius));
+                        pos = Some(entity.get_pos_xz());
+                    }
+                    (pos, Some(self.ctx.curr_entity_id), None)
                 };
-                if let Some(pos) = pos {
-                    for e in &self.ctx.map.entities {
-                        if e.id != self.ctx.curr_entity_id {
-                            if pos.distance(e.get_pos_xz()) < 1.0 {
-                                ids.push(e.id);
-                            }
+
+                let mut ids: Vec<u32> = Vec::new();
+                if let Some(pos) = source_pos {
+                    for other in &self.ctx.map.entities {
+                        // Skip self if we're an entity
+                        if source_entity_id == Some(other.id) {
+                            continue;
+                        }
+                        let other_pos = other.get_pos_xz();
+                        let other_radius = other.attributes.get_float_default("radius", 0.5);
+                        let combined = radius + other_radius;
+                        if (pos - other_pos).magnitude_squared() < combined * combined {
+                            ids.push(other.id);
                         }
                     }
                 }
+
+                // Pack result: x/y first two ids, z = count, string = comma list
                 let ids_str: Vec<String> = ids.iter().map(|i| i.to_string()).collect();
                 let mut v = VMValue::zero();
                 if let Some(id0) = ids.get(0) {

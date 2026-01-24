@@ -70,14 +70,10 @@ impl SceneHandler {
         map.items.iter().find(|item| {
             let host_matches = match item.attributes.get("profile_host_sector_id") {
                 Some(Value::UInt(v)) => *v == host,
-                Some(Value::Int(v)) if *v >= 0 => *v as u32 == host,
-                Some(Value::Int64(v)) if *v >= 0 => *v as u32 == host,
                 _ => false,
             };
             let profile_matches = match item.attributes.get("profile_sector_id") {
                 Some(Value::UInt(v)) => *v == profile,
-                Some(Value::Int(v)) if *v >= 0 => *v as u32 == profile,
-                Some(Value::Int64(v)) if *v >= 0 => *v as u32 == profile,
                 _ => false,
             };
             host_matches && profile_matches

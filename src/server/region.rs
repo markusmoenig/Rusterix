@@ -657,7 +657,6 @@ impl RegionInstance {
         };
 
         let entities: Vec<Entity> = ctx.map.entities.clone();
-        let items = ctx.map.items.clone();
 
         // Setting the data for the entities.
         for entity in entities.iter() {
@@ -745,6 +744,7 @@ impl RegionInstance {
             }
         }
 
+        /*
         // Send "startup" event to all items.
         for item in items.iter() {
             if let Some(class_name) = item.get_attr_string("class_name") {
@@ -773,8 +773,9 @@ impl RegionInstance {
         }
         with_regionctx(self.id, |ctx| {
             ctx.curr_item_id = None;
-        });
+        });*/
 
+        /*
         // Running the character setup scripts for the class instances
         for entity in entities.iter() {
             if let Some(_setup) = entity.get_attr_string("setup") {
@@ -834,7 +835,7 @@ impl RegionInstance {
                     }
                 }*/
             }
-        }
+        }*/
 
         // Running the item setup scripts for the class instances
         let mut items = vec![];
@@ -880,31 +881,19 @@ impl RegionInstance {
                 //     });
                 // }
             }
+
             // Setting the data for the item.
             if let Some(class_name) = item.get_attr_string("class_name") {
-                // let mut cmd = String::new();
                 with_regionctx(self.id, |ctx| {
                     if let Some(data) = ctx.item_class_data.get(&class_name) {
                         for i in ctx.map.items.iter_mut() {
                             if i.id == item.id {
-                                if !item.attributes.contains("profile_host_sector_id") {
-                                    apply_item_data(i, data);
-                                }
+                                apply_item_data(i, data);
                                 *item = i.clone();
                             }
                         }
                     }
-                    // Send active state
-                    // cmd = format!(
-                    //     "{}.event(\"active\", {})",
-                    //     class_name,
-                    //     if item.attributes.get_bool_default("active", false) {
-                    //         "true"
-                    //     } else {
-                    //         "false"
-                    //     }
-                    // );
-                    //
+
                     let state = if item.attributes.get_bool_default("active", false) {
                         true
                     } else {
@@ -916,7 +905,17 @@ impl RegionInstance {
                         run_server_fn(&mut self.exec, &args, &program, ctx);
                     }
                 });
-                // _ = self.execute(&cmd);
+
+                // Send startup to all items
+                with_regionctx(self.id, |ctx| {
+                    ctx.item_classes.insert(item.id, class_name.clone());
+                    ctx.curr_item_id = Some(item.id);
+
+                    if let Some(program) = ctx.item_programs.get(&class_name).cloned() {
+                        let args = [VMValue::from_string("startup"), VMValue::zero()];
+                        run_server_fn(&mut self.exec, &args, &program, ctx);
+                    }
+                });
             }
         }
 
