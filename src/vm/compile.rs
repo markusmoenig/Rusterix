@@ -471,13 +471,13 @@ impl Visitor for CompileVisitor {
         match &value {
             ASTValue::Boolean(b) => {
                 ctx.emit(NodeOp::Push(if *b {
-                    VMValue::broadcast(1.0)
+                    VMValue::new_with_string(1.0, 1.0, 1.0, "bool")
                 } else {
-                    VMValue::broadcast(0.0)
+                    VMValue::new_with_string(0.0, 0.0, 0.0, "bool")
                 }));
             }
             ASTValue::Float(f) => {
-                ctx.emit(NodeOp::Push(VMValue::broadcast(*f)));
+                ctx.emit(NodeOp::Push(VMValue::new_with_string(*f, *f, *f, "float")));
             }
             ASTValue::Float2(x, y) => {
                 _ = x.accept(self, ctx)?.to_float().unwrap_or_default();

@@ -170,6 +170,7 @@ impl GameWidget {
 
         if scene_handler.vm.vm_layer_count() > 1 {
             scene_handler.vm.set_layer_enabled(1, false);
+            scene_handler.vm.set_layer_enabled(2, false);
         }
 
         if self.camera == PlayerCamera::D2 {
@@ -180,6 +181,7 @@ impl GameWidget {
 
         if scene_handler.vm.vm_layer_count() > 1 {
             scene_handler.vm.set_layer_enabled(1, true);
+            scene_handler.vm.set_layer_enabled(2, true);
         }
     }
 

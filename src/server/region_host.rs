@@ -152,8 +152,8 @@ impl<'a> HostHandler for RegionHost<'a> {
                 {
                     if let Some(item_id) = self.ctx.curr_item_id {
                         if let Some(item) = self.ctx.get_item_mut(item_id) {
-                            let converted =
-                                vmvalue_to_value_with_hint(val, item.attributes.get(key));
+                            // Single conversion path with optional type hints (string tag or attr type).
+                            let converted = val.to_value_with_hint(item.attributes.get(key));
                             item.set_attribute(key, converted);
 
                             let (queue_active, queued_id, active_val) = if key == "active" {
@@ -191,7 +191,7 @@ impl<'a> HostHandler for RegionHost<'a> {
                             }
                         }
                     } else if let Some(entity) = self.ctx.get_current_entity_mut() {
-                        let converted = vmvalue_to_value_with_hint(val, entity.attributes.get(key));
+                        let converted = val.to_value_with_hint(entity.attributes.get(key));
                         entity.set_attribute(key, converted);
                     }
                 }
@@ -1122,30 +1122,6 @@ impl<'a> HostHandler for RegionHost<'a> {
             _ => {}
         }
         None
-    }
-}
-
-fn vmvalue_to_value_with_hint(v: &VMValue, hint: Option<&Value>) -> Value {
-    match hint {
-        Some(Value::Bool(_)) => Value::Bool(v.is_truthy()),
-        Some(Value::Int(_)) => Value::Int(v.x as i32),
-        Some(Value::UInt(_)) => Value::UInt(v.x.max(0.0) as u32),
-        Some(Value::Int64(_)) => Value::Int64(v.x as i64),
-        Some(Value::Float(_)) => Value::Float(v.x),
-        Some(Value::Vec2(_)) => Value::Vec2([v.x, v.y]),
-        Some(Value::Vec3(_)) => Value::Vec3([v.x, v.y, v.z]),
-        Some(Value::Vec4(_)) => Value::Vec4([v.x, v.y, v.z, 0.0]),
-        Some(Value::Str(_)) => Value::Str(
-            v.as_string()
-                .map(|s| s.to_string())
-                .unwrap_or_else(|| format!("{}", v.x)),
-        ),
-        Some(Value::StrArray(_)) => Value::StrArray(vec![
-            v.as_string()
-                .map(|s| s.to_string())
-                .unwrap_or_else(|| format!("{}", v.x)),
-        ]),
-        _ => Value::Int(v.x as i32),
     }
 }
 

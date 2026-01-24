@@ -117,11 +117,113 @@ impl VMValue {
         }
     }
 
+    /// Convert into a Value using an optional type hint and/or inline string tag (e.g. "bool").
+    pub fn to_value_with_hint(&self, hint: Option<&Value>) -> Value {
+        // String payload can act as an explicit type hint.
+        if let Some(s) = self.as_string() {
+            let s_trim = s.trim();
+            // Support legacy tagged strings like "bool:true"
+            if let Some(tagged) = Self::from_type_tagged_str(s_trim) {
+                return tagged;
+            }
+            match s_trim.to_ascii_lowercase().as_str() {
+                "bool" => return Value::Bool(self.to_bool()),
+                "int" => return Value::Int(self.x as i32),
+                "uint" => return Value::UInt(self.x.max(0.0) as u32),
+                "i64" | "int64" => return Value::Int64(self.x as i64),
+                "float" | "f32" => return Value::Float(self.x),
+                "vec2" => return Value::Vec2([self.x, self.y]),
+                "vec3" => return Value::Vec3([self.x, self.y, self.z]),
+                "str" | "string" => {
+                    return Value::Str(Self::to_string_lossy_components(self.x, self.y, self.z));
+                }
+                _ => {}
+            }
+        }
+
+        match hint {
+            Some(Value::Bool(_)) => Value::Bool(self.to_bool()),
+            Some(Value::Int(_)) => Value::Int(self.x as i32),
+            Some(Value::UInt(_)) => Value::UInt(self.x.max(0.0) as u32),
+            Some(Value::Int64(_)) => Value::Int64(self.x as i64),
+            Some(Value::Float(_)) => Value::Float(self.x),
+            Some(Value::Vec2(_)) => Value::Vec2([self.x, self.y]),
+            Some(Value::Vec3(_)) => Value::Vec3([self.x, self.y, self.z]),
+            Some(Value::Vec4(_)) => Value::Vec4([self.x, self.y, self.z, 0.0]),
+            Some(Value::Str(_)) => Value::Str(
+                self.as_string()
+                    .map(|s| s.to_string())
+                    .unwrap_or_else(|| format!("{}", self.x)),
+            ),
+            Some(Value::StrArray(_)) => Value::StrArray(vec![
+                self.as_string()
+                    .map(|s| s.to_string())
+                    .unwrap_or_else(|| format!("{}", self.x)),
+            ]),
+            _ => {
+                // Fallback: infer from string payload, then numbers.
+                if let Some(s) = self.as_string() {
+                    if let Some(b) = Self::parse_bool_str(s) {
+                        return Value::Bool(b);
+                    }
+                    if let Ok(i) = s.parse::<i32>() {
+                        return Value::Int(i);
+                    }
+                    if let Ok(f) = s.parse::<f32>() {
+                        return Value::Float(f);
+                    }
+                    return Value::Str(s.to_string());
+                }
+                if self.x == self.y && self.x == self.z {
+                    Value::Float(self.x)
+                } else {
+                    Value::Vec3([self.x, self.y, self.z])
+                }
+            }
+        }
+    }
+
+    pub fn to_bool(&self) -> bool {
+        if let Some(s) = self.as_string() {
+            if let Some(b) = Self::parse_bool_str(s) {
+                return b;
+            }
+        }
+        // Numeric fallback: nonzero -> true
+        self.x != 0.0 || self.y != 0.0 || self.z != 0.0
+    }
+
     pub fn is_truthy(&self) -> bool {
         if let Some(s) = &self.string {
             !s.is_empty()
         } else {
             self.x != 0.0 || self.y != 0.0 || self.z != 0.0
+        }
+    }
+
+    fn parse_bool_str(s: &str) -> Option<bool> {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "true" | "1" | "yes" | "on" => Some(true),
+            "false" | "0" | "no" | "off" => Some(false),
+            _ => None,
+        }
+    }
+
+    fn from_type_tagged_str(s: &str) -> Option<Value> {
+        let (tag, rest) = s.split_once(':')?;
+        let tag = tag.trim().to_ascii_lowercase();
+        let rest = rest.trim();
+
+        match tag.as_str() {
+            "bool" => Self::parse_bool_str(rest).map(Value::Bool),
+            "int" => rest.parse::<i32>().ok().map(Value::Int),
+            "uint" => rest.parse::<u32>().ok().map(Value::UInt),
+            "i64" | "int64" => rest.parse::<i64>().ok().map(Value::Int64),
+            "float" | "f32" => rest.parse::<f32>().ok().map(Value::Float),
+            "vec2" => parse_vec(rest, 2).map(|v| Value::Vec2([v[0], v[1]])),
+            "vec3" => parse_vec(rest, 3).map(|v| Value::Vec3([v[0], v[1], v[2]])),
+            "str" | "string" => Some(Value::Str(rest.to_string())),
+            _ => None,
         }
     }
 
@@ -163,6 +265,59 @@ impl VMValue {
 
     fn _to_string_lossy(&self) -> String {
         Self::to_string_lossy_components(self.x, self.y, self.z)
+    }
+}
+
+impl std::fmt::Display for VMValue {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if let Some(s) = &self.string {
+            let tag = s.trim();
+            let tag_l = tag.to_ascii_lowercase();
+
+            if let Some(val) = Self::from_type_tagged_str(tag) {
+                return write!(f, "{}", format_value_brief(&val));
+            }
+
+            return match tag_l.as_str() {
+                "bool" => write!(f, "{}", self.to_bool()),
+                "int" => write!(f, "{}", self.x as i32),
+                "uint" => write!(f, "{}", self.x.max(0.0) as u32),
+                "i64" | "int64" => write!(f, "{}", self.x as i64),
+                "float" | "f32" => write!(f, "{}", self.x),
+                "vec2" => write!(f, "[{}, {}]", self.x, self.y),
+                "vec3" => write!(f, "[{}, {}, {}]", self.x, self.y, self.z),
+                "vec4" => write!(f, "[{}, {}, {}, 0]", self.x, self.y, self.z),
+                "str" | "string" => {
+                    write!(
+                        f,
+                        "{}",
+                        Self::to_string_lossy_components(self.x, self.y, self.z)
+                    )
+                }
+                _ => write!(f, "{}", s),
+            };
+        }
+
+        if self.x == self.y && self.x == self.z {
+            write!(f, "{}", self.x)
+        } else {
+            write!(f, "[{}, {}, {}]", self.x, self.y, self.z)
+        }
+    }
+}
+
+fn format_value_brief(v: &Value) -> String {
+    match v {
+        Value::Bool(b) => b.to_string(),
+        Value::Int(i) => i.to_string(),
+        Value::UInt(u) => u.to_string(),
+        Value::Int64(i) => i.to_string(),
+        Value::Float(f) => f.to_string(),
+        Value::Vec2(v) => format!("[{}, {}]", v[0], v[1]),
+        Value::Vec3(v) => format!("[{}, {}, {}]", v[0], v[1], v[2]),
+        Value::Vec4(v) => format!("[{}, {}, {}, {}]", v[0], v[1], v[2], v[3]),
+        Value::Str(s) => s.clone(),
+        _ => format!("{:?}", v),
     }
 }
 
@@ -264,5 +419,17 @@ impl From<Value> for VMValue {
 impl From<Vec3<f32>> for VMValue {
     fn from(v: Vec3<f32>) -> Self {
         VMValue::from_vec3(v)
+    }
+}
+
+fn parse_vec(s: &str, expected: usize) -> Option<Vec<f32>> {
+    let vals: Vec<f32> = s
+        .split(',')
+        .filter_map(|p| p.trim().parse::<f32>().ok())
+        .collect();
+    if vals.len() == expected {
+        Some(vals)
+    } else {
+        None
     }
 }

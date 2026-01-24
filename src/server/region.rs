@@ -551,7 +551,7 @@ impl RegionInstance {
             }
         }
 
-        // Create Items for Profile Sectors
+        // Create Items for Profile Sectors (Doors, Gates)
         for (_, surface) in ctx.map.surfaces.iter_mut() {
             if let Some(profile_id) = surface.profile {
                 if let Some(map) = ctx.map.profiles.get_mut(&profile_id) {
@@ -560,22 +560,34 @@ impl RegionInstance {
                             if item_name.is_empty() {
                                 continue;
                             }
-                            let mut item = Item::default();
-                            item.id = get_global_id();
-                            item.attributes
-                                .set("class_name", Value::Str(item_name.to_string()));
-                            item.attributes.set("static", Value::Bool(true));
-                            item.attributes
-                                .set("profile_host_sector_id", Value::UInt(surface.sector_id));
-                            item.attributes.set("profile_sector_id", Value::UInt(s.id));
-                            if let Some(pos) = s.center(map) {
-                                // Profile space uses -Y up; flip to UV and map onto the surface.
-                                let uv = Vec2::new(pos.x, -pos.y);
-                                let world_pos = surface.uv_to_world(uv);
-                                item.set_position(world_pos);
+
+                            // Check if the given class name exists
+                            if ctx.item_programs.contains_key(item_name) {
+                                let mut item = Item::default();
+                                item.id = get_global_id();
+                                item.attributes.set("name", Value::Str(s.name.to_string()));
+                                item.attributes
+                                    .set("class_name", Value::Str(item_name.to_string()));
+                                item.attributes.set("static", Value::Bool(true));
+                                item.attributes
+                                    .set("profile_host_sector_id", Value::UInt(surface.sector_id));
+                                item.attributes.set("profile_sector_id", Value::UInt(s.id));
+                                if let Some(pos) = s.center(map) {
+                                    // Profile space uses -Y up; flip to UV and map onto the surface.
+                                    let uv = Vec2::new(pos.x, -pos.y);
+                                    let world_pos = surface.uv_to_world(uv);
+                                    item.set_position(world_pos);
+                                }
+                                item.mark_all_dirty();
+                                ctx.map.items.push(item);
+                            } else {
+                                ctx.startup_errors.push(format!(
+                                    "[error] {}: Profile Sector Item '{}': Item does not exist '{}'",
+                                    self.name,
+                                    name,
+                                    item_name
+                                ));
                             }
-                            item.mark_all_dirty();
-                            map.items.push(item);
                         }
                     }
                 }
@@ -875,7 +887,9 @@ impl RegionInstance {
                     if let Some(data) = ctx.item_class_data.get(&class_name) {
                         for i in ctx.map.items.iter_mut() {
                             if i.id == item.id {
-                                apply_item_data(i, data);
+                                if !item.attributes.contains("profile_host_sector_id") {
+                                    apply_item_data(i, data);
+                                }
                                 *item = i.clone();
                             }
                         }

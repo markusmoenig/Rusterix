@@ -184,13 +184,15 @@ impl Execution {
             NodeOp::Pack2 => {
                 let y = self.stack.pop().unwrap();
                 let x = self.stack.pop().unwrap();
-                self.stack.push(VMValue::new(x.x, y.x, 0.0));
+                self.stack
+                    .push(VMValue::new_with_string(x.x, y.x, 0.0, "vec2"));
             }
             NodeOp::Pack3 => {
                 let z = self.stack.pop().unwrap();
                 let y = self.stack.pop().unwrap();
                 let x = self.stack.pop().unwrap();
-                self.stack.push(VMValue::new(x.x, y.x, z.x));
+                self.stack
+                    .push(VMValue::new_with_string(x.x, y.x, z.x, "vec3"));
             }
             NodeOp::Dup => {
                 if let Some(top) = self.stack.last() {
@@ -564,13 +566,7 @@ impl Execution {
                 args.reverse();
                 let text = args
                     .iter()
-                    .map(|v| {
-                        if let Some(s) = v.as_string() {
-                            format!("(x={} y={} z={} string={})", v.x, v.y, v.z, s)
-                        } else {
-                            format!("(x={} y={} z={} string=None)", v.x, v.y, v.z)
-                        }
-                    })
+                    .map(|v| v.to_string())
                     .collect::<Vec<_>>()
                     .join(" ");
                 println!("print: {}", text);

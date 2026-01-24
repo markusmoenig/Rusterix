@@ -333,6 +333,16 @@ impl CollisionWorld {
                 animation_progress: 0.0,
             })
             .is_passable = is_passable;
+
+        // Keep per-opening blocking flag in sync for doors that rely on item_blocking.
+        let item_blocking = Some(!is_passable);
+        for chunk in self.chunks.values_mut() {
+            for opening in &mut chunk.dynamic_openings {
+                if opening.geo_id == geo_id {
+                    opening.item_blocking = item_blocking;
+                }
+            }
+        }
     }
 
     /// Get the state of a dynamic opening

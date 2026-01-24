@@ -1,7 +1,8 @@
 use std::str::FromStr;
 
 use crate::{
-    Assets, BillboardMetadata, D3Camera, Map, PixelSource, RenderSettings, Texture, Tile, Value,
+    Assets, BillboardMetadata, D3Camera, Item, Map, PixelSource, RenderSettings, Texture, Tile,
+    Value,
 };
 use indexmap::IndexMap;
 use rust_embed::EmbeddedFile;
@@ -44,6 +45,45 @@ impl Default for SceneHandler {
 }
 
 impl SceneHandler {
+    pub fn find_item_any<'m>(map: &'m Map, id: u32) -> Option<&'m Item> {
+        if let Some(item) = map.items.iter().find(|i| i.id == id) {
+            return Some(item);
+        }
+        for profile_map in map.profiles.values() {
+            if let Some(item) = profile_map.items.iter().find(|i| i.id == id) {
+                return Some(item);
+            }
+        }
+        None
+    }
+
+    pub fn find_item_by_profile_attrs<'m>(
+        map: &'m Map,
+        host_sector: Option<u32>,
+        profile_sector: Option<u32>,
+    ) -> Option<&'m Item> {
+        let Some(host) = host_sector else { return None };
+        let Some(profile) = profile_sector else {
+            return None;
+        };
+
+        map.items.iter().find(|item| {
+            let host_matches = match item.attributes.get("profile_host_sector_id") {
+                Some(Value::UInt(v)) => *v == host,
+                Some(Value::Int(v)) if *v >= 0 => *v as u32 == host,
+                Some(Value::Int64(v)) if *v >= 0 => *v as u32 == host,
+                _ => false,
+            };
+            let profile_matches = match item.attributes.get("profile_sector_id") {
+                Some(Value::UInt(v)) => *v == profile,
+                Some(Value::Int(v)) if *v >= 0 => *v as u32 == profile,
+                Some(Value::Int64(v)) if *v >= 0 => *v as u32 == profile,
+                _ => false,
+            };
+            host_matches && profile_matches
+        })
+    }
+
     pub fn empty() -> Self {
         let vm = SceneVM::default();
         // vm.set_layer_activity_logging(true);
@@ -466,9 +506,17 @@ impl SceneHandler {
 
         // Billboards (doors/gates)
         for (geo_id, billboard) in &self.billboards {
-            // TODO: Query server/client for current state of this GeoId
-            // For now, always render billboards (you can add state checking later)
-            let is_visible = true;
+            // Doors/gates use GeoId::Hole(host_sector, profile_sector)
+            let resolved_item = match geo_id {
+                GeoId::Hole(host, profile) => {
+                    Self::find_item_by_profile_attrs(map, Some(*host), Some(*profile))
+                }
+                _ => None,
+            };
+
+            let is_visible = resolved_item
+                .map(|item| item.attributes.get_bool_default("visible", true))
+                .unwrap_or(true);
 
             if is_visible {
                 // Calculate animation offset based on animation type and state

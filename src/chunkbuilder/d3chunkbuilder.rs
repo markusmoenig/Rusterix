@@ -24,8 +24,8 @@ fn profile_sector_item(map: &Map, profile_id: Uuid, sector_id: u32) -> Option<&I
         .items
         .iter()
         .find(|item| match item.attributes.get("profile_sector_id") {
-            Some(Value::Int(id)) => *id as u32 == sector_id,
             Some(Value::UInt(id)) => *id == sector_id,
+            Some(Value::Int(id)) => *id as u32 == sector_id,
             Some(Value::Int64(id)) if *id >= 0 => *id as u32 == sector_id,
             _ => false,
         })
