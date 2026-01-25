@@ -2,7 +2,6 @@ pub mod action;
 pub mod command;
 pub mod daylight;
 pub mod draw2d;
-pub mod interpolation;
 pub mod parser;
 pub mod resolver;
 pub mod widget;

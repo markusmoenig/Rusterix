@@ -1,4 +1,3 @@
-use crate::client::interpolation::*;
 use crate::prelude::*;
 use crate::{PlayerCamera, Rect, SceneHandler};
 use crate::{ValueGroups, ValueTomlLoader};
@@ -21,7 +20,7 @@ pub struct GameWidget {
     pub grid_size: f32,
     pub top_left: Vec2<f32>,
 
-    pub interpolation: InterpolationBuffer,
+    pub player_pos: Vec2<f32>,
 
     pub toml_str: String,
     pub table: ValueGroups,
@@ -56,7 +55,7 @@ impl GameWidget {
             grid_size: 32.0,
             top_left: Vec2::zero(),
 
-            interpolation: InterpolationBuffer::default(),
+            player_pos: Vec2::zero(),
 
             toml_str: String::new(),
             table: ValueGroups::default(),
@@ -117,7 +116,7 @@ impl GameWidget {
                     entity.apply_to_camera(&mut self.camera_d3);
                 }
 
-                self.interpolation.add_position(entity.get_pos_xz());
+                self.player_pos = entity.get_pos_xz();
                 break;
             }
         }
@@ -220,7 +219,7 @@ impl GameWidget {
         let half_screen = screen_size / 2.0;
 
         // Compute unclamped camera center in world space
-        let mut camera_pos = self.interpolation.get_interpolated() * self.grid_size;
+        let mut camera_pos = self.player_pos * self.grid_size;
 
         let map_width_px = max_world.x - min_world.x;
         let map_height_px = max_world.y - min_world.y;
