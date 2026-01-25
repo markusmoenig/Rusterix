@@ -1,5 +1,6 @@
-use crate::value::ValueContainer;
+use crate::value::{Value, ValueContainer};
 use crate::value_toml::ValueTomlLoader;
+use rustc_hash::FxHashMap;
 use scenevm::{Atom, SceneVM};
 use vek::Vec4;
 
@@ -57,6 +58,11 @@ pub struct RenderSettings {
 
     /// Reflection samples (0 = disabled, higher = better quality)
     pub reflection_samples: f32,
+
+    /// Target frame time in milliseconds for interpolation (default 30 FPS)
+    pub frame_time_ms: f32,
+
+    transitions: FxHashMap<SettingKey, Transition>,
 
     /// Daylight simulation settings
     pub simulation: DaylightSimulation,
@@ -117,6 +123,57 @@ impl Default for DaylightSimulation {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum SettingKey {
+    SkyColor,
+    SunColor,
+    SunIntensity,
+    SunDirection,
+    SunEnabled,
+    AmbientColor,
+    AmbientStrength,
+    FogColor,
+    FogDensity,
+    AoSamples,
+    AoRadius,
+    BumpStrength,
+    MaxTransparencyBounces,
+    MaxShadowDistance,
+    MaxSkyDistance,
+    MaxShadowSteps,
+    ReflectionSamples,
+    FrameTimeMs,
+}
+
+#[derive(Debug, Clone)]
+enum Transition {
+    Float {
+        start: f32,
+        target: f32,
+        duration: f32,
+        elapsed: f32,
+    },
+    Vec3 {
+        start: [f32; 3],
+        target: [f32; 3],
+        duration: f32,
+        elapsed: f32,
+    },
+    Bool {
+        start: bool,
+        target: bool,
+        duration: f32,
+        elapsed: f32,
+    },
+}
+
+#[derive(Debug, Clone)]
+enum SettingValue {
+    Float(f32),
+    Vec3([f32; 3]),
+    Bool(bool),
+}
+
 impl Default for RenderSettings {
     fn default() -> Self {
         Self {
@@ -137,6 +194,8 @@ impl Default for RenderSettings {
             max_sky_distance: 50.0,
             max_shadow_steps: 2.0,
             reflection_samples: 0.0,
+            frame_time_ms: 1000.0 / 30.0,
+            transitions: FxHashMap::default(),
             simulation: DaylightSimulation::default(),
         }
     }
@@ -155,6 +214,64 @@ impl RenderSettings {
         if let Some(sim) = groups.get("simulation") {
             self.apply_simulation_values(sim)?;
         }
+
+        Ok(())
+    }
+
+    /// Schedule a timed render setting change.
+    /// `time` is the duration in seconds over which the setting interpolates from its current value.
+    pub fn set(
+        &mut self,
+        name: &str,
+        value: Value,
+        time: f32,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let Some(key) = Self::key_from_name(name) else {
+            return Err(format!("Unknown render setting '{}'", name).into());
+        };
+
+        if key == SettingKey::FrameTimeMs {
+            let ms = Self::value_to_f32(&value)
+                .ok_or_else(|| format!("Expected numeric value for '{}'", name))?;
+            self.frame_time_ms = ms.max(0.0);
+            return Ok(());
+        }
+
+        let target = Self::parse_value_for_key(key, value)?;
+        let duration = time.max(0.0);
+
+        if duration == 0.0 {
+            self.apply_setting_value(key, target);
+            self.transitions.remove(&key);
+            return Ok(());
+        }
+
+        let start = self.current_value(key);
+        let transition = match (start, target) {
+            (SettingValue::Float(s), SettingValue::Float(t)) => Transition::Float {
+                start: s,
+                target: t,
+                duration,
+                elapsed: 0.0,
+            },
+            (SettingValue::Vec3(s), SettingValue::Vec3(t)) => Transition::Vec3 {
+                start: s,
+                target: t,
+                duration,
+                elapsed: 0.0,
+            },
+            (SettingValue::Bool(s), SettingValue::Bool(t)) => Transition::Bool {
+                start: s,
+                target: t,
+                duration,
+                elapsed: 0.0,
+            },
+            _ => {
+                return Err("Mismatched setting value types".into());
+            }
+        };
+
+        self.transitions.insert(key, transition);
 
         Ok(())
     }
@@ -234,7 +351,9 @@ impl RenderSettings {
     }
 
     /// Apply these render settings to a SceneVM instance
-    pub fn apply_2d(&self, vm: &mut SceneVM) {
+    pub fn apply_2d(&mut self, vm: &mut SceneVM) {
+        self.update_transitions();
+
         // gp1: Sky color (RGB) + unused w
         vm.execute(Atom::SetGP1(Vec4::new(
             self.sky_color[0],
@@ -245,7 +364,9 @@ impl RenderSettings {
     }
 
     /// Apply these render settings to a SceneVM instance
-    pub fn apply_3d(&self, vm: &mut SceneVM) {
+    pub fn apply_3d(&mut self, vm: &mut SceneVM) {
+        self.update_transitions();
+
         // Convert sRGB colors to linear space (gamma 2.2) on CPU instead of per-pixel in shader
         let to_linear = |c: f32| c.powf(2.2);
 
@@ -308,6 +429,204 @@ impl RenderSettings {
             self.reflection_samples,
         )));
     }
+
+    fn update_transitions(&mut self) {
+        if self.transitions.is_empty() {
+            return;
+        }
+
+        let dt = (self.frame_time_ms / 1000.0).max(0.0001);
+        let mut finished = Vec::new();
+        let mut updates = Vec::new();
+
+        for (key, transition) in self.transitions.iter_mut() {
+            match transition {
+                Transition::Float {
+                    start,
+                    target,
+                    duration,
+                    elapsed,
+                } => {
+                    *elapsed += dt;
+                    let progress = if *duration == 0.0 {
+                        1.0
+                    } else {
+                        (*elapsed / *duration).clamp(0.0, 1.0)
+                    };
+                    let value = lerp(*start, *target, progress);
+                    updates.push((*key, SettingValue::Float(value)));
+
+                    if progress >= 1.0 {
+                        finished.push(*key);
+                    }
+                }
+                Transition::Vec3 {
+                    start,
+                    target,
+                    duration,
+                    elapsed,
+                } => {
+                    *elapsed += dt;
+                    let progress = if *duration == 0.0 {
+                        1.0
+                    } else {
+                        (*elapsed / *duration).clamp(0.0, 1.0)
+                    };
+                    let value = lerp_color(*start, *target, progress);
+                    updates.push((*key, SettingValue::Vec3(value)));
+
+                    if progress >= 1.0 {
+                        finished.push(*key);
+                    }
+                }
+                Transition::Bool {
+                    start,
+                    target,
+                    duration,
+                    elapsed,
+                } => {
+                    *elapsed += dt;
+                    let done = *duration == 0.0 || *elapsed >= *duration;
+                    let value = if done { *target } else { *start };
+                    updates.push((*key, SettingValue::Bool(value)));
+                    if done {
+                        finished.push(*key);
+                    }
+                }
+            }
+        }
+
+        for (key, value) in updates {
+            self.apply_setting_value(key, value);
+        }
+        for key in finished {
+            self.transitions.remove(&key);
+        }
+    }
+
+    fn current_value(&self, key: SettingKey) -> SettingValue {
+        match key {
+            SettingKey::SkyColor => SettingValue::Vec3(self.sky_color),
+            SettingKey::SunColor => SettingValue::Vec3(self.sun_color),
+            SettingKey::SunIntensity => SettingValue::Float(self.sun_intensity),
+            SettingKey::SunDirection => SettingValue::Vec3(self.sun_direction),
+            SettingKey::SunEnabled => SettingValue::Bool(self.sun_enabled),
+            SettingKey::AmbientColor => SettingValue::Vec3(self.ambient_color),
+            SettingKey::AmbientStrength => SettingValue::Float(self.ambient_strength),
+            SettingKey::FogColor => SettingValue::Vec3(self.fog_color),
+            SettingKey::FogDensity => SettingValue::Float(self.fog_density),
+            SettingKey::AoSamples => SettingValue::Float(self.ao_samples),
+            SettingKey::AoRadius => SettingValue::Float(self.ao_radius),
+            SettingKey::BumpStrength => SettingValue::Float(self.bump_strength),
+            SettingKey::MaxTransparencyBounces => {
+                SettingValue::Float(self.max_transparency_bounces)
+            }
+            SettingKey::MaxShadowDistance => SettingValue::Float(self.max_shadow_distance),
+            SettingKey::MaxSkyDistance => SettingValue::Float(self.max_sky_distance),
+            SettingKey::MaxShadowSteps => SettingValue::Float(self.max_shadow_steps),
+            SettingKey::ReflectionSamples => SettingValue::Float(self.reflection_samples),
+            SettingKey::FrameTimeMs => SettingValue::Float(self.frame_time_ms),
+        }
+    }
+
+    fn apply_setting_value(&mut self, key: SettingKey, value: SettingValue) {
+        match (key, value) {
+            (SettingKey::SkyColor, SettingValue::Vec3(v)) => self.sky_color = v,
+            (SettingKey::SunColor, SettingValue::Vec3(v)) => self.sun_color = v,
+            (SettingKey::SunIntensity, SettingValue::Float(v)) => self.sun_intensity = v,
+            (SettingKey::SunDirection, SettingValue::Vec3(v)) => self.sun_direction = v,
+            (SettingKey::SunEnabled, SettingValue::Bool(v)) => self.sun_enabled = v,
+            (SettingKey::AmbientColor, SettingValue::Vec3(v)) => self.ambient_color = v,
+            (SettingKey::AmbientStrength, SettingValue::Float(v)) => self.ambient_strength = v,
+            (SettingKey::FogColor, SettingValue::Vec3(v)) => self.fog_color = v,
+            (SettingKey::FogDensity, SettingValue::Float(v)) => self.fog_density = v,
+            (SettingKey::AoSamples, SettingValue::Float(v)) => self.ao_samples = v,
+            (SettingKey::AoRadius, SettingValue::Float(v)) => self.ao_radius = v,
+            (SettingKey::BumpStrength, SettingValue::Float(v)) => self.bump_strength = v,
+            (SettingKey::MaxTransparencyBounces, SettingValue::Float(v)) => {
+                self.max_transparency_bounces = v
+            }
+            (SettingKey::MaxShadowDistance, SettingValue::Float(v)) => self.max_shadow_distance = v,
+            (SettingKey::MaxSkyDistance, SettingValue::Float(v)) => self.max_sky_distance = v,
+            (SettingKey::MaxShadowSteps, SettingValue::Float(v)) => self.max_shadow_steps = v,
+            (SettingKey::ReflectionSamples, SettingValue::Float(v)) => self.reflection_samples = v,
+            (SettingKey::FrameTimeMs, SettingValue::Float(v)) => self.frame_time_ms = v,
+            _ => {}
+        }
+    }
+
+    fn parse_value_for_key(
+        key: SettingKey,
+        value: Value,
+    ) -> Result<SettingValue, Box<dyn std::error::Error>> {
+        match key {
+            SettingKey::SkyColor
+            | SettingKey::SunColor
+            | SettingKey::SunDirection
+            | SettingKey::AmbientColor
+            | SettingKey::FogColor => match value {
+                Value::Vec3(v) => Ok(SettingValue::Vec3(v)),
+                Value::Vec4(v) => Ok(SettingValue::Vec3([v[0], v[1], v[2]])),
+                Value::Str(s) => Ok(SettingValue::Vec3(parse_hex_color(&s)?)),
+                _ => Err(format!("Expected Vec3 or hex color for {:?}", key).into()),
+            },
+            SettingKey::SunEnabled => match value {
+                Value::Bool(b) => Ok(SettingValue::Bool(b)),
+                _ => Err("Expected bool for sun_enabled".into()),
+            },
+            SettingKey::SunIntensity
+            | SettingKey::AmbientStrength
+            | SettingKey::FogDensity
+            | SettingKey::AoSamples
+            | SettingKey::AoRadius
+            | SettingKey::BumpStrength
+            | SettingKey::MaxTransparencyBounces
+            | SettingKey::MaxShadowDistance
+            | SettingKey::MaxSkyDistance
+            | SettingKey::MaxShadowSteps
+            | SettingKey::ReflectionSamples
+            | SettingKey::FrameTimeMs => {
+                let Some(v) = Self::value_to_f32(&value) else {
+                    return Err(format!("Expected numeric value for {:?}", key).into());
+                };
+                Ok(SettingValue::Float(v))
+            }
+        }
+    }
+
+    fn value_to_f32(value: &Value) -> Option<f32> {
+        match value {
+            Value::Float(v) => Some(*v),
+            Value::Int(v) => Some(*v as f32),
+            Value::UInt(v) => Some(*v as f32),
+            Value::Int64(v) => Some(*v as f32),
+            _ => None,
+        }
+    }
+
+    fn key_from_name(name: &str) -> Option<SettingKey> {
+        match name {
+            "sky_color" => Some(SettingKey::SkyColor),
+            "sun_color" => Some(SettingKey::SunColor),
+            "sun_intensity" => Some(SettingKey::SunIntensity),
+            "sun_direction" => Some(SettingKey::SunDirection),
+            "sun_enabled" => Some(SettingKey::SunEnabled),
+            "ambient_color" => Some(SettingKey::AmbientColor),
+            "ambient_strength" => Some(SettingKey::AmbientStrength),
+            "fog_color" => Some(SettingKey::FogColor),
+            "fog_density" => Some(SettingKey::FogDensity),
+            "ao_samples" => Some(SettingKey::AoSamples),
+            "ao_radius" => Some(SettingKey::AoRadius),
+            "bump_strength" => Some(SettingKey::BumpStrength),
+            "max_transparency_bounces" => Some(SettingKey::MaxTransparencyBounces),
+            "max_shadow_distance" => Some(SettingKey::MaxShadowDistance),
+            "max_sky_distance" => Some(SettingKey::MaxSkyDistance),
+            "max_shadow_steps" => Some(SettingKey::MaxShadowSteps),
+            "reflection_samples" => Some(SettingKey::ReflectionSamples),
+            "ms_per_frame" => Some(SettingKey::FrameTimeMs),
+            _ => None,
+        }
+    }
 }
 
 impl RenderSettings {
@@ -360,6 +679,12 @@ impl RenderSettings {
         self.max_shadow_steps = render.get_float_default("max_shadow_steps", self.max_shadow_steps);
         self.reflection_samples =
             render.get_float_default("reflection_samples", self.reflection_samples);
+        self.frame_time_ms = render.get_float_default("ms_per_frame", self.frame_time_ms);
+        if let Some(fps) = render.get_float("fps") {
+            if fps > 0.0 {
+                self.frame_time_ms = 1000.0 / fps;
+            }
+        }
 
         Ok(())
     }
@@ -478,5 +803,22 @@ mod tests {
         assert!(settings.simulation.enabled);
         assert_eq!(settings.simulation.sunrise_time, 6.0);
         assert_eq!(settings.simulation.sunset_time, 18.0);
+    }
+
+    #[test]
+    fn interpolates_with_set() {
+        let mut settings = RenderSettings::default();
+        settings.frame_time_ms = 1000.0; // 1 second per update for predictable progress
+
+        settings
+            .set("sun_intensity", Value::Float(3.0), 2.0)
+            .expect("set sun_intensity");
+
+        settings.update_transitions();
+        assert!((settings.sun_intensity - 2.0).abs() < f32::EPSILON);
+
+        settings.update_transitions();
+        assert!((settings.sun_intensity - 3.0).abs() < f32::EPSILON);
+        assert!(settings.transitions.is_empty());
     }
 }

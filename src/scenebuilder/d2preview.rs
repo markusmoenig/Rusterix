@@ -311,16 +311,6 @@ impl D2PreviewBuilder {
 
         // Add the clipping area
         if let Some(clip_rect) = self.clip_rect {
-            // let size = self.map_grid_to_local(
-            //     screen_size,
-            //     Vec2::new(clip_rect.width, clip_rect.height),
-            //     map,
-            // );
-            // let tl = Vec2::new(clip_rect.x, clip_rect.y);
-            // let batch = Batch2D::from_rectangle(tl.x, tl.y, size.x, size.y)
-            //     .source(PixelSource::Pixel([255, 255, 255, 30]));
-            // scene.d2_dynamic.push(batch);
-
             let rect = (
                 Vec2::new(clip_rect.x, clip_rect.y),
                 Vec2::new(
@@ -394,6 +384,9 @@ impl D2PreviewBuilder {
                 if sector.intersects_vertical_slice(map, self.editing_slice, 1.0) {
                     let bbox = sector.bounding_box(map);
 
+                    let is_rect = sector.properties.contains("rect")
+                        || sector.properties.contains("rect_rendering");
+
                     if let Some(geo) = sector.generate_geometry(map) {
                         let mut vertices: Vec<[f32; 2]> = vec![];
                         let mut uvs: Vec<[f32; 2]> = vec![];
@@ -441,7 +434,7 @@ impl D2PreviewBuilder {
                                     vertices,
                                     uvs,
                                     geo.1,
-                                    10,
+                                    if is_rect { 9 } else { 10 },
                                     true,
                                 );
                             }
@@ -551,6 +544,7 @@ impl D2PreviewBuilder {
             || self.map_tool_type == MapToolType::Effects
             || self.map_tool_type == MapToolType::MiniMap
             || self.map_tool_type == MapToolType::General
+            || self.map_tool_type == MapToolType::Rect
         {
             let mut selected_lines = vec![];
             let mut non_selected_lines = vec![];
@@ -941,28 +935,28 @@ impl D2PreviewBuilder {
             );*/
 
             scene_handler.add_overlay_2d_line(
-                GeoId::Unknown(20),
+                GeoId::Unknown(50),
                 Vec2::new(rect.0.x, rect.0.y),
                 Vec2::new(rect.1.x, rect.0.y),
                 scene_handler.white,
                 1000,
             );
             scene_handler.add_overlay_2d_line(
-                GeoId::Unknown(21),
+                GeoId::Unknown(51),
                 Vec2::new(rect.0.x, rect.0.y),
                 Vec2::new(rect.0.x, rect.1.y),
                 scene_handler.white,
                 1000,
             );
             scene_handler.add_overlay_2d_line(
-                GeoId::Unknown(22),
+                GeoId::Unknown(52),
                 Vec2::new(rect.1.x, rect.1.y),
                 Vec2::new(rect.1.x, rect.0.y),
                 scene_handler.white,
                 1000,
             );
             scene_handler.add_overlay_2d_line(
-                GeoId::Unknown(23),
+                GeoId::Unknown(53),
                 Vec2::new(rect.1.x, rect.1.y),
                 Vec2::new(rect.0.x, rect.1.y),
                 scene_handler.white,
