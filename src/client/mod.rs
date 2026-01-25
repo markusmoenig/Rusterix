@@ -82,6 +82,7 @@ pub struct Client {
     button_widgets: FxHashMap<u32, Widget>,
     text_widgets: FxHashMap<Uuid, TextWidget>,
     deco_widgets: FxHashMap<Uuid, DecoWidget>,
+    screen_widget: Option<ScreenWidget>,
 
     messages_widget: Option<MessagesWidget>,
 
@@ -164,6 +165,8 @@ impl Client {
             button_widgets: FxHashMap::default(),
             text_widgets: FxHashMap::default(),
             deco_widgets: FxHashMap::default(),
+            screen_widget: None,
+
             messages_widget: None,
 
             activated_widgets: vec![],
@@ -805,33 +808,30 @@ impl Client {
         }
 
         if let Some(screen) = assets.screens.get(&self.current_screen) {
-            let mut widget = ScreenWidget {
-                buffer: TheRGBABuffer::new(TheDim::sized(self.viewport.x, self.viewport.y)),
-                ..Default::default()
-            };
+            if let Some(screen_widget) = &mut self.screen_widget {
+                let (start_x, start_y) = crate::utils::align_screen_to_grid(
+                    self.viewport.x as f32,
+                    self.viewport.y as f32,
+                    self.grid_size,
+                );
 
-            let (start_x, start_y) = crate::utils::align_screen_to_grid(
-                self.viewport.x as f32,
-                self.viewport.y as f32,
-                self.grid_size,
-            );
+                screen_widget.builder_d2.activated_widgets = self.activated_widgets.clone();
+                screen_widget.grid_size = self.grid_size;
 
-            widget.builder_d2.activated_widgets = self.activated_widgets.clone();
-            widget.grid_size = self.grid_size;
-
-            // Add the current intent to the activated widgets
-            for w in self.button_widgets.iter() {
-                if w.1.intent.is_some() && w.1.intent.as_ref().unwrap() == &self.intent {
-                    widget.builder_d2.activated_widgets.push(w.0.clone());
+                // Add the current intent to the activated widgets
+                for w in self.button_widgets.iter() {
+                    if w.1.intent.is_some() && w.1.intent.as_ref().unwrap() == &self.intent {
+                        screen_widget.builder_d2.activated_widgets.push(w.0.clone());
+                    }
                 }
+
+                screen_widget.offset = Vec2::new(start_x, start_y);
+
+                screen_widget.build(screen, assets);
+                screen_widget.draw(screen, &self.server_time, assets);
+
+                self.target.blend_into(0, 0, &screen_widget.buffer);
             }
-
-            widget.offset = Vec2::new(start_x, start_y);
-
-            widget.build(screen, assets);
-            widget.draw(screen, &self.server_time, assets);
-
-            self.target.blend_into(0, 0, &widget.buffer);
         }
 
         // Draw the deco widgets on top
@@ -1124,6 +1124,11 @@ impl Client {
         self.text_widgets.clear();
         self.deco_widgets.clear();
         self.messages_widget = None;
+
+        self.screen_widget = Some(ScreenWidget {
+            buffer: TheRGBABuffer::new(TheDim::sized(self.viewport.x, self.viewport.y)),
+            ..Default::default()
+        });
 
         for widget in screen.sectors.iter() {
             let bb = widget.bounding_box(screen);

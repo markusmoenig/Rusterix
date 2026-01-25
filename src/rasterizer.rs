@@ -889,6 +889,7 @@ impl Rasterizer {
                                             if !self.preserve_transparency {
                                                 buffer[idx + 3] = 255;
                                             } else {
+                                                // buffer[idx + 3] = texel[3];
                                                 buffer[idx + 3] = buffer[idx + 3].max(texel[3]);
                                             }
                                         }
