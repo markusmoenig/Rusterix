@@ -495,7 +495,7 @@ impl CellItem {
     }
 
     /// Creates the settings for the cell
-    pub fn create_settings(&self, palette: &ThePalette, module_type: ModuleType) -> TheNodeUI {
+    pub fn create_settings(&self, palette: &ThePalette, _module_type: ModuleType) -> TheNodeUI {
         let mut nodeui: TheNodeUI = TheNodeUI::default();
 
         match &self.cell {
@@ -510,6 +510,7 @@ impl CellItem {
                 );
                 nodeui.add_item(item);
 
+                /*
                 if !module_type.is_shader() {
                     let item = TheNodeUIItem::Selector(
                         "cgfxVariableOption".into(),
@@ -523,7 +524,7 @@ impl CellItem {
                         self.option,
                     );
                     nodeui.add_item(item);
-                }
+                }*/
             }
             Integer(value) | Float(value) => {
                 let item = TheNodeUIItem::Text(

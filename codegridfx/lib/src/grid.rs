@@ -456,46 +456,16 @@ impl Grid {
         self.insert_empty();
     }
 
-    /// Handles a return at the given row, i.e. pushes all rows down and inserts an empty row.
-    /// The new row inherits the indent level of the line at `row`.
+    /// Handles a return at the given row, i.e. pushes the current row and all rows below down
+    /// and inserts an empty row at the current position with the same indent.
     pub fn return_at(&mut self, row: u32) {
-        // Determine the current row’s indent based on effective indent
+        // Get the indent of the current row before shifting
         let current_indent = self.effective_indent(row);
 
-        // Check whether the **leading non-empty** cell of this row is a control opener (If/Else)
-        let mut is_control = false;
-        let mut lead_col: Option<u32> = None;
-        for (&(c, r), cell) in &self.grid {
-            if r == row && !matches!(cell.cell, Cell::Empty) {
-                match lead_col {
-                    Some(prev) if c >= prev => {}
-                    _ => lead_col = Some(c),
-                }
-            }
-        }
-        if let Some(c0) = lead_col {
-            if let Some(ci) = self.grid.get(&(c0, row)) {
-                is_control = matches!(
-                    ci.cell,
-                    Cell::If | Cell::Else /* | Cell::For | Cell::While */
-                );
-            }
-        }
-
-        // Decide how many rows to insert and what indent to use for the first new row
-        // Control lines (If/Else) always open a block: insert one row with indent + 1
-        // Non-control lines: insert one row at the same indent
-        let insert_count = 1u32;
-        let first_indent = if is_control {
-            current_indent + 1
-        } else {
-            current_indent
-        };
-
-        // Shift rows > `row` down by insert_count
+        // Shift rows >= `row` down by 1 (including the current row)
         let mut to_shift: Vec<((u32, u32), CellItem)> = Vec::new();
         for (&(col, r), cell) in &self.grid {
-            if r > row {
+            if r >= row {
                 to_shift.push(((col, r), cell.clone()));
             }
         }
@@ -504,32 +474,24 @@ impl Grid {
             self.grid_rects.remove(&(*col, *r));
         }
         for ((col, r), cell) in to_shift {
-            self.grid.insert((col, r + insert_count), cell);
+            self.grid.insert((col, r + 1), cell);
         }
 
         // Update the indent map for shifted rows
         let mut new_indents = FxHashMap::default();
         for (&r, &ind) in &self.row_indents {
-            if r > row {
-                new_indents.insert(r + insert_count, ind);
+            if r >= row {
+                new_indents.insert(r + 1, ind);
             } else {
                 new_indents.insert(r, ind);
             }
         }
 
-        // Insert the first new row and record its indent
-        let inner_row = row + 1;
-        self.grid.insert((0, inner_row), CellItem::new(Cell::Empty));
-        new_indents.insert(inner_row, first_indent);
-
-        // (No second row insertion; Return always inserts exactly one new row.)
+        // Insert a new empty row at the current position with the same indent
+        self.grid.insert((0, row), CellItem::new(Cell::Empty));
+        new_indents.insert(row, current_indent);
 
         self.row_indents = new_indents;
-
-        // Only append a trailing blank line when at top level and not handling a control statement
-        if current_indent == 0 && !is_control {
-            self.insert_empty();
-        }
     }
 
     /// Handles deletion/backspace at the given row.
