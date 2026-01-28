@@ -107,6 +107,11 @@ pub struct Client {
     currencies: Currencies,
 
     first_game_draw: bool,
+
+    // Upscale mode: "none" (default, centered), "aspect" (scale to aspect ratio)
+    upscale_mode: String,
+    // Current scale factor used for aspect mode (1.0 when no scaling)
+    upscale_factor: f32,
 }
 
 impl Default for Client {
@@ -180,6 +185,9 @@ impl Client {
             choice_map: None,
 
             first_game_draw: false,
+
+            upscale_mode: "none".to_string(),
+            upscale_factor: 1.0,
         }
     }
 
@@ -730,6 +738,7 @@ impl Client {
         self.target_fps = self.get_config_i32_default("game", "target_fps", 30);
         self.game_tick_ms = self.get_config_i32_default("game", "game_tick_ms", 250);
         self.grid_size = self.get_config_i32_default("viewport", "grid_size", 32) as f32;
+        self.upscale_mode = self.get_config_string_default("viewport", "upscale", "none");
 
         // Create the target buffer
         self.target = TheRGBABuffer::new(TheDim::sized(self.viewport.x, self.viewport.y));
@@ -915,25 +924,179 @@ impl Client {
 
     /// Copy the game buffer into the external buffer
     pub fn insert_game_buffer(&mut self, buffer: &mut TheRGBABuffer) {
-        buffer.fill([30, 30, 30, 255]);
-        if self.first_game_draw {
+        let bg_color = [30, 30, 30, 255];
+
+        if self.upscale_mode == "aspect" {
+            // Scale to fit while maintaining aspect ratio, centered
             let dim = buffer.dim();
-            if dim.width > self.viewport.x {
-                self.target_offset.x = (dim.width - self.viewport.x) / 2;
+            let src_width = self.viewport.x as f32;
+            let src_height = self.viewport.y as f32;
+            let dst_width = dim.width as f32;
+            let dst_height = dim.height as f32;
+
+            let scale = (dst_width / src_width).min(dst_height / src_height);
+            let scaled_width = (src_width * scale) as i32;
+            let scaled_height = (src_height * scale) as i32;
+
+            let offset_x = (dim.width - scaled_width) / 2;
+            let offset_y = (dim.height - scaled_height) / 2;
+
+            self.target_offset = Vec2::new(offset_x, offset_y);
+            self.upscale_factor = scale;
+
+            // Only fill letterbox/pillarbox areas instead of entire buffer
+            Self::fill_borders(
+                buffer,
+                offset_x,
+                offset_y,
+                scaled_width,
+                scaled_height,
+                bg_color,
+            );
+
+            Self::scale_buffer_into(&self.target, buffer, offset_x, offset_y, scale);
+        } else {
+            self.upscale_factor = 1.0;
+            // "none" mode: center without scaling
+            if self.first_game_draw {
+                buffer.fill(bg_color);
+                let dim = buffer.dim();
+                if dim.width > self.viewport.x {
+                    self.target_offset.x = (dim.width - self.viewport.x) / 2;
+                }
+                if dim.height > self.viewport.y {
+                    self.target_offset.y = (dim.height - self.viewport.y) / 2;
+                }
+                self.first_game_draw = false;
             }
-            if dim.height > self.viewport.y {
-                self.target_offset.y = (dim.height - self.viewport.y) / 2;
-            }
-            self.first_game_draw = false;
+            buffer.copy_into(self.target_offset.x, self.target_offset.y, &self.target);
         }
-        buffer.copy_into(self.target_offset.x, self.target_offset.y, &self.target);
+    }
+
+    /// Fill only the border areas (letterbox/pillarbox) around the content area.
+    fn fill_borders(
+        buffer: &mut TheRGBABuffer,
+        offset_x: i32,
+        offset_y: i32,
+        content_width: i32,
+        content_height: i32,
+        color: [u8; 4],
+    ) {
+        let dim = buffer.dim();
+        let buf_width = dim.width as usize;
+        let buf_height = dim.height as usize;
+        let pixels = buffer.pixels_mut();
+
+        // Top border
+        if offset_y > 0 {
+            let top_pixels = offset_y as usize * buf_width * 4;
+            for chunk in pixels[..top_pixels].chunks_exact_mut(4) {
+                chunk.copy_from_slice(&color);
+            }
+        }
+
+        // Bottom border
+        let bottom_start_y = (offset_y + content_height) as usize;
+        if bottom_start_y < buf_height {
+            let bottom_start = bottom_start_y * buf_width * 4;
+            for chunk in pixels[bottom_start..].chunks_exact_mut(4) {
+                chunk.copy_from_slice(&color);
+            }
+        }
+
+        // Left and right borders (only for rows in the content area)
+        let content_start_y = offset_y.max(0) as usize;
+        let content_end_y = ((offset_y + content_height) as usize).min(buf_height);
+
+        for y in content_start_y..content_end_y {
+            let row_start = y * buf_width * 4;
+
+            // Left border
+            if offset_x > 0 {
+                let left_end = row_start + offset_x as usize * 4;
+                for chunk in pixels[row_start..left_end].chunks_exact_mut(4) {
+                    chunk.copy_from_slice(&color);
+                }
+            }
+
+            // Right border
+            let right_start_x = (offset_x + content_width) as usize;
+            if right_start_x < buf_width {
+                let right_start = row_start + right_start_x * 4;
+                let row_end = row_start + buf_width * 4;
+                for chunk in pixels[right_start..row_end].chunks_exact_mut(4) {
+                    chunk.copy_from_slice(&color);
+                }
+            }
+        }
+    }
+
+    /// Scale source buffer into destination buffer at the given offset and scale factor.
+    fn scale_buffer_into(
+        src: &TheRGBABuffer,
+        dst: &mut TheRGBABuffer,
+        offset_x: i32,
+        offset_y: i32,
+        scale: f32,
+    ) {
+        let src_width = src.dim().width as usize;
+        let src_height = src.dim().height as usize;
+        let dst_width = dst.dim().width as usize;
+        let dst_height = dst.dim().height as usize;
+
+        let scaled_width = (src_width as f32 * scale) as i32;
+        let scaled_height = (src_height as f32 * scale) as i32;
+
+        // Pre-calculate valid render bounds
+        let y_start = 0.max(-offset_y);
+        let y_end = scaled_height.min(dst_height as i32 - offset_y);
+        let x_start = 0.max(-offset_x);
+        let x_end = scaled_width.min(dst_width as i32 - offset_x);
+
+        if y_start >= y_end || x_start >= x_end {
+            return;
+        }
+
+        let src_pixels = src.pixels();
+        let dst_pixels = dst.pixels_mut();
+
+        let inv_scale = 1.0 / scale;
+
+        // Pre-compute source X indices for the row
+        let row_width = (x_end - x_start) as usize;
+        let mut src_x_indices: Vec<usize> = Vec::with_capacity(row_width);
+        for dx in x_start..x_end {
+            src_x_indices.push(((dx as f32 * inv_scale) as usize).min(src_width - 1));
+        }
+
+        for dy in y_start..y_end {
+            let dst_y = (offset_y + dy) as usize;
+            let src_y = ((dy as f32 * inv_scale) as usize).min(src_height - 1);
+            let dst_row_start = dst_y * dst_width * 4 + (offset_x + x_start) as usize * 4;
+            let src_row_start = src_y * src_width * 4;
+
+            for (i, &src_x) in src_x_indices.iter().enumerate() {
+                let dst_idx = dst_row_start + i * 4;
+                let src_idx = src_row_start + src_x * 4;
+
+                dst_pixels[dst_idx..dst_idx + 4].copy_from_slice(&src_pixels[src_idx..src_idx + 4]);
+            }
+        }
+    }
+
+    /// Transform screen coordinates to viewport coordinates, accounting for offset and scale.
+    fn screen_to_viewport(&self, coord: Vec2<i32>) -> Vec2<i32> {
+        let x = ((coord.x - self.target_offset.x) as f32 / self.upscale_factor) as i32;
+        let y = ((coord.y - self.target_offset.y) as f32 / self.upscale_factor) as i32;
+        Vec2::new(x, y)
     }
 
     /// Click / touch down event
     pub fn touch_down(&mut self, coord: Vec2<i32>, map: &Map) -> Option<EntityAction> {
         let mut action = None;
 
-        let p = coord - self.target_offset;
+        // Transform screen coordinates to viewport coordinates
+        let p = self.screen_to_viewport(coord);
 
         for (id, widget) in self.button_widgets.iter() {
             if widget.rect.contains(Vec2::new(p.x as f32, p.y as f32)) {

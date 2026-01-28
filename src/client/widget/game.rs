@@ -29,6 +29,11 @@ pub struct GameWidget {
 
     // Used to detect region changes (have to rebuild the geometry)
     pub build_region_name: String,
+
+    // Upscale factor (1.0 = no upscaling, >1.0 = render at lower res and upscale)
+    pub upscale: f32,
+    // Secondary buffer for rendering at lower resolution when upscale > 1
+    pub upscale_buffer: TheRGBABuffer,
 }
 
 impl Default for GameWidget {
@@ -63,6 +68,9 @@ impl GameWidget {
             camera: PlayerCamera::D2,
 
             build_region_name: String::new(),
+
+            upscale: 1.0,
+            upscale_buffer: TheRGBABuffer::default(),
         }
     }
 
@@ -71,6 +79,7 @@ impl GameWidget {
         if let Ok(groups) = ValueTomlLoader::from_str(&self.toml_str) {
             if let Some(ui) = groups.get("ui") {
                 self.grid_size = ui.get_float_default("grid_size", self.grid_size);
+                self.upscale = ui.get_float_default("upscale", 1.0).max(1.0);
             }
             if let Some(camera) = groups.get("camera") {
                 let camera_type = camera.get_str_default("type".into(), "2d".into());
@@ -193,8 +202,29 @@ impl GameWidget {
         _assets: &Assets,
         scene_handler: &mut SceneHandler,
     ) {
-        let width = self.buffer.dim().width as usize;
-        let height = self.buffer.dim().height as usize;
+        let full_width = self.buffer.dim().width as usize;
+        let full_height = self.buffer.dim().height as usize;
+
+        // Determine render dimensions based on upscale factor
+        let (width, height, render_buffer) = if self.upscale > 1.0 {
+            let scaled_width = (full_width as f32 / self.upscale).round() as usize;
+            let scaled_height = (full_height as f32 / self.upscale).round() as usize;
+
+            // Allocate/resize upscale buffer if needed
+            if self.upscale_buffer.dim().width as usize != scaled_width
+                || self.upscale_buffer.dim().height as usize != scaled_height
+            {
+                self.upscale_buffer = TheRGBABuffer::new(TheDim::new(
+                    0,
+                    0,
+                    scaled_width as i32,
+                    scaled_height as i32,
+                ));
+            }
+            (scaled_width, scaled_height, true)
+        } else {
+            (full_width, full_height, false)
+        };
 
         let screen_size = Vec2::new(width as f32, height as f32);
 
@@ -285,9 +315,23 @@ impl GameWidget {
             .vm
             .execute(scenevm::Atom::SetBackground(Vec4::zero()));
 
-        scene_handler
-            .vm
-            .render_frame(self.buffer.pixels_mut(), width as u32, height as u32);
+        if render_buffer {
+            scene_handler.vm.render_frame(
+                self.upscale_buffer.pixels_mut(),
+                width as u32,
+                height as u32,
+            );
+            Self::upscale_buffer_into(
+                &self.upscale_buffer,
+                &mut self.buffer,
+                full_width,
+                full_height,
+            );
+        } else {
+            scene_handler
+                .vm
+                .render_frame(self.buffer.pixels_mut(), width as u32, height as u32);
+        }
 
         // Draw Messages
 
@@ -335,8 +379,29 @@ impl GameWidget {
         _assets: &Assets,
         scene_handler: &mut SceneHandler,
     ) {
-        let width = self.buffer.dim().width as usize;
-        let height = self.buffer.dim().height as usize;
+        let full_width = self.buffer.dim().width as usize;
+        let full_height = self.buffer.dim().height as usize;
+
+        // Determine render dimensions based on upscale factor
+        let (width, height, render_buffer) = if self.upscale > 1.0 {
+            let scaled_width = (full_width as f32 / self.upscale).round() as usize;
+            let scaled_height = (full_height as f32 / self.upscale).round() as usize;
+
+            // Allocate/resize upscale buffer if needed
+            if self.upscale_buffer.dim().width as usize != scaled_width
+                || self.upscale_buffer.dim().height as usize != scaled_height
+            {
+                self.upscale_buffer = TheRGBABuffer::new(TheDim::new(
+                    0,
+                    0,
+                    scaled_width as i32,
+                    scaled_height as i32,
+                ));
+            }
+            (scaled_width, scaled_height, true)
+        } else {
+            (full_width, full_height, false)
+        };
 
         let hour = time.to_f32();
 
@@ -361,8 +426,57 @@ impl GameWidget {
 
         // scene_handler.vm.print_geometry_stats();
 
-        scene_handler
-            .vm
-            .render_frame(self.buffer.pixels_mut(), width as u32, height as u32);
+        if render_buffer {
+            scene_handler.vm.render_frame(
+                self.upscale_buffer.pixels_mut(),
+                width as u32,
+                height as u32,
+            );
+            Self::upscale_buffer_into(
+                &self.upscale_buffer,
+                &mut self.buffer,
+                full_width,
+                full_height,
+            );
+        } else {
+            scene_handler
+                .vm
+                .render_frame(self.buffer.pixels_mut(), width as u32, height as u32);
+        }
+    }
+
+    /// Upscale the source buffer into the destination buffer using nearest-neighbor sampling.
+    fn upscale_buffer_into(
+        src: &TheRGBABuffer,
+        dst: &mut TheRGBABuffer,
+        dst_width: usize,
+        dst_height: usize,
+    ) {
+        let src_width = src.dim().width as usize;
+        let src_height = src.dim().height as usize;
+        let src_pixels = src.pixels();
+        let dst_pixels = dst.pixels_mut();
+
+        let x_ratio = src_width as f32 / dst_width as f32;
+        let y_ratio = src_height as f32 / dst_height as f32;
+
+        // Pre-compute source X indices for the row
+        let mut src_x_indices: Vec<usize> = Vec::with_capacity(dst_width);
+        for x in 0..dst_width {
+            src_x_indices.push(((x as f32 * x_ratio) as usize).min(src_width - 1));
+        }
+
+        for y in 0..dst_height {
+            let src_y = ((y as f32 * y_ratio) as usize).min(src_height - 1);
+            let dst_row_start = y * dst_width * 4;
+            let src_row_start = src_y * src_width * 4;
+
+            for (x, &src_x) in src_x_indices.iter().enumerate() {
+                let dst_idx = dst_row_start + x * 4;
+                let src_idx = src_row_start + src_x * 4;
+
+                dst_pixels[dst_idx..dst_idx + 4].copy_from_slice(&src_pixels[src_idx..src_idx + 4]);
+            }
+        }
     }
 }
