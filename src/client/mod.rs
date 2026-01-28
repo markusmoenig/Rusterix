@@ -21,6 +21,7 @@ use crate::{
 use crate::{SceneHandler, prelude::*};
 use draw2d::Draw2D;
 use fontdue::*;
+use rayon::prelude::*;
 use std::sync::{Arc, Mutex};
 use theframework::prelude::*;
 use toml::*;
@@ -1063,25 +1064,30 @@ impl Client {
         let inv_scale = 1.0 / scale;
 
         // Pre-compute source X indices for the row
-        let row_width = (x_end - x_start) as usize;
-        let mut src_x_indices: Vec<usize> = Vec::with_capacity(row_width);
-        for dx in x_start..x_end {
-            src_x_indices.push(((dx as f32 * inv_scale) as usize).min(src_width - 1));
-        }
+        let src_x_indices: Vec<usize> = (x_start..x_end)
+            .map(|dx| ((dx as f32 * inv_scale) as usize).min(src_width - 1))
+            .collect();
 
-        for dy in y_start..y_end {
-            let dst_y = (offset_y + dy) as usize;
-            let src_y = ((dy as f32 * inv_scale) as usize).min(src_height - 1);
-            let dst_row_start = dst_y * dst_width * 4 + (offset_x + x_start) as usize * 4;
-            let src_row_start = src_y * src_width * 4;
+        let dst_x_offset = (offset_x + x_start) as usize * 4;
 
-            for (i, &src_x) in src_x_indices.iter().enumerate() {
-                let dst_idx = dst_row_start + i * 4;
-                let src_idx = src_row_start + src_x * 4;
+        // Process rows in parallel
+        dst_pixels
+            .par_chunks_mut(dst_width * 4)
+            .enumerate()
+            .skip((offset_y + y_start) as usize)
+            .take((y_end - y_start) as usize)
+            .for_each(|(dst_y, dst_row)| {
+                let dy = dst_y as i32 - offset_y;
+                let src_y = ((dy as f32 * inv_scale) as usize).min(src_height - 1);
+                let src_row_start = src_y * src_width * 4;
 
-                dst_pixels[dst_idx..dst_idx + 4].copy_from_slice(&src_pixels[src_idx..src_idx + 4]);
-            }
-        }
+                for (i, &src_x) in src_x_indices.iter().enumerate() {
+                    let dst_idx = dst_x_offset + i * 4;
+                    let src_idx = src_row_start + src_x * 4;
+                    dst_row[dst_idx..dst_idx + 4]
+                        .copy_from_slice(&src_pixels[src_idx..src_idx + 4]);
+                }
+            });
     }
 
     /// Transform screen coordinates to viewport coordinates, accounting for offset and scale.
