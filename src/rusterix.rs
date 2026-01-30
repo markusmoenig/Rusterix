@@ -284,7 +284,7 @@ impl Rusterix {
 
     /// Set up the client for processing the game.
     pub fn setup_client(&mut self) -> Vec<Command> {
-        self.client.setup(&self.assets, &mut self.scene_handler)
+        self.client.setup(&mut self.assets, &mut self.scene_handler)
     }
 
     /// Draw the game as the client sees it.
@@ -301,6 +301,17 @@ impl Rusterix {
             choices,
             &mut self.scene_handler,
         );
+    }
+
+    /// Send a touch dragged event to the client.
+    pub fn client_touch_dragged(&mut self, coord: Vec2<i32>, map: &Map) {
+        self.client
+            .touch_dragged(coord, map, &mut self.scene_handler);
+    }
+
+    /// Send a touch hover event to the client.
+    pub fn client_touch_hover(&mut self, coord: Vec2<i32>, map: &Map) {
+        self.client.touch_hover(coord, map, &mut self.scene_handler);
     }
 
     /// Update the server messages.

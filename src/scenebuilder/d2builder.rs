@@ -23,68 +23,77 @@ impl D2Builder {
     pub fn build(&mut self, map: &Map, assets: &Assets, screen_size: Vec2<f32>) -> Scene {
         let mut scene = Scene::empty();
 
-        for pass in 0..=1 {
-            for sector in &map.sectors {
-                let is_rect = sector.properties.contains("rect");
+        // Sort sectors by layer (ascending), then rect before non-rect within same layer
+        let mut sorted_sectors: Vec<_> = map.sectors.iter().collect();
+        sorted_sectors.sort_by(|a, b| {
+            let layer_a = a.properties.get_int_default("layer", 0);
+            let layer_b = b.properties.get_int_default("layer", 0);
+            let is_rect_a = a.properties.contains("rect");
+            let is_rect_b = b.properties.contains("rect");
 
-                if (!is_rect && pass == 0) || (is_rect && pass == 1) {
-                    continue;
+            match layer_a.cmp(&layer_b) {
+                std::cmp::Ordering::Equal => {
+                    // Within same layer, rect sectors come first (true > false when reversed)
+                    is_rect_b.cmp(&is_rect_a)
+                }
+                other => other,
+            }
+        });
+
+        for sector in sorted_sectors {
+            if let Some(geo) = sector.generate_geometry(map) {
+                let mut vertices: Vec<[f32; 2]> = vec![];
+                let mut uvs: Vec<[f32; 2]> = vec![];
+                let bbox = sector.bounding_box(map);
+
+                let mut repeat = true;
+                if sector.properties.get_int_default("tile_mode", 1) == 0 {
+                    repeat = false;
                 }
 
-                if let Some(geo) = sector.generate_geometry(map) {
-                    let mut vertices: Vec<[f32; 2]> = vec![];
-                    let mut uvs: Vec<[f32; 2]> = vec![];
-                    let bbox = sector.bounding_box(map);
+                // Use the floor or ceiling source
+                let mut source = sector.properties.get_default_source();
+                if
+                /*source.is_none() ||*/
+                self.activated_widgets.contains(&sector.id) {
+                    source = sector.properties.get_source("ceiling_source");
+                }
 
-                    let mut repeat = true;
-                    if sector.properties.get_int_default("tile_mode", 1) == 0 {
-                        repeat = false;
-                    }
+                if let Some(pixelsource) = source {
+                    if let Some(tile) = pixelsource.tile_from_tile_list(assets) {
+                        for vertex in &geo.0 {
+                            let local = self.map_grid_to_local(
+                                screen_size,
+                                Vec2::new(vertex[0], vertex[1]),
+                                map,
+                            );
 
-                    // Use the floor or ceiling source
-                    let mut source = sector.properties.get_default_source();
-                    if
-                    /*source.is_none() ||*/
-                    self.activated_widgets.contains(&sector.id) {
-                        source = sector.properties.get_source("ceiling_source");
-                    }
+                            if !repeat {
+                                let uv = [
+                                    (vertex[0] - bbox.min.x) / (bbox.max.x - bbox.min.x),
+                                    (vertex[1] - bbox.min.y) / (bbox.max.y - bbox.min.y),
+                                ];
+                                uvs.push(uv);
+                            } else {
+                                let texture_scale = 1.0;
+                                let uv = [
+                                    (vertex[0] - bbox.min.x) / texture_scale,
+                                    (vertex[1] - bbox.min.y) / texture_scale,
+                                ];
+                                uvs.push(uv);
+                            }
+                            vertices.push([local.x, local.y]);
+                        }
 
-                    if let Some(pixelsource) = source {
-                        if let Some(tile) = pixelsource.tile_from_tile_list(assets) {
-                            for vertex in &geo.0 {
-                                let local = self.map_grid_to_local(
-                                    screen_size,
-                                    Vec2::new(vertex[0], vertex[1]),
-                                    map,
-                                );
-
-                                if !repeat {
-                                    let uv = [
-                                        (vertex[0] - bbox.min.x) / (bbox.max.x - bbox.min.x),
-                                        (vertex[1] - bbox.min.y) / (bbox.max.y - bbox.min.y),
-                                    ];
-                                    uvs.push(uv);
+                        if let Some(texture_index) = assets.tile_index(&tile.id) {
+                            let batch = Batch2D::new(vertices, geo.1, uvs)
+                                .repeat_mode(if repeat {
+                                    crate::RepeatMode::RepeatXY
                                 } else {
-                                    let texture_scale = 1.0;
-                                    let uv = [
-                                        (vertex[0] - bbox.min.x) / texture_scale,
-                                        (vertex[1] - bbox.min.y) / texture_scale,
-                                    ];
-                                    uvs.push(uv);
-                                }
-                                vertices.push([local.x, local.y]);
-                            }
-
-                            if let Some(texture_index) = assets.tile_index(&tile.id) {
-                                let batch = Batch2D::new(vertices, geo.1, uvs)
-                                    .repeat_mode(if repeat {
-                                        crate::RepeatMode::RepeatXY
-                                    } else {
-                                        crate::RepeatMode::ClampXY
-                                    })
-                                    .source(PixelSource::StaticTileIndex(texture_index));
-                                scene.d2_static.push(batch);
-                            }
+                                    crate::RepeatMode::ClampXY
+                                })
+                                .source(PixelSource::StaticTileIndex(texture_index));
+                            scene.d2_static.push(batch);
                         }
                     }
                 }

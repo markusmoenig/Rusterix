@@ -6,19 +6,19 @@ pub mod parser;
 pub mod resolver;
 pub mod widget;
 
-use scenevm::Atom;
+use scenevm::{Atom, GeoId};
 use std::str::FromStr;
 
+use crate::prelude::*;
 use crate::{
-    AccumBuffer, BrushPreview, Command, D2PreviewBuilder, EntityAction, Rect, ShapeFXGraph,
-    Surface, Tracer, Value,
+    AccumBuffer, BrushPreview, Command, D2PreviewBuilder, EntityAction, Rect, SceneHandler,
+    ShapeFXGraph, Surface, Tracer, Value,
     client::action::ClientAction,
     client::widget::{
         Widget, deco::DecoWidget, game::GameWidget, messages::MessagesWidget, screen::ScreenWidget,
         text::TextWidget,
     },
 };
-use crate::{SceneHandler, prelude::*};
 use draw2d::Draw2D;
 use fontdue::*;
 use rayon::prelude::*;
@@ -111,8 +111,33 @@ pub struct Client {
 
     // Upscale mode: "none" (default, centered), "aspect" (scale to aspect ratio)
     upscale_mode: String,
+
     // Current scale factor used for aspect mode (1.0 when no scaling)
     upscale_factor: f32,
+
+    // Default mouse cursor
+    default_cursor: Option<Uuid>,
+
+    // Current mouse cursor
+    curr_cursor: Option<Uuid>,
+
+    // Current intent cursor
+    curr_intent_cursor: Option<Uuid>,
+
+    // Current clicked intent cursor
+    curr_clicked_intent_cursor: Option<Uuid>,
+
+    // Cursor position
+    cursor_pos: Vec2<i32>,
+
+    // Hovered item id
+    hovered_item_id: Option<u32>,
+
+    // Hovered entity id
+    hovered_entity_id: Option<u32>,
+
+    // Hover distance
+    hover_distance: f32,
 }
 
 impl Default for Client {
@@ -189,6 +214,16 @@ impl Client {
 
             upscale_mode: "none".to_string(),
             upscale_factor: 1.0,
+
+            default_cursor: None,
+            curr_cursor: None,
+            curr_intent_cursor: None,
+            curr_clicked_intent_cursor: None,
+            cursor_pos: Vec2::zero(),
+            hovered_entity_id: None,
+            hovered_item_id: None,
+
+            hover_distance: f32::MAX,
         }
     }
 
@@ -685,8 +720,14 @@ impl Client {
         default.to_string()
     }
 
+    fn get_uuid(map: &toml::map::Map<String, toml::Value>, key: &str) -> Option<Uuid> {
+        map.get(key)
+            .and_then(|v| v.as_str())
+            .and_then(|s| Uuid::parse_str(s).ok())
+    }
+
     /// Setup the client with the given assets.
-    pub fn setup(&mut self, assets: &Assets, scene_handler: &mut SceneHandler) -> Vec<Command> {
+    pub fn setup(&mut self, assets: &mut Assets, scene_handler: &mut SceneHandler) -> Vec<Command> {
         let mut commands = vec![];
         self.first_game_draw = true;
         self.intent = String::new();
@@ -741,6 +782,14 @@ impl Client {
         self.grid_size = self.get_config_i32_default("viewport", "grid_size", 32) as f32;
         self.upscale_mode = self.get_config_string_default("viewport", "upscale", "none");
 
+        self.default_cursor = None;
+        let tile_id_str = self.get_config_string_default("viewport", "cursor_id", "");
+        if !tile_id_str.is_empty() {
+            if let Ok(uuid) = Uuid::parse_str(&tile_id_str) {
+                self.default_cursor = Some(uuid);
+            }
+        }
+
         // Create the target buffer
         self.target = TheRGBABuffer::new(TheDim::sized(self.viewport.x, self.viewport.y));
         // Create the overlay buffer
@@ -772,8 +821,8 @@ impl Client {
             eprintln!("Did not find start map");
         }
 
-        if let Some(screen) = assets.screens.get(&self.current_screen) {
-            self.init_screen(screen, assets, scene_handler);
+        if assets.screens.contains_key(&self.current_screen) {
+            self.init_screen(self.current_screen.clone(), assets, scene_handler);
         } else {
             eprintln!("Did not find start screen");
         }
@@ -919,6 +968,30 @@ impl Client {
                         0
                     },
                 );
+            }
+        }
+
+        // Draw the cursor (centered on cursor_pos)
+        if let Some(cursor) = self.curr_cursor {
+            if let Some(tile) = assets.tiles.get(&cursor) {
+                if let Some(texture) = tile.textures.first() {
+                    let x = self.cursor_pos.x as isize - texture.width as isize / 2;
+                    let y = self.cursor_pos.y as isize - texture.height as isize / 2;
+                    let stride = self.target.stride();
+                    let safe_rect = (
+                        0,
+                        0,
+                        self.target.dim().width as usize,
+                        self.target.dim().height as usize,
+                    );
+                    self.draw2d.blend_slice_safe(
+                        self.target.pixels_mut(),
+                        &texture.data,
+                        &(x, y, texture.width, texture.height),
+                        stride,
+                        &safe_rect,
+                    );
+                }
             }
         }
     }
@@ -1097,9 +1170,127 @@ impl Client {
         Vec2::new(x, y)
     }
 
+    /// Check if a screen coordinate is inside the game viewport area.
+    pub fn is_inside_game(&self, coord: Vec2<i32>) -> bool {
+        let p = self.screen_to_viewport(coord);
+        p.x >= 0 && p.y >= 0 && p.x < self.viewport.x && p.y < self.viewport.y
+    }
+
+    /// Drag event
+    pub fn touch_dragged(
+        &mut self,
+        coord: Vec2<i32>,
+        _map: &Map,
+        _scene_handler: &mut SceneHandler,
+    ) {
+        let p = self.screen_to_viewport(coord);
+        self.cursor_pos = p;
+    }
+
+    ///Hover event, used to adjust the screen cursor based on the widget or game object under the mouse
+    pub fn touch_hover(&mut self, coord: Vec2<i32>, map: &Map, scene_handler: &mut SceneHandler) {
+        let p = self.screen_to_viewport(coord);
+        self.cursor_pos = p;
+
+        // Temporary, we have to make this widget dependent
+        self.curr_cursor = self.default_cursor;
+        self.hovered_entity_id = None;
+        self.hovered_item_id = None;
+        self.curr_intent_cursor = None;
+        self.curr_clicked_intent_cursor = None;
+        self.hover_distance = f32::MAX;
+
+        for (_, widget) in self.game_widgets.iter() {
+            if widget.rect.contains(Vec2::new(p.x as f32, p.y as f32)) {
+                let dx = p.x as f32 - widget.rect.x;
+                let dy = p.y as f32 - widget.rect.y;
+
+                if widget.camera != crate::PlayerCamera::D2 {
+                    // We cast a ray into the game view and get the GeoId
+                    let screen_uv = Vec2::new(dx / widget.rect.width, dy / widget.rect.height);
+                    if let Some((geoid, _, distance)) = scene_handler.vm.pick_geo_id_at_uv(
+                        widget.rect.width as u32,
+                        widget.rect.height as u32,
+                        [screen_uv.x, screen_uv.y],
+                        false,
+                        true,
+                    ) {
+                        match geoid {
+                            GeoId::Hole(sector_id, hole_id) => {
+                                if let Some(item) = SceneHandler::find_item_by_profile_attrs(
+                                    map,
+                                    Some(sector_id),
+                                    Some(hole_id),
+                                ) {
+                                    // if let Some(cursor_id_str) = item.get_attr_string("cursor_id") {
+                                    //     if !cursor_id_str.is_empty() {
+                                    //         if let Ok(uuid) = Uuid::parse_str(&cursor_id_str) {
+                                    //             self.curr_cursor = Some(uuid);
+                                    //         }
+                                    //     }
+                                    // }
+                                    self.hovered_item_id = Some(item.id);
+                                    for button_id in &self.activated_widgets {
+                                        if let Some(widget) = self.button_widgets.get(button_id) {
+                                            self.curr_intent_cursor = widget.item_cursor_id;
+                                            self.curr_clicked_intent_cursor =
+                                                widget.item_clicked_cursor_id;
+                                            self.hover_distance = distance;
+
+                                            if let Some(cursor_id) = widget.item_cursor_id {
+                                                self.curr_cursor = Some(cursor_id);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            GeoId::Item(item_id) => {
+                                self.hovered_item_id = Some(item_id);
+
+                                /*
+                                for item in &map.items {
+                                    if item.id == item_id {
+                                        if let Some(cursor_id_str) =
+                                            item.get_attr_string("cursor_id")
+                                        {
+                                            if !cursor_id_str.is_empty() {
+                                                if let Ok(uuid) = Uuid::parse_str(&cursor_id_str) {
+                                                    self.curr_cursor = Some(uuid);
+                                                }
+                                            }
+                                        }
+                                        self.hovered_item_id = Some(item.id);
+                                        break;
+                                    }
+                                }*/
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     /// Click / touch down event
     pub fn touch_down(&mut self, coord: Vec2<i32>, map: &Map) -> Option<EntityAction> {
         let mut action = None;
+
+        // Adjust cursor
+        if self.curr_clicked_intent_cursor.is_some() {
+            self.curr_cursor = self.curr_clicked_intent_cursor;
+        } else {
+            self.curr_cursor = self.default_cursor;
+        }
+
+        // If we hovered over an item in 3D, send an explicit ItemClicked intent
+        if let Some(item_id) = self.hovered_item_id {
+            return Some(EntityAction::ItemClicked(
+                item_id,
+                self.hover_distance,
+                self.get_current_intent(),
+            ));
+        }
 
         // Transform screen coordinates to viewport coordinates
         let p = self.screen_to_viewport(coord);
@@ -1108,13 +1299,15 @@ impl Client {
             if widget.rect.contains(Vec2::new(p.x as f32, p.y as f32)) {
                 self.activated_widgets.push(*id);
 
-                if let Some(intent) = &widget.intent {
-                    self.intent = intent.clone();
-                    action = Some(EntityAction::Intent(intent.clone()));
-                    break;
-                } else if let Ok(act) = EntityAction::from_str(&widget.action) {
-                    action = Some(act);
-                    break;
+                if self.game_widget_is_2d() {
+                    if let Some(intent) = &widget.intent {
+                        self.intent = intent.clone();
+                        action = Some(EntityAction::Intent(intent.clone()));
+                        // break;
+                    } else if let Ok(act) = EntityAction::from_str(&widget.action) {
+                        action = Some(act);
+                        // break;
+                    }
                 }
 
                 if let Some(hide) = &widget.hide {
@@ -1133,7 +1326,7 @@ impl Client {
                         if entity.is_player() {
                             if let Some(item) = entity.inventory.get(*inventory_index) {
                                 if let Some(item) = item {
-                                    action = Some(EntityAction::ItemClicked(item.id, 0.0));
+                                    action = Some(EntityAction::ItemClicked(item.id, 0.0, None));
                                     break;
                                 }
                             }
@@ -1177,43 +1370,46 @@ impl Client {
 
             for (_, widget) in self.game_widgets.iter() {
                 if widget.rect.contains(Vec2::new(p.x as f32, p.y as f32)) {
-                    let dx = p.x as f32 - widget.rect.x;
-                    let dy = p.y as f32 - widget.rect.y;
+                    if widget.camera == crate::PlayerCamera::D2 {
+                        let dx = p.x as f32 - widget.rect.x;
+                        let dy = p.y as f32 - widget.rect.y;
 
-                    let gx = widget.top_left.x + dx / widget.grid_size;
-                    let gy = widget.top_left.y + dy / widget.grid_size;
+                        let gx = widget.top_left.x + dx / widget.grid_size;
+                        let gy = widget.top_left.y + dy / widget.grid_size;
 
-                    let pos = Vec2::new(gx, gy);
+                        let pos = Vec2::new(gx, gy);
 
-                    for entity in map.entities.iter() {
-                        if entity.attributes.get_str_default("mode", "active".into()) == "dead" {
-                            continue;
+                        for entity in map.entities.iter() {
+                            if entity.attributes.get_str_default("mode", "active".into()) == "dead"
+                            {
+                                continue;
+                            }
+                            let p = entity.get_pos_xz();
+                            if pos.floor() == p.floor() {
+                                let distance = player_pos.distance(p);
+                                return Some(EntityAction::EntityClicked(entity.id, distance));
+                            }
                         }
-                        let p = entity.get_pos_xz();
-                        if pos.floor() == p.floor() {
-                            let distance = player_pos.distance(p);
-                            return Some(EntityAction::EntityClicked(entity.id, distance));
+
+                        for item in map.items.iter() {
+                            let p = item.get_pos_xz();
+                            if pos.floor() == p.floor() {
+                                let distance = player_pos.distance(p);
+                                return Some(EntityAction::ItemClicked(item.id, distance, None));
+                            }
                         }
+
+                        // Try entities again but include dead ones too
+                        for entity in map.entities.iter() {
+                            let p = entity.get_pos_xz();
+                            if pos.floor() == p.floor() {
+                                let distance = player_pos.distance(p);
+                                return Some(EntityAction::EntityClicked(entity.id, distance));
+                            }
+                        }
+
+                        return Some(EntityAction::TerrainClicked(pos));
                     }
-
-                    for item in map.items.iter() {
-                        let p = item.get_pos_xz();
-                        if pos.floor() == p.floor() {
-                            let distance = player_pos.distance(p);
-                            return Some(EntityAction::ItemClicked(item.id, distance));
-                        }
-                    }
-
-                    // Try entities again but include dead ones too
-                    for entity in map.entities.iter() {
-                        let p = entity.get_pos_xz();
-                        if pos.floor() == p.floor() {
-                            let distance = player_pos.distance(p);
-                            return Some(EntityAction::EntityClicked(entity.id, distance));
-                        }
-                    }
-
-                    return Some(EntityAction::TerrainClicked(pos));
                 }
             }
         }
@@ -1224,6 +1420,13 @@ impl Client {
     /// Click / touch up event
     pub fn touch_up(&mut self, _coord: Vec2<i32>, _map: &Map) {
         self.activated_widgets = self.permanently_activated_widgets.clone();
+
+        // Adjust cursor
+        if self.curr_intent_cursor.is_some() {
+            self.curr_cursor = self.curr_intent_cursor;
+        } else {
+            self.curr_cursor = self.default_cursor;
+        }
 
         for widget in self.messages_widget.iter_mut() {
             widget.touch_up();
@@ -1286,7 +1489,12 @@ impl Client {
     }
 
     // Init the screen
-    pub fn init_screen(&mut self, screen: &Map, assets: &Assets, scene_handler: &mut SceneHandler) {
+    pub fn init_screen(
+        &mut self,
+        screen_name: String,
+        assets: &mut Assets,
+        scene_handler: &mut SceneHandler,
+    ) {
         self.game_widgets.clear();
         self.button_widgets.clear();
         self.text_widgets.clear();
@@ -1298,190 +1506,259 @@ impl Client {
             ..Default::default()
         });
 
-        for widget in screen.sectors.iter() {
-            let bb = widget.bounding_box(screen);
-
-            let (start_x, start_y) = crate::utils::align_screen_to_grid(
-                self.viewport.x as f32,
-                self.viewport.y as f32,
-                self.grid_size,
-            );
-
-            let x = (bb.min.x - start_x) * self.grid_size;
-            let y = (bb.min.y - start_y) * self.grid_size;
-            let width = bb.size().x * self.grid_size;
-            let height = bb.size().y * self.grid_size;
-
-            let mut textures = vec![];
-
-            if let Some(Value::Source(PixelSource::ShapeFXGraphId(id))) =
-                widget.properties.get("screen_graph")
-            {
-                if let Some(graph) = screen.shapefx_graphs.get(id) {
-                    textures = graph.create_screen_widgets(width as usize, height as usize, assets);
-                }
-            }
-
-            if let Some(crate::Value::Str(data)) = widget.properties.get("data") {
-                if let Ok(table) = data.parse::<Table>() {
-                    let grid_size = self.grid_size;
-
-                    let mut role = "none";
-                    if let Some(ui) = table.get("ui").and_then(toml::Value::as_table) {
-                        if let Some(value) = ui.get("role") {
-                            if let Some(v) = value.as_str() {
-                                role = v;
-                            }
-                        }
-                    }
-
-                    if role == "game" {
-                        let mut game_widget = GameWidget {
-                            rect: Rect::new(x, y, width, height),
-                            toml_str: data.clone(),
-                            buffer: TheRGBABuffer::new(TheDim::sized(width as i32, height as i32)),
-                            grid_size,
-                            ..Default::default()
-                        };
-
-                        if let Some(map) = assets.maps.get(&self.current_map) {
-                            game_widget.build(map, assets, scene_handler);
-                        }
-                        game_widget.init();
-                        self.game_widgets.insert(widget.creator_id, game_widget);
-                    } else if role == "button" {
-                        let mut action = "";
-                        let mut intent = None;
-                        let mut show: Option<Vec<String>> = None;
-                        let mut hide: Option<Vec<String>> = None;
-                        let mut deactivate: Vec<String> = vec![];
-                        let mut inventory_index: Option<usize> = None;
-
+        // Iterate sectors and apply layer property for sorted drawing
+        if let Some(screen) = assets.screens.get_mut(&screen_name) {
+            for sector in screen.sectors.iter_mut() {
+                if let Some(crate::Value::Str(data)) = sector.properties.get("data") {
+                    if let Ok(table) = data.parse::<Table>() {
                         if let Some(ui) = table.get("ui").and_then(toml::Value::as_table) {
-                            // Check for action
-                            if let Some(value) = ui.get("action") {
-                                if let Some(v) = value.as_str() {
-                                    action = v;
-                                }
-                            }
-
-                            // Check for intent
-                            if let Some(value) = ui.get("intent") {
-                                if let Some(v) = value.as_str() {
-                                    intent = Some(v.to_string());
-                                }
-                            }
-
-                            // Check for show
-                            if let Some(value) = ui.get("show") {
-                                if let Some(va) = value.as_array() {
-                                    let mut c = vec![];
-                                    for v in va {
-                                        if let Some(v) = v.as_str() {
-                                            c.push(v.to_string());
-                                        }
-                                    }
-                                    if !c.is_empty() {
-                                        show = Some(c);
-                                    }
-                                }
-                            }
-
-                            // Check for hide
-                            if let Some(value) = ui.get("hide") {
-                                if let Some(va) = value.as_array() {
-                                    let mut c = vec![];
-                                    for v in va {
-                                        if let Some(v) = v.as_str() {
-                                            c.push(v.to_string());
-                                        }
-                                    }
-                                    if !c.is_empty() {
-                                        hide = Some(c);
-                                    }
-                                }
-                            }
-
-                            // Check for deactivate
-                            if let Some(value) = ui.get("deactivate") {
-                                if let Some(va) = value.as_array() {
-                                    let mut c = vec![];
-                                    for v in va {
-                                        if let Some(v) = v.as_str() {
-                                            c.push(v.to_string());
-                                        }
-                                    }
-                                    deactivate = c;
-                                }
-                            }
-
-                            // Check for active
-                            if let Some(value) = ui.get("active") {
-                                if let Some(v) = value.as_bool()
-                                    && v
-                                {
-                                    self.activated_widgets.push(widget.id);
-                                    self.permanently_activated_widgets.push(widget.id);
-                                    if let Some(hide) = &hide {
-                                        self.widgets_to_hide = hide.clone();
-                                    }
-                                }
-                            }
-
-                            // Check for inventory
-                            if let Some(value) = ui.get("inventory_index") {
+                            if let Some(value) = ui.get("layer") {
                                 if let Some(v) = value.as_integer() {
-                                    inventory_index = Some(v as usize);
+                                    sector.properties.set("layer", Value::Int(v as i32));
                                 }
                             }
                         }
-
-                        let button_widget = Widget {
-                            name: widget.name.clone(),
-                            id: widget.id,
-                            rect: Rect::new(x, y, width, height),
-                            action: action.into(),
-                            intent,
-                            show,
-                            hide,
-                            deactivate,
-                            inventory_index,
-                            textures,
-                        };
-
-                        self.button_widgets.insert(widget.id, button_widget);
-                    } else if role == "messages" {
-                        let mut widget = MessagesWidget {
-                            name: widget.name.clone(),
-                            rect: Rect::new(x, y, width, height),
-                            toml_str: data.clone(),
-                            buffer: TheRGBABuffer::new(TheDim::sized(width as i32, height as i32)),
-                            ..Default::default()
-                        };
-                        widget.init(assets);
-                        self.messages_widget = Some(widget);
-                    } else if role == "text" {
-                        let mut text_widget = TextWidget {
-                            name: widget.name.clone(),
-                            rect: Rect::new(x, y, width, height),
-                            toml_str: data.clone(),
-                            buffer: TheRGBABuffer::new(TheDim::sized(width as i32, height as i32)),
-                            ..Default::default()
-                        };
-                        text_widget.init(assets);
-                        self.text_widgets.insert(widget.creator_id, text_widget);
-                    } else if role == "deco" {
-                        let mut deco_widget = DecoWidget {
-                            rect: Rect::new(x, y, width, height),
-                            toml_str: data.clone(),
-                            buffer: TheRGBABuffer::new(TheDim::sized(width as i32, height as i32)),
-                            ..Default::default()
-                        };
-                        deco_widget.init(assets);
-                        self.deco_widgets.insert(widget.creator_id, deco_widget);
                     }
                 }
             }
         }
+
+        if let Some(screen) = assets.screens.get(&screen_name) {
+            for widget in screen.sectors.iter() {
+                let bb = widget.bounding_box(screen);
+
+                let (start_x, start_y) = crate::utils::align_screen_to_grid(
+                    self.viewport.x as f32,
+                    self.viewport.y as f32,
+                    self.grid_size,
+                );
+
+                let x = (bb.min.x - start_x) * self.grid_size;
+                let y = (bb.min.y - start_y) * self.grid_size;
+                let width = bb.size().x * self.grid_size;
+                let height = bb.size().y * self.grid_size;
+
+                let textures = vec![];
+
+                // if let Some(Value::Source(PixelSource::ShapeFXGraphId(id))) =
+                //     widget.properties.get("screen_graph")
+                // {
+                //     if let Some(graph) = screen.shapefx_graphs.get(id) {
+                //         textures =
+                //             graph.create_screen_widgets(width as usize, height as usize, assets);
+                //     }
+                // }
+
+                if let Some(crate::Value::Str(data)) = widget.properties.get("data") {
+                    if let Ok(table) = data.parse::<Table>() {
+                        let grid_size = self.grid_size;
+
+                        let mut role = "none";
+                        if let Some(ui) = table.get("ui").and_then(toml::Value::as_table) {
+                            if let Some(value) = ui.get("role") {
+                                if let Some(v) = value.as_str() {
+                                    role = v;
+                                }
+                            }
+                        }
+
+                        if role == "game" {
+                            let mut game_widget = GameWidget {
+                                rect: Rect::new(x, y, width, height),
+                                toml_str: data.clone(),
+                                buffer: TheRGBABuffer::new(TheDim::sized(
+                                    width as i32,
+                                    height as i32,
+                                )),
+                                grid_size,
+                                ..Default::default()
+                            };
+
+                            if let Some(map) = assets.maps.get(&self.current_map) {
+                                game_widget.build(map, assets, scene_handler);
+                            }
+                            game_widget.init();
+                            self.game_widgets.insert(widget.creator_id, game_widget);
+                        } else if role == "button" {
+                            let mut action = "";
+                            let mut intent = None;
+                            let mut show: Option<Vec<String>> = None;
+                            let mut hide: Option<Vec<String>> = None;
+                            let mut deactivate: Vec<String> = vec![];
+                            let mut inventory_index: Option<usize> = None;
+
+                            let mut entity_cursor_id = None;
+                            let mut entity_clicked_cursor_id = None;
+                            let mut item_cursor_id = None;
+                            let mut item_clicked_cursor_id = None;
+
+                            if let Some(ui) = table.get("ui").and_then(toml::Value::as_table) {
+                                // Check for action
+                                if let Some(value) = ui.get("action") {
+                                    if let Some(v) = value.as_str() {
+                                        action = v;
+                                    }
+                                }
+
+                                // Check for intent
+                                if let Some(value) = ui.get("intent") {
+                                    if let Some(v) = value.as_str() {
+                                        intent = Some(v.to_string());
+                                    }
+                                }
+
+                                // Check for show
+                                if let Some(value) = ui.get("show") {
+                                    if let Some(va) = value.as_array() {
+                                        let mut c = vec![];
+                                        for v in va {
+                                            if let Some(v) = v.as_str() {
+                                                c.push(v.to_string());
+                                            }
+                                        }
+                                        if !c.is_empty() {
+                                            show = Some(c);
+                                        }
+                                    }
+                                }
+
+                                // Check for hide
+                                if let Some(value) = ui.get("hide") {
+                                    if let Some(va) = value.as_array() {
+                                        let mut c = vec![];
+                                        for v in va {
+                                            if let Some(v) = v.as_str() {
+                                                c.push(v.to_string());
+                                            }
+                                        }
+                                        if !c.is_empty() {
+                                            hide = Some(c);
+                                        }
+                                    }
+                                }
+
+                                // Check for deactivate
+                                if let Some(value) = ui.get("deactivate") {
+                                    if let Some(va) = value.as_array() {
+                                        let mut c = vec![];
+                                        for v in va {
+                                            if let Some(v) = v.as_str() {
+                                                c.push(v.to_string());
+                                            }
+                                        }
+                                        deactivate = c;
+                                    }
+                                }
+
+                                // Check for active
+                                if let Some(value) = ui.get("active") {
+                                    if let Some(v) = value.as_bool()
+                                        && v
+                                    {
+                                        self.activated_widgets.push(widget.id);
+                                        self.permanently_activated_widgets.push(widget.id);
+                                        if let Some(hide) = &hide {
+                                            self.widgets_to_hide = hide.clone();
+                                        }
+                                    }
+                                }
+
+                                // Check for inventory
+                                if let Some(value) = ui.get("inventory_index") {
+                                    if let Some(v) = value.as_integer() {
+                                        inventory_index = Some(v as usize);
+                                    }
+                                }
+
+                                // Check for the entity / item cursor ids
+                                entity_cursor_id = Self::get_uuid(ui, "entity_cursor_id");
+                                entity_clicked_cursor_id =
+                                    Self::get_uuid(ui, "entity_clicked_cursor_id");
+                                item_cursor_id = Self::get_uuid(ui, "item_cursor_id");
+                                item_clicked_cursor_id =
+                                    Self::get_uuid(ui, "item_clicked_cursor_id");
+                            }
+
+                            let button_widget = Widget {
+                                name: widget.name.clone(),
+                                id: widget.id,
+                                rect: Rect::new(x, y, width, height),
+                                action: action.into(),
+                                intent,
+                                show,
+                                hide,
+                                deactivate,
+                                inventory_index,
+                                textures,
+                                entity_cursor_id,
+                                entity_clicked_cursor_id,
+                                item_cursor_id,
+                                item_clicked_cursor_id,
+                            };
+
+                            self.button_widgets.insert(widget.id, button_widget);
+                        } else if role == "messages" {
+                            let mut widget = MessagesWidget {
+                                name: widget.name.clone(),
+                                rect: Rect::new(x, y, width, height),
+                                toml_str: data.clone(),
+                                buffer: TheRGBABuffer::new(TheDim::sized(
+                                    width as i32,
+                                    height as i32,
+                                )),
+                                ..Default::default()
+                            };
+                            widget.init(assets);
+                            self.messages_widget = Some(widget);
+                        } else if role == "text" {
+                            let mut text_widget = TextWidget {
+                                name: widget.name.clone(),
+                                rect: Rect::new(x, y, width, height),
+                                toml_str: data.clone(),
+                                buffer: TheRGBABuffer::new(TheDim::sized(
+                                    width as i32,
+                                    height as i32,
+                                )),
+                                ..Default::default()
+                            };
+                            text_widget.init(assets);
+                            self.text_widgets.insert(widget.creator_id, text_widget);
+                        } else if role == "deco" {
+                            let mut deco_widget = DecoWidget {
+                                rect: Rect::new(x, y, width, height),
+                                toml_str: data.clone(),
+                                buffer: TheRGBABuffer::new(TheDim::sized(
+                                    width as i32,
+                                    height as i32,
+                                )),
+                                ..Default::default()
+                            };
+                            deco_widget.init(assets);
+                            self.deco_widgets.insert(widget.creator_id, deco_widget);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Returns true if the game camera is 2D
+    fn game_widget_is_2d(&self) -> bool {
+        for (_, w) in &self.game_widgets {
+            if w.camera == crate::PlayerCamera::D2 {
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Returns the intent of the currently activated button
+    fn get_current_intent(&self) -> Option<String> {
+        for button_id in &self.activated_widgets {
+            if let Some(widget) = self.button_widgets.get(button_id) {
+                return widget.intent.clone();
+            }
+        }
+        None
     }
 }

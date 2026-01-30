@@ -20,6 +20,10 @@ pub struct Widget {
     pub deactivate: Vec<String>,
     pub inventory_index: Option<usize>,
     pub textures: Vec<Texture>,
+    pub entity_cursor_id: Option<Uuid>,
+    pub entity_clicked_cursor_id: Option<Uuid>,
+    pub item_cursor_id: Option<Uuid>,
+    pub item_clicked_cursor_id: Option<Uuid>,
 }
 
 impl Default for Widget {
@@ -41,6 +45,10 @@ impl Widget {
             deactivate: vec![],
             inventory_index: None,
             textures: vec![],
+            entity_cursor_id: None,
+            entity_clicked_cursor_id: None,
+            item_cursor_id: None,
+            item_clicked_cursor_id: None,
         }
     }
 

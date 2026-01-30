@@ -51,8 +51,8 @@ pub enum EntityAction {
     Forward,
     Right,
     Backward,
-    // Item clicked, item id and click distance
-    ItemClicked(u32, f32),
+    // Item clicked, item id, click distance and optional explicit intent
+    ItemClicked(u32, f32, Option<String>),
     // Entity clicked, entity id and click distance
     EntityClicked(u32, f32),
     // Terrain clicked

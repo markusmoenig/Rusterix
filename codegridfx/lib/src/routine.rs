@@ -525,7 +525,20 @@ impl Routine {
         let mut indent = indent;
 
         if self.name != "instantiation" {
-            *out += &format!("{:indent$}if event == \"{}\" {{\n", "", self.name);
+            let mut handled = false;
+            if self.name.starts_with("intent: ") {
+                if let Some(cmd) = self.name.strip_prefix("intent: ") {
+                    *out += &format!(
+                        "{:indent$}if event == \"intent\" && value == \"{}\" {{\n",
+                        "", cmd
+                    );
+                    handled = true;
+                }
+            }
+
+            if !handled {
+                *out += &format!("{:indent$}if event == \"{}\" {{\n", "", self.name);
+            }
             indent += 4;
         }
 
@@ -664,6 +677,12 @@ impl Routine {
 
     /// Get the description of the event
     fn get_description(&self) -> String {
+        if self.name.starts_with("intent: ") {
+            if let Some(cmd) = self.name.strip_prefix("intent: ") {
+                return format!("Send on '{}' intent", cmd);
+            }
+        }
+
         match self.name.as_str() {
             "startup" => "send on startup, 'value' contains the ID".into(),
             "instantiation" => "".into(),
@@ -673,9 +692,7 @@ impl Routine {
             "death" => "send on death".into(),
             "kill" => "`value` is the killed entity's ID".into(),
             "arrived" => "`value` is the sector name".into(),
-            "intent" => {
-                "`intent` is the command, 'target_id', 'entity_id', 'item_id' the IDs".into()
-            }
+            "intent" => "'value' or `intent` is the command.".into(),
             "bumped_by_entity" => "`value` is the entity ID".into(),
             "bumped_into_entity" => "`value` is the entity ID".into(),
             "bumped_into_item" => "`value` is the item ID".into(),

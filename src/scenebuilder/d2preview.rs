@@ -5,6 +5,7 @@ use crate::{
 use MapToolType::*;
 use scenevm::{Atom, DynamicObject, GeoId, Light};
 use theframework::prelude::*;
+use toml::*;
 use vek::Vec2;
 
 pub struct D2PreviewBuilder {
@@ -426,6 +427,21 @@ impl D2PreviewBuilder {
                             vertices.push([local.x, local.y]);
                         }
 
+                        // Layer sorting with "rect" based layers with a lower priority
+                        // This is mostly for screen widgets which get their layer prio from the TOML data.
+                        let mut layer = 0;
+                        if let Some(crate::Value::Str(data)) = sector.properties.get("data") {
+                            if let Ok(table) = data.parse::<Table>() {
+                                if let Some(ui) = table.get("ui").and_then(toml::Value::as_table) {
+                                    if let Some(value) = ui.get("layer") {
+                                        if let Some(v) = value.as_integer() {
+                                            layer = v as i32;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
                         if let Some(pixelsource) = source {
                             if let Some(tile) = pixelsource.tile_from_tile_list(assets) {
                                 scene_handler.overlay_2d.add_poly_2d(
@@ -434,7 +450,7 @@ impl D2PreviewBuilder {
                                     vertices,
                                     uvs,
                                     geo.1,
-                                    if is_rect { 9 } else { 10 },
+                                    if is_rect { 9 + layer } else { 10 + layer },
                                     true,
                                 );
                             }

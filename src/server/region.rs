@@ -1223,7 +1223,7 @@ impl RegionInstance {
                             }
                         });
                     }
-                    ItemClicked(clicked_item_id, distance) => {
+                    ItemClicked(clicked_item_id, distance, explicit_intent) => {
                         with_regionctx(self.id, |ctx: &mut RegionCtx| {
                             if let Some(entity) = get_entity_mut(&mut ctx.map, entity_id) {
                                 if let Some(_class_name) = ctx.entity_classes.get(&entity.id) {
@@ -1233,8 +1233,11 @@ impl RegionInstance {
                                     // cont.set("item_id", Value::UInt(clicked_item_id));
                                     // cont.set("entity_id", Value::UInt(entity.id));
 
-                                    let intent =
-                                        entity.attributes.get_str_default("intent", "".into());
+                                    let intent = if let Some(int) = explicit_intent {
+                                        int
+                                    } else {
+                                        entity.attributes.get_str_default("intent", "".into())
+                                    };
 
                                     // let event_name = format!("intent: {}", intent);
 
