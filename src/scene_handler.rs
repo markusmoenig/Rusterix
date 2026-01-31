@@ -660,8 +660,8 @@ impl SceneHandler {
             }
 
             let mut animated_center = billboard.center;
-            let mut animated_width = billboard.size;
-            let mut animated_height = billboard.size;
+            let animated_width = billboard.size;
+            let animated_height = billboard.size;
             let repeat_mode = billboard.repeat_mode;
             let mut opacity = 1.0_f32;
 
