@@ -1,4 +1,4 @@
-use crate::{vec4_to_pixel, Pixel, Shader};
+use crate::{Pixel, Shader, vec4_to_pixel};
 use vek::{Vec2, Vec4};
 
 pub struct GridShader {

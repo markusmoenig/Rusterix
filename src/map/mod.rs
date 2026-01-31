@@ -693,7 +693,7 @@ impl Map {
         if let Some(id) = self.find_free_linedef_id() {
             let linedef = Linedef::new(id, start_vertex, end_vertex);
             self.linedefs.push(linedef);
-            
+
             // Add to possible_polygon for manual tracking
             self.possible_polygon.push(id);
             id
@@ -712,7 +712,6 @@ impl Map {
             None
         }
     }
-
 
     // Check if a vertex is used by any sector with the "rect" property
     pub fn is_vertex_in_rect_sector(&self, vertex_id: u32) -> bool {
@@ -745,7 +744,12 @@ impl Map {
     }
 
     // Replace a vertex in a sector's linedefs with a new vertex
-    pub fn replace_vertex_in_sector(&mut self, sector_id: u32, old_vertex_id: u32, new_vertex_id: u32) {
+    pub fn replace_vertex_in_sector(
+        &mut self,
+        sector_id: u32,
+        old_vertex_id: u32,
+        new_vertex_id: u32,
+    ) {
         if let Some(sector) = self.find_sector(sector_id) {
             let linedef_ids: Vec<u32> = sector.linedefs.clone();
             for linedef_id in linedef_ids {
@@ -1852,8 +1856,10 @@ impl Map {
             let mut j = vertices.len() - 1;
             for i in 0..vertices.len() {
                 if ((vertices[i].y > point.y) != (vertices[j].y > point.y))
-                    && (point.x < (vertices[j].x - vertices[i].x) * (point.y - vertices[i].y)
-                        / (vertices[j].y - vertices[i].y) + vertices[i].x)
+                    && (point.x
+                        < (vertices[j].x - vertices[i].x) * (point.y - vertices[i].y)
+                            / (vertices[j].y - vertices[i].y)
+                            + vertices[i].x)
                 {
                     inside = !inside;
                 }

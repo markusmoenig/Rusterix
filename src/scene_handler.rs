@@ -1,14 +1,49 @@
 use std::str::FromStr;
 
 use crate::{
-    Assets, BillboardMetadata, D3Camera, Item, Map, PixelSource, RenderSettings, Texture, Tile,
-    Value,
+    Assets, BillboardAnimation, BillboardMetadata, D3Camera, Item, Map, PixelSource,
+    RenderSettings, Texture, Tile, Value,
 };
 use indexmap::IndexMap;
 use rust_embed::EmbeddedFile;
 use rustc_hash::FxHashMap;
 use scenevm::{Atom, Chunk, DynamicObject, GeoId, Light, SceneVM};
 use theframework::prelude::*;
+
+/// Tracks per-billboard animation state so we can interpolate on visibility changes.
+#[derive(Default)]
+pub(crate) struct BillboardAnimState {
+    start_open: f32,
+    target_open: f32,
+    start_frame: usize,
+}
+
+#[derive(Clone, Copy)]
+enum AnimationClock {
+    Render,   // use render frames (~30 fps)
+    GameTick, // use animation_frame ticks (~4 fps default)
+}
+
+impl BillboardAnimState {
+    fn new(initial_open: f32, frame: usize) -> Self {
+        Self {
+            start_open: initial_open,
+            target_open: initial_open,
+            start_frame: frame,
+        }
+    }
+
+    /// Returns interpolated open amount for the given frame using a smoothstep curve.
+    fn open_amount(&self, frame: usize, fps: f32, duration_seconds: f32) -> f32 {
+        if duration_seconds <= 0.0 {
+            return self.target_open;
+        }
+        let elapsed_seconds = frame.saturating_sub(self.start_frame) as f32 / fps;
+        let t = (elapsed_seconds / duration_seconds).clamp(0.0, 1.0);
+        let smooth = t * t * (3.0 - 2.0 * t); // smoothstep
+        self.start_open + (self.target_open - self.start_open) * smooth
+    }
+}
 
 pub struct SceneHandler {
     pub vm: SceneVM,
@@ -36,6 +71,16 @@ pub struct SceneHandler {
 
     // Billboards for dynamic doors/gates (indexed by GeoId for fast lookup)
     pub billboards: FxHashMap<GeoId, BillboardMetadata>,
+
+    // Animation state per billboard
+    pub(crate) billboard_anim_states: FxHashMap<GeoId, BillboardAnimState>,
+
+    // Local render-frame counter for timing animations at fixed FPS
+    frame_counter: usize,
+
+    // Timing parameters (configurable)
+    render_fps: f32,
+    game_tick_fps: f32,
 }
 
 impl Default for SceneHandler {
@@ -109,6 +154,17 @@ impl SceneHandler {
             settings: RenderSettings::default(),
 
             billboards: FxHashMap::default(),
+            billboard_anim_states: FxHashMap::default(),
+            frame_counter: 0,
+            render_fps: 30.0,
+            game_tick_fps: 4.0, // default 250ms ticks
+        }
+    }
+
+    pub fn set_timings(&mut self, render_fps: f32, game_tick_ms: i32) {
+        self.render_fps = render_fps.max(1.0);
+        if game_tick_ms > 0 {
+            self.game_tick_fps = 1000.0 / game_tick_ms as f32;
         }
     }
 
@@ -374,7 +430,16 @@ impl SceneHandler {
         }
     }
 
-    pub fn build_dynamics_3d(&mut self, map: &Map, camera: &dyn D3Camera, assets: &Assets) {
+    pub fn build_dynamics_3d(
+        &mut self,
+        map: &Map,
+        camera: &dyn D3Camera,
+        _animation_frame: usize,
+        assets: &Assets,
+    ) {
+        // Advance local frame counter each render call; Eldiron renders at a fixed 30 FPS.
+        self.frame_counter = self.frame_counter.wrapping_add(1);
+
         self.vm.execute(Atom::ClearDynamics);
         self.vm.execute(Atom::ClearLights);
 
@@ -501,6 +566,12 @@ impl SceneHandler {
         }
 
         // Billboards (doors/gates)
+        const BILLBOARD_ANIMATION_DURATION_S: f32 = 0.35;
+
+        // Drop stale animation states for billboards that vanished with chunk updates.
+        self.billboard_anim_states
+            .retain(|geo_id, _| self.billboards.contains_key(geo_id));
+
         for (geo_id, billboard) in &self.billboards {
             // Doors/gates use GeoId::Hole(host_sector, profile_sector)
             let resolved_item = match geo_id {
@@ -510,27 +581,121 @@ impl SceneHandler {
                 _ => None,
             };
 
-            let is_visible = resolved_item
-                .map(|item| item.attributes.get_bool_default("visible", true))
-                .unwrap_or(true);
+            let (is_visible, item_animation, item_duration, item_clock) = resolved_item.map_or(
+                (
+                    true,
+                    None,
+                    BILLBOARD_ANIMATION_DURATION_S,
+                    AnimationClock::Render,
+                ),
+                |item| {
+                    let visible = item.attributes.get_bool_default("visible", true);
+                    // Allow items to override billboard animation: same numeric codes as map surface.
+                    let anim_code = item.attributes.get_int_default("billboard_animation", -1);
+                    let anim = match anim_code {
+                        1 => Some(BillboardAnimation::OpenUp),
+                        2 => Some(BillboardAnimation::OpenRight),
+                        3 => Some(BillboardAnimation::OpenDown),
+                        4 => Some(BillboardAnimation::OpenLeft),
+                        5 => Some(BillboardAnimation::Fade),
+                        _ => None,
+                    };
+                    let duration = item
+                        .attributes
+                        .get_float_default("animation_duration", BILLBOARD_ANIMATION_DURATION_S);
+                    let clock = match item
+                        .attributes
+                        .get_str("animation_clock")
+                        .map(|s| s.to_ascii_lowercase())
+                    {
+                        Some(ref s) if s == "frame" || s == "tick" || s == "game" => {
+                            AnimationClock::GameTick
+                        }
+                        Some(ref s) if s == "render" || s == "smooth" => AnimationClock::Render,
+                        _ => AnimationClock::Render,
+                    };
+                    (visible, anim, duration, clock)
+                },
+            );
 
-            if is_visible {
-                // Calculate animation offset based on animation type and state
-                // For now, render at static position (you can add animation interpolation later)
-                let animated_center = billboard.center;
+            // Per-item override wins; fall back to the baked-in animation from the profile sector.
+            let animation = item_animation.unwrap_or(billboard.animation);
+            let duration_s = item_duration;
+            let clock = item_clock;
 
-                let dynamic = DynamicObject::billboard_tile(
-                    *geo_id,
-                    billboard.tile_id,
-                    animated_center,
-                    billboard.up,
-                    billboard.right,
-                    billboard.size,
-                    billboard.size,
-                )
-                .with_repeat_mode(billboard.repeat_mode);
-                self.vm.execute(Atom::AddDynamic { object: dynamic });
+            let (clock_frame, clock_fps) = match clock {
+                AnimationClock::Render => (self.frame_counter, self.render_fps),
+                AnimationClock::GameTick => (_animation_frame, self.game_tick_fps),
+            };
+
+            // Opening means the door scrolls away, so open_amount = 1.0 => fully open (invisible).
+            let desired_open = if is_visible { 0.0 } else { 1.0 };
+
+            // Track animation state per billboard; initialise from the current desired state.
+            let state = self
+                .billboard_anim_states
+                .entry(*geo_id)
+                .or_insert_with(|| BillboardAnimState::new(desired_open, clock_frame));
+
+            // If server toggled visibility, start a new transition from the current pose.
+            if (desired_open - state.target_open).abs() > f32::EPSILON {
+                let current_open = state.open_amount(clock_frame, clock_fps, duration_s);
+                *state = BillboardAnimState {
+                    start_open: current_open,
+                    target_open: desired_open,
+                    start_frame: clock_frame,
+                };
             }
+
+            let open_amount = state.open_amount(clock_frame, clock_fps, duration_s);
+
+            // Skip fully open (invisible) state after animation completes.
+            if open_amount >= 0.999 && desired_open > 0.5 {
+                continue;
+            }
+
+            let mut animated_center = billboard.center;
+            let mut size_scale = 1.0_f32;
+
+            match animation {
+                BillboardAnimation::OpenUp => {
+                    animated_center += billboard.right * (open_amount * billboard.size);
+                }
+                BillboardAnimation::OpenDown => {
+                    animated_center -= billboard.right * (open_amount * billboard.size);
+                }
+                BillboardAnimation::OpenRight => {
+                    animated_center += billboard.up * (open_amount * billboard.size);
+                }
+                BillboardAnimation::OpenLeft => {
+                    animated_center -= billboard.up * (open_amount * billboard.size);
+                }
+                BillboardAnimation::Fade => {
+                    size_scale = 1.0 - open_amount;
+                }
+                BillboardAnimation::None => {
+                    if !is_visible {
+                        continue;
+                    }
+                }
+            }
+
+            let animated_size = billboard.size * size_scale.max(0.0);
+            if animated_size <= f32::EPSILON {
+                continue;
+            }
+
+            let dynamic = DynamicObject::billboard_tile(
+                *geo_id,
+                billboard.tile_id,
+                animated_center,
+                billboard.up,
+                billboard.right,
+                animated_size,
+                animated_size,
+            )
+            .with_repeat_mode(billboard.repeat_mode);
+            self.vm.execute(Atom::AddDynamic { object: dynamic });
         }
     }
 }

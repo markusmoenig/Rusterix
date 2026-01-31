@@ -1,7 +1,7 @@
 pub mod grid;
 pub mod vgradient;
 
-use crate::{Pixel, BLACK};
+use crate::{BLACK, Pixel};
 use vek::{Vec2, Vec3, Vec4};
 
 /// The shader trait.

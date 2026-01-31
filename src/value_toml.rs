@@ -20,8 +20,7 @@ impl ValueTomlLoader {
 
     /// Parse from a TOML string.
     pub fn from_str(src: &str) -> Result<ValueGroups, String> {
-        let doc: TomlValue =
-            toml::from_str(src).map_err(|e: toml::de::Error| e.to_string())?;
+        let doc: TomlValue = toml::from_str(src).map_err(|e: toml::de::Error| e.to_string())?;
         let root = doc
             .as_table()
             .ok_or_else(|| "TOML root must be a table".to_string())?;

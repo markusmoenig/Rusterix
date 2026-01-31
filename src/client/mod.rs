@@ -841,6 +841,9 @@ impl Client {
     ) {
         let mut player_entity = Entity::default();
 
+        // Keep scene timing in sync with config
+        scene_handler.set_timings(self.target_fps as f32, self.game_tick_ms);
+
         // Reset the intent to the server value
         for entity in map.entities.iter() {
             if entity.is_player() {
@@ -852,7 +855,7 @@ impl Client {
         self.target.fill([0, 0, 0, 255]);
         // First process the game widgets
         for widget in self.game_widgets.values_mut() {
-            widget.apply_entities(map, assets, scene_handler);
+            widget.apply_entities(map, assets, self.animation_frame, scene_handler);
             widget.draw(
                 map,
                 &self.server_time,

@@ -75,11 +75,46 @@ pub fn apply_item_data(item: &mut Item, toml: &str) {
                                         "color",
                                         Value::Color(TheColor::from(color)),
                                     );
+                                } else if key == "animation" {
+                                    // Map human-readable animation names to the numeric codes used by billboards
+                                    // 0=None, 1=OpenUp, 2=OpenRight, 3=OpenDown, 4=OpenLeft, 5=Fade
+                                    let code = match value.to_ascii_lowercase().as_str() {
+                                        "up" => 1,
+                                        "right" => 2,
+                                        "down" => 3,
+                                        "left" => 4,
+                                        "fade" => 5,
+                                        _ => 0, // default/none
+                                    };
+                                    item.set_attribute(
+                                        "billboard_animation",
+                                        crate::Value::Int(code),
+                                    );
+                                } else if key == "animation_clock" {
+                                    // "smooth" (render frames) or "frame"/"tick" (animation_frame ticks)
+                                    item.set_attribute(
+                                        "animation_clock",
+                                        crate::Value::Str(value.to_ascii_lowercase()),
+                                    );
+                                } else if key == "animation_duration" {
+                                    if let Ok(secs) = value.parse::<f32>() {
+                                        item.set_attribute(
+                                            "animation_duration",
+                                            crate::Value::Float(secs),
+                                        );
+                                    }
                                 } else {
                                     item.set_attribute(key, crate::Value::Str(value.to_string()));
                                 }
                             } else if let Some(value) = value.as_bool() {
                                 item.set_attribute(key, crate::Value::Bool(value));
+                            } else if let Some(value) = value.as_integer() {
+                                if key == "animation_duration" {
+                                    item.set_attribute(
+                                        "animation_duration",
+                                        crate::Value::Float(value as f32),
+                                    );
+                                }
                             }
                         }
                     }

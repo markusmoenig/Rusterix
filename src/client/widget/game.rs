@@ -106,7 +106,13 @@ impl GameWidget {
         self.build_region_name = map.name.clone();
     }
 
-    pub fn apply_entities(&mut self, map: &Map, assets: &Assets, scene_handler: &mut SceneHandler) {
+    pub fn apply_entities(
+        &mut self,
+        map: &Map,
+        assets: &Assets,
+        animation_frame: usize,
+        scene_handler: &mut SceneHandler,
+    ) {
         for entity in map.entities.iter() {
             if entity.is_player() {
                 // if let Some(Value::PlayerCamera(camera)) = entity.attributes.get("player_camera") {
@@ -133,7 +139,7 @@ impl GameWidget {
         if self.camera == PlayerCamera::D2 {
             scene_handler.build_dynamics_2d(map, assets);
         } else {
-            scene_handler.build_dynamics_3d(map, self.camera_d3.as_ref(), assets);
+            scene_handler.build_dynamics_3d(map, self.camera_d3.as_ref(), animation_frame, assets);
         }
     }
 
@@ -171,6 +177,7 @@ impl GameWidget {
                 SceneManagerResult::Clear => {
                     scene_handler.vm.execute(scenevm::Atom::ClearGeometry);
                     scene_handler.billboards.clear();
+                    scene_handler.billboard_anim_states.clear();
                 }
                 _ => {}
             }
