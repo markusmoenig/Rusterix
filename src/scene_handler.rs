@@ -504,6 +504,18 @@ impl SceneHandler {
 
             // Items
             for item in &map.items {
+                // Skip items that are bound to a profile/host sector; they are rendered as billboards for gates/doors.
+                let is_profile_bound = matches!(
+                    item.attributes.get("profile_host_sector_id"),
+                    Some(Value::UInt(_))
+                ) && matches!(
+                    item.attributes.get("profile_sector_id"),
+                    Some(Value::UInt(_))
+                );
+                if is_profile_bound {
+                    continue;
+                }
+
                 let show_entity = true; // !(entity.is_player() && camera.id() == "firstp");
 
                 if show_entity {
