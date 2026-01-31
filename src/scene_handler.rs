@@ -581,7 +581,12 @@ impl SceneHandler {
                 _ => None,
             };
 
-            let (is_visible, item_animation, item_duration, item_clock) = resolved_item.map_or(
+            let (is_visible, item_animation, item_duration, item_clock): (
+                bool,
+                Option<BillboardAnimation>,
+                f32,
+                AnimationClock,
+            ) = resolved_item.map_or(
                 (
                     true,
                     None,
@@ -655,7 +660,10 @@ impl SceneHandler {
             }
 
             let mut animated_center = billboard.center;
-            let mut size_scale = 1.0_f32;
+            let mut animated_width = billboard.size;
+            let mut animated_height = billboard.size;
+            let repeat_mode = billboard.repeat_mode;
+            let mut opacity = 1.0_f32;
 
             match animation {
                 BillboardAnimation::OpenUp => {
@@ -671,7 +679,8 @@ impl SceneHandler {
                     animated_center -= billboard.up * (open_amount * billboard.size);
                 }
                 BillboardAnimation::Fade => {
-                    size_scale = 1.0 - open_amount;
+                    // Pure alpha fade; geometry unchanged.
+                    opacity = 1.0 - open_amount;
                 }
                 BillboardAnimation::None => {
                     if !is_visible {
@@ -680,8 +689,7 @@ impl SceneHandler {
                 }
             }
 
-            let animated_size = billboard.size * size_scale.max(0.0);
-            if animated_size <= f32::EPSILON {
+            if animated_width <= f32::EPSILON || animated_height <= f32::EPSILON {
                 continue;
             }
 
@@ -691,10 +699,11 @@ impl SceneHandler {
                 animated_center,
                 billboard.up,
                 billboard.right,
-                animated_size,
-                animated_size,
+                animated_width,
+                animated_height,
             )
-            .with_repeat_mode(billboard.repeat_mode);
+            .with_repeat_mode(repeat_mode)
+            .with_opacity(opacity);
             self.vm.execute(Atom::AddDynamic { object: dynamic });
         }
     }
