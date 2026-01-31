@@ -628,6 +628,16 @@ impl SceneHandler {
             let duration_s = item_duration;
             let clock = item_clock;
 
+            // Tile override: if the controlling item has a source/tile_id, use it.
+            let tile_override = resolved_item.and_then(|item| {
+                if let Some(Value::Source(src)) = item.attributes.get("source") {
+                    src.tile_from_tile_list(assets).map(|t| t.id)
+                } else {
+                    None
+                }
+            });
+            let tile_id = tile_override.unwrap_or(billboard.tile_id);
+
             let (clock_frame, clock_fps) = match clock {
                 AnimationClock::Render => (self.frame_counter, self.render_fps),
                 AnimationClock::GameTick => (_animation_frame, self.game_tick_fps),
@@ -695,7 +705,7 @@ impl SceneHandler {
 
             let dynamic = DynamicObject::billboard_tile(
                 *geo_id,
-                billboard.tile_id,
+                tile_id,
                 animated_center,
                 billboard.up,
                 billboard.right,

@@ -732,6 +732,9 @@ impl Client {
         self.first_game_draw = true;
         self.intent = String::new();
 
+        self.permanently_activated_widgets.clear();
+        self.activated_widgets.clear();
+
         // Init config
         match assets.config.parse::<Table>() {
             Ok(data) => {
