@@ -735,6 +735,8 @@ impl Client {
         self.permanently_activated_widgets.clear();
         self.activated_widgets.clear();
 
+        _ = scene_handler.settings.read(&assets.config);
+
         // Init config
         match assets.config.parse::<Table>() {
             Ok(data) => {
@@ -1305,15 +1307,17 @@ impl Client {
             if widget.rect.contains(Vec2::new(p.x as f32, p.y as f32)) {
                 self.activated_widgets.push(*id);
 
-                if self.game_widget_is_2d() {
-                    if let Some(intent) = &widget.intent {
-                        self.intent = intent.clone();
+                if let Some(intent) = &widget.intent {
+                    self.intent = intent.clone();
+                    if self.game_widget_is_2d() {
                         action = Some(EntityAction::Intent(intent.clone()));
-                        // break;
-                    } else if let Ok(act) = EntityAction::from_str(&widget.action) {
-                        action = Some(act);
-                        // break;
                     }
+                    // break;
+                } else if let Ok(act) = EntityAction::from_str(&widget.action) {
+                    if self.game_widget_is_2d() {
+                        action = Some(act);
+                    }
+                    // break;
                 }
 
                 if let Some(hide) = &widget.hide {
