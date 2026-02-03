@@ -755,13 +755,14 @@ impl ChunkBuilder for D3ChunkBuilder {
                                 (0.0, 1.0, 0.0, 1.0)
                             } else {
                                 // Repeat: scale in world units by texture scales
+                                // UVs are kept proportional to world size.
+                                // Add small epsilon to avoid UV=0 exactly, which causes
+                                // issues with the shader's Y-flip: fract(1.0 - 0.0) = 0,
+                                // but fract(1.0 - 0.0001) = 0.9999, creating a seam.
+                                let eps = 1e-4_f32;
                                 let u_max = edge_len / tex_scale_u.max(1e-6);
-                                let v_max = if depth_abs < tex_scale_v {
-                                    1.0 // Fit texture to thin walls
-                                } else {
-                                    depth_abs / tex_scale_v.max(1e-6)
-                                };
-                                (0.0, u_max, 0.0, v_max)
+                                let v_max = depth_abs / tex_scale_v.max(1e-6);
+                                (eps, u_max + eps, eps, v_max + eps)
                             };
                             uvs.push([ua, v0]);
                             uvs.push([ub, v0]);
