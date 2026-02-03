@@ -744,20 +744,24 @@ impl ChunkBuilder for D3ChunkBuilder {
                             verts.push([b_back.x, b_back.y, b_back.z, 1.0]);
                             verts.push([a_back.x, a_back.y, a_back.z, 1.0]);
 
-                            // U along perimeter, V across depth
-                            let ua_raw = dists[ia];
-                            let ub_raw = dists[ib];
+                            // U along edge length (each edge starts at 0), V across depth
+                            let edge_len = if ib == 0 {
+                                perim - dists[ia] // Wrap-around edge
+                            } else {
+                                dists[ib] - dists[ia]
+                            };
                             let (ua, ub, v0, v1) = if tile_mode_side == 0 {
                                 // Fit: normalize to 0..1 in both axes
-                                (ua_raw / perim, ub_raw / perim, 0.0, 1.0)
+                                (0.0, 1.0, 0.0, 1.0)
                             } else {
                                 // Repeat: scale in world units by texture scales
-                                (
-                                    ua_raw / tex_scale_u.max(1e-6),
-                                    ub_raw / tex_scale_u.max(1e-6),
-                                    0.0,
-                                    depth_abs / tex_scale_v.max(1e-6),
-                                )
+                                let u_max = edge_len / tex_scale_u.max(1e-6);
+                                let v_max = if depth_abs < tex_scale_v {
+                                    1.0 // Fit texture to thin walls
+                                } else {
+                                    depth_abs / tex_scale_v.max(1e-6)
+                                };
+                                (0.0, u_max, 0.0, v_max)
                             };
                             uvs.push([ua, v0]);
                             uvs.push([ub, v0]);
