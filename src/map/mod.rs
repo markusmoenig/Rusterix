@@ -753,12 +753,48 @@ impl Map {
         if let Some(sector) = self.find_sector(sector_id) {
             let linedef_ids: Vec<u32> = sector.linedefs.clone();
             for linedef_id in linedef_ids {
-                if let Some(linedef) = self.find_linedef_mut(linedef_id) {
-                    if linedef.start_vertex == old_vertex_id {
-                        linedef.start_vertex = new_vertex_id;
-                    }
-                    if linedef.end_vertex == old_vertex_id {
-                        linedef.end_vertex = new_vertex_id;
+                if let Some(linedef) = self.find_linedef(linedef_id) {
+                    // Check if this linedef is shared with other sectors
+                    let is_shared = linedef.sector_ids.len() > 1 ||
+                        self.sectors.iter().any(|s| s.id != sector_id && s.linedefs.contains(&linedef_id));
+                    
+                    let needs_vertex_change = linedef.start_vertex == old_vertex_id || linedef.end_vertex == old_vertex_id;
+                    
+                    if is_shared && needs_vertex_change {
+                        // Linedef is shared - create a new linedef for this sector
+                        let new_start = if linedef.start_vertex == old_vertex_id { new_vertex_id } else { linedef.start_vertex };
+                        let new_end = if linedef.end_vertex == old_vertex_id { new_vertex_id } else { linedef.end_vertex };
+                        
+                        if let Some(new_linedef_id) = self.find_free_linedef_id() {
+                            let mut new_linedef = linedef.clone();
+                            new_linedef.id = new_linedef_id;
+                            new_linedef.start_vertex = new_start;
+                            new_linedef.end_vertex = new_end;
+                            new_linedef.sector_ids = vec![sector_id];
+                            self.linedefs.push(new_linedef);
+                            
+                            // Remove sector_id from old linedef's sector_ids
+                            if let Some(old_linedef) = self.find_linedef_mut(linedef_id) {
+                                old_linedef.sector_ids.retain(|&sid| sid != sector_id);
+                            }
+                            
+                            // Replace the linedef in sector's linedefs list
+                            if let Some(sector) = self.find_sector_mut(sector_id) {
+                                if let Some(pos) = sector.linedefs.iter().position(|&id| id == linedef_id) {
+                                    sector.linedefs[pos] = new_linedef_id;
+                                }
+                            }
+                        }
+                    } else if needs_vertex_change {
+                        // Linedef is not shared - modify it directly
+                        if let Some(linedef) = self.find_linedef_mut(linedef_id) {
+                            if linedef.start_vertex == old_vertex_id {
+                                linedef.start_vertex = new_vertex_id;
+                            }
+                            if linedef.end_vertex == old_vertex_id {
+                                linedef.end_vertex = new_vertex_id;
+                            }
+                        }
                     }
                 }
             }
@@ -908,11 +944,25 @@ impl Map {
             for sector in &self.sectors {
                 if sector_ids.contains(&sector.id) {
                     for &linedef_id in &sector.linedefs {
-                        // If this linedef is not used by other sectors, we can delete it
-                        let used_elsewhere = self
-                            .sectors
-                            .iter()
-                            .any(|s| s.id != sector.id && s.linedefs.contains(&linedef_id));
+                        // Check if this linedef is used by other sectors (that are not also being deleted)
+                        // We check both: sector.linedefs lists AND linedef.sector_ids
+                        let used_in_sector_linedefs = self.sectors.iter().any(|s| {
+                            s.id != sector.id
+                                && !sector_ids.contains(&s.id)
+                                && s.linedefs.contains(&linedef_id)
+                        });
+
+                        let used_in_linedef_sector_ids =
+                            if let Some(linedef) = self.find_linedef(linedef_id) {
+                                linedef
+                                    .sector_ids
+                                    .iter()
+                                    .any(|&sid| sid != sector.id && !sector_ids.contains(&sid))
+                            } else {
+                                false
+                            };
+
+                        let used_elsewhere = used_in_sector_linedefs || used_in_linedef_sector_ids;
 
                         if !used_elsewhere && !all_linedef_ids.contains(&linedef_id) {
                             all_linedef_ids.push(linedef_id);
@@ -921,7 +971,6 @@ impl Map {
                 }
             }
         }
-
         /*
         // Do not delete vertices from deleted linedefs / sectors, only the selected ones.
         // Step 2: Collect vertices used *only* by linedefs being deleted
@@ -993,7 +1042,6 @@ impl Map {
             self.vertices
                 .retain(|vertex| !all_vertex_ids.contains(&vertex.id));
         }
-
         // Step 6: Sanitize to ensure consistency (rebuild surfaces, clean up any remaining issues)
         self.sanitize();
     }
