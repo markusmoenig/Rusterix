@@ -575,14 +575,26 @@ impl D2PreviewBuilder {
 
                 // No outlines for the rect tool based sectors in the minimap or if no_rect_geo is enabled.
                 if self.map_tool_type == MapToolType::MiniMap || self.no_rect_geo {
-                    // let mut found_in_sector = false;
+                    let mut only_unnamed_rect_sectors = true;
                     for sector in &map.sectors {
                         if sector.linedefs.contains(&linedef.id) {
-                            // found_in_sector = true;
-                            if sector.properties.contains("rect")
-                                || sector.properties.contains("rect_rendering")
-                            {
-                                if sector.name.is_empty() {
+                            let is_rect = sector.properties.contains("rect")
+                                || sector.properties.contains("rect_rendering");
+                            if !is_rect || !sector.name.is_empty() {
+                                // This linedef belongs to a non-rect sector or a named rect sector
+                                only_unnamed_rect_sectors = false;
+                                break;
+                            }
+                        }
+                    }
+                    if only_unnamed_rect_sectors {
+                        // Only hide if ALL sectors this linedef belongs to are unnamed rect sectors
+                        for sector in &map.sectors {
+                            if sector.linedefs.contains(&linedef.id) {
+                                if (sector.properties.contains("rect")
+                                    || sector.properties.contains("rect_rendering"))
+                                    && sector.name.is_empty()
+                                {
                                     draw = false;
                                     break;
                                 }
@@ -978,6 +990,25 @@ impl D2PreviewBuilder {
                 scene_handler.white,
                 1000,
             );
+        }
+
+        // Draw linedefs in possible_polygon (polygon being constructed)
+        for (i, linedef_id) in map.possible_polygon.iter().enumerate() {
+            if let Some(linedef) = map.find_linedef(*linedef_id) {
+                if let Some(start_vertex) = map.get_vertex(linedef.start_vertex) {
+                    if let Some(end_vertex) = map.get_vertex(linedef.end_vertex) {
+                        let start_pos = self.map_grid_to_local(screen_size, start_vertex, map);
+                        let end_pos = self.map_grid_to_local(screen_size, end_vertex, map);
+                        scene_handler.add_overlay_2d_line(
+                            GeoId::Unknown(1000 + i as u32),
+                            start_pos,
+                            end_pos,
+                            scene_handler.white,
+                            1001,
+                        );
+                    }
+                }
+            }
         }
 
         // For line action previews
